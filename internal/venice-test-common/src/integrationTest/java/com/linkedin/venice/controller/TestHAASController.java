@@ -36,14 +36,11 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -51,7 +48,6 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.constants.InstanceConstants;
-import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.InstanceConfig;
@@ -411,39 +407,34 @@ public class TestHAASController {
     }
   }
 
-  private static class InitTask implements Callable<Void> {
-    private final HelixAdminClient client;
-    private final HashMap<String, String> helixClusterProperties;
-
-    public InitTask(HelixAdminClient client) {
-      this.client = client;
-      helixClusterProperties = new HashMap<>();
-      helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
-    }
-
-    @Override
-    public Void call() {
-      client.createVeniceControllerCluster();
-      client.addClusterToGrandCluster("venice-controllers");
-      for (int i = 0; i < 10; i++) {
-        String clusterName = "cluster-" + i;
-        client.createVeniceStorageCluster(clusterName, new ClusterConfig(clusterName), null);
-        client.addClusterToGrandCluster(clusterName);
-        client.addVeniceStorageClusterToControllerCluster(clusterName);
-      }
-      return null;
-    }
-  }
-
-  @Test(timeOut = 90 * Time.MS_PER_SECOND)
-  public void testConcurrentClusterInitialization() throws InterruptedException, ExecutionException {
+  private void initializeClusters(HelixAdminClient client, int parallelism) throws InterruptedException {
     ExecutorService executorService = new ThreadPoolExecutor(
-        3,
-        3,
+        parallelism,
+        parallelism,
         60,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("test-concurrent-cluster-init"));
+    try {
+      client.createVeniceControllerCluster();
+      client.addClusterToGrandCluster("venice-controllers");
+      CompletableFuture[] futures = new CompletableFuture[10];
+      for (int i = 0; i < 10; i++) {
+        String clusterName = "cluster-" + i;
+        futures[i] = CompletableFuture.runAsync(() -> {
+          client.createVeniceStorageCluster(clusterName, new ClusterConfig(clusterName), null);
+          client.addClusterToGrandCluster(clusterName);
+          client.addVeniceStorageClusterToControllerCluster(clusterName);
+        }, executorService);
+      }
+      CompletableFuture.allOf(futures).join();
+    } finally {
+      shutdownExecutor(executorService);
+    }
+  }
+
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
+  public void testConcurrentClusterInitialization() throws InterruptedException {
     try (ZkServerWrapper zk = ServiceFactory.getZkServer();
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(zk.getAddress())) {
       VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
@@ -451,17 +442,13 @@ public class TestHAASController {
       doReturn(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).when(controllerMultiClusterConfig)
           .getControllerHAASSuperClusterName();
       doReturn("venice-controllers").when(controllerMultiClusterConfig).getControllerClusterName();
-      doReturn(3).when(controllerMultiClusterConfig).getControllerClusterReplica();
-      List<Callable<Void>> tasks = new ArrayList<>();
-      for (int i = 0; i < 3; i++) {
-        tasks.add(new InitTask(new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository())));
-      }
-      List<Future<Void>> results = executorService.invokeAll(tasks);
-      for (Future<Void> result: results) {
-        result.get();
-      }
-    } finally {
-      shutdownExecutor(executorService);
+
+      VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+      doReturn(3).when(clusterConfig).getControllerClusterReplica();
+      doReturn("").when(clusterConfig).getControllerResourceInstanceGroupTag();
+      doReturn(clusterConfig).when(controllerMultiClusterConfig).getControllerConfig(anyString());
+
+      initializeClusters(new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository()), 3);
     }
   }
 
@@ -483,7 +470,7 @@ public class TestHAASController {
   }
 
   @Test(timeOut = 90 * Time.MS_PER_SECOND)
-  public void testCloudConfig() {
+  public void testCloudConfig() throws InterruptedException {
     try (ZkServerWrapper zk = ServiceFactory.getZkServer();
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(zk.getAddress())) {
       VeniceControllerClusterConfig commonConfig = mock(VeniceControllerClusterConfig.class);
@@ -506,13 +493,13 @@ public class TestHAASController {
       doReturn(HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME).when(controllerMultiClusterConfig)
           .getControllerHAASSuperClusterName();
       doReturn("venice-controllers").when(controllerMultiClusterConfig).getControllerClusterName();
-      doReturn(3).when(controllerMultiClusterConfig).getControllerClusterReplica();
+      doReturn(3).when(commonConfig).getControllerClusterReplica();
+      doReturn("").when(commonConfig).getControllerResourceInstanceGroupTag();
       doReturn(commonConfig).when(controllerMultiClusterConfig).getControllerConfig(anyString());
       doReturn(commonConfig).when(controllerMultiClusterConfig).getCommonConfig();
 
       ZkHelixAdminClient client = new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository());
-      InitTask task = new InitTask(client);
-      task.call();
+      initializeClusters(client, 1);
     }
   }
 

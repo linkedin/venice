@@ -5,11 +5,6 @@ package com.linkedin.venice.pubsub.api;
  */
 public interface PubSubProduceResult {
   /**
-   * The offset of the record in the topic/partition.
-   */
-  long getOffset();
-
-  /**
    * The position of the record in the topic/partition.
    */
   PubSubPosition getPubSubPosition();

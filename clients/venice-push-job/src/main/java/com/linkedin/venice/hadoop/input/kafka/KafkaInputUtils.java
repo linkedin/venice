@@ -1,20 +1,13 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.NEWER_KME_SCHEMAS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_CLUSTER_D2_SERVICE_NAME;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_CLUSTER_D2_ZK_HOST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
-import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -23,18 +16,18 @@ import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.schema.SchemaReader;
-import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.VenicePushJobConstants;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Optional;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
+import java.util.stream.Collectors;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.kafka.clients.CommonClientConfigs;
 
@@ -49,7 +42,7 @@ public class KafkaInputUtils {
    * <ul>
    *   <li>Copies all Hadoop job configurations into a {@link Properties} object.</li>
    *   <li>If an SSL configurator is specified, applies SSL settings and merges SSL properties into the consumer properties.</li>
-   *   <li>Clips and merges any {@link KafkaInputRecordReader#KIF_RECORD_READER_KAFKA_CONFIG_PREFIX} prefixed properties into the consumer properties.</li>
+   *   <li>Clips and merges any {@link VenicePushJobConstants#KIF_RECORD_READER_KAFKA_CONFIG_PREFIX} prefixed properties into the consumer properties.</li>
    *   <li>Sets a large receive buffer size (4MB) to support remote Kafka re-push scenarios.</li>
    *   <li>Sets the PubSub bootstrap server address</li>
    * </ul>
@@ -59,7 +52,7 @@ public class KafkaInputUtils {
    * @throws VeniceException if SSL configuration setup fails
    */
 
-  public static VeniceProperties getConsumerProperties(JobConf config) {
+  public static VeniceProperties getConsumerProperties(JobConf config, Properties overrideProperties) {
     Properties allProperties = HadoopUtils.getProps(config);
     Properties consumerProperties = new Properties();
     consumerProperties.putAll(allProperties); // manually copy all properties
@@ -77,7 +70,7 @@ public class KafkaInputUtils {
     VeniceProperties veniceProperties = new VeniceProperties(allProperties);
     // Drop the prefixes for some properties and add them back the consumer properties.
     consumerProperties.putAll(
-        veniceProperties.clipAndFilterNamespace(KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX)
+        veniceProperties.clipAndFilterNamespace(VenicePushJobConstants.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX)
             .toProperties());
     /**
      * Use a large receive buffer size: 4MB since Kafka re-push could consume remotely.
@@ -87,34 +80,30 @@ public class KafkaInputUtils {
         .setProperty(KAFKA_CONFIG_PREFIX + CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
     consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, config.get(KAFKA_INPUT_BROKER_URL));
     consumerProperties.setProperty(PUBSUB_BROKER_ADDRESS, config.get(KAFKA_INPUT_BROKER_URL));
+
+    // Add any override properties to the consumer properties.
+    if (overrideProperties != null) {
+      consumerProperties.putAll(overrideProperties);
+    }
     return new VeniceProperties(consumerProperties);
+  }
+
+  public static VeniceProperties getConsumerProperties(JobConf config) {
+    return getConsumerProperties(config, null);
   }
 
   public static KafkaValueSerializer getKafkaValueSerializer(JobConf config) {
     KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
     boolean isSchemaReaderEnabled = Boolean.parseBoolean(config.get(SYSTEM_SCHEMA_READER_ENABLED, "false"));
     if (isSchemaReaderEnabled) {
-      Optional<SSLFactory> sslFactory = Optional.empty();
-      if (sslProps != null) {
-        String sslFactoryClassName = config.get(SSL_FACTORY_CLASS_NAME);
-        sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, sslFactoryClassName));
-      }
-      String systemSchemaClusterD2ZKHost = config.get(SYSTEM_SCHEMA_CLUSTER_D2_ZK_HOST);
-      D2Client d2Client = new D2ClientBuilder().setZkHosts(systemSchemaClusterD2ZKHost)
-          .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
-          .setIsSSLEnabled(sslFactory.isPresent())
-          .setSSLParameters(sslFactory.map(SSLFactory::getSSLParameters).orElse(null))
-          .build();
-      D2ClientUtils.startClient(d2Client);
 
-      String systemSchemaClusterD2ServiceName = config.get(SYSTEM_SCHEMA_CLUSTER_D2_SERVICE_NAME);
-      String kafkaMessageEnvelopeSystemStoreName = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
-      ClientConfig kafkaMessageEnvelopeClientConfig =
-          ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopeSystemStoreName);
-      kafkaMessageEnvelopeClientConfig.setD2ServiceName(systemSchemaClusterD2ServiceName);
-      kafkaMessageEnvelopeClientConfig.setD2Client(d2Client);
-      SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(kafkaMessageEnvelopeClientConfig);
-      kafkaValueSerializer.setSchemaReader(kafkaMessageEnvelopeSchemaReader);
+      Map<String, String> newerKMESchemaStrings = config.getPropsWithPrefix(NEWER_KME_SCHEMAS_PREFIX);
+      Map<Integer, String> newerIdToSchemas = newerKMESchemaStrings.entrySet()
+          .stream()
+          .collect(Collectors.toMap(e -> Integer.parseInt(e.getKey()), Map.Entry::getValue));
+
+      SchemaReader schemaReader = new KMESchemaReaderForKafkaInputFormat(newerIdToSchemas);
+      kafkaValueSerializer.setSchemaReader(schemaReader);
     }
     return kafkaValueSerializer;
   }
@@ -133,6 +122,25 @@ public class KafkaInputUtils {
           .createVersionSpecificCompressorIfNotExist(strategy, topic, ByteUtils.extractByteArray(dict));
     }
     return compressorFactory.getCompressor(strategy);
+  }
+
+  /**
+   * Puts a Map of schema ID to schema string into Properties using the specified prefix.
+   * Each entry is stored as: prefix + schemaId = schemaString
+   *
+   * @param schemaMap the Map containing schema ID to schema string mappings
+   */
+  public static Map<String, String> putSchemaMapIntoProperties(Map<Integer, String> schemaMap) {
+
+    Map<String, String> schemaMapWithPrefix = new HashMap<>();
+    if (schemaMap == null || schemaMap.isEmpty()) {
+      return schemaMapWithPrefix;
+    }
+    for (Map.Entry<Integer, String> entry: schemaMap.entrySet()) {
+      String schemaWithPrefix = NEWER_KME_SCHEMAS_PREFIX + entry.getKey();
+      schemaMapWithPrefix.put(schemaWithPrefix, entry.getValue());
+    }
+    return schemaMapWithPrefix;
   }
 
 }

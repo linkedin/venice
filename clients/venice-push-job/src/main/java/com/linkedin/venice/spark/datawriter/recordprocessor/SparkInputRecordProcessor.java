@@ -35,9 +35,9 @@ public class SparkInputRecordProcessor extends AbstractInputRecordProcessor<Byte
     List<Row> outputRows = new ArrayList<>();
     ByteBuffer keyBB = ByteBuffer.wrap(record.getAs(SparkConstants.KEY_COLUMN_NAME));
     byte[] value = record.getAs(SparkConstants.VALUE_COLUMN_NAME);
-    Long timestamp = record.getAs(SparkConstants.TIMESTAMP_COLUMN_NAME);
+    byte[] rmd = record.getAs(SparkConstants.RMD_COLUMN_NAME);
     ByteBuffer valueBB = value == null ? null : ByteBuffer.wrap(value);
-    super.processRecord(keyBB, valueBB, timestamp, getRecordEmitter(outputRows), dataWriterTaskTracker);
+    super.processRecord(keyBB, valueBB, rmd, getRecordEmitter(outputRows), dataWriterTaskTracker);
     return outputRows.iterator();
   }
 
@@ -46,9 +46,9 @@ public class SparkInputRecordProcessor extends AbstractInputRecordProcessor<Byte
     return IdentityVeniceRecordReader.getInstance();
   }
 
-  private TriConsumer<byte[], byte[], Long> getRecordEmitter(List<Row> rows) {
-    return (key, value, timestamp) -> {
-      rows.add(new GenericRowWithSchema(new Object[] { key, value, timestamp }, SparkConstants.DEFAULT_SCHEMA));
+  private TriConsumer<byte[], byte[], byte[]> getRecordEmitter(List<Row> rows) {
+    return (key, value, rmd) -> {
+      rows.add(new GenericRowWithSchema(new Object[] { key, value, rmd }, SparkConstants.DEFAULT_SCHEMA));
     };
   }
 }

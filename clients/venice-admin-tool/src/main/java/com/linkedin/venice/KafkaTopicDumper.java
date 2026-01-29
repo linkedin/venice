@@ -1,7 +1,6 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.chunking.ChunkKeyValueTransformer.KeyType.WITH_VALUE_CHUNK;
-import static com.linkedin.venice.pubsub.PubSubConstants.getPubsubOffsetApiTimeoutDurationDefaultValue;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -31,9 +30,12 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -83,7 +85,7 @@ public class KafkaTopicDumper implements AutoCloseable {
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
   private static final String VENICE_ETL_KEY_FIELD = "key";
   private static final String VENICE_ETL_VALUE_FIELD = "value";
-  private static final String VENICE_ETL_OFFSET_FIELD = "offset";
+  private static final String VENICE_ETL_POSITION_FIELD = "position";
   private static final String VENICE_ETL_DELETED_TS_FIELD = "DELETED_TS";
   private static final String VENICE_ETL_METADATA_FIELD = "metadata";
 
@@ -120,6 +122,7 @@ public class KafkaTopicDumper implements AutoCloseable {
   private DecoderFactory decoderFactory = new DecoderFactory();
   private Schema outputSchema;
   private PubSubTopicPartition topicPartition;
+  private PubSubPositionDeserializer pubSubPositionDeserializer;
 
   public KafkaTopicDumper(
       ControllerClient controllerClient,
@@ -130,10 +133,12 @@ public class KafkaTopicDumper implements AutoCloseable {
       boolean logMetadata,
       boolean logDataRecord,
       boolean logRmdRecord,
-      boolean logTsRecord) {
+      boolean logTsRecord,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
     this.topicPartition = topicPartition;
     this.consumer = consumer;
     this.maxConsumeAttempts = maxConsumeAttempts;
+    this.pubSubPositionDeserializer = pubSubPositionDeserializer;
 
     String storeName = Version.parseStoreFromKafkaTopicName(topicPartition.getTopicName());
     StoreResponse storeResponse = controllerClient.getStore(storeName);
@@ -263,113 +268,122 @@ public class KafkaTopicDumper implements AutoCloseable {
    * a {@link PubSubClientException}. The calculated starting offset will always be greater than
    * or equal to the partition's beginning offset to ensure it is within the valid range.
    *
-   * @param consumer the {@link PubSubConsumerAdapter} used to fetch offsets
+   * @param consumer the {@link PubSubConsumerAdapter} used to fetch position
    * @param partition the {@link PubSubTopicPartition} identifying the topic and partition
-   * @param startingOffset the default starting offset to use if no timestamp is provided
-   * @param startingTimestamp the starting timestamp (epoch in milliseconds) to locate an offset.
-   *                          If set to -1, the method uses the provided {@code startingOffset}.
-   * @return the calculated starting offset for the partition
-   * @throws PubSubClientException if no offset is found for the provided timestamp
+   * @param startingPosition the default starting position to use if no timestamp is provided
+   * @param startingTimestamp the starting timestamp (epoch in milliseconds) to locate an position.
+   *                          If set to -1, the method uses the provided {@code startingPosition}.
+   * @return the calculated starting position for the consumption
+   * @throws PubSubClientException if no position is found for the provided timestamp
    */
-  static long calculateStartingOffset(
+  static PubSubPosition calculateStartingPosition(
       PubSubConsumerAdapter consumer,
       PubSubTopicPartition partition,
-      long startingOffset,
+      PubSubPosition startingPosition,
       long startingTimestamp) {
     if (startingTimestamp != -1) {
-      LOGGER.info("Searching for offset for timestamp: {} in topic-partition: {}", partition, startingTimestamp);
-      Long offsetForTime = consumer.offsetForTime(partition, startingTimestamp);
-      if (offsetForTime == null) {
+      LOGGER.info("Searching for position for timestamp: {} in topic-partition: {}", partition, startingTimestamp);
+      PubSubPosition position = consumer.getPositionByTimestamp(partition, startingTimestamp);
+      if (position == null) {
         LOGGER.error(
-            "No offset found for the requested timestamp: {} in topic-partition: {}. "
+            "No position found for the requested timestamp: {} in topic-partition: {}. "
                 + "This indicates that there are no messages in the topic-partition with a timestamp "
                 + "greater than or equal to the provided timestamp. Verify if the topic-partition has data "
                 + "in the specified time range.",
             startingTimestamp,
             partition);
         throw new PubSubClientException(
-            "Failed to find an offset for the requested timestamp: " + startingTimestamp + " in topic-partition: "
+            "Failed to find an position for the requested timestamp: " + startingTimestamp + " in topic-partition: "
                 + partition + ". Ensure that messages exist in the specified time range.");
       }
-      LOGGER.info(
-          "Found offset: {} for timestamp: {} in topic-partition: {}",
-          offsetForTime,
-          startingTimestamp,
-          partition);
-      startingOffset = offsetForTime;
+      LOGGER
+          .info("Found position: {} for timestamp: {} in topic-partition: {}", position, startingTimestamp, partition);
+      startingPosition = position;
     }
-    Long partitionBeginningOffset =
-        consumer.beginningOffset(partition, getPubsubOffsetApiTimeoutDurationDefaultValue());
-    return Math.max(partitionBeginningOffset, startingOffset);
+    PubSubPosition beginningPosition = consumer.beginningPosition(partition);
+    long diff = consumer.positionDifference(partition, startingPosition, beginningPosition);
+    if (diff <= 0) {
+      LOGGER.info(
+          "The calculated starting position: {} is earlier than the beginning position: {}. "
+              + "Adjusting to use the beginning position.",
+          startingPosition,
+          beginningPosition);
+      return beginningPosition;
+    }
+    return startingPosition;
   }
 
   /**
-   * Calculates the ending offset for consuming messages from a PubSub topic partition.
+   * Calculates the ending position for consuming messages from a PubSub topic partition.
    *
-   * <p>This method determines the appropriate ending offset based on the provided timestamp.
-   * If the {@code endTimestamp} is -1, it directly returns the end offset of the partition.
-   * If a specific {@code endTimestamp} is provided, it attempts to find the offset corresponding
-   * to the timestamp. If no offset is found for the given timestamp, it falls back to the partition's
-   * end offset and logs a warning.
+   * <p>This method determines the appropriate ending position based on the provided timestamp.
+   * If the {@code endTimestamp} is -1, it directly returns the end position of the partition.
+   * If a specific {@code endTimestamp} is provided, it attempts to find the position corresponding
+   * to the timestamp. If no position is found for the given timestamp, it falls back to the partition's
+   * end position and logs a warning.
    *
-   * @param consumer the {@link PubSubConsumerAdapter} used to fetch offsets
+   * @param consumer the {@link PubSubConsumerAdapter} used to fetch position
    * @param partition the {@link PubSubTopicPartition} identifying the topic and partition
-   * @param endTimestamp the ending timestamp (epoch in milliseconds). If set to -1, the method uses the end offset.
-   * @return the calculated ending offset for the partition
+   * @param endTimestamp the ending timestamp (epoch in milliseconds). If set to -1, the method uses the end position.
+   * @return the calculated ending position for the consumption
    */
-  static long calculateEndingOffset(PubSubConsumerAdapter consumer, PubSubTopicPartition partition, long endTimestamp) {
-    long endOffset = consumer.endOffset(partition) - 1;
+  static PubSubPosition calculateEndingPosition(
+      PubSubConsumerAdapter consumer,
+      PubSubTopicPartition partition,
+      long endTimestamp) {
+    PubSubPosition endPosition = consumer.endPosition(partition);
     if (endTimestamp == -1) {
-      return endOffset;
+      return endPosition;
     }
-    Long offsetForTime = consumer.offsetForTime(partition, endTimestamp);
-    if (offsetForTime != null) {
-      return offsetForTime;
+    PubSubPosition positionForTime = consumer.getPositionByTimestamp(partition, endTimestamp);
+    if (positionForTime != null) {
+      return positionForTime;
     }
-    // if offsetForTime returns null, it means there is no message with timestamp >= endTimestamp;
-    // In this case we will use the endOffset
+    // if getPositionByTimestamp returns null, it means there is no message with timestamp >= endTimestamp;
+    // In this case we will use the endPosition
     LOGGER.warn(
-        "No offset found for the requested timestamp: {} in topic-partition: {}. "
+        "No position found for the requested timestamp: {} in topic-partition: {}. "
             + "This indicates that there are no messages in the topic-partition with a timestamp "
-            + "greater than or equal to the provided timestamp. Returning the end offset: {}",
+            + "greater than or equal to the provided timestamp. Returning the end position: {}",
         endTimestamp,
         partition,
-        endOffset);
-    return endOffset;
+        endPosition);
+    return endPosition;
   }
 
   /**
-   * Fetches and processes messages from a given PubSub topic partition between specified offsets.
+   * Fetches and processes messages from a given PubSub topic partition between specified positions.
    *
-   * <p>The method polls messages from the specified `startOffset` to `endOffset` and processes up to
+   * <p>The method polls messages from the specified `startPosition` to `endPosition` and processes up to
    * `messageCount` messages. It uses the consumer to fetch records in batches, processes them via
    * {@code processRecord}, and stops under the following conditions:
    * <ul>
    *   <li>The number of processed messages reaches {@code messageCount}.</li>
-   *   <li>The offset of the last processed message is greater than or equal to {@code endOffset}.</li>
+   *   <li>The position of the last processed message is greater than or equal to {@code endPosition}.</li>
    *   <li>No new records are fetched within the allowed number of attempts.</li>
    * </ul>
    *
-   * @param startOffset the starting offset (inclusive) to begin processing messages
-   * @param endOffset the ending offset (exclusive) to stop processing messages
+   * @param startPosition the starting position (inclusive) to begin processing messages
+   * @param endPosition the ending position (exclusive) to stop processing messages
    * @param messageCount the maximum number of messages to process
    * @return the total number of messages processed
    * @throws IllegalArgumentException if {@code messageCount} is less than or equal to zero, or if
-   *                                  {@code startOffset} is greater than {@code endOffset}
+   *                                  {@code startPosition} is greater than {@code endPosition}
    */
-  public int fetchAndProcess(long startOffset, long endOffset, int messageCount) {
+  public int fetchAndProcess(PubSubPosition startPosition, PubSubPosition endPosition, long messageCount) {
     if (messageCount <= 0) {
       throw new IllegalArgumentException("Invalid message count: " + messageCount);
     }
-    if (startOffset > endOffset) {
-      throw new IllegalArgumentException("Invalid offset range: [" + startOffset + ", " + endOffset + ")");
+    if (consumer.positionDifference(topicPartition, startPosition, endPosition) >= 0) {
+      throw new IllegalArgumentException(
+          "Start position: " + startPosition + " is greater than or equal to end position: " + endPosition);
     }
 
     int remainingAttempts = maxConsumeAttempts;
     int processedMessageCount = 0;
     int lastReportedCount = 0;
 
-    consumer.subscribe(topicPartition, startOffset - 1);
+    consumer.subscribe(topicPartition, startPosition, true);
 
     try {
       DefaultPubSubMessage lastProcessedRecord = null;
@@ -380,23 +394,30 @@ public class KafkaTopicDumper implements AutoCloseable {
         boolean hasProcessedRecords = false;
         while (recordIterator.hasNext() && processedMessageCount < messageCount) {
           DefaultPubSubMessage record = recordIterator.next();
-          // Exit early if endOffset is reached
-          if (record.getPosition().getNumericOffset() > endOffset) {
-            LOGGER.info("Reached endOffset: {}. Total messages processed: {}", endOffset, processedMessageCount);
-            return processedMessageCount;
-          }
+          // Only process and count the record if we haven't reached the end
           processedMessageCount++;
           lastProcessedRecord = record;
           hasProcessedRecords = true;
           processRecord(record);
+          // Check if we've reached endPosition BEFORE processing the record
+          // endPosition is exclusive, so stop when record.getPosition() >= endPosition
+          long positionDelta = consumer.positionDifference(topicPartition, endPosition, record.getPosition());
+          if (positionDelta <= 1) {
+            LOGGER.info(
+                "Reached endPosition: {}. Total messages processed: {}. Position delta: {}",
+                endPosition,
+                processedMessageCount,
+                positionDelta);
+            return processedMessageCount;
+          }
         }
 
         // Log progress if sufficient messages have been processed since the last report
         if (processedMessageCount - lastReportedCount >= 1000) {
           LOGGER.info(
-              "Consumed {} messages; last consumed message offset: {}",
+              "Consumed {} messages; last consumed message position: {}",
               processedMessageCount,
-              lastProcessedRecord.getPosition().getNumericOffset());
+              lastProcessedRecord.getPosition());
           lastReportedCount = processedMessageCount;
         }
 
@@ -475,8 +496,8 @@ public class KafkaTopicDumper implements AutoCloseable {
       final String chunkMetadata = getChunkMetadataLog(record);
 
       LOGGER.info(
-          "Offset:{}; {}; {}; ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}); LeaderMd=(host:{},uo:{},ukcId:{}){}",
-          record.getPosition().getNumericOffset(),
+          "Position:{}; {}; {}; ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}); LeaderMd=(host:{},uo:{},ukcId:{}){}",
+          record.getPosition(),
           kafkaKey.isControlMessage() ? CONTROL_REC : REGULAR_REC,
           msgType,
           GuidUtils.getHexFromGuid(producerMetadata.producerGUID),
@@ -485,14 +506,16 @@ public class KafkaTopicDumper implements AutoCloseable {
           producerMetadata.messageTimestamp,
           producerMetadata.logicalTimestamp,
           leaderMetadata == null ? "-" : leaderMetadata.hostName,
-          leaderMetadata == null ? "-" : leaderMetadata.upstreamOffset,
+          leaderMetadata == null
+              ? "-"
+              : PubSubUtil.deserializePositionWithOffsetFallback(
+                  leaderMetadata.upstreamPubSubPosition,
+                  leaderMetadata.upstreamOffset,
+                  pubSubPositionDeserializer),
           leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId,
           chunkMetadata);
     } catch (Exception e) {
-      LOGGER.error(
-          "Encounter exception when processing record for offset {}",
-          record.getPosition().getNumericOffset(),
-          e);
+      LOGGER.error("Encounter exception when processing record for position {}", record.getPosition(), e);
     }
   }
 
@@ -504,8 +527,8 @@ public class KafkaTopicDumper implements AutoCloseable {
     KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
     MessageType msgType = MessageType.valueOf(kafkaMessageEnvelope);
     LOGGER.info(
-        "[Record Data] Offset:{}; {}; {}",
-        record.getPosition().getNumericOffset(),
+        "[Record Data] Position:{}; {}; {}",
+        record.getPosition(),
         msgType.toString(),
         buildDataRecordLog(record, logReplicationMetadata));
 
@@ -571,10 +594,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           throw new VeniceException("Unknown data type.");
       }
     } catch (Exception e) {
-      LOGGER.error(
-          "Encounter exception when processing record for offset: {}",
-          record.getPosition().getNumericOffset(),
-          e);
+      LOGGER.error("Encounter exception when processing record for position: {}", record.getPosition(), e);
     }
     return logReplicationMetadata
         ? String
@@ -584,7 +604,7 @@ public class KafkaTopicDumper implements AutoCloseable {
 
   void processRecord(DefaultPubSubMessage record) {
     if (logTsRecord) {
-      logIfTopicSwitchMessage(record);
+      logIfTopicSwitchMessage(record, pubSubPositionDeserializer);
     } else if (logDataRecord) {
       logDataRecord(record, logMetadata, logRmdRecord);
     } else if (logMetadata) {
@@ -595,7 +615,9 @@ public class KafkaTopicDumper implements AutoCloseable {
     }
   }
 
-  static void logIfTopicSwitchMessage(DefaultPubSubMessage record) {
+  static void logIfTopicSwitchMessage(
+      DefaultPubSubMessage record,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
     KafkaKey kafkaKey = record.getKey();
     if (!kafkaKey.isControlMessage()) {
       // TS message is a control message, so we only care about control messages.
@@ -607,7 +629,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       return;
     }
 
-    String logMessage = constructTopicSwitchLog(record);
+    String logMessage = constructTopicSwitchLog(record, pubSubPositionDeserializer);
     LOGGER.info(logMessage);
   }
 
@@ -617,7 +639,9 @@ public class KafkaTopicDumper implements AutoCloseable {
    * @param record The PubSubMessage containing the TopicSwitch message.
    * @return A formatted string representing the log message.
    */
-  static String constructTopicSwitchLog(DefaultPubSubMessage record) {
+  static String constructTopicSwitchLog(
+      DefaultPubSubMessage record,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
     KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
     ProducerMetadata producerMetadata = kafkaMessageEnvelope.producerMetadata;
     LeaderMetadata leaderMetadata = kafkaMessageEnvelope.leaderMetadataFooter;
@@ -625,9 +649,9 @@ public class KafkaTopicDumper implements AutoCloseable {
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
 
     return String.format(
-        "Offset:%s; %s; SourceKafkaServers: %s; SourceTopicName: %s; RewindStartTimestamp: %s; "
+        "Position:%s; %s; SourceKafkaServers: %s; SourceTopicName: %s; RewindStartTimestamp: %s; "
             + "ProducerMd=(guid:%s,seg:%s,seq:%s,mts:%s,lts:%s); LeaderMd=(host:%s,uo:%s,ukcId:%s)",
-        record.getPosition().getNumericOffset(),
+        record.getPosition(),
         ControlMessageType.TOPIC_SWITCH.name(),
         topicSwitch.sourceKafkaServers,
         topicSwitch.sourceTopicName,
@@ -638,7 +662,12 @@ public class KafkaTopicDumper implements AutoCloseable {
         producerMetadata.messageTimestamp,
         producerMetadata.logicalTimestamp,
         leaderMetadata == null ? "-" : leaderMetadata.hostName,
-        leaderMetadata == null ? "-" : leaderMetadata.upstreamOffset,
+        leaderMetadata == null
+            ? "-"
+            : PubSubUtil.deserializePositionWithOffsetFallback(
+                leaderMetadata.upstreamPubSubPosition,
+                leaderMetadata.upstreamOffset,
+                pubSubPositionDeserializer),
         leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId);
   }
 
@@ -652,7 +681,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       }
       // build the record
       GenericRecord convertedRecord = new GenericData.Record(outputSchema);
-      convertedRecord.put(VENICE_ETL_OFFSET_FIELD, record.getPosition().getNumericOffset());
+      convertedRecord.put(VENICE_ETL_POSITION_FIELD, record.getPosition().toString());
 
       byte[] keyBytes = kafkaKey.getKey();
       Decoder keyDecoder = decoderFactory.binaryDecoder(keyBytes, null);
@@ -689,7 +718,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       }
       dataFileWriter.append(convertedRecord);
     } catch (Exception e) {
-      LOGGER.error("Failed when building record for offset {}", record.getPosition().getNumericOffset(), e);
+      LOGGER.error("Failed when building record for position {}", record.getPosition(), e);
     }
   }
 

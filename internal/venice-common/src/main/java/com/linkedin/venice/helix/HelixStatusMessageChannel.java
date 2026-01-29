@@ -31,6 +31,7 @@ import org.apache.logging.log4j.Logger;
  * Only one Helix message type is used, so channel is similar to a dispatcher that receive all of control messages and
  * dispatch them to related handlers.
  */
+@Deprecated
 public class HelixStatusMessageChannel implements StatusMessageChannel {
   private static final Logger LOGGER = LogManager.getLogger(HelixStatusMessageChannel.class);
 

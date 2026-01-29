@@ -15,7 +15,11 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
@@ -44,6 +48,7 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.PushJobCheckpoints;
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
@@ -304,6 +309,56 @@ public class TestVeniceControllerClusterConfig {
   }
 
   @Test
+  public void testServerHelixTopologyAwareConfigs() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+
+    boolean topologyAware = true;
+    String topology = "/zone/rack/host/instance";
+    String faultZoneType = "zone";
+
+    baseProps.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, String.valueOf(topologyAware));
+    baseProps.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY, topology);
+    baseProps.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE, faultZoneType);
+
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.isServerHelixClusterTopologyAware(), topologyAware);
+    assertEquals(clusterConfig.getServerHelixClusterTopology(), topology);
+    assertEquals(clusterConfig.getServerHelixClusterFaultZoneType(), faultZoneType);
+  }
+
+  @Test
+  public void testPartialServerHelixTopologyAwareConfigs() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+
+    boolean topologyAware = true;
+    String topology = "/zone/rack/host/instance";
+    String faultZoneType = "zone";
+
+    Properties propsWithoutTopology = new Properties();
+    propsWithoutTopology.putAll(baseProps);
+    propsWithoutTopology.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, String.valueOf(topologyAware));
+    propsWithoutTopology.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE, faultZoneType);
+    Exception exceptionWithoutTopology = Assert.expectThrows(
+        VeniceException.class,
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(propsWithoutTopology)));
+    assertTrue(
+        exceptionWithoutTopology.getMessage()
+            .contains("Server cluster is configured for topology-aware placement, but no topology is provided"));
+
+    Properties propsWithoutFaultZoneType = new Properties();
+    propsWithoutFaultZoneType.putAll(baseProps);
+    propsWithoutFaultZoneType
+        .setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, String.valueOf(topologyAware));
+    propsWithoutFaultZoneType.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY, topology);
+    Exception exceptionWithoutFaultZoneType = Assert.expectThrows(
+        VeniceException.class,
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(propsWithoutFaultZoneType)));
+    assertTrue(
+        exceptionWithoutFaultZoneType.getMessage()
+            .contains("Server cluster is configured for topology-aware placement, but no fault zone type is provided"));
+  }
+
+  @Test
   public void testRebalancePreferenceAndCapacityKeys() {
     Properties clusterProperties = getBaseSingleRegionProperties(false);
 
@@ -339,16 +394,17 @@ public class TestVeniceControllerClusterConfig {
         (int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE),
         helixRebalancePreferenceForceBaselineConverge);
 
-    List<String> helixInstanceCapacityKeys = clusterConfig.getHelixInstanceCapacityKeys();
+    HelixCapacityConfig helixCapacityConfig = clusterConfig.getHelixCapacityConfig();
+    List<String> helixInstanceCapacityKeys = helixCapacityConfig.getHelixInstanceCapacityKeys();
     assertEquals(helixInstanceCapacityKeys.size(), 1);
     assertEquals(helixInstanceCapacityKeys.get(0), CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
 
-    Map<String, Integer> helixDefaultInstanceCapacityMap = clusterConfig.getHelixDefaultInstanceCapacityMap();
+    Map<String, Integer> helixDefaultInstanceCapacityMap = helixCapacityConfig.getHelixDefaultInstanceCapacityMap();
     assertEquals(
         (int) helixDefaultInstanceCapacityMap.get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
         helixInstanceCapacity);
 
-    Map<String, Integer> helixDefaultPartitionWeightMap = clusterConfig.getHelixDefaultPartitionWeightMap();
+    Map<String, Integer> helixDefaultPartitionWeightMap = helixCapacityConfig.getHelixDefaultPartitionWeightMap();
     assertEquals(
         (int) helixDefaultPartitionWeightMap.get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
         helixResourceCapacityWeight);
@@ -361,9 +417,7 @@ public class TestVeniceControllerClusterConfig {
         new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties));
 
     assertNull(clusterConfig.getHelixGlobalRebalancePreference());
-    assertNull(clusterConfig.getHelixInstanceCapacityKeys());
-    assertNull(clusterConfig.getHelixDefaultInstanceCapacityMap());
-    assertNull(clusterConfig.getHelixDefaultPartitionWeightMap());
+    assertNull(clusterConfig.getHelixCapacityConfig());
     assertFalse(clusterConfig.isLogCompactionSchedulingEnabled());
   }
 
@@ -426,12 +480,13 @@ public class TestVeniceControllerClusterConfig {
     clusterProperties4.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
     clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties4));
 
-    Map<String, Integer> helixDefaultInstanceCapacityMap = clusterConfig.getHelixDefaultInstanceCapacityMap();
+    HelixCapacityConfig capacityConfig = clusterConfig.getHelixCapacityConfig();
+    Map<String, Integer> helixDefaultInstanceCapacityMap = capacityConfig.getHelixDefaultInstanceCapacityMap();
     assertEquals(
         (int) helixDefaultInstanceCapacityMap.get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
         helixInstanceCapacity);
 
-    Map<String, Integer> helixDefaultPartitionWeightMap = clusterConfig.getHelixDefaultPartitionWeightMap();
+    Map<String, Integer> helixDefaultPartitionWeightMap = capacityConfig.getHelixDefaultPartitionWeightMap();
     assertEquals(
         (int) helixDefaultPartitionWeightMap.get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
         helixResourceCapacityWeight);
@@ -489,4 +544,13 @@ public class TestVeniceControllerClusterConfig {
         () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties5)));
   }
 
+  @Test
+  public void testControllerHelixParticipantDeregistrationTimeoutMs() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+
+    baseProps.setProperty(CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS, "60000");
+
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.getControllerHelixParticipantDeregistrationTimeoutMs(), 60000L);
+  }
 }

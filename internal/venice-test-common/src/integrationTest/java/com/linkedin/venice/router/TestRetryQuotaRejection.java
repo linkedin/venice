@@ -1,6 +1,5 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_ENABLE_READ_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 import static org.testng.Assert.assertEquals;
@@ -85,7 +84,6 @@ public class TestRetryQuotaRejection {
     extraProperties.put(ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT);
     extraProperties.put(ROUTER_ENABLE_READ_THROTTLING, false);
     extraProperties.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
-    extraProperties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, "false");
 
     veniceCluster = ServiceFactory.getVeniceCluster(
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1)

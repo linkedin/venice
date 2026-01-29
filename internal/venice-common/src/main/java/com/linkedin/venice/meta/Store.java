@@ -42,7 +42,7 @@ public interface Store {
 
   long DEFAULT_RT_RETENTION_TIME = TimeUnit.DAYS.toMillis(5);
 
-  int DEFAULT_BATCH_GET_LIMIT = 150;
+  int DEFAULT_BATCH_GET_LIMIT = 500;
 
   static boolean isSystemStore(String storeName) {
     return storeName.startsWith(SYSTEM_STORE_NAME_PREFIX);
@@ -115,6 +115,10 @@ public interface Store {
   Map<String, ViewConfig> getViewConfigs();
 
   void setViewConfigs(Map<String, ViewConfig> viewConfigMap);
+
+  boolean isFlinkVeniceViewsEnabled();
+
+  void setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled);
 
   boolean isHybrid();
 
@@ -300,6 +304,14 @@ public interface Store {
 
   void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled);
 
+  boolean isCompactionEnabled();
+
+  void setCompactionEnabled(boolean compactionEnabled);
+
+  long getCompactionThresholdMilliseconds();
+
+  void setCompactionThresholdMilliseconds(long compactionThreshold);
+
   long getMinCompactionLagSeconds();
 
   void setMinCompactionLagSeconds(long minCompactionLagSeconds);
@@ -323,6 +335,10 @@ public interface Store {
   boolean isBlobTransferEnabled();
 
   void setBlobTransferEnabled(boolean blobTransferEnabled);
+
+  void setBlobTransferInServerEnabled(String blobTransferInServerEnabled);
+
+  String getBlobTransferInServerEnabled();
 
   boolean isNearlineProducerCompressionEnabled();
 
@@ -349,4 +365,24 @@ public interface Store {
   boolean isGlobalRtDivEnabled();
 
   void setGlobalRtDivEnabled(boolean globalRtDivEnabled);
+
+  boolean isTTLRepushEnabled();
+
+  void setTTLRepushEnabled(boolean ttlRepushEnabled);
+
+  boolean isEnumSchemaEvolutionAllowed();
+
+  void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed);
+
+  List<LifecycleHooksRecord> getStoreLifecycleHooks();
+
+  void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks);
+
+  void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled);
+
+  boolean isKeyUrnCompressionEnabled();
+
+  void setKeyUrnFields(List<String> keyUrnFields);
+
+  List<String> getKeyUrnFields();
 }

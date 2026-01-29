@@ -1,5 +1,6 @@
 package com.linkedin.venice.spark.input.pubsub.raw;
 
+import com.linkedin.venice.spark.input.pubsub.SparkPubSubInputFormat;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.spark.sql.connector.read.Scan;
 import org.apache.spark.sql.connector.read.ScanBuilder;
@@ -14,6 +15,6 @@ public class VeniceRawPubsubInputScanBuilder implements ScanBuilder {
 
   @Override
   public Scan build() {
-    return new VeniceRawPubsubInputScan(jobConfig);
+    return new SparkPubSubInputFormat(jobConfig);
   }
 }

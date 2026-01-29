@@ -1,9 +1,12 @@
 package com.linkedin.venice.stats;
 
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE;
+import static io.opentelemetry.sdk.metrics.InstrumentType.GAUGE;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import io.opentelemetry.exporter.otlp.internal.OtlpConfigUtil;
+import io.opentelemetry.sdk.metrics.data.AggregationTemporality;
 import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import io.opentelemetry.sdk.metrics.export.MetricReader;
@@ -33,9 +36,44 @@ public class VeniceMetricsConfig {
   public static final String OTEL_VENICE_METRICS_ENABLED = "otel.venice.metrics.enabled";
 
   /**
+   * Config to enable Tehuti metrics
+   */
+  public static final String TEHUTI_VENICE_METRICS_ENABLED = "tehuti.venice.metrics.enabled";
+
+  /**
+   * Configuration to reuse the {@link io.opentelemetry.api.OpenTelemetry} instance
+   * already initialized by the application or other libraries and registered as
+   * {@link io.opentelemetry.api.GlobalOpenTelemetry}, instead of creating a new one.
+   *
+   * This is especially useful in clients where a single application may use
+   * multiple Venice client libraries. Without this setting, each library would
+   * initialize its own OpenTelemetry instance, leading to redundant initialization
+   * and increased resource usage.
+   */
+  public static final String OTEL_VENICE_USE_OPENTELEMETRY_INITIALIZED_BY_APPLICATION =
+      "otel.venice.use.opentelemetry.initialized.by.application";
+
+  /**
    * Config to set the metric prefix for OpenTelemetry metrics
    */
   public static final String OTEL_VENICE_METRICS_PREFIX = "otel.venice.metrics.prefix";
+
+  /**
+   * Configuration to define a custom description for all Histogram metrics.
+   *
+   * This option is particularly relevant when
+   * {@link #OTEL_VENICE_USE_OPENTELEMETRY_INITIALIZED_BY_APPLICATION} is enabled,
+   * restricting direct configuration of OpenTelemetry via Venice code and application
+   * code overrides can rely on something else like the description here without
+   * introducing new setters or APIs. When set to a non-empty string, if neeeded,
+   * this description could be used by application-level code overrides to control
+   * Histogram behavior (e.g., exponential vs. explicit aggregation) as done in
+   * {@link VeniceOpenTelemetryMetricsRepository#setExponentialHistogramAggregation}
+   *
+   * If null or unset, this configuration has no effect.
+   */
+  public static final String OTEL_VENICE_METRICS_CUSTOM_DESCRIPTION_FOR_HISTOGRAM =
+      "otel.venice.metrics.custom.description.for.histogram";
 
   /**
    * Config to set the naming format for OpenTelemetry metrics
@@ -97,6 +135,16 @@ public class VeniceMetricsConfig {
       "otel.exporter.otlp.metrics.temporality.preference";
 
   /**
+   * Make Synchronous Gauge instruments export the last recorded value even if the instrument is not
+   * recorded in the current collection interval.
+   * - If true, it will export the last recorded value even if the instrument is not recorded in the current collection interval.
+   * - If false, it will use the default behavior of the selected {@link #otelAggregationTemporalitySelector}, which is
+   *   {@link AggregationTemporalitySelector#deltaPreferred()} by default.
+   */
+  public static final String OTEL_VENICE_EXPORT_LAST_RECORDED_VALUE_FOR_SYNCHRONOUS_GAUGE =
+      "otel.venice.export.last.recorded.value.for.synchronous.gauge";
+
+  /**
    * Default histogram aggregation to be used for all histograms: Select one of the below <br>
    * 1. base2_exponential_bucket_histogram <br>
    * 2. explicit_bucket_histogram
@@ -139,6 +187,20 @@ public class VeniceMetricsConfig {
   /** Feature flag to use OpenTelemetry instrumentation for metrics or not */
   private final boolean emitOTelMetrics;
 
+  /** Feature flag to emit Tehuti metrics or not */
+  private final boolean emitTehutiMetrics;
+
+  /**
+   * Feature flag to use OpenTelemetry initialized by the application or not.
+   * If true, it will use the GlobalOpenTelemetry instance. It could be initialized
+   *          by the application or by some other library
+   * If false, it will initialize its own OpenTelemetry instance.
+   */
+  private final boolean useOpenTelemetryInitializedByApplication;
+
+  /** custom description for all Histogram metrics */
+  private final String otelCustomDescriptionForHistogramMetrics;
+
   /** extra configs for OpenTelemetry. Supports 2 exporter currently <br>
    * 1. {@link MetricExporter} for exporting to Http/Grpc endpoint. More details are supported via configs,
    *    check {@link Builder#extractAndSetOtelConfigs} and {@link VeniceOpenTelemetryMetricsRepository#getOtlpHttpMetricExporter}<br>
@@ -167,6 +229,11 @@ public class VeniceMetricsConfig {
   /** Metric naming conventions for OpenTelemetry metrics */
   private final VeniceOpenTelemetryMetricNamingFormat metricNamingFormat;
 
+  /**
+   * Whether to export the last recorded value for synchronous Gauge instruments.
+   */
+  private final boolean exportLastRecordedValueForSynchronousGauge;
+
   /** Aggregation Temporality selector to export only the delta or cumulate or different */
   private final AggregationTemporalitySelector otelAggregationTemporalitySelector;
 
@@ -176,13 +243,16 @@ public class VeniceMetricsConfig {
   private final int otelExponentialHistogramMaxBuckets;
 
   /** Additional MetricsReader to be used for OpenTelemetry metrics */
-  private final MetricReader otelAdditionalMetricsReader;
+  private MetricReader otelAdditionalMetricsReader;
 
   private VeniceMetricsConfig(Builder builder) {
     this.serviceName = builder.serviceName;
     this.metricPrefix = builder.metricPrefix;
     this.metricEntities = builder.metricEntities;
     this.emitOTelMetrics = builder.emitOtelMetrics;
+    this.emitTehutiMetrics = builder.emitTehutiMetrics;
+    this.useOpenTelemetryInitializedByApplication = builder.useOpenTelemetryInitializedByApplication;
+    this.otelCustomDescriptionForHistogramMetrics = builder.otelCustomDescriptionForHistogramMetrics;
     this.exportOtelMetricsToEndpoint = builder.exportOtelMetricsToEndpoint;
     this.exportOtelMetricsIntervalInSeconds = builder.exportOtelMetricsIntervalInSeconds;
     this.otelCustomDimensionsMap = builder.otelCustomDimensionsMap;
@@ -191,6 +261,7 @@ public class VeniceMetricsConfig {
     this.otelHeaders = builder.otelHeaders;
     this.exportOtelMetricsToLog = builder.exportOtelMetricsToLog;
     this.metricNamingFormat = builder.metricNamingFormat;
+    this.exportLastRecordedValueForSynchronousGauge = builder.exportLastRecordedValueForSynchronousGauge;
     this.otelAggregationTemporalitySelector = builder.otelAggregationTemporalitySelector;
     this.useOtelExponentialHistogram = builder.useOtelExponentialHistogram;
     this.otelExponentialHistogramMaxScale = builder.otelExponentialHistogramMaxScale;
@@ -204,6 +275,9 @@ public class VeniceMetricsConfig {
     private String metricPrefix = null;
     private Collection<MetricEntity> metricEntities = new ArrayList<>();
     private boolean emitOtelMetrics = false;
+    private boolean emitTehutiMetrics = true;
+    private boolean useOpenTelemetryInitializedByApplication = false;
+    private String otelCustomDescriptionForHistogramMetrics = null;
     private boolean exportOtelMetricsToEndpoint = false;
     private int exportOtelMetricsIntervalInSeconds = 60;
     private Map<String, String> otelCustomDimensionsMap = new HashMap<>();
@@ -212,6 +286,7 @@ public class VeniceMetricsConfig {
     Map<String, String> otelHeaders = new HashMap<>();
     private boolean exportOtelMetricsToLog = false;
     private VeniceOpenTelemetryMetricNamingFormat metricNamingFormat = SNAKE_CASE;
+    private boolean exportLastRecordedValueForSynchronousGauge = true;
     private AggregationTemporalitySelector otelAggregationTemporalitySelector =
         AggregationTemporalitySelector.deltaPreferred();
     private boolean useOtelExponentialHistogram = true;
@@ -237,6 +312,21 @@ public class VeniceMetricsConfig {
 
     public Builder setEmitOtelMetrics(boolean emitOtelMetrics) {
       this.emitOtelMetrics = emitOtelMetrics;
+      return this;
+    }
+
+    public Builder emitTehutiMetrics(boolean emitTehutiMetrics) {
+      this.emitTehutiMetrics = emitTehutiMetrics;
+      return this;
+    }
+
+    public Builder setUseOpenTelemetryInitializedByApplication(boolean useOpenTelemetryInitializedByApplication) {
+      this.useOpenTelemetryInitializedByApplication = useOpenTelemetryInitializedByApplication;
+      return this;
+    }
+
+    public Builder setOtelCustomDescriptionForHistogramMetrics(String otelCustomDescriptionForHistogramMetrics) {
+      this.otelCustomDescriptionForHistogramMetrics = otelCustomDescriptionForHistogramMetrics;
       return this;
     }
 
@@ -273,6 +363,11 @@ public class VeniceMetricsConfig {
     public Builder setMetricNamingFormat(String metricNamingFormat) {
       this.metricNamingFormat =
           VeniceOpenTelemetryMetricNamingFormat.valueOf(metricNamingFormat.toUpperCase(Locale.ROOT));
+      return this;
+    }
+
+    public Builder setExportLastRecordedValueForSynchronousGauge(boolean exportLastRecordedValueForSynchronousGauge) {
+      this.exportLastRecordedValueForSynchronousGauge = exportLastRecordedValueForSynchronousGauge;
       return this;
     }
 
@@ -316,6 +411,10 @@ public class VeniceMetricsConfig {
         setEmitOtelMetrics(Boolean.parseBoolean(configValue));
       }
 
+      if ((configValue = configs.get(TEHUTI_VENICE_METRICS_ENABLED)) != null) {
+        emitTehutiMetrics(Boolean.parseBoolean(configValue));
+      }
+
       if (!emitOtelMetrics) {
         // Early return if OpenTelemetry metrics are disabled
         return this;
@@ -323,6 +422,14 @@ public class VeniceMetricsConfig {
 
       if ((configValue = configs.get(OTEL_VENICE_METRICS_PREFIX)) != null) {
         setMetricPrefix(configValue);
+      }
+
+      if ((configValue = configs.get(OTEL_VENICE_USE_OPENTELEMETRY_INITIALIZED_BY_APPLICATION)) != null) {
+        setUseOpenTelemetryInitializedByApplication(Boolean.parseBoolean(configValue));
+      }
+
+      if ((configValue = configs.get(OTEL_VENICE_METRICS_CUSTOM_DESCRIPTION_FOR_HISTOGRAM)) != null) {
+        setOtelCustomDescriptionForHistogramMetrics(configValue);
       }
 
       if ((configValue = configs.get(OTEL_VENICE_METRICS_EXPORT_TO_LOG)) != null) {
@@ -374,6 +481,10 @@ public class VeniceMetricsConfig {
       if ((configValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_HEADERS)) != null) {
         String[] headers = configValue.split("=");
         otelHeaders.put(headers[0], headers[1]);
+      }
+
+      if ((configValue = configs.get(OTEL_VENICE_EXPORT_LAST_RECORDED_VALUE_FOR_SYNCHRONOUS_GAUGE)) != null) {
+        setExportLastRecordedValueForSynchronousGauge(Boolean.parseBoolean(configValue));
       }
 
       if ((configValue = configs.get(OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE)) != null) {
@@ -444,6 +555,12 @@ public class VeniceMetricsConfig {
       } else {
         LOGGER.warn("OpenTelemetry metrics are disabled");
       }
+
+      if (exportLastRecordedValueForSynchronousGauge) {
+        // Override the configured temporality selector to ensure synchronous gauges export last recorded value
+        otelAggregationTemporalitySelector =
+            getTemporalitySelector(exportLastRecordedValueForSynchronousGauge, otelAggregationTemporalitySelector);
+      }
     }
 
     public VeniceMetricsConfig build() {
@@ -467,6 +584,18 @@ public class VeniceMetricsConfig {
 
   public boolean emitOtelMetrics() {
     return emitOTelMetrics;
+  }
+
+  public boolean emitTehutiMetrics() {
+    return emitTehutiMetrics;
+  }
+
+  public boolean useOpenTelemetryInitializedByApplication() {
+    return useOpenTelemetryInitializedByApplication;
+  }
+
+  public String getOtelCustomDescriptionForHistogramMetrics() {
+    return otelCustomDescriptionForHistogramMetrics;
   }
 
   public boolean exportOtelMetricsToEndpoint() {
@@ -501,6 +630,10 @@ public class VeniceMetricsConfig {
     return metricNamingFormat;
   }
 
+  public boolean exportLastRecordedValueForSynchronousGauge() {
+    return exportLastRecordedValueForSynchronousGauge;
+  }
+
   public AggregationTemporalitySelector getOtelAggregationTemporalitySelector() {
     return otelAggregationTemporalitySelector;
   }
@@ -528,14 +661,42 @@ public class VeniceMetricsConfig {
   @Override
   public String toString() {
     return "VeniceMetricsConfig{" + "serviceName='" + serviceName + '\'' + ", metricPrefix='" + metricPrefix + '\''
-        + ", metricEntities=" + metricEntities + ", emitOTelMetrics=" + emitOTelMetrics
+        + ", emitOTelMetrics=" + emitOTelMetrics + ", emitTehutiMetrics=" + emitTehutiMetrics
+        + ", useOpenTelemetryInitializedByApplication=" + useOpenTelemetryInitializedByApplication
+        + ", otelCustomDescriptionForHistogramMetrics='" + otelCustomDescriptionForHistogramMetrics + '\''
         + ", exportOtelMetricsToEndpoint=" + exportOtelMetricsToEndpoint + ", exportOtelMetricsIntervalInSeconds="
         + exportOtelMetricsIntervalInSeconds + ", otelCustomDimensionsMap=" + otelCustomDimensionsMap
         + ", otelExportProtocol='" + otelExportProtocol + '\'' + ", otelEndpoint='" + otelEndpoint + '\''
-        + ", otelHeaders=" + otelHeaders + ", metricNamingFormat=" + metricNamingFormat
-        + ", otelAggregationTemporalitySelector=" + otelAggregationTemporalitySelector
-        + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram + ", otelExponentialHistogramMaxScale="
-        + otelExponentialHistogramMaxScale + ", otelExponentialHistogramMaxBuckets="
-        + otelExponentialHistogramMaxBuckets + ", tehutiMetricConfig=" + tehutiMetricConfig + '}';
+        + ", otelHeaders=" + otelHeaders + ", exportOtelMetricsToLog=" + exportOtelMetricsToLog
+        + ", metricNamingFormat=" + metricNamingFormat + ", exportLastRecordedValueForSynchronousGauge="
+        + exportLastRecordedValueForSynchronousGauge + ", otelAggregationTemporalitySelector="
+        + otelAggregationTemporalitySelector + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram
+        + ", otelExponentialHistogramMaxScale=" + otelExponentialHistogramMaxScale
+        + ", otelExponentialHistogramMaxBuckets=" + otelExponentialHistogramMaxBuckets + ", tehutiMetricConfig="
+        + tehutiMetricConfig + '}';
+  }
+
+  /**
+   * Custom AggregationTemporalitySelector which enforces that if the instrument type is
+   * GAUGE and {@link #exportLastRecordedValueForSynchronousGauge} is true,
+   * it returns CUMULATIVE for GAUGE type instruments.
+   * This is to support Synchronous GAUGE exporting the last set value even when
+   * it is not set during the last export interval
+   * Check https://github.com/open-telemetry/opentelemetry-java/pull/7634 for more details
+   */
+  public static AggregationTemporalitySelector getTemporalitySelector(
+      boolean exportLastRecordedValueForSynchronousGauge,
+      AggregationTemporalitySelector configuredTemporalitySelector) {
+    return instrumentType -> {
+      if (exportLastRecordedValueForSynchronousGauge && instrumentType == GAUGE) {
+        return AggregationTemporality.CUMULATIVE;
+      }
+      return configuredTemporalitySelector.getAggregationTemporality(instrumentType);
+    };
+  }
+
+  @VisibleForTesting
+  public void setOtelAdditionalMetricsReader(MetricReader otelAdditionalMetricsReader) {
+    this.otelAdditionalMetricsReader = otelAdditionalMetricsReader;
   }
 }

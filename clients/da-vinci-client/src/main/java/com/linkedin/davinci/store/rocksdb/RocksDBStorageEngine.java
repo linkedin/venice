@@ -27,7 +27,6 @@ import java.util.function.ToLongFunction;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.rocksdb.SstFileManager;
 
 
 public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition> {
@@ -86,12 +85,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
       }
     }
 
-    this.stats = new RocksDBStorageEngineStats(
-        storeDbPath,
-        this::getRMDSizeInBytes,
-        this::getDuplicateKeyCountEstimate,
-        this::getKeyCountEstimate,
-        this::hasMemorySpaceLeft);
+    this.stats = new RocksDBStorageEngineStats(storeDbPath, this::getRMDSizeInBytes, this::getKeyCountEstimate);
 
     // restoreStoragePartitions will create metadata partition if not exist.
     restoreStoragePartitions(storeConfig.isRestoreMetadataPartition(), storeConfig.isRestoreDataPartitions());
@@ -112,6 +106,16 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     return PersistenceType.ROCKS_DB;
   }
 
+  /**
+   * Retrieves the IDs of persisted partitions for the store.
+   * This method scans the existing store directory to identify the partition IDs that are retained and need to be persisted.
+   *
+   * Note:
+   * For stores with blob transfer enabled, temporary partition directories may exist if the instance previously fails during a transfer.
+   * In such cases, temporary directories should be excluded from the returned partition IDs.
+   *
+   * @return A set of IDs representing the persisted partitions.
+   */
   @Override
   public Set<Integer> getPersistedPartitionIds() {
     File storeDbDir = new File(storeDbPath);
@@ -126,6 +130,10 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     HashSet<Integer> partitionIdSet = new HashSet<>();
     if (partitionDbNames != null) {
       for (String partitionDbName: partitionDbNames) {
+        if (RocksDBUtils.isTempPartitionDir(partitionDbName)) {
+          continue;
+        }
+
         partitionIdSet.add(RocksDBUtils.parsePartitionIdFromPartitionDbName(partitionDbName));
       }
     }
@@ -156,10 +164,6 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
 
   private long getRMDSizeInBytes() {
     return getStatSumAcrossPartitions(RocksDBStoragePartition::getRmdByteUsage);
-  }
-
-  private long getDuplicateKeyCountEstimate() {
-    return getStatSumAcrossPartitions(RocksDBStoragePartition::getDuplicateKeyCountEstimate);
   }
 
   private long getKeyCountEstimate() {
@@ -250,22 +254,6 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   private String getRocksDbEngineConfigPath() {
     return RocksDBUtils.composePartitionDbDir(rocksDbPath, getStoreVersionName(), METADATA_PARTITION_ID) + "/"
         + SERVER_CONFIG_FILE_NAME;
-  }
-
-  private boolean hasMemorySpaceLeft() {
-    SstFileManager sstFileManager = factory.getSstFileManagerForMemoryLimiter();
-    if (sstFileManager == null) {
-      // Memory limiter is disabled.
-      return true;
-    }
-    if (sstFileManager.isMaxAllowedSpaceReached() || sstFileManager.isMaxAllowedSpaceReachedIncludingCompactions()) {
-      return false;
-    }
-    long currentUsage = sstFileManager.getTotalSize();
-    if (factory.getMemoryLimit() - currentUsage >= 2 * factory.getMemtableSize()) {
-      return true;
-    }
-    return false;
   }
 
   // Only used for testing purposes

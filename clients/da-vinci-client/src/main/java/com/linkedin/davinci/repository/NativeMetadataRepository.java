@@ -8,6 +8,7 @@ import com.linkedin.davinci.stats.NativeMetadataRepositoryStats;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -24,11 +25,14 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -486,7 +490,27 @@ public abstract class NativeMetadataRepository
     if (schemaData == null) {
       throw new VeniceNoStoreException(storeName);
     }
-    return schemaData.getValueSchema(id);
+
+    // Try to get schema from cache first
+    SchemaEntry schemaEntry = schemaData.getValueSchema(id);
+    if (schemaEntry != null) {
+      return schemaEntry;
+    }
+
+    // Cache miss - refresh with exponential backoff and retry
+    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+      refreshOneStore(storeName);
+      SchemaEntry entry = getAndCacheSchemaData(storeName).getValueSchema(id);
+      if (entry == null) {
+        throw new InvalidVeniceSchemaException(storeName, Integer.toString(id));
+      }
+      return entry;
+    },
+        5,
+        Duration.ofMillis(100),
+        Duration.ofSeconds(2),
+        Duration.ofSeconds(10),
+        Collections.singletonList(InvalidVeniceSchemaException.class));
   }
 
   /**

@@ -30,6 +30,7 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
   private double storageExecutionSubmissionWaitTime = UNINITIALIZED;
   private int storageExecutionQueueLen = UNINITIALIZED;
   protected int multiChunkLargeValueCount = 0;
+  private int keyNotFoundCount = 0;
 
   protected abstract int getRecordCount();
 
@@ -58,6 +59,15 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
   }
 
   @Override
+  public void incrementKeyNotFoundCount() {
+    this.keyNotFoundCount++;
+  }
+
+  public int getKeyNotFoundCount() {
+    return this.keyNotFoundCount;
+  }
+
+  @Override
   public void recordMetrics(ServerHttpRequestStats stats) {
     consumeDoubleAndBooleanIfAbove(
         stats::recordDatabaseLookupLatency,
@@ -66,6 +76,7 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
         0);
     consumeIntIfAbove(stats::recordMultiChunkLargeValueCount, this.multiChunkLargeValueCount, 0);
     consumeIntIfAbove(stats::recordStorageExecutionQueueLen, this.storageExecutionQueueLen, UNINITIALIZED);
+    consumeIntIfAbove(stats::recordKeyNotFoundCount, this.keyNotFoundCount, 0);
 
     recordUnmergedMetrics(stats);
 
@@ -86,6 +97,7 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
       AbstractReadResponseStats otherStats = (AbstractReadResponseStats) other;
       this.databaseLookupLatency += otherStats.databaseLookupLatency;
       this.multiChunkLargeValueCount += otherStats.multiChunkLargeValueCount;
+      this.keyNotFoundCount += otherStats.keyNotFoundCount;
     }
   }
 

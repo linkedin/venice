@@ -3,6 +3,7 @@ package com.linkedin.davinci.ingestion.isolated;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
@@ -31,7 +32,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
@@ -43,11 +43,13 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.schema.SchemaRepoBackedSchemaReader;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -106,12 +108,14 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final ServerBootstrap bootstrap;
   private final EventLoopGroup bossGroup;
   private final EventLoopGroup workerGroup;
-  private final ExecutorService ingestionExecutor = Executors.newFixedThreadPool(10);
+  private final ExecutorService ingestionExecutor =
+      Executors.newFixedThreadPool(10, new DaemonThreadFactory("IsolatedIngestionServer"));
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
   private final ScheduledExecutorService metricsCollectionScheduler = Executors.newScheduledThreadPool(1);
   private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
   private final int servicePort;
-  private final ExecutorService longRunningTaskExecutor = Executors.newFixedThreadPool(10);
+  private final ExecutorService longRunningTaskExecutor =
+      Executors.newFixedThreadPool(10, new DaemonThreadFactory("IsolatedIngestionServer-LongRunning"));
   private final ExecutorService statusReportingExecutor = Executors.newSingleThreadExecutor();
   /**
    * This map data structure keeps track of a specific topic-partition (resource) is being ingested in the isolated process.
@@ -367,7 +371,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         LOGGER.info(
             "Ingestion completed for replica: {}, offset: {}",
             Utils.getReplicaId(topicName, partitionId),
-            report.offset);
+            report.pubSubPosition);
       } else {
         LOGGER.error(
             "Ingestion error for replica: {}, error message: {}",
@@ -462,6 +466,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
    */
   CompletableFuture<Boolean> submitStopConsumptionAndCloseStorageTask(String topicName, int partitionId) {
     return CompletableFuture.supplyAsync(() -> {
+      String replicaId = Utils.getReplicaId(topicName, partitionId);
       /**
        * Wait for all pending ingestion action on this partition to be completed in async fashion, which is expected to
        * be fast. This check must be executed in async fashion as startConsumption may report COMPLETED directly and the
@@ -489,16 +494,12 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             false);
         // Close all RocksDB sub-Partitions in Ingestion Service.
         getStorageService().closeStorePartition(storeConfig, partitionId);
-        LOGGER.info(
-            "Partition: {} of topic: {} closed in {} ms.",
-            partitionId,
-            topicName,
-            LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
+        LOGGER.info("Replica: {} closed in {} ms.", replicaId, LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
         return true;
       } else {
         // If pending ingestion action stops consumption (unsubscribe), we will not handover ingestion and we should
         // restore the subscribed state.
-        LOGGER.warn("Topic: {}, partition: {} is not consuming, will not handover ingestion.", topicName, partitionId);
+        LOGGER.warn("Replica: {} is not consuming, will not handover ingestion.", replicaId);
         setResourceToBeSubscribed(topicName, partitionId);
         return false;
       }
@@ -579,39 +580,65 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     stopConsumptionTimeoutInSeconds =
         configLoader.getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 180);
 
-    // Initialize D2Client.
-    String d2ZkHosts = configLoader.getCombinedProperties().getString(D2_ZK_HOSTS_ADDRESS);
-    Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactoryForIngestion(configLoader);
-    D2Client d2Client = D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
-
-    final String clusterDiscoveryD2ServiceName = configLoader.getCombinedProperties()
-        .getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
-
+    boolean isD2ClientEnabled =
+        configLoader.getCombinedProperties().getBoolean(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, false);
     // Create the client config.
-    ClientConfig clientConfig =
-        new ClientConfig().setD2Client(d2Client).setD2ServiceName(clusterDiscoveryD2ServiceName);
+    ClientConfig clientConfig = null;
+    SchemaReader partitionStateSchemaReader;
+    SchemaReader storeVersionStateSchemaReader;
+    SchemaReader kafkaMessageEnvelopeSchemaReader;
+    VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder;
 
     // Create MetricsRepository
     metricsRepository = MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
 
+    if (isD2ClientEnabled) {
+      LOGGER.info("D2 client is enabled for ingestion isolation service.");
+      String d2ZkHosts = configLoader.getCombinedProperties().getString(D2_ZK_HOSTS_ADDRESS);
+      Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactoryForIngestion(configLoader);
+      D2Client d2Client = D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
+      final String clusterDiscoveryD2ServiceName = configLoader.getCombinedProperties()
+          .getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+
+      // Create the client config.
+      clientConfig = new ClientConfig().setD2Client(d2Client).setD2ServiceName(clusterDiscoveryD2ServiceName);
+      veniceMetadataRepositoryBuilder =
+          new VeniceMetadataRepositoryBuilder(configLoader, clientConfig, metricsRepository, null, true);
+      partitionStateSchemaReader = ClientFactory.getSchemaReader(
+          ClientConfig.cloneConfig(clientConfig)
+              .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()),
+          null);
+      storeVersionStateSchemaReader = ClientFactory.getSchemaReader(
+          ClientConfig.cloneConfig(clientConfig)
+              .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()),
+          null);
+      kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
+          ClientConfig.cloneConfig(clientConfig)
+              .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
+          null);
+    } else {
+      LOGGER.info("D2 client is not enabled for ingestion isolation service.");
+      veniceMetadataRepositoryBuilder =
+          new VeniceMetadataRepositoryBuilder(configLoader, null, metricsRepository, null, true);
+      ReadOnlySchemaRepository schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
+      partitionStateSchemaReader = new SchemaRepoBackedSchemaReader(
+          schemaRepository,
+          AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName());
+      storeVersionStateSchemaReader = new SchemaRepoBackedSchemaReader(
+          schemaRepository,
+          AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName());
+      kafkaMessageEnvelopeSchemaReader = new SchemaRepoBackedSchemaReader(
+          schemaRepository,
+          AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName());
+    }
+    Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactoryForIngestion(configLoader);
+
     // Initialize store/schema repositories.
-    VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
-        new VeniceMetadataRepositoryBuilder(configLoader, clientConfig, metricsRepository, null, true);
     storeRepository = veniceMetadataRepositoryBuilder.getStoreRepo();
     liveConfigRepository = veniceMetadataRepositoryBuilder.getLiveClusterConfigRepo();
     ReadOnlySchemaRepository schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
-    Optional<HelixReadOnlyZKSharedSchemaRepository> helixReadOnlyZKSharedSchemaRepository =
-        veniceMetadataRepositoryBuilder.getReadOnlyZKSharedSchemaRepository();
     ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
 
-    SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
-        ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()),
-        null);
-    SchemaReader storeVersionStateSchemaReader = ClientFactory.getSchemaReader(
-        ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()),
-        null);
     partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
     storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
@@ -679,12 +706,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         true);
     storageService.start();
 
-    // Create SchemaReader
-    SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
-        ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
-        null);
-
     storageMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
 
@@ -704,21 +725,21 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         liveConfigRepository,
         metricsRepository,
         Optional.of(kafkaMessageEnvelopeSchemaReader),
-        isDaVinciClient ? Optional.empty() : Optional.of(clientConfig),
+        isDaVinciClient ? Optional.empty() : Optional.ofNullable(clientConfig),
         partitionStateSerializer,
-        helixReadOnlyZKSharedSchemaRepository,
+        Optional.empty(), // Originally schema reader is not needed in ingestion isolation service.
         null,
         true,
         compressorFactory,
         Optional.empty(),
-        null,
         isDaVinciClient,
         repairService,
         pubSubClientsFactory,
         sslFactory,
         null,
         null,
-        null);
+        null,
+        Optional.empty()); // Intentionally avoid using D2Client in Ingestion Isolation Davinci.
     storeIngestionService.start();
     storeIngestionService.addIngestionNotifier(new IsolatedIngestionNotifier(this));
 

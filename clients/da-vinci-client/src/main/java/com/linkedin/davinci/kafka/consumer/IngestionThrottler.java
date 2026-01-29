@@ -74,7 +74,8 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getKafkaFetchQuotaRecordPerSecond(),
           serverConfig.getKafkaFetchThrottlerFactorsPerSecond(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "kafka_consumption_records_count");
+          "kafka_consumption_records_count",
+          adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
       globalRecordAdaptiveIngestionThrottler
           .registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveThrottlerSignalService.registerThrottler(globalRecordAdaptiveIngestionThrottler);
@@ -84,7 +85,8 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getKafkaFetchQuotaBytesPerSecond(),
           serverConfig.getKafkaFetchThrottlerFactorsPerSecond(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "kafka_consumption_bandwidth");
+          "kafka_consumption_bandwidth",
+          adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
       globalBandwidthAdaptiveIngestionThrottler
           .registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveThrottlerSignalService.registerThrottler(globalBandwidthAdaptiveIngestionThrottler);
@@ -106,26 +108,6 @@ public class IngestionThrottler implements Closeable {
     }
     this.poolTypeRecordThrottlerMap = new EnumMap<>(ConsumerPoolType.class);
     VeniceAdaptiveIngestionThrottler adaptiveIngestionThrottler = null;
-    if (isAdaptiveThrottlerEnabled) {
-      adaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
-          serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
-          serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
-          serverConfig.getThrottlerFactorsForAAWCLeader(),
-          serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "aa_wc_leader_records_count");
-      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
-      adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
-    }
-    this.poolTypeRecordThrottlerMap.put(
-        ConsumerPoolType.AA_WC_LEADER_POOL,
-        isAdaptiveThrottlerEnabled
-            ? adaptiveIngestionThrottler
-            : new EventThrottler(
-                serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
-                serverConfig.getKafkaFetchQuotaTimeWindow(),
-                "aa_wc_leader_records_count",
-                false,
-                EventThrottler.BLOCK_STRATEGY));
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.SEP_RT_LEADER_POOL,
         new EventThrottler(
@@ -140,7 +122,8 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
           serverConfig.getThrottlerFactorsForCurrentVersionAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "current_version_aa_wc_leader_records_count");
+          "current_version_aa_wc_leader_records_count",
+          adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
       adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
     }
@@ -168,7 +151,8 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
           serverConfig.getThrottlerFactorsForCurrentVersionNonAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "current_version_non_aa_wc_leader_records_count");
+          "current_version_non_aa_wc_leader_records_count",
+          adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
       adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
     }
@@ -188,7 +172,8 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
           serverConfig.getThrottlerFactorsForNonCurrentVersionAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "non_current_version_aa_wc_leader_records_count");
+          "non_current_version_aa_wc_leader_records_count",
+          adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
       adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveIngestionThrottler
           .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
@@ -212,7 +197,8 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
           serverConfig.getThrottlerFactorsForNonCurrentVersionAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "non_current_version_non_aa_wc_leader_records_count");
+          "non_current_version_non_aa_wc_leader_records_count",
+          adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
       adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveIngestionThrottler
           .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
@@ -245,7 +231,7 @@ public class IngestionThrottler implements Closeable {
           false,
           EventThrottler.BLOCK_STRATEGY);
       this.eventThrottlerUpdateService = Executors.newSingleThreadScheduledExecutor(
-          new DaemonThreadFactory("Ingestion_Event_Throttler_update", serverConfig.getRegionName()));
+          new DaemonThreadFactory("Ingestion_Event_Throttler_update", serverConfig.getLogContext()));
       this.eventThrottlerUpdateService.scheduleAtFixedRate(() -> {
         Map<String, StoreIngestionTask> ongoingStoreIngestionTaskMap = ongoingIngestionTaskMapSupplier.get();
         boolean hasCurrentVersionBootstrapping = false;

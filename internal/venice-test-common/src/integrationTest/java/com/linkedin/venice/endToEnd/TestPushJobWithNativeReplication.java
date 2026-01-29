@@ -4,6 +4,8 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLO
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
@@ -28,6 +30,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUS
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -37,6 +40,7 @@ import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.annotation.PubSubAgnosticTest;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -70,7 +74,9 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -117,6 +123,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
+@PubSubAgnosticTest
 public class TestPushJobWithNativeReplication {
   private static final Logger LOGGER = LogManager.getLogger(TestPushJobWithNativeReplication.class);
   private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
@@ -163,6 +170,8 @@ public class TestPushJobWithNativeReplication {
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
     controllerProps.put(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, SYSTEM_STORE_CLUSTER);
     controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-0");
+    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
+    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
@@ -207,7 +216,7 @@ public class TestPushJobWithNativeReplication {
             job.run();
 
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
           }
 
           TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -249,8 +258,10 @@ public class TestPushJobWithNativeReplication {
               PushJobStatusRecordKey key = new PushJobStatusRecordKey();
               key.setStoreName(storeName);
               key.setVersionNumber(1);
-              Object value = client.get(key).get();
-              Assert.assertNotNull(value);
+              waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+                Object value = client.get(key).get();
+                Assert.assertNotNull(value);
+              });
             }
 
             /**
@@ -265,18 +276,29 @@ public class TestPushJobWithNativeReplication {
                 .getPartitionIds();
             Assert.assertFalse(partitionIds.isEmpty());
             int partitionId = partitionIds.iterator().next();
-            // Get the end offset of the selected partition from version topic
+            // Get the end position of the selected partition from version topic
             PubSubTopicPartition versionTopicPartition =
                 new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), partitionId);
-            long latestOffsetInVersionTopic = childDataCenter.getRandomController()
-                .getVeniceAdmin()
-                .getTopicManager()
-                .getLatestOffsetWithRetries(versionTopicPartition, 5);
+
+            TopicManager tmInChildRegion = childDataCenter.getRandomController().getVeniceAdmin().getTopicManager();
+            PubSubPosition latestPositionInVersionTopic =
+                tmInChildRegion.getLatestPositionWithRetries(versionTopicPartition, 5);
             // Get the offset metadata of the selected partition from storage node
             StorageMetadataService metadataService = serverInRemoteFabric.getStorageMetadataService();
-            OffsetRecord offsetRecord = metadataService.getLastOffset(versionTopic, partitionId);
+            OffsetRecord offsetRecord = metadataService.getLastOffset(
+                versionTopic,
+                partitionId,
+                serverInRemoteFabric.getKafkaStoreIngestionService().getPubSubContext());
 
-            Assert.assertTrue(offsetRecord.getLocalVersionTopicOffset() <= latestOffsetInVersionTopic);
+            assertTrue(
+                tmInChildRegion.diffPosition(
+                    versionTopicPartition,
+                    latestPositionInVersionTopic,
+                    offsetRecord.getCheckpointedLocalVtPosition()) >= 0,
+                "The offset recorded in storage node is larger than the end offset of version topic. "
+                    + "versionTopic: " + versionTopic + ", partitionId: " + partitionId
+                    + ", latestPositionInVersionTopic: " + latestPositionInVersionTopic + ", offsetRecord: "
+                    + offsetRecord);
           });
         });
   }
@@ -354,7 +376,7 @@ public class TestPushJobWithNativeReplication {
           try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
             job.run();
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
           }
 
           // Test Da-vinci client is able to consume from NR region which is consuming remotely
@@ -447,7 +469,7 @@ public class TestPushJobWithNativeReplication {
           try (VenicePushJob job = new VenicePushJob("Batch Push", props)) {
             job.run();
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
           }
 
           props.setProperty(INCREMENTAL_PUSH, "true");
@@ -490,7 +512,7 @@ public class TestPushJobWithNativeReplication {
             job.run();
 
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
           }
 
           TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
@@ -742,7 +764,7 @@ public class TestPushJobWithNativeReplication {
   public void testTargetRegionPushWithDeferredVersionSwap() throws Exception {
     motherOfAllTests(
         "testTargetRegionPushWithDeferredVersionSwap",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1).setTargetRegionSwapWaitTime(1),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           // start a regular push job
@@ -750,7 +772,7 @@ public class TestPushJobWithNativeReplication {
             job.run();
 
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
 
             TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
               // Current version should become 1 all data centers
@@ -773,11 +795,7 @@ public class TestPushJobWithNativeReplication {
                   parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
               coloVersions.forEach((colo, version) -> {
-                if (colo.equals(DEFAULT_NATIVE_REPLICATION_SOURCE)) {
-                  Assert.assertEquals((int) version, 2); // Version should only be swapped in dc-0
-                } else {
-                  Assert.assertEquals((int) version, 1); // The remaining regions shouldn't be swapped
-                }
+                Assert.assertEquals((int) version, 2);
               });
             });
           }
@@ -823,7 +841,8 @@ public class TestPushJobWithNativeReplication {
               false,
               null,
               1,
-              false);
+              false,
+              -1);
 
           // kill repush version
           parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 2));
@@ -841,7 +860,7 @@ public class TestPushJobWithNativeReplication {
             TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
               StoreResponse store = childControllerClient.getStore(storeName);
               Optional<Version> version = store.getStore().getVersion(2);
-              assertNotNull(version);
+              assertTrue(version.isPresent(), "Version 2 should exist in child datacenter");
               assertEquals(version.get().getStatus(), VersionStatus.KILLED);
             });
           }

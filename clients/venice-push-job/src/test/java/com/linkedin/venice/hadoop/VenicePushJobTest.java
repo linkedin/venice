@@ -10,6 +10,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
@@ -27,7 +28,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
@@ -50,6 +50,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -65,13 +66,15 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
-import com.linkedin.venice.controllerapi.RepushInfo;
-import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.etl.ETLValueSchemaTransformation;
+import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceStoreAclException;
+import com.linkedin.venice.hadoop.exceptions.VeniceSchemaMismatchException;
 import com.linkedin.venice.hadoop.exceptions.VeniceValidationException;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
@@ -82,14 +85,17 @@ import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -98,6 +104,7 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -141,6 +148,16 @@ public class VenicePushJobTest {
   private static final String KEY_SCHEMA_STR = "\"string\"";
   private static final String VALUE_SCHEMA_STR = "\"string\"";
 
+  private static final String RMD_SCHEMA_STR = "{\"type\":\"record\",\"name\":\"__replication_metadata\","
+      + "\"namespace\":\"com.linkedin.venice\",\"fields\":[{\"name\":\"_venice_replication_checkpoint_vector\","
+      + "\"type\":{\"type\":\"array\",\"items\":\"long\"},\"default\":[]},{\"name\":\"_venice_timestamp\","
+      + "\"type\":\"long\",\"default\":0}]}";
+
+  private static final String RMD_SCHEMA_STR_V2 = "{\"type\":\"record\",\"name\":\"__replication_metadata\","
+      + "\"namespace\":\"com.linkedin.venice\",\"fields\":[{\"name\":\"_venice_replication_checkpoint_vector\","
+      + "\"type\":{\"type\":\"array\",\"items\":\"long\"},\"default\":[]},{\"name\":\"_venice_timestamp\","
+      + "\"type\":\"long\",\"default\":0},{\"name\":\"_venice_extra_field\",\"type\":\"string\",\"default\":\"\"}]}";
+
   private static final String SIMPLE_FILE_SCHEMA_STR = "{\n" + "    \"namespace\": \"example.avro\",\n"
       + "    \"type\": \"record\",\n" + "    \"name\": \"User\",\n" + "    \"fields\": [\n"
       + "      { \"name\": \"id\", \"type\": \"string\" },\n" + "      { \"name\": \"name\", \"type\": \"string\" },\n"
@@ -148,11 +165,177 @@ public class VenicePushJobTest {
       + "    ]\n" + "  }";
 
   @Test
+  public void testCheckLastModifiedTimestamp() throws Exception {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputUri = "file://" + inputDir.getAbsolutePath();
+
+    PushJobSetting pushJobSetting = new PushJobSetting();
+    pushJobSetting.inputURI = inputUri;
+    pushJobSetting.etlValueSchemaTransformation = ETLValueSchemaTransformation.NONE;
+    pushJobSetting.isZstdDictCreationRequired = false;
+    VeniceProperties props = VeniceProperties.empty();
+
+    try (DefaultInputDataInfoProvider provider = new DefaultInputDataInfoProvider(pushJobSetting, props);
+        VenicePushJob mockJob = getSpyVenicePushJob(new Properties(), null)) {
+      InputDataInfoProvider.InputDataInfo inputDataInfo = provider.validateInputAndGetInfo(inputUri);
+
+      when(mockJob.getInputDataInfo()).thenReturn(inputDataInfo);
+      when(mockJob.getInputDataInfo()).thenReturn(inputDataInfo);
+      when(mockJob.getPushJobSetting()).thenReturn(pushJobSetting);
+      when(mockJob.getPushJobSetting()).thenReturn(pushJobSetting);
+      when(mockJob.getInputDataInfoProvider()).thenReturn(provider);
+      when(mockJob.getInputDataInfoProvider()).thenReturn(provider);
+
+      // No modifications to input and no interactions expected with mockJob
+      mockJob.checkLastModificationTimeAndLog();
+      verify(mockJob, never()).updatePushJobDetailsWithCheckpoint(any(PushJobCheckpoints.class));
+
+      // Write a new file to the input directory
+      TestWriteUtils.writeSimpleAvroFileWithStringToStringWithExtraSchema(inputDir);
+      mockJob.checkLastModificationTimeAndLog();
+      verify(mockJob, times(1)).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
+    }
+  }
+
+  @Test
+  public void testHandleVersionCreationACLError() {
+    VenicePushJob mockJob = getSpyVenicePushJob(new Properties(), null);
+    Throwable error = new VeniceStoreAclException("ACL error");
+    VersionCreationResponse response = new VersionCreationResponse();
+    response.setError(error);
+    mockJob.handleVersionCreationError(response);
+    verify(mockJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.WRITE_ACL_FAILED);
+  }
+
+  @Test
+  public void testHandleVersionCreationConcurrentPushError() {
+    VenicePushJob mockJob = getSpyVenicePushJob(new Properties(), null);
+    Throwable error = new ConcurrentBatchPushException("Another push is in progress");
+    VersionCreationResponse response = new VersionCreationResponse();
+    response.setError(error);
+    mockJob.handleVersionCreationError(response);
+    verify(mockJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.CONCURRENT_BATCH_PUSH);
+  }
+
+  @Test
   public void testVPJCheckInputUpdateSchema() {
     VenicePushJob vpj = mock(VenicePushJob.class);
     when(vpj.isUpdateSchema(anyString())).thenCallRealMethod();
     Assert.assertTrue(vpj.isUpdateSchema(NAME_RECORD_V1_UPDATE_SCHEMA.toString()));
     Assert.assertFalse(vpj.isUpdateSchema(NAME_RECORD_V1_SCHEMA.toString()));
+  }
+
+  @Test(expectedExceptions = VeniceSchemaMismatchException.class)
+  public void testValidateKeySchemaMismatch() {
+    String keySchema = "\"string\"";
+    String serverKeySchema = "\"int\"";
+    VenicePushJob vpj = getSpyVenicePushJob(new Properties(), null);
+    PushJobSetting setting = vpj.getPushJobSetting();
+    setting.storeKeySchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(serverKeySchema);
+    setting.keySchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(keySchema);
+    vpj.validateKeySchema(vpj.getPushJobSetting());
+  }
+
+  @Test
+  public void testValidateAndRetrieveRmdSchemaWithNoRmdField() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.storeName = TEST_STORE;
+    ControllerClient mockClient = mock(ControllerClient.class);
+    VenicePushJob vpj = mock(VenicePushJob.class);
+    doCallRealMethod().when(vpj).validateAndSetRmdSchemas(any(), any());
+    vpj.validateAndSetRmdSchemas(mockClient, setting);
+    verifyNoInteractions(mockClient);
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testValidateAndRetrieveRmdSchemaWithErrorResponseFromController() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.rmdField = DEFAULT_RMD_FIELD_PROP;
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    MultiSchemaResponse mockResponse = mock(MultiSchemaResponse.class);
+    when(mockResponse.isError()).thenReturn(true);
+    when(mockClient.getAllReplicationMetadataSchemas(eq(TEST_STORE))).thenReturn(mockResponse);
+    VenicePushJob vpj = mock(VenicePushJob.class);
+    doCallRealMethod().when(vpj).validateAndSetRmdSchemas(any(), any());
+    vpj.validateAndSetRmdSchemas(mockClient, setting);
+  }
+
+  @Test
+  public void testValidateAndRetrieveRmdSchema() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.rmdField = DEFAULT_RMD_FIELD_PROP;
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    setting.valueSchemaId = 1;
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    MultiSchemaResponse mockResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema rmdSchema = mock(MultiSchemaResponse.Schema.class);
+    when(rmdSchema.getRmdValueSchemaId()).thenReturn(1);
+    when(rmdSchema.getId()).thenReturn(1);
+    when(rmdSchema.getSchemaStr()).thenReturn(RMD_SCHEMA_STR);
+    when(mockResponse.getSchemas()).thenReturn(new MultiSchemaResponse.Schema[] { rmdSchema });
+    when(mockResponse.isError()).thenReturn(false);
+    when(mockClient.getAllReplicationMetadataSchemas(eq(TEST_STORE))).thenReturn(mockResponse);
+    VenicePushJob vpj = mock(VenicePushJob.class);
+    doCallRealMethod().when(vpj).validateAndSetRmdSchemas(any(), any());
+    vpj.validateAndSetRmdSchemas(mockClient, setting);
+    Assert.assertEquals(setting.replicationMetadataSchemaString, RMD_SCHEMA_STR);
+    Assert.assertEquals(setting.rmdSchemaId, 1);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Cannot continue with push with RMD since the RMD schema for the value.*")
+  public void testValidateAndRetrieveRmdSchemaWithMultipleRmdSchemas() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.rmdField = DEFAULT_RMD_FIELD_PROP;
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    setting.valueSchemaId = 1;
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    MultiSchemaResponse mockResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema rmdSchemaV1 = mock(MultiSchemaResponse.Schema.class);
+    when(rmdSchemaV1.getRmdValueSchemaId()).thenReturn(1);
+    when(rmdSchemaV1.getId()).thenReturn(1);
+    when(rmdSchemaV1.getSchemaStr()).thenReturn(RMD_SCHEMA_STR);
+
+    MultiSchemaResponse.Schema rmdSchemaV2 = mock(MultiSchemaResponse.Schema.class);
+    when(rmdSchemaV2.getRmdValueSchemaId()).thenReturn(1);
+    when(rmdSchemaV2.getId()).thenReturn(2);
+    when(rmdSchemaV2.getSchemaStr()).thenReturn(RMD_SCHEMA_STR_V2);
+
+    when(mockResponse.getSchemas()).thenReturn(new MultiSchemaResponse.Schema[] { rmdSchemaV1, rmdSchemaV2 });
+    when(mockResponse.isError()).thenReturn(false);
+    when(mockClient.getAllReplicationMetadataSchemas(eq(TEST_STORE))).thenReturn(mockResponse);
+    VenicePushJob vpj = mock(VenicePushJob.class);
+    doCallRealMethod().when(vpj).validateAndSetRmdSchemas(any(), any());
+    vpj.validateAndSetRmdSchemas(mockClient, setting);
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testValidateAndRetrieveRmdSchemaWithNoRmdSchemaForValueSchema() {
+    PushJobSetting setting = new PushJobSetting();
+    setting.rmdField = DEFAULT_RMD_FIELD_PROP;
+    setting.storeName = TEST_STORE;
+    setting.controllerRetries = 1;
+    setting.valueSchemaId = 1;
+    ControllerClient mockClient = mock(ControllerClient.class);
+
+    MultiSchemaResponse mockResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema rmdSchema = mock(MultiSchemaResponse.Schema.class);
+    when(rmdSchema.getRmdValueSchemaId()).thenReturn(2);
+    when(rmdSchema.getId()).thenReturn(1);
+    when(rmdSchema.getSchemaStr()).thenReturn(RMD_SCHEMA_STR);
+    when(mockResponse.getSchemas()).thenReturn(new MultiSchemaResponse.Schema[] { rmdSchema });
+    when(mockResponse.isError()).thenReturn(false);
+    when(mockClient.getAllReplicationMetadataSchemas(eq(TEST_STORE))).thenReturn(mockResponse);
+    VenicePushJob vpj = mock(VenicePushJob.class);
+    doCallRealMethod().when(vpj).validateAndSetRmdSchemas(any(), any());
+    vpj.validateAndSetRmdSchemas(mockClient, setting);
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")
@@ -459,6 +642,7 @@ public class VenicePushJobTest {
 
   private ControllerClient getClient(Consumer<StoreInfo> storeInfo, boolean applyFirst) {
     ControllerClient client = mock(ControllerClient.class);
+    doReturn(TEST_CLUSTER).when(client).getClusterName();
     // mock discover cluster
     D2ServiceDiscoveryResponse clusterResponse = new D2ServiceDiscoveryResponse();
     clusterResponse.setCluster(TEST_CLUSTER);
@@ -470,6 +654,16 @@ public class VenicePushJobTest {
     schemaResponse.setId(1);
     schemaResponse.setSchemaStr(VALUE_SCHEMA_STR);
     doReturn(schemaResponse).when(client).getValueSchema(anyString(), anyInt());
+
+    // mock fetching KME schema
+    MultiSchemaResponse multiSchemaResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema valueSchema = mock(MultiSchemaResponse.Schema.class);
+    when(valueSchema.getId()).thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion());
+    when(valueSchema.getSchemaStr())
+        .thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersionSchema().toString());
+    when(multiSchemaResponse.getSchemas())
+        .thenReturn(Collections.singletonList(valueSchema).toArray(new MultiSchemaResponse.Schema[0]));
+    doReturn(multiSchemaResponse).when(client).getAllValueSchema(anyString());
 
     // mock storeinfo response
     StoreResponse storeResponse1 = new StoreResponse();
@@ -870,7 +1064,14 @@ public class VenicePushJobTest {
       } catch (VeniceException e) {
         assertTrue(e.getMessage().contains("Push job error"));
       }
+    }
 
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+
+      JobStatusQueryResponse response = mockJobStatusQuery();
+      Map<String, String> extraInfo = response.getExtraInfo();
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
       extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
       extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
       // both regions completed, so should succeed
@@ -879,6 +1080,33 @@ public class VenicePushJobTest {
       doReturn(dataRecoveryResponse).when(client)
           .dataRecovery(anyString(), anyString(), anyString(), anyInt(), anyBoolean(), anyBoolean(), any());
       pushJob.run();
+    }
+  }
+
+  @Test
+  public void testKMEValidationFailure() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    ControllerClient client = getClient();
+    // mock fetching KME schema and intentionally return an older version
+    MultiSchemaResponse multiSchemaResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema valueSchema = mock(MultiSchemaResponse.Schema.class);
+    when(valueSchema.getId()).thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion() - 1);
+    when(valueSchema.getSchemaStr())
+        .thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersionSchema().toString());
+    when(multiSchemaResponse.getSchemas())
+        .thenReturn(Collections.singletonList(valueSchema).toArray(new MultiSchemaResponse.Schema[0]));
+    doReturn(multiSchemaResponse).when(client).getAllValueSchema(anyString());
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+      try {
+        pushJob.run();
+        fail("Test should fail, but doesn't.");
+      } catch (VeniceException e) {
+        assertTrue(
+            e.getMessage().contains("KME protocol is upgraded in the push job but not in the Venice controller"));
+      }
     }
   }
 
@@ -908,7 +1136,10 @@ public class VenicePushJobTest {
       }
       mockVersionCreationResponse.setKafkaSourceRegion("dc-0");
       verify(pushJob, times(1)).postPushValidation();
+    }
 
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
       ControllerResponse badDataRecoveryResponse = new ControllerResponse();
       badDataRecoveryResponse.setError("error");
       doReturn(badDataRecoveryResponse).when(client)
@@ -919,6 +1150,10 @@ public class VenicePushJobTest {
       } catch (VeniceException e) {
         assertTrue(e.getMessage().contains("Can't push data for region"));
       }
+    }
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
 
       ControllerResponse goodDataRecoveryResponse = new ControllerResponse();
       doReturn(goodDataRecoveryResponse).when(client)
@@ -929,26 +1164,22 @@ public class VenicePushJobTest {
     }
   }
 
-  @Test(enabled = false) // Disable till hybrid stores are supported for target region push
-  public void testTargetedRegionPushPostValidationConsumptionForHybridStore() throws Exception {
+  @Test
+  public void testConfigValidateForHybridStore() throws Exception {
     Properties props = getVpjRequiredProperties();
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
-    props.put(TARGETED_REGION_PUSH_ENABLED, true);
     ControllerClient client = getClient(storeInfo -> {
-      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null));
+      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(10, 10, 10, null));
     }, true);
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       skipVPJValidation(pushJob);
-
+      PushJobSetting setting = pushJob.getPushJobSetting();
       JobStatusQueryResponse response = mockJobStatusQuery();
       doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
-      // skip the mocking for repush
-      doCallRealMethod().doNothing().when(pushJob).run();
+      doCallRealMethod().when(pushJob).run();
+      setting.suppressEndOfPushMessage = true;
       pushJob.run();
-
-      // for hybrid store, the job is supposed to ran twice, one for targeted region push and another is for repush
-      verify(pushJob, times(2)).run();
     }
   }
 
@@ -971,20 +1202,6 @@ public class VenicePushJobTest {
       assertThrows(VeniceValidationException.class, pushJob::run);
       verify(pushJob, never()).postValidationConsumption(any());
     }
-  }
-
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "D2 service name and zk host must be provided when system schema reader is enabled")
-  public void testEnableSchemaReaderConfigValidation() {
-    Properties props = getVpjRequiredProperties();
-    props.put(SYSTEM_SCHEMA_READER_ENABLED, true);
-    VenicePushJob pushJob = spy(new VenicePushJob(PUSH_JOB_ID, props));
-    doReturn("test_store_v1").when(pushJob).getSourceTopicNameForKafkaInput(anyString(), any());
-    RepushInfoResponse repushInfoResponse = new RepushInfoResponse();
-    RepushInfo repushInfo = new RepushInfo();
-    repushInfo.setSystemSchemaClusterD2ServiceName("cluster0");
-    repushInfoResponse.setRepushInfo(repushInfo);
-    pushJob.getPushJobSetting().repushInfoResponse = repushInfoResponse;
-    pushJob.initKIFRepushDetails();
   }
 
   @Test
@@ -1231,6 +1448,51 @@ public class VenicePushJobTest {
   }
 
   @Test
+  public void testConfigureWithMaterializedViewConfigsWithFlinkVeniceViewsEnabled() throws Exception {
+    Properties properties = getVpjRequiredProperties();
+    properties.put(KEY_FIELD_PROP, "id");
+    properties.put(VALUE_FIELD_PROP, "name");
+    JobStatusQueryResponse response = mockJobStatusQuery();
+    ControllerClient client = getClient();
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null), anyBoolean());
+    try (final VenicePushJob vpj = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(vpj);
+      vpj.run();
+      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      Assert.assertNull(pushJobSetting.materializedViewConfigFlatMap);
+    }
+    Map<String, ViewConfig> viewConfigs = new HashMap<>();
+    MaterializedViewParameters.Builder builder =
+        new MaterializedViewParameters.Builder("testView").setPartitionCount(12)
+            .setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
+    viewConfigs.put("testView", new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder.build()));
+    viewConfigs
+        .put("dummyView", new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap()));
+    Version version = new VersionImpl(TEST_STORE, 1, TEST_PUSH);
+    version.setViewConfigs(viewConfigs);
+    client = getClient(storeInfo -> {
+      storeInfo.setViewConfigs(viewConfigs);
+      storeInfo.setVersions(Collections.singletonList(version));
+      storeInfo.setFlinkVeniceViewsEnabled(true); // Enable Flink Venice Views at store level
+    }, true);
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), eq(null), anyBoolean());
+    MultiSchemaResponse valueSchemaResponse = getMultiSchemaResponse();
+    MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[1];
+    schemas[0] = getBasicSchema();
+    valueSchemaResponse.setSchemas(schemas);
+    doReturn(valueSchemaResponse).when(client).getAllValueSchema(TEST_STORE);
+    doReturn(getMultiSchemaResponse()).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
+    doReturn(getKeySchemaResponse()).when(client).getKeySchema(TEST_STORE);
+    try (final VenicePushJob vpj = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(vpj);
+      vpj.run();
+      PushJobSetting pushJobSetting = vpj.getPushJobSetting();
+      Assert.assertNull(pushJobSetting.materializedViewConfigFlatMap); // Should be null since Flink Venice Views is
+                                                                       // enabled
+    }
+  }
+
+  @Test
   public void testTargetedRegionPushWithDeferredSwapConfigValidation() throws Exception {
     Properties props = getVpjRequiredProperties();
     props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false);
@@ -1279,6 +1541,98 @@ public class VenicePushJobTest {
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       pushJob.run();
     }
+  }
+
+  /**
+   * Test that START_VERSION_SWAP checkpoint is invoked when target region push with deferred swap is enabled.
+   */
+  @Test
+  public void testVersionSwapCheckpoint() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0");
+
+    // Create a version with ONLINE status to simulate successful version swap
+    Version version = new VersionImpl(TEST_STORE, 1);
+    version.setNumber(1);
+    version.setStatus(VersionStatus.ONLINE);
+
+    ControllerClient client = getClient(storeInfo -> {
+      storeInfo.setColoToCurrentVersions(new HashMap<String, Integer>() {
+        {
+          put("dc-0", 1);
+          put("dc-1", 1);
+        }
+      });
+      storeInfo.setVersions(Collections.singletonList(version));
+      storeInfo.setLargestUsedVersionNumber(1);
+      storeInfo.setTargetRegionSwapWaitTime(60); // 60 minutes wait time
+    });
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      skipVPJValidation(pushJob);
+
+      // Mock job status query to return COMPLETED
+      JobStatusQueryResponse response = mockJobStatusQuery();
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
+
+      pushJob.run();
+
+      // Verify that START_VERSION_SWAP checkpoint is called
+      verify(pushJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VERSION_SWAP);
+
+      // Verify that COMPLETE_VERSION_SWAP checkpoint is called
+      verify(pushJob).updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.COMPLETE_VERSION_SWAP);
+
+      // Get the actual PushJobDetails object
+      PushJobDetails pushJobDetails = pushJob.getPushJobDetails();
+
+      // Verify that COMPLETED status was added to overallStatus
+      boolean foundCompletedStatus = false;
+      for (PushJobDetailsStatusTuple statusTuple: pushJobDetails.overallStatus) {
+        if (statusTuple.status == PushJobDetailsStatus.COMPLETED.getValue()) {
+          foundCompletedStatus = true;
+          break;
+        }
+      }
+      assertTrue(foundCompletedStatus);
+    }
+  }
+
+  @Test
+  public void testValidateRegularPushWithTTLRepush() {
+    ControllerClient mockControllerClient = mock(ControllerClient.class);
+    StoreResponse mockStoreResponse = mock(StoreResponse.class);
+    doReturn(mockStoreResponse).when(mockControllerClient).getStore(anyString());
+    doReturn(false).when(mockStoreResponse).isError();
+    StoreInfo mockStoreInfo = mock(StoreInfo.class);
+    doReturn(mockStoreInfo).when(mockStoreResponse).getStore();
+    doReturn(true).when(mockStoreInfo).isTTLRepushEnabled();
+    // Re-push, incremental and empty pushes should be allowed
+    Properties props = getVpjRequiredProperties();
+    VenicePushJob venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    PushJobSetting pushJobSetting = venicePushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = true;
+    pushJobSetting.isIncrementalPush = true;
+    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    pushJobSetting = venicePushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = true;
+    pushJobSetting.isSourceKafka = true;
+    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    pushJobSetting = venicePushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = false;
+    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    // Regular batch push should be rejected
+    final VenicePushJob failPushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    pushJobSetting = failPushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = true;
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> failPushJob.checkRegularPushWithTTLRepush(mockControllerClient, failPushJob.getPushJobSetting()));
   }
 
   private SchemaResponse getKeySchemaResponse() {
@@ -1352,7 +1706,8 @@ public class VenicePushJobTest {
               anyBoolean(),
               any(),
               anyInt(),
-              anyBoolean());
+              anyBoolean(),
+              anyInt());
     }
 
     return versionCreationResponse;
@@ -1395,5 +1750,59 @@ public class VenicePushJobTest {
     setting.topic = Version.composeKafkaTopic(setting.storeName, 7);
     setting.partitionCount = 1;
     setting.maxRecordSizeBytes = 100 * BYTES_PER_MB;
+  }
+
+  @DataProvider(name = "versionStatuses")
+  public Object[][] versionStatuses() {
+    Map<String, String> extraInfo = new HashMap<>();
+    extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
+    extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
+
+    Map<String, String> extraInfo2 = new HashMap<>();
+    extraInfo2.put("dc-0", ExecutionStatus.COMPLETED.toString());
+    extraInfo2.put("dc-1", ExecutionStatus.COMPLETED.toString());
+
+    return new Object[][] { { VersionStatus.ONLINE, extraInfo }, { VersionStatus.ERROR, extraInfo2 },
+        { VersionStatus.PARTIALLY_ONLINE, extraInfo }, { VersionStatus.KILLED, extraInfo } };
+  }
+
+  @Test(dataProvider = "versionStatuses")
+  public void testTargetRegionPushWithDeferredSwapVersionStatusChecks(
+      VersionStatus versionStatus,
+      Map<String, String> extraInfo) {
+    Properties properties = getVpjRequiredProperties();
+    properties.put(KEY_FIELD_PROP, "id");
+    properties.put(VALUE_FIELD_PROP, "name");
+    properties.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    Version version = new VersionImpl(TEST_STORE, 1);
+    version.setNumber(1);
+    version.setStatus(versionStatus);
+    ControllerClient client = getClient(store -> {
+      store.setVersions(Collections.singletonList(version));
+      store.setLargestUsedVersionNumber(1);
+    });
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(properties, client)) {
+      skipVPJValidation(pushJob);
+
+      JobStatusQueryResponse response = mockJobStatusQuery();
+      response.setExtraInfo(extraInfo);
+      doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
+
+      pushJob.run();
+    } catch (Exception e) {
+      if (VersionStatus.PARTIALLY_ONLINE.equals(versionStatus)) {
+        Assert.assertEquals(
+            e.getMessage(),
+            "Version kafka-topic is only partially online in some regions. Check nuage to see which regions are not serving the latest version."
+                + " It is possible that there was a failure in rolling forward on the controller side or ingestion failed in some regions.");
+      } else if (VersionStatus.KILLED.equals(versionStatus)) {
+        Assert.assertEquals(e.getMessage(), "Version kafka-topic was killed and cannot be served.");
+      } else {
+        Assert.assertEquals(
+            e.getMessage(),
+            "Version kafka-topic was rolled back after ingestion completed due to validation failure");
+      }
+    }
   }
 }

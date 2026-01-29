@@ -70,6 +70,7 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -83,7 +84,6 @@ import java.security.cert.CertificateExpiredException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -157,7 +157,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       "Blob Discovery: failed to get the live node hostNames for store:%s version:%s partition:%s";
   private final VeniceVersionFinder veniceVersionFinder;
   private final MetricsRepository metricsRepository;
-  private final Map<String, D2Stats> d2StatsMap = new HashMap<>();
+  private final Map<String, D2Stats> d2StatsMap = new VeniceConcurrentHashMap<>();
 
   public MetaDataHandler(
       HelixCustomizedViewOfflinePushRepository routingDataRepository,
@@ -588,22 +588,17 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       partitionStatusFuture.whenComplete((partitionLevelInstances, partitionThrowable) -> {
         try {
           // case 1: partition level throw exception, then query at version level.
+          String replicaId = Utils.getReplicaId(storeName, versionInt, partitionInt);
           if (partitionThrowable != null) {
             LOGGER.error(
-                "Failed to get partition status for store: {} version: {} partition: {}, will try version-level",
-                storeName,
-                storeVersion,
-                storePartition,
+                "Failed to get partition status for replica: {}, will try version-level",
+                replicaId,
                 partitionThrowable);
 
             queryVersionLevelPushStatus(ctx, storeName, storeVersion, storePartition, versionInt, partitionInt);
           } else if (partitionLevelInstances == null || partitionLevelInstances.isEmpty()) {
             // case 2: partition level return empty/null instances, then query at version level.
-            LOGGER.info(
-                "No partition instances found for store: {} version: {} partition: {}, will try version-level",
-                storeName,
-                storeVersion,
-                storePartition);
+            LOGGER.info("No partition instances found for replica: {}, will try version-level", replicaId);
 
             queryVersionLevelPushStatus(ctx, storeName, storeVersion, storePartition, versionInt, partitionInt);
           } else {
@@ -641,6 +636,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       Map<CharSequence, Integer> instances,
       boolean isVersionLevelPushReportResult) throws Exception {
     String pushReportLevelType = isVersionLevelPushReportResult ? "version" : "partition";
+    String replicaId = Utils.getReplicaId(storeName, Integer.parseInt(storeVersion), Integer.parseInt(storePartition));
 
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
 
@@ -653,18 +649,14 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
     if (!readyToServeNodeHostNames.isEmpty()) {
       LOGGER.info(
-          "{} ready to serve nodes were found for store {} version {} partition {} from {} level push report",
+          "{} ready to serve nodes were found for replica: {} from {} level push report",
           readyToServeNodeHostNames.size(),
-          storeName,
-          storeVersion,
-          storePartition,
+          replicaId,
           pushReportLevelType);
     } else {
       LOGGER.info(
-          "No ready to serve nodes found for store: {} version: {} partition: {} from {} level push report",
-          storeName,
-          storeVersion,
-          storePartition,
+          "No ready to serve nodes found for replica: {} from {} level push report",
+          replicaId,
           pushReportLevelType);
     }
 
@@ -692,15 +684,11 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
             Optional.empty(),
             true);
 
+    String replicaId = Utils.getReplicaId(storeName, versionInt, partitionInt);
     versionStatusFuture.whenComplete((versionLevelInstances, throwable) -> {
       try {
         if (throwable != null) {
-          LOGGER.error(
-              "Failed to get version status for store: {} version: {} partition: {}",
-              storeName,
-              storeVersion,
-              storePartition,
-              throwable);
+          LOGGER.error("Failed to get version status for replica: {}", replicaId, throwable);
 
           byte[] errBody =
               (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))

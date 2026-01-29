@@ -4,6 +4,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -284,6 +285,16 @@ public class SystemStore extends AbstractStore {
   @Override
   public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
     throwUnsupportedOperationException("setViewConfig");
+  }
+
+  @Override
+  public boolean isFlinkVeniceViewsEnabled() {
+    return zkSharedStore.isFlinkVeniceViewsEnabled();
+  }
+
+  @Override
+  public void setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    throwUnsupportedOperationException("setFlinkVeniceViewsEnabled");
   }
 
   @Override
@@ -632,6 +643,26 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isCompactionEnabled() {
+    return zkSharedStore.isCompactionEnabled();
+  }
+
+  @Override
+  public void setCompactionEnabled(boolean compactionEnabled) {
+    throwUnsupportedOperationException("setCompactionEnabled");
+  }
+
+  @Override
+  public long getCompactionThresholdMilliseconds() {
+    return zkSharedStore.getCompactionThresholdMilliseconds();
+  }
+
+  @Override
+  public void setCompactionThresholdMilliseconds(long compactionThreshold) {
+    throwUnsupportedOperationException("setCompactionThresholdMilliseconds");
+  }
+
+  @Override
   public long getMinCompactionLagSeconds() {
     return zkSharedStore.getMinCompactionLagSeconds();
   }
@@ -664,6 +695,16 @@ public class SystemStore extends AbstractStore {
   @Override
   public boolean isBlobTransferEnabled() {
     return zkSharedStore.isBlobTransferEnabled();
+  }
+
+  @Override
+  public void setBlobTransferInServerEnabled(String blobTransferInServerEnabled) {
+    throwUnsupportedOperationException("setBlobTransferServerEnabled is not supported in SystemStore");
+  }
+
+  @Override
+  public String getBlobTransferInServerEnabled() {
+    return zkSharedStore.getBlobTransferInServerEnabled();
   }
 
   @Override
@@ -744,6 +785,56 @@ public class SystemStore extends AbstractStore {
   @Override
   public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
     throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isTTLRepushEnabled() {
+    return zkSharedStore.isTTLRepushEnabled();
+  }
+
+  @Override
+  public void setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isEnumSchemaEvolutionAllowed() {
+    return false;
+  }
+
+  @Override
+  public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    throwUnsupportedOperationException("setEnumSchemaEvolutionAllowed");
+  }
+
+  @Override
+  public List<LifecycleHooksRecord> getStoreLifecycleHooks() {
+    return zkSharedStore.getStoreLifecycleHooks();
+  }
+
+  @Override
+  public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isKeyUrnCompressionEnabled() {
+    return false;
+  }
+
+  @Override
+  public void setKeyUrnFields(List<String> keyUrnFieldList) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public List<String> getKeyUrnFields() {
+    return Collections.emptyList();
   }
 
   @Override

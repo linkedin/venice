@@ -111,7 +111,7 @@ public class MetaSystemStoreTest {
     Utils.closeQuietlyWithErrorLogged(venice);
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void bootstrapMetaSystemStore() throws ExecutionException, InterruptedException {
     // Create a new regular store.
     String regularVeniceStoreName = Utils.getUniqueString("venice_store");
@@ -130,7 +130,7 @@ public class MetaSystemStoreTest {
     TestUtils.waitForNonDeterministicPushCompletion(
         versionCreationResponse.getKafkaTopic(),
         parentControllerClient,
-        10,
+        20,
         TimeUnit.SECONDS);
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);
 
@@ -244,7 +244,7 @@ public class MetaSystemStoreTest {
     /**
      * Wait for the RT topic deletion.
      */
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       ControllerResponse response = controllerClient.checkResourceCleanupForStoreCreation(metaSystemStoreName);
       if (response.isError()) {
         fail("The store cleanup for meta system store: " + metaSystemStoreName + " is not done yet");

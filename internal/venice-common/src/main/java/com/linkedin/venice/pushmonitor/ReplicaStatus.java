@@ -8,6 +8,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEI
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.isIncrementalPushStatus;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.utils.Pair;
 import java.time.LocalDateTime;
@@ -26,7 +27,6 @@ public class ReplicaStatus {
   public static final long NO_PROGRESS = -1;
   private final String instanceId;
   private ExecutionStatus currentStatus = STARTED;
-  private long currentProgress = 0;
   /**
    *  This field is only used by incremental push status
    *  Check out {@link ExecutionStatus#START_OF_INCREMENTAL_PUSH_RECEIVED} and
@@ -71,14 +71,24 @@ public class ReplicaStatus {
     this.currentStatus = currentStatus;
   }
 
+  /**
+   * @deprecated This field has been removed. Always returns 0 for backward compatibility.
+   * @return 0 (for backward compatibility)
+   */
+  @Deprecated
+  @JsonIgnore
   public long getCurrentProgress() {
-    return currentProgress;
+    return 0;
   }
 
+  /**
+   * @deprecated This field has been removed. This method is kept for JSON deserialization compatibility.
+   * @param currentProgress ignored parameter
+   */
+  @Deprecated
+  @JsonProperty("currentProgress")
   public void setCurrentProgress(long currentProgress) {
-    if (currentProgress != NO_PROGRESS) {
-      this.currentProgress = currentProgress;
-    }
+    // No-op: field has been removed but setter kept for backward compatibility during deserialization
   }
 
   public String getIncrementalPushVersion() {
@@ -205,9 +215,6 @@ public class ReplicaStatus {
 
     ReplicaStatus that = (ReplicaStatus) o;
 
-    if (currentProgress != that.currentProgress) {
-      return false;
-    }
     if (!instanceId.equals(that.instanceId)) {
       return false;
     }
@@ -225,7 +232,6 @@ public class ReplicaStatus {
     int result = instanceId.hashCode();
     result = 31 * result + currentStatus.hashCode();
     result = 31 * result + incrementalPushVersion.hashCode();
-    result = 31 * result + (int) (currentProgress ^ (currentProgress >>> 32));
     result = 31 * result + Objects.hashCode(statusHistory);
     return result;
   }

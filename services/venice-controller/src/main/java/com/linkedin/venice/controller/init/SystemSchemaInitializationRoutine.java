@@ -14,7 +14,6 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collection;
 import java.util.HashMap;
@@ -30,6 +29,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
   private static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
 
   private final AvroProtocolDefinition protocolDefinition;
+  private final Schema protocolSchema;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final VeniceHelixAdmin admin;
   private final Optional<Schema> keySchema;
@@ -40,7 +40,14 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       AvroProtocolDefinition protocolDefinition,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       VeniceHelixAdmin admin) {
-    this(protocolDefinition, multiClusterConfigs, admin, Optional.empty(), Optional.empty(), false);
+    this(
+        protocolDefinition,
+        multiClusterConfigs,
+        admin,
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        protocolDefinition.getCurrentProtocolVersionSchema());
   }
 
   public SystemSchemaInitializationRoutine(
@@ -50,7 +57,26 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       Optional<Schema> keySchema,
       Optional<UpdateStoreQueryParams> storeMetadataUpdate,
       boolean autoRegisterDerivedComputeSchema) {
+    this(
+        protocolDefinition,
+        multiClusterConfigs,
+        admin,
+        keySchema,
+        storeMetadataUpdate,
+        autoRegisterDerivedComputeSchema,
+        protocolDefinition.getCurrentProtocolVersionSchema());
+  }
+
+  public SystemSchemaInitializationRoutine(
+      AvroProtocolDefinition protocolDefinition,
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      VeniceHelixAdmin admin,
+      Optional<Schema> keySchema,
+      Optional<UpdateStoreQueryParams> storeMetadataUpdate,
+      boolean autoRegisterDerivedComputeSchema,
+      Schema compiledProtocolSchema) {
     this.protocolDefinition = protocolDefinition;
+    this.protocolSchema = compiledProtocolSchema;
     this.multiClusterConfigs = multiClusterConfigs;
     this.admin = admin;
     this.keySchema = keySchema;
@@ -66,12 +92,11 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
     String intendedCluster = multiClusterConfigs.getSystemSchemaClusterName();
     if (intendedCluster.equals(clusterToInit)) {
       String systemStoreName = protocolDefinition.getSystemStoreName();
-      Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDefinition);
+      Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDefinition, protocolSchema);
 
       // Sanity check to make sure the store is not already created in another cluster.
       try {
-        Pair<String, String> clusterNameAndD2 = admin.discoverCluster(systemStoreName);
-        String currSystemStoreCluster = clusterNameAndD2.getFirst();
+        String currSystemStoreCluster = admin.discoverCluster(systemStoreName);
         if (!currSystemStoreCluster.equals(intendedCluster)) {
           LOGGER.warn(
               "The system store for '{}' already exists in cluster '{}', "

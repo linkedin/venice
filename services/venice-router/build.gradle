@@ -71,6 +71,7 @@ dependencies {
   testImplementation project(':clients:venice-thin-client')
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
   testImplementation libraries.kafkaClients
+  testImplementation libraries.openTelemetryTestSdk
 }
 
 jar {

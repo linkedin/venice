@@ -4,7 +4,8 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferGlobalTrafficShaping
 
 import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
-import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
+import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.blobtransfer.BlobFinder;
@@ -18,6 +19,7 @@ import com.linkedin.venice.utils.SslUtils;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -34,9 +36,12 @@ public class BlobTransferManagerBuilder {
   private StorageMetadataService storageMetadataService;
   private ReadOnlyStoreRepository readOnlyStoreRepository;
   private StorageEngineRepository storageEngineRepository;
-  private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  private AggBlobTransferStats aggBlobTransferStats;
   private Optional<SSLFactory> sslFactory;
   private Optional<BlobTransferAclHandler> aclHandler;
+  private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferWriteTrafficThrottler;
+  private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler;
+  private Supplier<VeniceNotifier> veniceNotifier;
 
   public BlobTransferManagerBuilder() {
   }
@@ -72,9 +77,8 @@ public class BlobTransferManagerBuilder {
     return this;
   }
 
-  public BlobTransferManagerBuilder setAggVersionedBlobTransferStats(
-      AggVersionedBlobTransferStats aggVersionedBlobTransferStats) {
-    this.aggVersionedBlobTransferStats = aggVersionedBlobTransferStats;
+  public BlobTransferManagerBuilder setAggBlobTransferStats(AggBlobTransferStats aggBlobTransferStats) {
+    this.aggBlobTransferStats = aggBlobTransferStats;
     return this;
   }
 
@@ -90,11 +94,32 @@ public class BlobTransferManagerBuilder {
     return this;
   }
 
+  public BlobTransferManagerBuilder setAdaptiveBlobTransferWriteTrafficThrottler(
+      VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferWriteTrafficThrottler) {
+    this.adaptiveBlobTransferWriteTrafficThrottler = adaptiveBlobTransferWriteTrafficThrottler;
+    return this;
+  }
+
+  public BlobTransferManagerBuilder setAdaptiveBlobTransferReadTrafficThrottler(
+      VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler) {
+    this.adaptiveBlobTransferReadTrafficThrottler = adaptiveBlobTransferReadTrafficThrottler;
+    return this;
+  }
+
+  public BlobTransferManagerBuilder setPushStatusNotifierSupplier(Supplier<VeniceNotifier> veniceNotifier) {
+    this.veniceNotifier = veniceNotifier;
+    return this;
+  }
+
+  public AggBlobTransferStats getAggBlobTransferStats() {
+    return aggBlobTransferStats;
+  }
+
   public BlobTransferManager<Void> build() {
     try {
       validateFields();
       // initialize the P2P blob transfer manager
-      BlobFinder blobFinder = null;
+      BlobFinder blobFinder;
       if (customizedViewFuture != null && clientConfig == null) {
         blobFinder = new ServerBlobFinder(customizedViewFuture);
       } else if (customizedViewFuture == null && clientConfig != null) {
@@ -107,6 +132,12 @@ public class BlobTransferManagerBuilder {
       GlobalChannelTrafficShapingHandler globalTrafficHandler = getGlobalChannelTrafficShapingHandlerInstance(
           blobTransferConfig.getBlobTransferClientReadLimitBytesPerSec(),
           blobTransferConfig.getBlobTransferServiceWriteLimitBytesPerSec());
+      if (adaptiveBlobTransferWriteTrafficThrottler != null) {
+        adaptiveBlobTransferWriteTrafficThrottler.setGlobalChannelTrafficShapingHandler(globalTrafficHandler);
+      }
+      if (adaptiveBlobTransferReadTrafficThrottler != null) {
+        adaptiveBlobTransferReadTrafficThrottler.setGlobalChannelTrafficShapingHandler(globalTrafficHandler);
+      }
 
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           storageEngineRepository,
@@ -122,6 +153,7 @@ public class BlobTransferManagerBuilder {
               blobTransferConfig.getBlobTransferMaxTimeoutInMin(),
               blobSnapshotManager,
               globalTrafficHandler,
+              getAggBlobTransferStats(),
               sslFactory,
               aclHandler,
               blobTransferConfig.getMaxConcurrentSnapshotUser()),
@@ -133,10 +165,13 @@ public class BlobTransferManagerBuilder {
               blobTransferConfig.getBlobReceiveTimeoutInMin(),
               blobTransferConfig.getBlobReceiveReaderIdleTimeInSeconds(),
               globalTrafficHandler,
-              sslFactory),
+              getAggBlobTransferStats(),
+              sslFactory,
+              veniceNotifier),
           blobFinder,
           blobTransferConfig.getBaseDir(),
-          aggVersionedBlobTransferStats);
+          getAggBlobTransferStats().getAggVersionedBlobTransferStats(),
+          blobTransferConfig.getMaxConcurrentBlobReceiveReplicas());
 
       // start the P2P blob transfer manager
       blobTransferManager.start();
@@ -161,7 +196,7 @@ public class BlobTransferManagerBuilder {
     }
 
     if (blobTransferConfig == null || storageMetadataService == null || readOnlyStoreRepository == null
-        || storageEngineRepository == null || aggVersionedBlobTransferStats == null) {
+        || storageEngineRepository == null || aggBlobTransferStats == null) {
       throw new IllegalArgumentException(
           "The blob transfer config, storage metadata service, read only store repository, storage engine repository, "
               + "and agg versioned blob transfer stats must not be null");

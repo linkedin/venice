@@ -15,8 +15,12 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
   private Schema keySchema;
   private Schema valueSchema;
 
+  private Schema rmdSchema;
+
   private RecordSerializer<Object> keySerializer;
   private RecordSerializer<Object> valueSerializer;
+
+  private RecordSerializer<Object> rmdSerializer;
 
   public Schema getKeySchema() {
     return keySchema;
@@ -26,14 +30,28 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
     return valueSchema;
   }
 
+  public Schema getRmdSchema() {
+    return rmdSchema;
+  }
+
   /**
    * Configure the record serializers
    */
   protected void configure(Schema keySchema, Schema valueSchema) {
+    configure(keySchema, valueSchema, null);
+  }
+
+  protected void configure(Schema keySchema, Schema valueSchema, Schema rmdSchema) {
     this.keySchema = keySchema;
     this.valueSchema = valueSchema;
+    this.rmdSchema = rmdSchema;
     keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema);
     valueSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(valueSchema);
+    if (rmdSchema != null) {
+      rmdSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema);
+    } else {
+      rmdSerializer = null;
+    }
   }
 
   /**
@@ -46,7 +64,7 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
    */
   public abstract Object getAvroValue(INPUT_KEY inputKey, INPUT_VALUE inputValue);
 
-  public abstract Long getRecordTimestamp(INPUT_KEY inputKey, INPUT_VALUE inputValue);
+  public abstract Object getRmdValue(INPUT_KEY inputKey, INPUT_VALUE inputValue);
 
   /**
    * Return a serialized output key
@@ -80,5 +98,19 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
     }
 
     return valueSerializer.serialize(avroValue);
+  }
+
+  public byte[] getRmdBytes(INPUT_KEY inputKey, INPUT_VALUE inputValue) {
+    if (rmdSerializer == null) {
+      return null;
+    }
+
+    Object rmdValue = getRmdValue(inputKey, inputValue);
+
+    if (rmdValue == null) {
+      return null;
+    }
+
+    return rmdSerializer.serialize(rmdValue);
   }
 }

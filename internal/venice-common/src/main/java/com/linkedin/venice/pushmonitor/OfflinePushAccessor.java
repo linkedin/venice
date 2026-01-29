@@ -49,18 +49,7 @@ public interface OfflinePushAccessor {
   void deleteOfflinePushStatusAndItsPartitionStatuses(String kafkaTopic);
 
   /**
-   * Update one particular replica status and progress by given topic, partition and instanceId to the persistent storage.
-   */
-  void updateReplicaStatus(
-      String kafkaTopic,
-      int partitionId,
-      String instanceId,
-      ExecutionStatus status,
-      long progress,
-      String message);
-
-  /**
-   * Update one particular replica status only by given topic, partition and instanceId to the persistent storage.
+   * Update one particular replica status by given topic, partition and instanceId to the persistent storage.
    */
   void updateReplicaStatus(
       String kafkaTopic,
@@ -73,7 +62,6 @@ public interface OfflinePushAccessor {
       String kafkaTopic,
       int partitionId,
       String instanceId,
-      long progress,
       List<String> pendingReportIncPushVersionList) {
   }
 

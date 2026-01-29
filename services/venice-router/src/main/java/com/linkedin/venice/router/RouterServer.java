@@ -530,7 +530,8 @@ public class RouterServer extends AbstractVeniceService {
         routeHttpRequestStats,
         aggHostHealthStats,
         routerStats);
-    scatterGatherMode = new VeniceDelegateMode(config, routerStats, routeHttpRequestStats);
+    scatterGatherMode =
+        new VeniceDelegateMode(config, routerStats, routeHttpRequestStats, dispatcher.getPerRouteStatsByType());
 
     if (config.isRouterHeartBeatEnabled()) {
       heartbeat =
@@ -570,7 +571,7 @@ public class RouterServer extends AbstractVeniceService {
 
     retryManagerExecutorService = Executors.newScheduledThreadPool(
         config.getRetryManagerCorePoolSize(),
-        new DaemonThreadFactory(ROUTER_RETRY_MANAGER_THREAD_PREFIX, config.getRegionName()));
+        new DaemonThreadFactory(ROUTER_RETRY_MANAGER_THREAD_PREFIX, config.getLogContext()));
 
     VenicePathParser pathParser = new VenicePathParser(
         versionFinder,
@@ -692,7 +693,7 @@ public class RouterServer extends AbstractVeniceService {
         ThreadPoolExecutor dnsResolveExecutor = ThreadPoolFactory.createThreadPool(
             config.getResolveThreads(),
             "DNSResolveThread",
-            config.getRegionName(),
+            config.getLogContext(),
             config.getResolveQueueCapacity(),
             LINKED_BLOCKING_QUEUE);
         new ThreadPoolStats(metricsRepository, dnsResolveExecutor, "dns_resolution_thread_pool");

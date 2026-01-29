@@ -1,5 +1,7 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
+import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformHttpResponseStatusToHttpResponseStatusEnum;
 import static org.apache.hc.core5.http.HttpStatus.SC_GONE;
 import static org.apache.hc.core5.http.HttpStatus.SC_INTERNAL_SERVER_ERROR;
 import static org.apache.hc.core5.http.HttpStatus.SC_NOT_FOUND;
@@ -20,7 +22,11 @@ import com.linkedin.venice.fastclient.stats.ClusterRouteStats;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.RejectionReason;
 import com.linkedin.venice.utils.LatencyUtils;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
@@ -47,7 +53,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     this.clientStatsForStreamingCompute = clientConfig.getStats(RequestType.COMPUTE_STREAMING);
     this.clusterStats = clientConfig.getClusterStats();
     this.metricsRepository = clientConfig.getMetricsRepository();
-    this.clusterRouteStats = ClusterRouteStats.get();
+    this.clusterRouteStats = ClusterRouteStats.getInstance(clientConfig.getStoreName());
   }
 
   @Override
@@ -265,30 +271,36 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
                 : SC_SERVICE_UNAVAILABLE;
           }
 
+          HttpResponseStatusEnum httpStatus =
+              transformHttpResponseStatusToHttpResponseStatusEnum(HttpResponseStatus.valueOf(status));
+          HttpResponseStatusCodeCategory codeCategory = getVeniceHttpResponseStatusCodeCategory(status);
+          double latency = LatencyUtils.getElapsedTimeFromNSToMS(requestSentTimestampNS);
+
           routeStats.recordRequest();
           routeStats.recordPendingRequestCount(monitor.getPendingRequestCounter(instance));
-          routeStats.recordResponseWaitingTime(LatencyUtils.getElapsedTimeFromNSToMS(requestSentTimestampNS));
-          routeStats.recordRejectionRatio(monitor.getRejectionRatio(instance));
+          routeStats
+              .recordRejectionRatio(monitor.getRejectionRatio(instance), RejectionReason.THROTTLED_BY_LOAD_CONTROLLER);
+
           switch (status) {
             case SC_OK:
             case SC_NOT_FOUND:
-              routeStats.recordHealthyRequest();
+              routeStats.recordHealthyRequest(latency, httpStatus, codeCategory);
               break;
             case SC_TOO_MANY_REQUESTS:
-              routeStats.recordQuotaExceededRequest();
+              routeStats.recordQuotaExceededRequest(latency, httpStatus, codeCategory);
               break;
             case SC_INTERNAL_SERVER_ERROR:
-              routeStats.recordInternalServerErrorRequest();
+              routeStats.recordInternalServerErrorRequest(latency, httpStatus, codeCategory);
               break;
             case SC_GONE:
               /* Check {@link InstanceHealthMonitor#trackHealthBasedOnRequestToInstance} to understand this special http status. */
-              routeStats.recordLeakedRequest();
+              routeStats.recordLeakedRequest(latency, httpStatus, codeCategory);
               break;
             case SC_SERVICE_UNAVAILABLE:
-              routeStats.recordServiceUnavailableRequest();
+              routeStats.recordServiceUnavailableRequest(latency, httpStatus, codeCategory);
               break;
             default:
-              routeStats.recordOtherErrorRequest();
+              routeStats.recordOtherErrorRequest(latency);
           }
         });
       });

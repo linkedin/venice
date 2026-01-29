@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.input.kafka.ttl;
 
+import com.linkedin.venice.common.VeniceRmdTTLFilter;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
@@ -44,7 +45,7 @@ public class VeniceKafkaInputTTLFilter extends VeniceRmdTTLFilter<KafkaInputMapp
   }
 
   /**
-   * When schemeId is negative, it indicates a chunked record.
+   * When schemaId is negative, it indicates a chunked record.
    * Skip it and pass it to Reducer as chunk will only be re-assembled at Reducer.
    * @param input
    * @return

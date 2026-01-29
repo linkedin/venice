@@ -7,20 +7,25 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.GLOB_FILTER_PATTERN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VSON_PUSH;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.hadoop.PushJobSetting;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils;
 import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
 import com.linkedin.venice.spark.input.hdfs.VeniceHdfsSource;
+import com.linkedin.venice.spark.input.pubsub.raw.VeniceRawPubsubSource;
 import com.linkedin.venice.spark.utils.RowToAvroConverter;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.avro.Schema;
@@ -69,8 +74,8 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
     if (pushJobSetting.replicationMetadataSchemaString != null) {
       setInputConf(sparkSession, dataFrameReader, RMD_SCHEMA_PROP, pushJobSetting.replicationMetadataSchemaString);
     }
-    if (pushJobSetting.timestampField != null && !pushJobSetting.timestampField.isEmpty()) {
-      setInputConf(sparkSession, dataFrameReader, TIMESTAMP_FIELD_PROP, pushJobSetting.timestampField);
+    if (pushJobSetting.rmdField != null && !pushJobSetting.rmdField.isEmpty()) {
+      setInputConf(sparkSession, dataFrameReader, RMD_FIELD_PROP, pushJobSetting.rmdField);
     }
     if (pushJobSetting.etlValueSchemaTransformation != null) {
       setInputConf(
@@ -109,15 +114,16 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
           pushJobSetting.inputDataSchema,
           pushJobSetting.keyField,
           pushJobSetting.valueField,
-          pushJobSetting.timestampField,
+          pushJobSetting.rmdField,
           pushJobSetting.etlValueSchemaTransformation,
           updateSchema);
 
       AvroWrapper<IndexedRecord> recordAvroWrapper = new AvroWrapper<>(rowRecord);
       final byte[] inputKeyBytes = recordReader.getKeyBytes(recordAvroWrapper, null);
       final byte[] inputValueBytes = recordReader.getValueBytes(recordAvroWrapper, null);
-      final Long timestamp = recordReader.getRecordTimestamp(recordAvroWrapper, null);
-      return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, timestamp }, DEFAULT_SCHEMA);
+      final byte[] inputRmdBytes = recordReader.getRmdBytes(recordAvroWrapper, null);
+
+      return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, inputRmdBytes }, DEFAULT_SCHEMA);
     }, RowEncoder.apply(DEFAULT_SCHEMA));
 
     return df;
@@ -138,8 +144,32 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
           final byte[] inputKeyBytes = recordReader.getKeyBytes(record._1, record._2);
           final byte[] inputValueBytes = recordReader.getValueBytes(record._1, record._2);
           // timestamp isn't supported for vson
-          return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, -1L }, DEFAULT_SCHEMA);
+          return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, null }, DEFAULT_SCHEMA);
         });
     return sparkSession.createDataFrame(rdd, DEFAULT_SCHEMA);
+  }
+
+  @Override
+  protected Dataset<Row> getKafkaInputDataFrame() {
+    SparkSession sparkSession = getSparkSession();
+    PushJobSetting pushJobSetting = getPushJobSetting();
+
+    DataFrameReader dataFrameReader = sparkSession.read();
+    dataFrameReader.format(VeniceRawPubsubSource.class.getCanonicalName());
+
+    // Configure Kafka input connection
+    setInputConf(sparkSession, dataFrameReader, KAFKA_INPUT_TOPIC, pushJobSetting.kafkaInputTopic);
+    setInputConf(sparkSession, dataFrameReader, KAFKA_INPUT_BROKER_URL, pushJobSetting.kafkaInputBrokerUrl);
+    setInputConf(
+        sparkSession,
+        dataFrameReader,
+        KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP,
+        AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema));
+
+    // Add KME (Kafka Message Envelope) schemas to support different message envelope versions
+    KafkaInputUtils.putSchemaMapIntoProperties(pushJobSetting.newKmeSchemasFromController)
+        .forEach((key, value) -> setInputConf(sparkSession, dataFrameReader, key, value));
+
+    return dataFrameReader.load();
   }
 }

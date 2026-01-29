@@ -15,6 +15,8 @@ import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.request.RequestHelper;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
@@ -61,9 +63,10 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   private final int blobTransferMaxTimeoutInMin;
   // Max allowed global concurrent snapshot users
   private final int maxAllowedConcurrentSnapshotUsers;
-  private BlobSnapshotManager blobSnapshotManager;
+  private final BlobSnapshotManager blobSnapshotManager;
   // Global counter for all active transfer requests across all topics and partitions
   private final AtomicInteger globalConcurrentTransferRequests = new AtomicInteger(0);
+  private final AggBlobTransferStats aggBlobTransferStats;
   private static final AttributeKey<BlobTransferPayload> BLOB_TRANSFER_REQUEST =
       AttributeKey.valueOf("blobTransferRequest");
   private static final AttributeKey<AtomicBoolean> SUCCESS_COUNTED =
@@ -73,10 +76,12 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       String baseDir,
       int blobTransferMaxTimeoutInMin,
       BlobSnapshotManager blobSnapshotManager,
+      AggBlobTransferStats aggBlobTransferStats,
       int maxAllowedConcurrentSnapshotUsers) {
     this.baseDir = baseDir;
     this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
     this.blobSnapshotManager = blobSnapshotManager;
+    this.aggBlobTransferStats = aggBlobTransferStats;
     this.maxAllowedConcurrentSnapshotUsers = maxAllowedConcurrentSnapshotUsers;
   }
 
@@ -144,6 +149,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
                     + ", wont be able to process the request for " + blobTransferRequest.getFullResourceName();
             LOGGER.error(errMessage);
             setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
+            return;
           }
         }
       } catch (Exception e) {
@@ -176,7 +182,12 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     // Set up the time limitation for the transfer
     long startTime = System.currentTimeMillis();
-
+    String replicaInfo = Utils.getReplicaId(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
+    LOGGER.info(
+        "Start transferring {} files for replica {} to remote host {}.",
+        files.length,
+        replicaInfo,
+        ctx.channel().remoteAddress());
     // transfer files
     for (File file: files) {
       // check if the transfer for all files is timed out for this partition
@@ -188,7 +199,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         return;
       }
       // send file
-      sendFile(file, ctx);
+      sendFile(file, ctx, blobTransferRequest, replicaInfo);
     }
 
     sendMetadata(ctx, transferPartitionMetadata);
@@ -196,12 +207,15 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     // end of transfer
     HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     endOfTransfer.headers().set(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
-    String replicaInfo = Utils.getReplicaId(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
     ctx.writeAndFlush(endOfTransfer).addListener(future -> {
       if (future.isSuccess()) {
-        LOGGER.info("All files sent successfully for {}", replicaInfo);
+        LOGGER.info("All files sent successfully for {} to host {}", replicaInfo, ctx.channel().remoteAddress());
       } else {
-        LOGGER.error("Failed to send all files for {}", replicaInfo, future.cause());
+        LOGGER.error(
+            "Failed to send all files for {} to host {}",
+            replicaInfo,
+            ctx.channel().remoteAddress(),
+            future.cause());
       }
     });
   }
@@ -253,10 +267,18 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     ctx.close();
   }
 
-  private void sendFile(File file, ChannelHandlerContext ctx) throws IOException {
+  private void sendFile(
+      File file,
+      ChannelHandlerContext ctx,
+      BlobTransferPayload blobTransferPayload,
+      String replicaInfo) throws IOException {
+    LOGGER.info(
+        "Sending file: {} for replica {} to host {}.",
+        file.getName(),
+        replicaInfo,
+        ctx.channel().remoteAddress());
     RandomAccessFile raf = new RandomAccessFile(file, "r");
     ChannelFuture sendFileFuture;
-    ChannelFuture lastContentFuture;
     long length = raf.length();
     String fileChecksum = BlobTransferUtils.generateFileChecksum(file.toPath());
 
@@ -269,22 +291,33 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     ctx.write(response);
 
-    sendFileFuture = ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf)));
-    lastContentFuture = sendFileFuture;
+    // Use ChunkedFile with adaptive chunk size
+    // It means minimum chunk size: 16 KB (16384 bytes), maximum chunk size: 2 MB (1024 * 1024 bytes)
+    int chunkSize = Math.min(2 * 1024 * 1024, (int) Math.max(16384, length / 4));
+    sendFileFuture = ctx.writeAndFlush(new HttpChunkedInput(new ChunkedFile(raf, 0, length, chunkSize)));
 
     sendFileFuture.addListener(future -> {
       if (future.isSuccess()) {
-        LOGGER.info("File {} sent successfully", file.getName());
+        /**
+         * Note: This does not record the real-time byte rate of files sent. If we want to pursue more accurate read metric,
+         * we will need to overwrite the {@link HttpChunkedInput} above to intercept the traffic and record the byte rate.
+         */
+        aggBlobTransferStats.recordBlobTransferBytesSent(
+            blobTransferPayload.getStoreName(),
+            Version.parseVersionFromKafkaTopicName(blobTransferPayload.getTopicName()),
+            length);
+        LOGGER.info(
+            "Sent file: {} successfully for replica: {} to host: {}",
+            file.getName(),
+            replicaInfo,
+            ctx.channel().remoteAddress());
       } else {
-        LOGGER.error("Failed to send file {}", file.getName());
-      }
-    });
-
-    lastContentFuture.addListener(future -> {
-      if (future.isSuccess()) {
-        LOGGER.info("Last content sent successfully for {}", file.getName());
-      } else {
-        LOGGER.error("Failed to send last content for {}", file.getName());
+        LOGGER.error(
+            "Failed to send file: {} for replica: {} to host: {}",
+            file.getName(),
+            replicaInfo,
+            ctx.channel().remoteAddress(),
+            future.cause());
       }
     });
   }

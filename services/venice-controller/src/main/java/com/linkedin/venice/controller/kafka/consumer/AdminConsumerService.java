@@ -1,23 +1,27 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
+import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionWireFormat;
+
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ThreadFactory;
@@ -45,6 +49,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final String localKafkaServerUrl;
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final LogContext logContext;
+  private final PubSubPositionDeserializer pubSubPositionDeserializer;
 
   public AdminConsumerService(
       VeniceHelixAdmin admin,
@@ -57,7 +62,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     this.logContext = config.getLogContext();
     this.admin = admin;
     this.adminTopicMetadataAccessor =
-        new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer());
+        new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer(), config);
     this.metricsRepository = metricsRepository;
     this.remoteConsumptionEnabled = config.isAdminTopicRemoteConsumptionEnabled();
     this.pubSubTopicRepository = pubSubTopicRepository;
@@ -70,7 +75,8 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
     this.localKafkaServerUrl = admin.getKafkaBootstrapServers(admin.isSslToKafka());
     this.consumerFactory = consumerFactory;
-    this.threadFactory = new DaemonThreadFactory("AdminConsumerService", logContext);
+    this.pubSubPositionDeserializer = config.getPubSubPositionDeserializer();
+    this.threadFactory = new DaemonThreadFactory("AdminConsumerService-" + config.getClusterName(), logContext);
   }
 
   @Override
@@ -118,17 +124,31 @@ public class AdminConsumerService extends AbstractVeniceService {
   /**
    * Skip admin message with specified offset for the given cluster.
    */
-  public void setOffsetToSkip(String clusterName, long offset, boolean skipDIV) {
+  public void setPositionToSkip(String clusterName, PubSubPosition position, boolean skipDIV) {
     if (clusterName.equals(config.getClusterName())) {
       if (skipDIV) {
-        consumerTask.skipMessageDIVWithOffset(offset);
+        consumerTask.skipMessageDIVWithPosition(position);
       } else {
-        consumerTask.skipMessageWithOffset(offset);
+        consumerTask.skipMessageWithPosition(position);
       }
     } else {
       throw new VeniceException(
           "This AdminConsumptionService is for cluster " + config.getClusterName()
-              + ".  Cannot skip admin message with offset " + offset + " for cluster " + clusterName);
+              + ". Cannot skip admin message with position " + position + " for cluster " + clusterName);
+    }
+  }
+
+  public void setExecutionIdToSkip(String clusterName, long executionId, boolean skipDIV) {
+    if (clusterName.equals(config.getClusterName())) {
+      if (skipDIV) {
+        consumerTask.skipMessageDIVWithExecutionId(executionId);
+      } else {
+        consumerTask.skipMessageWithExecutionId(executionId);
+      }
+    } else {
+      throw new VeniceException(
+          "This AdminConsumptionService is for cluster " + config.getClusterName()
+              + ".  Cannot skip admin message with execution ID " + executionId + " for cluster " + clusterName);
     }
   }
 
@@ -166,16 +186,25 @@ public class AdminConsumerService extends AbstractVeniceService {
   }
 
   /**
-   * @return The first or the smallest failing offset.
+   * @return The first or the smallest failing position.
    */
-  public long getFailingOffset() {
-    return consumerTask.getFailingOffset();
+  @VisibleForTesting
+  public PubSubPosition getFailingPosition() {
+    return consumerTask.getFailingPosition();
   }
 
   /**
-   * @return cluster-level execution id, offset, and upstream offset in a child colo.
+   * @return The first or the smallest failing execution id.
    */
-  public Map<String, Long> getAdminTopicMetadata(String clusterName) {
+  @VisibleForTesting
+  public long getFailingExecutionId() {
+    return consumerTask.getFailingExecutionId();
+  }
+
+  /**
+   * @return cluster-level execution id, position, and upstream position in a child colo.
+   */
+  public AdminMetadata getAdminTopicMetadata(String clusterName) {
     if (clusterName.equals(config.getClusterName())) {
       return adminTopicMetadataAccessor.getMetadata(clusterName);
     } else {
@@ -186,17 +215,22 @@ public class AdminConsumerService extends AbstractVeniceService {
   }
 
   /**
-   * Update cluster-level execution id, offset, and upstream offset in a child colo.
+   * Update cluster-level execution id, position, and upstream position in a child colo.
    */
-  public void updateAdminTopicMetadata(String clusterName, long executionId, long offset, long upstreamOffset) {
+  public void updateAdminTopicMetadata(
+      String clusterName,
+      long executionId,
+      PubSubPositionGrpcWireFormat position,
+      PubSubPositionGrpcWireFormat upstreamPosition) {
     if (clusterName.equals(config.getClusterName())) {
       try (AutoCloseableLock ignore =
           admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
-        Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(
-            Optional.of(offset),
-            Optional.of(upstreamOffset),
-            Optional.of(executionId),
-            Optional.empty());
+
+        AdminMetadata metadata = new AdminMetadata();
+        metadata.setPubSubPosition(pubSubPositionDeserializer.toPosition(getPubSubPositionWireFormat(position)));
+        metadata.setUpstreamPubSubPosition(
+            pubSubPositionDeserializer.toPosition(getPubSubPositionWireFormat(upstreamPosition)));
+        metadata.setExecutionId(executionId);
         adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
       }
     } else {
@@ -213,11 +247,8 @@ public class AdminConsumerService extends AbstractVeniceService {
     if (clusterName.equals(config.getClusterName())) {
       try (AutoCloseableLock ignore =
           admin.getHelixVeniceClusterResources(clusterName).getClusterLockManager().createClusterWriteLock()) {
-        Map<String, Long> metadata = AdminTopicMetadataAccessor.generateMetadataMap(
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.of(adminOperationProtocolVersion));
+        AdminMetadata metadata = new AdminMetadata();
+        metadata.setAdminOperationProtocolVersion(adminOperationProtocolVersion);
         adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
       }
     } else {

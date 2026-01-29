@@ -59,6 +59,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_IO_WORKER_COUNT;
+import static com.linkedin.venice.ConfigKeys.ROUTER_LATENCY_BASED_ROUTING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LEAKED_FUTURE_CLEANUP_POLL_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LEAKED_FUTURE_CLEANUP_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_BUDGET_ENFORCEMENT_WINDOW_MS;
@@ -76,6 +77,8 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_MULTIGET_TARDY_LATENCY_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_KEY_ROUTING_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PARALLEL_ROUTING_CHUNK_SIZE;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PARALLEL_ROUTING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_THREAD_COUNT;
@@ -85,6 +88,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_
 import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_RETRY_MANAGER_CORE_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.ROUTER_ROUTING_COMPUTATION_MODE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS;
@@ -103,19 +107,22 @@ import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST
 import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.LEAST_LOADED;
 
 import com.linkedin.alpini.netty4.handlers.ConnectionHandleMode;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.NameRepository;
+import com.linkedin.venice.router.api.RoutingComputationMode;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
+import com.linkedin.venice.utils.BatchGetConfigUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
@@ -170,6 +177,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int socketTimeout;
   private final int connectionTimeout;
   private final boolean statefulRouterHealthCheckEnabled;
+  private final boolean latencyBasedRoutingEnabled;
   private final int routerUnhealthyPendingConnThresholdPerRoute;
   private final int routerPendingConnResumeThresholdPerRoute;
   private final boolean perNodeClientAllocationEnabled;
@@ -228,6 +236,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int retryManagerCorePoolSize;
   private final int nameRepoMaxEntryCount;
   private final int aclInMemoryCacheTTLMs;
+  private final LogContext logContext;
+  private final RoutingComputationMode routingComputationMode;
+  private final int parallelRoutingThreadCount;
+  private final int parallelRoutingChunkSize;;
 
   // MUTABLE CONFIGS
 
@@ -240,6 +252,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       clusterName = props.getString(CLUSTER_NAME);
       port = props.getInt(LISTENER_PORT);
       hostname = props.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
+      logContext = new LogContext.Builder().setComponentName(VeniceComponent.ROUTER.name())
+          .setRegionName(regionName)
+          .setInstanceName(Utils.getHelixNodeIdentifier(hostname, port))
+          .build();
       sslPort = props.getInt(LISTENER_SSL_PORT);
       zkConnection = props.getString(ZOOKEEPER_ADDRESS);
       kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
@@ -249,7 +265,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false);
       maxReadCapacityCu = props.getLong(MAX_READ_CAPACITY, 100000);
       longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15);
-      longTailRetryForBatchGetThresholdMs = parseRetryThresholdForBatchGet(
+      longTailRetryForBatchGetThresholdMs = BatchGetConfigUtils.parseRetryThresholdForBatchGet(
           props.getString(
               ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS,
               "1-5:15,6-20:30,21-150:50,151-500:100,501-:500"));
@@ -299,6 +315,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       connectionTimeout = props.getInt(ROUTER_CONNECTION_TIMEOUT, 5000); // 5s
 
       statefulRouterHealthCheckEnabled = props.getBoolean(ROUTER_STATEFUL_HEALTHCHECK_ENABLED, true);
+      latencyBasedRoutingEnabled = props.getBoolean(ROUTER_LATENCY_BASED_ROUTING_ENABLED, false);
       routerUnhealthyPendingConnThresholdPerRoute =
           props.getInt(ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, 100);
       routerPendingConnResumeThresholdPerRoute = props.getInt(ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE, 15);
@@ -411,6 +428,19 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       this.nameRepoMaxEntryCount =
           props.getInt(NAME_REPOSITORY_MAX_ENTRY_COUNT, NameRepository.DEFAULT_MAXIMUM_ENTRY_COUNT);
       aclInMemoryCacheTTLMs = props.getInt(ACL_IN_MEMORY_CACHE_TTL_MS, -1); // acl caching is disabled by default
+
+      String routingComputationModeStr =
+          props.getString(ROUTER_ROUTING_COMPUTATION_MODE, RoutingComputationMode.SEQUENTIAL.name());
+      try {
+        routingComputationMode = RoutingComputationMode.valueOf(routingComputationModeStr);
+      } catch (Exception e) {
+        throw new VeniceException(
+            "Invalid " + ROUTER_ROUTING_COMPUTATION_MODE + " config: " + routingComputationModeStr
+                + ", and allowed values are: " + Arrays.toString(RoutingComputationMode.values()));
+      }
+      parallelRoutingThreadCount =
+          props.getInt(ROUTER_PARALLEL_ROUTING_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors());
+      parallelRoutingChunkSize = props.getInt(ROUTER_PARALLEL_ROUTING_CHUNK_SIZE, 100);
       LOGGER.info("Loaded configuration");
     } catch (Exception e) {
       String errorMessage = "Can not load properties.";
@@ -587,6 +617,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
     return statefulRouterHealthCheckEnabled;
   }
 
+  public boolean isLatencyBasedRoutingEnabled() {
+    return latencyBasedRoutingEnabled;
+  }
+
   public int getRouterUnhealthyPendingConnThresholdPerRoute() {
     return routerUnhealthyPendingConnThresholdPerRoute;
   }
@@ -707,79 +741,6 @@ public class VeniceRouterConfig implements RouterRetryConfig {
     return systemSchemaClusterName;
   }
 
-  /**
-   * The expected config format is like the following:
-   * "1-10:20,11-50:50,51-200:80,201-:1000"
-   */
-  public static TreeMap<Integer, Integer> parseRetryThresholdForBatchGet(String retryThresholdStr) {
-    final String retryThresholdListSeparator = ",\\s*";
-    final String retryThresholdSeparator = ":\\s*";
-    final String keyRangeSeparator = "-\\s*";
-    String[] retryThresholds = retryThresholdStr.split(retryThresholdListSeparator);
-    List<String> retryThresholdList = Arrays.asList(retryThresholds);
-    // Sort by the lower bound of the key ranges.
-    retryThresholdList.sort((range1, range2) -> {
-      // Find the lower bound of the key ranges
-      String[] keyRange1 = range1.split(keyRangeSeparator);
-      String[] keyRange2 = range2.split(keyRangeSeparator);
-      if (keyRange1.length != 2) {
-        throw new VeniceException(
-            "Invalid single retry threshold config: " + range1 + ", which contains two parts separated by '"
-                + keyRangeSeparator + "'");
-      }
-      if (keyRange2.length != 2) {
-        throw new VeniceException(
-            "Invalid single retry threshold config: " + range2 + ", which should contain two parts separated by '"
-                + keyRangeSeparator + "'");
-      }
-      return Integer.parseInt(keyRange1[0]) - Integer.parseInt(keyRange2[0]);
-    });
-    TreeMap<Integer, Integer> retryThresholdMap = new TreeMap<>();
-    // Check whether the key ranges are continuous, and store the mapping if everything is good
-    int previousUpperBound = 0;
-    final int MAX_KEY_COUNT = Integer.MAX_VALUE;
-    for (String singleRetryThreshold: retryThresholdList) {
-      // parse the range and retry threshold
-      String[] singleRetryThresholdParts = singleRetryThreshold.split(retryThresholdSeparator);
-      if (singleRetryThresholdParts.length != 2) {
-        throw new VeniceException(
-            "Invalid single retry threshold config: " + singleRetryThreshold + ", which"
-                + " should contain two parts separated by '" + retryThresholdSeparator + "'");
-      }
-      Integer threshold = Integer.parseInt(singleRetryThresholdParts[1]);
-      String[] keyCountRange = singleRetryThresholdParts[0].split(keyRangeSeparator);
-      int upperBoundKeyCount = MAX_KEY_COUNT;
-      if (keyCountRange.length > 2) {
-        throw new VeniceException(
-            "Invalid single retry threshold config: " + singleRetryThreshold + ", which"
-                + " should contain only lower bound and upper bound of key count range");
-      }
-      int lowerBoundKeyCount = Integer.parseInt(keyCountRange[0]);
-      if (keyCountRange.length == 2) {
-        upperBoundKeyCount = keyCountRange[1].isEmpty() ? MAX_KEY_COUNT : Integer.parseInt(keyCountRange[1]);
-      }
-      if (lowerBoundKeyCount < 0 || upperBoundKeyCount < 0 || lowerBoundKeyCount > upperBoundKeyCount) {
-        throw new VeniceException("Invalid single retry threshold config: " + singleRetryThreshold);
-      }
-      if (lowerBoundKeyCount != previousUpperBound + 1) {
-        throw new VeniceException(
-            "Current retry threshold config: " + retryThresholdStr + " is not continuous according to key count range");
-      }
-      retryThresholdMap.put(lowerBoundKeyCount, threshold);
-      previousUpperBound = upperBoundKeyCount;
-    }
-    if (!retryThresholdMap.containsKey(1)) {
-      throw new VeniceException(
-          "Retry threshold for batch-get: " + retryThresholdStr + " should be setup starting from 1");
-    }
-    if (previousUpperBound != MAX_KEY_COUNT) {
-      throw new VeniceException(
-          " Retry threshold for batch-get: " + retryThresholdStr + " doesn't cover unlimited key count");
-    }
-
-    return retryThresholdMap;
-  }
-
   public int getResolveThreads() {
     return resolveThreads;
   }
@@ -898,5 +859,21 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public String getRegionName() {
     return regionName;
+  }
+
+  public LogContext getLogContext() {
+    return logContext;
+  }
+
+  public RoutingComputationMode getRoutingComputationMode() {
+    return routingComputationMode;
+  }
+
+  public int getParallelRoutingThreadCount() {
+    return parallelRoutingThreadCount;
+  }
+
+  public int getParallelRoutingChunkSize() {
+    return parallelRoutingChunkSize;
   }
 }

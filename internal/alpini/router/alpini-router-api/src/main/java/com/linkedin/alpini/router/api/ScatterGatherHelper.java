@@ -11,6 +11,7 @@ import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
 import io.netty.channel.ChannelHandler;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -60,6 +61,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
   private final @Nonnull BooleanSupplier _enableRetryRequestAlwaysUseADifferentHost;
   private final @Nonnull BooleanSupplier _disableRetryOnTimeout;
   private final @Nonnull BooleanSupplier _isReqRedirectionAllowedForQuery;
+  private final @Nonnull Supplier<Collection> _requestCollectionSupplier;
 
   protected ScatterGatherHelper(
       @Nonnull ExtendedResourcePathParser<P, K, BASIC_HTTP_REQUEST> pathParser,
@@ -89,7 +91,8 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
       boolean enableStackTraceResponseForException,
       @Nonnull BooleanSupplier enableRetryRequestAlwaysUseADifferentHost,
       @Nonnull BooleanSupplier disableRetryOnTimeout,
-      @Nonnull BooleanSupplier isReqRedirectionAllowedForQuery) {
+      @Nonnull BooleanSupplier isReqRedirectionAllowedForQuery,
+      @Nonnull Supplier<Collection> requestCollectionSupplier) {
     _pathParser = Objects.requireNonNull(pathParser, "pathParser");
     _partitionFinder = Objects.requireNonNull(partitionFinder, "partitionFinder");
     _hostFinder = Objects.requireNonNull(hostFinder, "hostFinder").getSnapshot();
@@ -137,6 +140,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
     _disableRetryOnTimeout = Objects.requireNonNull(disableRetryOnTimeout, "disableRetryOnTimeout");
     _isReqRedirectionAllowedForQuery =
         Objects.requireNonNull(isReqRedirectionAllowedForQuery, "isReqRedirectionAllowedForQuery");
+    _requestCollectionSupplier = Objects.requireNonNull(requestCollectionSupplier, "requestCollectionSupplier");
   }
 
   private Stream<Pair<String, ?>> streamOf(List<Pair<String, Supplier<?>>> list) {
@@ -223,7 +227,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
       String initialHost) throws RouterException {
     requestMethod = Objects.requireNonNull(requestMethod, "request");
     R roles = parseRoles(requestMethod, Objects.requireNonNull(headers, "headers"));
-    Scatter<H, P, K> scatter = new Scatter<>(path, _pathParser, roles);
+    Scatter<H, P, K> scatter = new Scatter<>(path, _pathParser, roles, _requestCollectionSupplier);
     String resourceName = path.getResourceName();
     HostFinder<H, R> hostFinder = _hostFinder.getSnapshot();
     ScatterGatherMode mode = path.getPartitionKeys().isEmpty() ? _broadcastMode : _scatterMode;
@@ -371,6 +375,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
     private BooleanSupplier _enableRetryRequestAlwaysUseADifferentHost = () -> false;
     private BooleanSupplier _disableRetryOnTimeout = () -> false;
     private BooleanSupplier _isReqRedirectionAllowedForQuery = () -> true;
+    private Supplier<Collection> _requestCollectionSupplier = ArrayList::new;
 
     private Builder() {
     }
@@ -563,6 +568,12 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
       return this;
     }
 
+    public Builder<H, P, K, R, HTTP_REQUEST, HTTP_RESPONSE, HTTP_RESPONSE_STATUS> setRequestCollectionSupplier(
+        @Nonnull Supplier<Collection> requestCollectionSupplier) {
+      _requestCollectionSupplier = requestCollectionSupplier;
+      return this;
+    }
+
     public Builder<H, P, K, R, HTTP_REQUEST, HTTP_RESPONSE, HTTP_RESPONSE_STATUS> setSuccessCodePredicate(
         @Nonnull IntPredicate successCodePredicate) {
       _successCodePredicate = Objects.requireNonNull(successCodePredicate);
@@ -636,7 +647,8 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
           _enableStackTraceResponseForException,
           _enableRetryRequestAlwaysUseADifferentHost,
           _disableRetryOnTimeout,
-          _isReqRedirectionAllowedForQuery);
+          _isReqRedirectionAllowedForQuery,
+          _requestCollectionSupplier);
     }
 
     @SuppressWarnings("unchecked")

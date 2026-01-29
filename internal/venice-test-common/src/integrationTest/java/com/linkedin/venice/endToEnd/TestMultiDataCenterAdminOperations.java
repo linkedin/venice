@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS;
 import static com.linkedin.venice.writer.VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -27,6 +28,11 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -78,6 +84,8 @@ public class TestMultiDataCenterAdminOperations {
     parentControllerProperties.setProperty(
         ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
         String.valueOf(Long.MAX_VALUE));
+    // Set store recreation time window to 3600 seconds (1 hour) for testing store recreation prevention
+    parentControllerProperties.put(CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS, "3600");
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
@@ -183,12 +191,20 @@ public class TestMultiDataCenterAdminOperations {
     List<VeniceControllerWrapper> controllersToTest = new ArrayList<>();
     controllersToTest.add(parentController);
     childControllers.forEach(controllerList -> controllersToTest.add(controllerList.get(0)));
-
+    PubSubTopicPartition topicPartition = parentController.getVeniceAdmin()
+        .getTopicManager()
+        .getTopicPartitionInfo(new PubSubTopicRepository().getTopic(veniceWriter.getTopicName()))
+        .get(0)
+        .getTopicPartition();
+    TopicManager topicManager = parentController.getVeniceAdmin().getTopicManager();
     // Check if all regions received the bad admin message
     TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
       for (VeniceControllerWrapper controller: controllersToTest) {
         AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
-        if (adminConsumerService.getFailingOffset() < 0) {
+        if (topicManager.diffPosition(
+            topicPartition,
+            adminConsumerService.getFailingPosition(),
+            PubSubSymbolicPosition.EARLIEST) <= 0) {
           return false;
         }
       }
@@ -198,16 +214,16 @@ public class TestMultiDataCenterAdminOperations {
     // Cleanup the failing admin message
     for (VeniceControllerWrapper controller: controllersToTest) {
       AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
-      adminConsumerService.setOffsetToSkip(clusterName, adminConsumerService.getFailingOffset(), false);
+      adminConsumerService.setPositionToSkip(clusterName, adminConsumerService.getFailingPosition(), false);
     }
 
     AdminConsumerService parentAdminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      boolean allFailedMessagesSkipped = parentAdminConsumerService.getFailingOffset() == -1;
+      boolean allFailedMessagesSkipped = parentAdminConsumerService.getFailingPosition().getNumericOffset() == -1;
       for (List<VeniceControllerWrapper> controllerWrappers: childControllers) {
         AdminConsumerService childAdminConsumerService =
             controllerWrappers.get(0).getAdminConsumerServiceByCluster(clusterName);
-        allFailedMessagesSkipped &= childAdminConsumerService.getFailingOffset() == -1;
+        allFailedMessagesSkipped &= childAdminConsumerService.getFailingPosition().getNumericOffset() == -1;
       }
       return allFailedMessagesSkipped;
     });
@@ -283,6 +299,9 @@ public class TestMultiDataCenterAdminOperations {
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;
     adminMessage.executionId = executionId;
+    updateStore.storeLifecycleHooks = Collections.emptyList();
+    updateStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
+    updateStore.keyUrnFields = Collections.emptyList();
     return adminOperationSerializer
         .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
@@ -300,6 +319,48 @@ public class TestMultiDataCenterAdminOperations {
         parentControllerClient,
         30,
         TimeUnit.SECONDS);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreRecreationBlockedWithinTimeWindow() {
+    String parentControllerUrls =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerUrls)) {
+      String storeName = Utils.getUniqueString("testStoreRecreationBlocked");
+
+      // Create a store
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+      assertFalse(newStoreResponse.isError(), "Failed to create store: " + newStoreResponse.getError());
+
+      // Disable the store before deletion
+      ControllerResponse updateResponse = parentControllerClient
+          .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
+      assertFalse(updateResponse.isError(), "Failed to disable store: " + updateResponse.getError());
+
+      // Delete the store
+      ControllerResponse deleteResponse = parentControllerClient.deleteStore(storeName);
+      assertFalse(deleteResponse.isError(), "Failed to delete store: " + deleteResponse.getError());
+
+      // Try to recreate the store immediately - should fail due to time window
+      NewStoreResponse recreateResponse =
+          parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+      assertTrue(recreateResponse.isError(), "Store recreation should be blocked within time window");
+
+      // Verify error message contains all expected information
+      String errorMessage = recreateResponse.getError();
+      LOGGER.info("Received error message: " + errorMessage);
+      assertTrue(
+          errorMessage.contains("was recently deleted and cannot be recreated yet"),
+          "Error message should mention recent deletion. Actual error: " + errorMessage);
+      assertTrue(errorMessage.contains(storeName), "Error should contain store name");
+      assertTrue(errorMessage.contains("recently deleted"), "Error should mention recent deletion");
+      assertTrue(
+          errorMessage.contains("Required waiting period: 3600 seconds"),
+          "Error should mention 3600 seconds waiting period");
+      assertTrue(errorMessage.contains("Time since deletion:"), "Error should show time since deletion");
+      assertTrue(errorMessage.contains("Remaining time:"), "Error should show remaining time");
+    }
   }
 
 }

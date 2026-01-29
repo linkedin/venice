@@ -1,19 +1,19 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.LATEST;
-
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
-import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Collection;
 import java.util.Collections;
@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -37,33 +38,62 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   // swap is produced to VT, then we should remove this as it's no longer needed.
   private final Lazy<PubSubConsumerAdapter> internalSeekConsumer;
   private final AtomicBoolean versionSwapThreadScheduled = new AtomicBoolean(false);
+  /*
+   * Used to track if the version swap thread encountered an exception. If so, the exception will be reflected
+   * in the next call to poll to prevent silent thread termination and fail the process.
+   */
+  private final AtomicReference<Exception> versionSwapThreadException = new AtomicReference<>();
   private final VersionSwapDataChangeListener<K, V> versionSwapListener;
 
-  public VeniceAfterImageConsumerImpl(ChangelogClientConfig changelogClientConfig, PubSubConsumerAdapter consumer) {
+  public VeniceAfterImageConsumerImpl(
+      ChangelogClientConfig changelogClientConfig,
+      PubSubConsumerAdapter consumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
     this(
         changelogClientConfig,
         consumer,
         Lazy.of(
-            () -> VeniceChangelogConsumerClientFactory
-                .getPubSubConsumer(changelogClientConfig, changelogClientConfig.getStoreName() + "-" + "internal")));
+            () -> VeniceChangelogConsumerClientFactory.getPubSubConsumer(
+                changelogClientConfig,
+                pubSubMessageDeserializer,
+                changelogClientConfig.getStoreName() + "-" + "internal")),
+        pubSubMessageDeserializer,
+        veniceChangelogConsumerClientFactory);
   }
 
   protected VeniceAfterImageConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter consumer,
-      Lazy<PubSubConsumerAdapter> seekConsumer) {
-    super(changelogClientConfig, consumer);
+      Lazy<PubSubConsumerAdapter> seekConsumer,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
+    super(changelogClientConfig, consumer, pubSubMessageDeserializer, veniceChangelogConsumerClientFactory);
     internalSeekConsumer = seekConsumer;
     versionSwapListener = new VersionSwapDataChangeListener<K, V>(
         this,
         storeRepository,
         storeName,
-        changelogClientConfig.getConsumerName());
+        changelogClientConfig.getConsumerName(),
+        this.changeCaptureStats,
+        changelogClientConfig.isVersionSwapByControlMessageEnabled());
+  }
+
+  // Intended for unit test only.
+  void setTime(Time time) {
+    this.time = time;
   }
 
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
     try {
+      Exception versionSwapException = versionSwapThreadException.get();
+      if (versionSwapException != null) {
+        throw new VeniceException(
+            "Version Swap failed for store: " + storeName + " due to exception:",
+            versionSwapException);
+      }
+
       return internalPoll(timeoutInMs, "");
     } catch (UnknownTopicOrPartitionException ex) {
       LOGGER.error("Caught unknown Topic exception, will attempt repair and retry: ", ex);
@@ -126,7 +156,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             topicPartition.getPartitionNumber(),
             new VeniceChangeCoordinate(
                 topicPartition.getPubSubTopic().getName(),
-                LATEST,
+                PubSubSymbolicPosition.LATEST,
                 topicPartition.getPartitionNumber()));
       } else if (checkpoints.get(topicPartition.getPartitionNumber()) == null) {
         LOGGER.warn("No EOP checkpoint found for partition: {}", topicPartition.getPartitionNumber());
@@ -144,7 +174,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         // No need to do anything here, we already have the EOP checkpoint, so we'll default to that
       } else {
         PubSubPosition eopPosition = checkpoints.get(topicPartition.getPartitionNumber()).getPosition();
-        if (PubSubUtil.comparePubSubPositions(heartbeatTimestampPosition, eopPosition) > 0) {
+        if (consumerAdapter.positionDifference(topicPartition, heartbeatTimestampPosition, eopPosition) > 0) {
           checkpoints.put(
               topicPartition.getPartitionNumber(),
               new VeniceChangeCoordinate(
@@ -154,6 +184,115 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         }
       }
     }
+  }
+
+  /**
+   * Similar to {@link #internalSeekToEndOfPush} exception in addition to finding the EOP of each partition we will also
+   * be looking for the first relevant version swap. This can also be optimized later for a faster find.
+   */
+  @Override
+  protected CompletableFuture<Void> internalFindNewVersionCheckpoints(
+      String oldVersionTopic,
+      String newVersionTopic,
+      long generationId,
+      Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
+    return CompletableFuture.supplyAsync(() -> {
+      boolean lockAcquired = false;
+      Map<Integer, VeniceChangeCoordinate> checkpoints = new HashMap<>();
+      Map<Integer, VeniceChangeCoordinate> eopCheckpoints = new HashMap<>();
+      try {
+        synchronized (internalSeekConsumer) {
+          PubSubConsumerAdapter consumerAdapter = internalSeekConsumer.get();
+          consumerAdapter.batchUnsubscribe(consumerAdapter.getAssignment());
+          Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledResults;
+          Map<Integer, Boolean> versionSwapConsumedPerPartitionMap = new HashMap<>();
+          for (Integer partition: partitions) {
+            versionSwapConsumedPerPartitionMap.put(partition, false);
+          }
+          List<PubSubTopicPartition> topicPartitionList = getPartitionListToSubscribe(
+              partitions,
+              Collections.EMPTY_SET,
+              pubSubTopicRepository.getTopic(newVersionTopic));
+
+          for (PubSubTopicPartition topicPartition: topicPartitionList) {
+            consumerAdapter.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
+          }
+
+          // Poll until we receive the desired version swap message in the new version topic for each partition
+          LOGGER.info(
+              "Polling for version swap messages in: {} with generation id: {} for partitions: {}",
+              newVersionTopic,
+              generationId,
+              partitions);
+          while (!areAllTrue(versionSwapConsumedPerPartitionMap.values())) {
+            polledResults = consumerAdapter.poll(5000L);
+            for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: polledResults.entrySet()) {
+              PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+              List<DefaultPubSubMessage> messageList = entry.getValue();
+              for (DefaultPubSubMessage message: messageList) {
+                if (message.getKey().isControlMessage()) {
+                  ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
+                  ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+                  if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
+                    VeniceChangeCoordinate eopCoordinate = new VeniceChangeCoordinate(
+                        pubSubTopicPartition.getPubSubTopic().getName(),
+                        message.getPosition(),
+                        pubSubTopicPartition.getPartitionNumber());
+                    eopCheckpoints.put(pubSubTopicPartition.getPartitionNumber(), eopCoordinate);
+                    LOGGER.info(
+                        "Found EOP for version swap message with generation id: {} for partition: {}",
+                        generationId,
+                        pubSubTopicPartition.getPartitionNumber());
+                    // We continue to poll until we find the corresponding version swap which should be after EOP
+                  } else if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
+                    VersionSwap versionSwap = (VersionSwap) controlMessage.getControlMessageUnion();
+                    // In theory just matching the generation id and source region should be sufficient but just to be
+                    // safe we will match all fields
+                    if (versionSwap.getGenerationId() == generationId
+                        && versionSwap.getSourceRegion().toString().equals(clientRegionName)
+                        && oldVersionTopic.equals(versionSwap.getOldServingVersionTopic().toString())
+                        && newVersionTopic.equals(versionSwap.getNewServingVersionTopic().toString())) {
+                      versionSwapConsumedPerPartitionMap.put(pubSubTopicPartition.getPartitionNumber(), true);
+                      VeniceChangeCoordinate coordinate = new VeniceChangeCoordinate(
+                          pubSubTopicPartition.getPubSubTopic().getName(),
+                          message.getPosition(),
+                          pubSubTopicPartition.getPartitionNumber());
+                      checkpoints.put(pubSubTopicPartition.getPartitionNumber(), coordinate);
+                      // We are done with this partition
+                      consumerAdapter.unSubscribe(pubSubTopicPartition);
+                      LOGGER.info(
+                          "Found corresponding version swap message with generation id: {} for partition: {}",
+                          generationId,
+                          pubSubTopicPartition.getPartitionNumber());
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
+          LOGGER.info(
+              "Found all version swap messages in: {} with generation id: {} for partitions: {}",
+              newVersionTopic,
+              generationId,
+              partitions);
+        }
+        // We cannot change the subscription here because the consumer might not finish polling all the messages in the
+        // old version topic yet. We can acquire the lock and update the VersionSwapMessageState.
+        subscriptionLock.writeLock().lock();
+        lockAcquired = true;
+        versionSwapMessageState.setNewTopicVersionSwapCheckpoints(checkpoints);
+        versionSwapMessageState.setNewTopicEOPCheckpoints(eopCheckpoints);
+      } finally {
+        if (lockAcquired) {
+          subscriptionLock.writeLock().unlock();
+        }
+      }
+      return null;
+    }, seekExecutorService);
   }
 
   protected CompletableFuture<Void> internalSeekToEndOfPush(
@@ -181,7 +320,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
 
           for (PubSubTopicPartition topicPartition: topicPartitionList) {
-            consumerAdapter.subscribe(topicPartition, OffsetRecord.LOWEST_OFFSET_LAG);
+            consumerAdapter.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
           }
           Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledResults;
           Map<Integer, Boolean> endOfPushConsumedPerPartitionMap = new HashMap<>();
@@ -234,7 +373,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             // first, check and see if all partitions are already after EOP
             adjustSeekCheckPointsBasedOnHeartbeats(
                 checkpoints,
-                new HashMap<>(currentVersionLastHeartbeat),
+                getLastHeartbeatPerPartition(),
                 consumerAdapter,
                 topicPartitionList);
           }
@@ -255,6 +394,15 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       }
       return null;
     }, seekExecutorService);
+  }
+
+  private boolean areAllTrue(Collection<Boolean> booleanCollections) {
+    for (Boolean b: booleanCollections) {
+      if (!b) {
+        return false;
+      }
+    }
+    return true;
   }
 
   @Override
@@ -281,5 +429,22 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   public void setStoreRepository(NativeMetadataRepositoryViewAdapter repository) {
     super.setStoreRepository(repository);
     versionSwapListener.setStoreRepository(repository);
+  }
+
+  @Override
+  public void close() {
+    super.close();
+    if (internalSeekConsumer.isPresent()) {
+      internalSeekConsumer.get().close();
+    }
+    storeRepository.unregisterStoreDataChangedListener(versionSwapListener);
+  }
+
+  /**
+   * Used by {@link VersionSwapDataChangeListener} to propagate version swap exceptions to prevent silent thread
+   * termination.
+   */
+  protected void handleVersionSwapFailure(Exception error) {
+    versionSwapThreadException.set(error);
   }
 }

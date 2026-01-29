@@ -8,10 +8,13 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DECOMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_THRESHOLD_MILLISECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
@@ -20,13 +23,18 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_S
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_URN_COMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_URN_FIELDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
@@ -60,6 +68,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNK
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_LIFECYCLE_HOOKS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_CLASS;
@@ -68,12 +77,14 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -82,8 +93,11 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceETLStrategy;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.util.List;
@@ -146,22 +160,30 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
             .setStorageNodeReadQuotaEnabled(srcStore.isStorageNodeReadQuotaEnabled())
             .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
+            .setBlobTransferInServerEnabled(
+                ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobTransferInServerEnabled()))
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
             .setTargetRegionSwapWaitTime(srcStore.getTargetRegionSwapWaitTime())
             .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
+            .setCompactionEnabled(srcStore.isCompactionEnabled())
+            .setCompactionThresholdMilliseconds(srcStore.getCompactionThreshold())
             .setMaxCompactionLagSeconds(srcStore.getMaxCompactionLagSeconds())
             .setMinCompactionLagSeconds(srcStore.getMinCompactionLagSeconds())
             .setNearlineProducerCountPerWriter(srcStore.getNearlineProducerCountPerWriter())
             .setIsDavinciHeartbeatReported(srcStore.getIsDavinciHeartbeatReported())
+            .setTTLRepushEnabled(srcStore.isTTLRepushEnabled())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(
                 srcStore.getViewConfigs()
                     .entrySet()
                     .stream()
-                    .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())));
+                    .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())))
+            .setKeyUrnCompressionEnabled(srcStore.isKeyUrnCompressionEnabled())
+            .setKeyUrnFields(srcStore.getKeyUrnFields())
+            .setFlinkVeniceViewsEnabled(srcStore.isFlinkVeniceViewsEnabled());
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
       updateStoreQueryParams.setReplicationMetadataVersionID(srcStore.getReplicationMetadataVersionId());
@@ -179,6 +201,7 @@ public class UpdateStoreQueryParams extends QueryParams {
       updateStoreQueryParams.setEtledProxyUserAccount(etlStoreConfig.getEtledUserProxyAccount());
       updateStoreQueryParams.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
       updateStoreQueryParams.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
+      updateStoreQueryParams.setETLStrategy(etlStoreConfig.getETLStrategy());
     }
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
@@ -521,6 +544,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getStringMap(STORE_VIEW);
   }
 
+  public UpdateStoreQueryParams setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    return putBoolean(FLINK_VENICE_VIEWS_ENABLED, flinkVeniceViewsEnabled);
+  }
+
+  public Optional<Boolean> getFlinkVeniceViewsEnabled() {
+    return getBoolean(FLINK_VENICE_VIEWS_ENABLED);
+  }
+
   public UpdateStoreQueryParams setPushStreamSourceAddress(String pushStreamSourceAddress) {
     return putString(PUSH_STREAM_SOURCE_ADDRESS, pushStreamSourceAddress);
   }
@@ -565,6 +596,15 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<String> getETLedProxyUserAccount() {
     return Optional.ofNullable(params.get(ETLED_PROXY_USER_ACCOUNT));
+  }
+
+  public UpdateStoreQueryParams setETLStrategy(VeniceETLStrategy etlStrategy) {
+    params.put(ETL_STRATEGY, etlStrategy.name());
+    return this;
+  }
+
+  public Optional<VeniceETLStrategy> getETLStrategy() {
+    return Optional.ofNullable(params.get(ETL_STRATEGY)).map(VeniceETLStrategy::valueOf);
   }
 
   public Optional<Boolean> getNativeReplicationEnabled() {
@@ -709,6 +749,22 @@ public class UpdateStoreQueryParams extends QueryParams {
     return (UpdateStoreQueryParams) add(DISABLE_STORE_VIEW, true);
   }
 
+  public UpdateStoreQueryParams setCompactionEnabled(boolean compactionEnabled) {
+    return putBoolean(COMPACTION_ENABLED, compactionEnabled);
+  }
+
+  public Optional<Boolean> getCompactionEnabled() {
+    return getBoolean(COMPACTION_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setCompactionThresholdMilliseconds(long compactionThresholdMilliseconds) {
+    return putLong(COMPACTION_THRESHOLD_MILLISECONDS, compactionThresholdMilliseconds);
+  }
+
+  public Optional<Long> getCompactionThresholdMilliseconds() {
+    return getLong(COMPACTION_THRESHOLD_MILLISECONDS);
+  }
+
   public UpdateStoreQueryParams setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
     return putLong(MAX_COMPACTION_LAG_SECONDS, maxCompactionLagSeconds);
   }
@@ -747,6 +803,15 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getBlobTransferEnabled() {
     return getBoolean(BLOB_TRANSFER_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setBlobTransferInServerEnabled(
+      ConfigCommonUtils.ActivationState blobTransferInServerEnabled) {
+    return putString(BLOB_TRANSFER_IN_SERVER_ENABLED, blobTransferInServerEnabled.name());
+  }
+
+  public Optional<String> getBlobTransferInServerEnabled() {
+    return getString(BLOB_TRANSFER_IN_SERVER_ENABLED);
   }
 
   public UpdateStoreQueryParams setNearlineProducerCompressionEnabled(boolean compressionEnabled) {
@@ -793,8 +858,64 @@ public class UpdateStoreQueryParams extends QueryParams {
     return putBoolean(GLOBAL_RT_DIV_ENABLED, globalRtDivEnabled);
   }
 
+  public Optional<Boolean> isEnumSchemaEvolutionAllowed() {
+    return getBoolean(ENUM_SCHEMA_EVOLUTION_ALLOWED);
+  }
+
+  public UpdateStoreQueryParams setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    return putBoolean(ENUM_SCHEMA_EVOLUTION_ALLOWED, enumSchemaEvolutionAllowed);
+  }
+
   public Optional<Boolean> isGlobalRtDivEnabled() {
     return getBoolean(GLOBAL_RT_DIV_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    return putBoolean(TTL_REPUSH_ENABLED, ttlRepushEnabled);
+  }
+
+  public Optional<Boolean> isTTLRepushEnabled() {
+    return getBoolean(TTL_REPUSH_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
+    try {
+      return (UpdateStoreQueryParams) add(
+          STORE_LIFECYCLE_HOOKS_LIST,
+          OBJECT_MAPPER.writeValueAsString(storeLifecycleHooks));
+    } catch (JsonProcessingException e) {
+      throw new VeniceException(e.getMessage());
+    }
+  }
+
+  public Optional<List<LifecycleHooksRecord>> getStoreLifecycleHooks() {
+    if (params.get(STORE_LIFECYCLE_HOOKS_LIST) == null) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(
+          OBJECT_MAPPER
+              .readValue(params.get(STORE_LIFECYCLE_HOOKS_LIST), new TypeReference<List<LifecycleHooksRecord>>() {
+              }));
+    } catch (IOException e) {
+      throw new VeniceException(e.getMessage());
+    }
+  }
+
+  public UpdateStoreQueryParams setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+    return putBoolean(KEY_URN_COMPRESSION_ENABLED, keyUrnCompressionEnabled);
+  }
+
+  public Optional<Boolean> getKeyUrnCompressionEnabled() {
+    return getBoolean(KEY_URN_COMPRESSION_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setKeyUrnFields(List<String> keyUrnFields) {
+    return putStringList(KEY_URN_FIELDS, keyUrnFields);
+  }
+
+  public Optional<List<String>> getKeyUrnFields() {
+    return getStringList(KEY_URN_FIELDS);
   }
 
   // ***************** above this line are getters and setters *****************

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -21,7 +22,9 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
-import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -70,6 +73,7 @@ public class StoreBackendTest {
   StorageService storageService;
   IngestionBackend ingestionBackend;
   StorageEngineBackedCompressorFactory compressorFactory;
+  HeartbeatMonitoringService heartbeatMonitoringService;
 
   @BeforeMethod
   void setUp() {
@@ -90,18 +94,20 @@ public class StoreBackendTest {
     ingestionBackend = mock(IngestionBackend.class);
     compressorFactory = mock(StorageEngineBackedCompressorFactory.class);
     backend = mock(DaVinciBackend.class);
+    heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     when(backend.getExecutor()).thenReturn(executor);
     when(backend.getConfigLoader()).thenReturn(new VeniceConfigLoader(backendConfig));
     when(backend.getMetricsRepository()).thenReturn(metricsRepository);
     when(backend.getStoreRepository()).thenReturn(mock(SubscriptionBasedReadOnlyStoreRepository.class));
     when(backend.getStorageService()).thenReturn(storageService);
-    when(backend.getIngestionService()).thenReturn(mock(StoreIngestionService.class));
+    when(backend.getIngestionService()).thenReturn(mock(KafkaStoreIngestionService.class));
     when(backend.getVersionByTopicMap()).thenReturn(versionMap);
     when(backend.getVeniceLatestNonFaultyVersion(anyString(), anySet())).thenCallRealMethod();
     when(backend.getVeniceCurrentVersion(anyString())).thenCallRealMethod();
     when(backend.getIngestionBackend()).thenReturn(ingestionBackend);
     when(backend.getCompressorFactory()).thenReturn(compressorFactory);
     when(backend.hasCurrentVersionBootstrapping()).thenReturn(false);
+    when(backend.getHeartbeatMonitoringService()).thenReturn(heartbeatMonitoringService);
     doCallRealMethod().when(backend).handleStoreChanged(any());
 
     store = new ZKStore(
@@ -148,6 +154,8 @@ public class StoreBackendTest {
 
     // Expecting to subscribe to version1 and that version2 is a future version.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    verify(heartbeatMonitoringService, times(1))
+        .updateLagMonitor(version1.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
     TimeUnit.MILLISECONDS.sleep(v1SubscribeDurationMs);
     versionMap.get(version1.kafkaTopicName()).completePartition(partition);
     subscribeResult.get(3, TimeUnit.SECONDS);
@@ -240,7 +248,8 @@ public class StoreBackendTest {
 
     int partition = 2;
     // Expecting to subscribe to the specified version (version1), which is neither current nor latest.
-    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition), Optional.of(version1));
+    CompletableFuture subscribeResult =
+        storeBackend.subscribe(ComplementSet.of(partition), Optional.of(version1), null);
     versionMap.get(version1.kafkaTopicName()).completePartition(partition);
     subscribeResult.get(3, TimeUnit.SECONDS);
     // Verify that subscribe selected the specified version as current.
@@ -256,6 +265,35 @@ public class StoreBackendTest {
         assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
       }
     });
+  }
+
+  @Test
+  void testSubscribeVersionSpecific() throws Exception {
+    when(backend.getStoreClientType(store.getName())).thenReturn(DaVinciBackend.ClientType.VERSION_SPECIFIC);
+    storeBackend = spy(storeBackend);
+    int partitionCount = 3;
+
+    Version version3 = new VersionImpl(store.getName(), store.peekNextVersionNumber(), null, partitionCount);
+    store.addVersion(version3);
+    store.setCurrentVersion(version2.getNumber());
+    backend.handleStoreChanged(storeBackend);
+
+    for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
+      // Subscribe to the specified version (version1) with version-specific client
+      CompletableFuture subscribeResult =
+          storeBackend.subscribe(ComplementSet.of(partitionId), Optional.of(version1), null);
+      versionMap.get(version1.kafkaTopicName()).completePartition(partitionId);
+      subscribeResult.get(3, TimeUnit.SECONDS);
+    }
+    // Verify that subscribe selected the specified version as current
+    try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
+      assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
+    }
+
+    verify(storeBackend, never()).trySubscribeDaVinciFutureVersion();
+
+    // Try to subscribe to a new version
+    assertThrows(VeniceException.class, () -> storeBackend.subscribe(ComplementSet.of(1), Optional.of(version3), null));
   }
 
   @Test
@@ -328,9 +366,17 @@ public class StoreBackendTest {
   void testSubscribeUnsubscribe() throws Exception {
     // Simulate concurrent unsubscribe while subscribe is pending.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(0, 1));
+    verify(heartbeatMonitoringService, times(1))
+        .updateLagMonitor(version1.kafkaTopicName(), 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+    verify(heartbeatMonitoringService, times(1))
+        .updateLagMonitor(version1.kafkaTopicName(), 1, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
     versionMap.get(version1.kafkaTopicName()).completePartition(0);
     assertFalse(subscribeResult.isDone());
     storeBackend.unsubscribe(ComplementSet.of(1));
+    verify(heartbeatMonitoringService, times(1))
+        .updateLagMonitor(version1.kafkaTopicName(), 1, HeartbeatLagMonitorAction.REMOVE_MONITOR);
+    verify(heartbeatMonitoringService, times(0))
+        .updateLagMonitor(version1.kafkaTopicName(), 0, HeartbeatLagMonitorAction.REMOVE_MONITOR);
     // Verify that unsubscribe completed pending subscribe without failing it.
     subscribeResult.get(3, TimeUnit.SECONDS);
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {

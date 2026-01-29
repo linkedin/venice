@@ -2,6 +2,7 @@ package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
 import com.linkedin.venice.annotation.Threadsafe;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -47,7 +48,7 @@ public interface Merge<T> {
    * @param newValue a record with all fields populated and with one of the registered value schemas
    * @param putOperationTimestamp the timestamp of the incoming write operation
    * @param putOperationColoID ID of the colo/fabric where this PUT request was originally received.
-   * @param newValueSourceOffset The offset from which the new value originates in the realtime stream.  Used to build
+   * @param newValueSourcePosition The position from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
    * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
@@ -61,12 +62,12 @@ public interface Merge<T> {
       T newValue,
       long putOperationTimestamp,
       int putOperationColoID,
-      long newValueSourceOffset,
+      PubSubPosition newValueSourcePosition,
       int newValueSourceBrokerID);
 
   /**
    * @param oldValueAndRmd the old value and replication metadata which are persisted in the server prior to the write operation
-   * @param newValueSourceOffset The offset from which the new value originates in the realtime stream.  Used to build
+   * @param newValueSourcePosition The position from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
    * @param deleteOperationColoID ID of the colo/fabric where this DELETE request was originally received.
    * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
@@ -80,18 +81,16 @@ public interface Merge<T> {
       ValueAndRmd<T> oldValueAndRmd,
       long deleteOperationTimestamp,
       int deleteOperationColoID,
-      long newValueSourceOffset,
+      PubSubPosition newValueSourcePosition,
       int newValueSourceBrokerID);
 
   /**
    * @param oldValueAndRmd the old value and replication metadata which are persisted in the server prior to the write operation
    * @param writeOperation a record with a write compute schema
    * @param currValueSchema Schema of the current value that is to-be-updated here.
-   * @param writeComputeSchema Schema used to generate the write compute record. This schema could be a union and that is
-   *                           why this schema is needed when we already pass in the {@code writeOperation} generic record.
    * @param updateOperationTimestamp the timestamp of the incoming write operation
    * @param updateOperationColoID ID of the colo/fabric where this UPDATE request was originally received.
-   * @param newValueSourceOffset The offset from which the new value originates in the realtime stream.  Used to build
+   * @param newValueSourcePosition The position from which the new value originates in the realtime stream.  Used to build
    *                               the ReplicationMetadata for the newly inserted record.
    * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
    *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
@@ -106,6 +105,6 @@ public interface Merge<T> {
       Schema currValueSchema,
       long updateOperationTimestamp,
       int updateOperationColoID,
-      long newValueSourceOffset,
+      PubSubPosition newValueSourcePosition,
       int newValueSourceBrokerID);
 }

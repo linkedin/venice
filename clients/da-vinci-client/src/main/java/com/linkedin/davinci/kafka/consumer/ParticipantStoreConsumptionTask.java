@@ -1,7 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.stats.ParticipantStoreConsumptionStats;
-import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -15,11 +15,16 @@ import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import org.apache.commons.lang3.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -41,6 +46,8 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
   private final Map<String, AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue>> clientMap =
       new VeniceConcurrentHashMap<>();
   private final ICProvider icProvider;
+  private final Function<ClientConfig<ParticipantMessageValue>, AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue>> clientConstructor;
+  private final Time time;
 
   public ParticipantStoreConsumptionTask(
       StoreIngestionService storeIngestionService,
@@ -49,12 +56,39 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
       ClientConfig<ParticipantMessageValue> clientConfig,
       long participantMessageConsumptionDelayMs,
       ICProvider icProvider) {
+    this(
+        storeIngestionService,
+        clusterInfoProvider,
+        stats,
+        clientConfig,
+        participantMessageConsumptionDelayMs,
+        icProvider,
+        ClientFactory::getAndStartSpecificAvroClient,
+        SystemTime.INSTANCE);
+  }
+
+  /** Test constructor */
+  ParticipantStoreConsumptionTask(
+      StoreIngestionService storeIngestionService,
+      ClusterInfoProvider clusterInfoProvider,
+      ParticipantStoreConsumptionStats stats,
+      ClientConfig<ParticipantMessageValue> clientConfig,
+      long participantMessageConsumptionDelayMs,
+      ICProvider icProvider,
+      Function<ClientConfig<ParticipantMessageValue>, AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue>> clientConstructor,
+      Time time) {
     this.stats = Validate.notNull(stats);
     this.storeIngestionService = Validate.notNull(storeIngestionService);
     this.clusterInfoProvider = Validate.notNull(clusterInfoProvider);
     this.clientConfig = Validate.notNull(clientConfig);
     this.participantMessageConsumptionDelayMs = participantMessageConsumptionDelayMs;
     this.icProvider = icProvider;
+    this.clientConstructor = clientConstructor;
+    this.time = time;
+    LOGGER.info(
+        "{} constructed with participantMessageConsumptionDelayMs: {}.",
+        getClass().getSimpleName(),
+        this.participantMessageConsumptionDelayMs);
   }
 
   @Override
@@ -63,7 +97,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
     while (!isClosing.get() && !Thread.currentThread().isInterrupted()) {
       stats.recordHeartbeat();
       try {
-        Thread.sleep(participantMessageConsumptionDelayMs);
+        this.time.sleep(participantMessageConsumptionDelayMs);
 
         for (String topic: storeIngestionService.getIngestingTopicsWithVersionStatusNotOnline()) {
           try {
@@ -72,6 +106,12 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
             key.resourceName = topic;
             String clusterName = clusterInfoProvider.getVeniceCluster(Version.parseStoreFromKafkaTopicName(topic));
             if (clusterName == null) {
+              if (LOGGER.isWarnEnabled()) {
+                String msg = "Cluster name not found for topic " + topic;
+                if (!EXCEPTION_FILTER.isRedundantException(msg)) {
+                  LOGGER.warn(msg);
+                }
+              }
               continue;
             }
 
@@ -84,19 +124,33 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
               value = getParticipantStoreClient(clusterName).get(key).get();
             }
 
-            if (value != null && value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
-              KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
-              LOGGER.info(
-                  "Terminating ingestion task for store-version: {} in cluster: {}. KILL signal timestamp: {}, message age: {}ms.",
+            if (value == null) {
+              continue;
+            }
+
+            if (value.messageType != ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
+              // Should never happen... so this is basically just defensive code.
+              LOGGER.warn("Got an unexpected record from the Participant Store: {}", value);
+              continue;
+            }
+
+            KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
+            long lag = this.time.getMilliseconds() - killPushJobMessage.getTimestamp();
+            LOGGER.info(
+                "Terminating ingestion task for store-version: {} in cluster: {}. KILL signal timestamp: {}, message age: {}ms.",
+                topic,
+                clusterName,
+                killPushJobMessage.getTimestamp(),
+                lag);
+            if (storeIngestionService.killConsumptionTask(topic)) {
+              // emit metrics only when a confirmed kill is made
+              stats.recordKilledPushJobs();
+              stats.recordKillPushJobLatency(Long.max(0, lag));
+            } else {
+              LOGGER.warn(
+                  "Failed to kill Consumption for topic: {}, timestamp: {}",
                   topic,
-                  clusterName,
-                  killPushJobMessage.getTimestamp(),
-                  System.currentTimeMillis() - killPushJobMessage.getTimestamp());
-              if (storeIngestionService.killConsumptionTask(topic)) {
-                // emit metrics only when a confirmed kill is made
-                stats.recordKilledPushJobs();
-                stats.recordKillPushJobLatency(Long.max(0, System.currentTimeMillis() - killPushJobMessage.timestamp));
-              }
+                  killPushJobMessage.getTimestamp());
             }
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -134,24 +188,32 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
 
   private AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> getParticipantStoreClient(
       String clusterName) {
+    AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> client;
     try {
-      clientMap.computeIfAbsent(clusterName, k -> {
+      client = clientMap.computeIfAbsent(clusterName, k -> {
         ClientConfig<ParticipantMessageValue> newClientConfig = ClientConfig.cloneConfig(clientConfig)
             .setStoreName(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName))
             .setSpecificValueClass(ParticipantMessageValue.class)
             .setStatsPrefix(CLIENT_STATS_PREFIX);
-        return ClientFactory.getAndStartSpecificAvroClient(newClientConfig);
+        return this.clientConstructor.apply(newClientConfig);
       });
+      return Objects.requireNonNull(client, "Got a null client out of the constructor function!");
     } catch (Exception e) {
       stats.recordFailedInitialization();
       LOGGER.error("Failed to get participant client for cluster: {}", clusterName, e);
+      throw e;
     }
-    return clientMap.get(clusterName);
   }
 
   @Override
   public void close() {
     isClosing.set(true);
-    clientMap.values().forEach(AvroGenericStoreClient::close);
+    clientMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
+    LOGGER.info("Closed {}", getClass().getSimpleName());
+  }
+
+  @VisibleForTesting
+  public ClientConfig<ParticipantMessageValue> getClientConfig() {
+    return clientConfig;
   }
 }

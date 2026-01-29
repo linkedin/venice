@@ -1,6 +1,7 @@
 package com.linkedin.venice.samza;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation;
@@ -12,7 +13,9 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.r2.transport.common.TransportClientFactory;
 import com.linkedin.r2.transport.http.client.HttpClientFactory;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -31,7 +34,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedHybridStoreQuotaMonitor;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
@@ -49,6 +51,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.CompletableFutureCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -65,6 +68,7 @@ import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
+import org.antlr.v4.runtime.misc.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
@@ -144,6 +148,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private D2Client primaryControllerColoD2Client;
   private D2Client childColoD2Client;
   private ControllerClient controllerClient;
+  // Optional D2Client instances that can be passed in constructor
+  private Optional<D2Client> providedPrimaryControllerColoD2Client = Optional.empty();
+
+  private Optional<D2Client> providedChildColoD2Client = Optional.empty();
+  private StoreSchemaFetcher schemaFetcher;
   // It can be version topic, real-time topic or stream reprocessing topic, depending on push type
   private String topicName;
   private String kafkaBootstrapServers;
@@ -156,43 +165,31 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private Optional<String> discoveryUrl = Optional.empty();
   private Optional<String> routerUrl = Optional.empty();
 
-  private VeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
+  private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
-  private Map<String, String> additionalWriterConfigs = new HashMap<>();
+  private Map<String, String> additionalConfigs = new HashMap<>();
 
   private TransportClient transportClient;
   private RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
 
-  @Deprecated
-  public VeniceSystemProducer(
-      String primaryControllerColoD2ZKHost,
-      String primaryControllerD2ServiceName,
-      String storeName,
-      Version.PushType pushType,
-      String samzaJobId,
-      String runningFabric,
-      boolean verifyLatestProtocolPresent,
-      VeniceSystemFactory factory,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners) {
-    this(
-        primaryControllerColoD2ZKHost,
-        primaryControllerColoD2ZKHost,
-        primaryControllerD2ServiceName,
-        storeName,
-        pushType,
-        samzaJobId,
-        runningFabric,
-        verifyLatestProtocolPresent,
-        factory,
-        sslFactory,
-        partitioners);
-  }
-
   /**
-   * Construct a new instance of {@link VeniceSystemProducer}. Equivalent to {@link VeniceSystemProducer(veniceChildD2ZkHost, primaryControllerColoD2ZKHost, primaryControllerD2ServiceName, storeName, pushType, samzaJobId, runningFabric, verifyLatestProtocolPresent, factory, sslFactory, partitioners, SystemTime.INSTANCE)}
+   * Constructs a new instance of {@link VeniceSystemProducer}.
+   * <p>
+   * This constructor is equivalent to calling the full constructor with {@code SystemTime.INSTANCE} as the time provider.
+   *
+   * @param veniceChildD2ZkHost                 ZK host for the Venice child fabric.
+   * @param primaryControllerColoD2ZKHost       ZK host for the primary controller colo.
+   * @param primaryControllerD2ServiceName      D2 service name of the primary controller.
+   * @param storeName                           Name of the Venice store.
+   * @param pushType                            The push type (e.g., batch, stream).
+   * @param samzaJobId                          The Samza job ID.
+   * @param runningFabric                       The name of the current fabric.
+   * @param verifyLatestProtocolPresent         Whether to verify that the latest protocol is present.
+   * @param factory                             The system factory used to create producer components.
+   * @param sslFactory                          Optional SSL factory for secure communication.
+   * @param partitioners                        Optional partitioner class name(s) for custom partitioning.
    */
   public VeniceSystemProducer(
       String veniceChildD2ZkHost,
@@ -291,6 +288,52 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.time = time;
   }
 
+  /**
+   * Constructs a new instance of {@link VeniceSystemProducer} with D2Client instances.
+   * <p>
+   * This constructor accepts pre-configured D2Client instances.
+   *
+   * @param childColoD2Client                   D2Client for child colo. If null, will be created using veniceChildD2ZkHost.
+   * @param primaryControllerColoD2Client       D2Client for primary controller colo. If null, will be created using primaryControllerColoD2ZKHost.
+   * @param primaryControllerD2ServiceName      D2 service name of the primary controller.
+   * @param storeName                           Name of the Venice store.
+   * @param pushType                            The push type (e.g., batch, stream).
+   * @param samzaJobId                          The Samza job ID.
+   * @param runningFabric                       The name of the current fabric.
+   * @param verifyLatestProtocolPresent         Whether to verify that the latest protocol is present.
+   * @param factory                             The system factory used to create producer components.
+   * @param sslFactory                          Optional SSL factory for secure communication.
+   * @param partitioners                        Optional partitioner class name(s) for custom partitioning.
+   */
+  public VeniceSystemProducer(
+      @NotNull D2Client childColoD2Client,
+      @NotNull D2Client primaryControllerColoD2Client,
+      String primaryControllerD2ServiceName,
+      String storeName,
+      Version.PushType pushType,
+      String samzaJobId,
+      String runningFabric,
+      boolean verifyLatestProtocolPresent,
+      VeniceSystemFactory factory,
+      Optional<SSLFactory> sslFactory,
+      Optional<String> partitioners) {
+    this(
+        null,
+        null,
+        primaryControllerD2ServiceName,
+        storeName,
+        pushType,
+        samzaJobId,
+        runningFabric,
+        verifyLatestProtocolPresent,
+        factory,
+        sslFactory,
+        partitioners,
+        SystemTime.INSTANCE);
+    this.providedPrimaryControllerColoD2Client = Optional.ofNullable(primaryControllerColoD2Client);
+    this.providedChildColoD2Client = Optional.ofNullable(childColoD2Client);
+  }
+
   public VeniceSystemProducer(
       String discoveryUrl,
       String storeName,
@@ -322,10 +365,12 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.sslFactory = sslFactory;
     this.partitioners = partitioners;
     this.time = time;
+    this.providedPrimaryControllerColoD2Client = Optional.empty();
+    this.providedChildColoD2Client = Optional.empty();
   }
 
-  public void applyAdditionalWriterConfigs(Map<String, String> additionalWriterConfigs) {
-    this.additionalWriterConfigs.putAll(additionalWriterConfigs);
+  public void applyAdditionalConfigs(Map<String, String> additionalConfigs) {
+    this.additionalConfigs.putAll(additionalConfigs);
   }
 
   public void setRouterUrl(String routerUrl) {
@@ -373,10 +418,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    * This method is overridden and not used by LinkedIn internally.
    * Please update the overridden method accordingly after modifying this method.
    */
-  protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
+  protected AbstractVeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
-    veniceWriterProperties.putAll(additionalWriterConfigs);
+    veniceWriterProperties.putAll(additionalConfigs);
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
+    veniceWriterProperties.put(PUBSUB_BROKER_ADDRESS, store.getKafkaBootstrapServers());
     return getVeniceWriter(store, veniceWriterProperties);
   }
 
@@ -406,7 +452,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   /**
    * Please don't remove this method since it is still being used by LinkedIn internally.
    */
-  protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
+  protected AbstractVeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
       VersionCreationResponse store,
       Properties veniceWriterProperties) {
     Integer partitionCount = pushType.isBatchOrStreamReprocessing()
@@ -425,17 +471,25 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     VeniceWriterOptions.Builder builder = new VeniceWriterOptions.Builder(store.getKafkaTopic()).setTime(time)
         .setPartitioner(venicePartitioner)
         .setPartitionCount(partitionCount)
+        .setBatchIntervalInMs(
+            Long.parseLong(veniceWriterProperties.getProperty(ConfigKeys.WRITER_BATCHING_MAX_INTERVAL_MS, "0")))
+        .setMaxBatchSizeInBytes(
+            Integer.parseInt(
+                veniceWriterProperties.getProperty(ConfigKeys.WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES, "5242880")))
+        .setStoreSchemaFetcher(schemaFetcher)
         .setChunkingEnabled(isChunkingEnabled);
     extractConcurrentProducerConfig(veniceWriterProperties, builder);
     return constructVeniceWriter(veniceWriterProperties, builder.build());
   }
 
   // trickery for unit testing
-  VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(Properties properties, VeniceWriterOptions writerOptions) {
+  AbstractVeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
+      Properties properties,
+      VeniceWriterOptions writerOptions) {
     Properties finalWriterConfigs = new Properties();
     finalWriterConfigs.putAll(properties);
-    finalWriterConfigs.putAll(additionalWriterConfigs);
-    return new VeniceWriterFactory(finalWriterConfigs).createVeniceWriter(writerOptions);
+    finalWriterConfigs.putAll(additionalConfigs);
+    return new VeniceWriterFactory(finalWriterConfigs).createAbstractVeniceWriter(writerOptions);
   }
 
   protected void setupClientsAndReInitProvider() {
@@ -464,6 +518,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         LOGGER.info("Skip verifying the latest protocols at runtime are valid in Venice backend.");
       }
 
+      LOGGER.info("Discovery url for schema fetcher: {}", discoveryUrl.get());
+      this.schemaFetcher = ClientFactory.createStoreSchemaFetcher(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(discoveryUrl.get()));
       if (sslFactory.isPresent()) {
         reinitProvider = () -> new HttpsTransportClient(discoveryUrl.get(), 0, 0, false, sslFactory.get());
       } else {
@@ -471,8 +528,21 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       }
       transportClient = reinitProvider.apply();
     } else {
-      this.primaryControllerColoD2Client = getStartedD2Client(primaryControllerColoD2ZKHost);
-      this.childColoD2Client = getStartedD2Client(veniceChildD2ZkHost);
+      // Use provided D2Client instances if available, otherwise create them using ZK hosts
+      this.primaryControllerColoD2Client = providedPrimaryControllerColoD2Client.orElseGet(() -> {
+        if (primaryControllerColoD2ZKHost == null) {
+          throw new IllegalStateException(
+              "Cannot create primary controller colo D2Client: no D2Client provided and no ZK host available");
+        }
+        return getStartedD2Client(primaryControllerColoD2ZKHost);
+      });
+      this.childColoD2Client = providedChildColoD2Client.orElseGet(() -> {
+        if (veniceChildD2ZkHost == null) {
+          throw new IllegalStateException(
+              "Cannot create child colo D2Client: no D2Client provided and no ZK host available");
+        }
+        return getStartedD2Client(veniceChildD2ZkHost);
+      });
 
       // Discover cluster
       D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
@@ -508,6 +578,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
             .verifySchemaVersionPresentOrExit();
         LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
       }
+      LOGGER.info("Discovery service name for schema fetcher: {}", discoveryResponse.getD2Service());
+      ClientConfig clientConfigForSchemaFetcher = ClientConfig.defaultGenericClientConfig(storeName)
+          .setD2Client(childColoD2Client)
+          .setD2ServiceName(discoveryResponse.getD2Service());
+      this.schemaFetcher = ClientFactory.createStoreSchemaFetcher(clientConfigForSchemaFetcher);
 
       this.controllerClient = new D2ControllerClient(
           primaryControllerD2ServiceName,
@@ -735,9 +810,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     byte[] key = serializeObject(keyObject);
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-    final PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
 
-    long logicalTimestamp = -1;
+    long logicalTimestamp = VeniceWriter.APP_DEFAULT_LOGICAL_TS;
     // Only transmit the timestamp if this is a realtime topic.
     if (valueObject instanceof VeniceObjectWithTimestamp && Version.isRealTimeTopic(topicName)) {
       VeniceObjectWithTimestamp objectWithTimestamp = (VeniceObjectWithTimestamp) valueObject;
@@ -751,11 +825,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     if (valueObject == null) {
-      if (logicalTimestamp > 0) {
-        veniceWriter.delete(key, logicalTimestamp, callback);
-      } else {
-        veniceWriter.delete(key, callback);
-      }
+      getInternalWriter().delete(key, logicalTimestamp, new CompletableFutureCallback(completableFuture));
     } else {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
 
@@ -780,28 +850,25 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       byte[] value = serializeObject(valueObject);
 
       if (valueSchemaIdPair.getSecond() == -1) {
-        if (logicalTimestamp > 0) {
-          veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), logicalTimestamp, callback);
-        } else {
-          veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
-        }
+        getInternalWriter().put(
+            key,
+            value,
+            valueSchemaIdPair.getFirst(),
+            logicalTimestamp,
+            new CompletableFutureCallback(completableFuture));
       } else {
         if (!isWriteComputeEnabled) {
           throw new SamzaException(
               "Cannot write partial update record to Venice store " + storeName + " "
                   + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
         }
-        if (logicalTimestamp > 0) {
-          veniceWriter.update(
-              key,
-              value,
-              valueSchemaIdPair.getFirst(),
-              valueSchemaIdPair.getSecond(),
-              callback,
-              logicalTimestamp);
-        } else {
-          veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
-        }
+        getInternalWriter().update(
+            key,
+            value,
+            valueSchemaIdPair.getFirst(),
+            valueSchemaIdPair.getSecond(),
+            logicalTimestamp,
+            new CompletableFutureCallback(completableFuture));
       }
     }
     return completableFuture;
@@ -822,7 +889,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    */
   @Override
   public void flush(String s) {
-    veniceWriter.flush();
+    getInternalWriter().flush();
   }
 
   private static Schema getSchemaFromObject(Object object) {
@@ -925,8 +992,26 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     return this.kafkaBootstrapServers;
   }
 
-  public VeniceWriter<byte[], byte[], byte[]> getInternalProducer() {
+  public AbstractVeniceWriter<byte[], byte[], byte[]> getInternalWriter() {
     return this.veniceWriter;
+  }
+
+  /**
+   * Get the primary controller colo D2Client instance.
+   * @return The D2Client instance for the primary controller colo
+   * Test only
+   */
+  D2Client getPrimaryControllerColoD2Client() {
+    return this.primaryControllerColoD2Client;
+  }
+
+  /**
+   * Get the child colo D2Client instance.
+   * @return The D2Client instance for the child colo
+   * Test only
+   */
+  D2Client getChildColoD2Client() {
+    return this.childColoD2Client;
   }
 
   protected void setControllerClient(D2ControllerClient controllerClient) {

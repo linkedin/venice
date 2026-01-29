@@ -4,6 +4,7 @@ import com.linkedin.alpini.netty4.handlers.BasicHttpServerCodec;
 import com.linkedin.alpini.netty4.http2.Http2PipelineInitializer;
 import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.authorization.IdentityParser;
@@ -77,7 +78,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       VeniceServerConfig serverConfig,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
-      StorageReadRequestHandler requestHandler) {
+      StorageReadRequestHandler requestHandler,
+      StorageEngineRepository storageEngineRepository) {
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
     this.isDaVinciClient = serverConfig.isDaVinciClient();
@@ -116,8 +118,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     this.sslFactory = sslFactory;
     this.sslHandshakeExecutor = sslHandshakeExecutor;
-    this.sslHandshakesThreadPoolStats =
-        new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
+    this.sslHandshakesThreadPoolStats = sslHandshakeExecutor != null
+        ? new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool")
+        : null;
 
     Class<IdentityParser> identityParserClass = ReflectUtils.loadClass(serverConfig.getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
@@ -145,6 +148,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           serverConfig,
           storeMetadataRepository,
           customizedViewRepository,
+          storageEngineRepository,
           nodeId,
           quotaUsageStats);
     } else {

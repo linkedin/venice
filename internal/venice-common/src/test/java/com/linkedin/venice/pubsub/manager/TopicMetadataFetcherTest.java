@@ -1,11 +1,7 @@
 package com.linkedin.venice.pubsub.manager;
 
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POLLING_FOR_METADATA_RETRY_MAX_ATTEMPT;
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -18,25 +14,20 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.ProducerMetadata;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
-import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
-import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -45,8 +36,6 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistExceptio
 import com.linkedin.venice.pubsub.manager.TopicMetadataFetcher.ValueAndExpiryTime;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
-import it.unimi.dsi.fastutil.ints.Int2LongMap;
-import it.unimi.dsi.fastutil.ints.Int2LongMaps;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -236,13 +225,13 @@ public class TopicMetadataFetcherTest {
   }
 
   @Test
-  public void testGetTopicLatestOffsets() {
+  public void testGetEndPositionsForTopic() {
     // test consumer::partitionFor --> (null, empty list)
     when(consumerMock.partitionsFor(pubSubTopic)).thenReturn(null).thenReturn(Collections.emptyList());
     for (int i = 0; i < 2; i++) {
       verify(consumerMock, times(i)).partitionsFor(pubSubTopic);
-      Int2LongMap res = topicMetadataFetcher.getTopicLatestOffsets(pubSubTopic);
-      assertEquals(res, Int2LongMaps.EMPTY_MAP);
+      Map<PubSubTopicPartition, PubSubPosition> res = topicMetadataFetcher.getEndPositionsForTopic(pubSubTopic);
+      assertEquals(res, Collections.emptyMap());
       assertEquals(res.size(), 0);
       verify(consumerMock, times(i + 1)).partitionsFor(pubSubTopic);
     }
@@ -251,26 +240,83 @@ public class TopicMetadataFetcherTest {
     PubSubTopicPartitionInfo tp0Info = new PubSubTopicPartitionInfo(pubSubTopic, 0, true);
     PubSubTopicPartitionInfo tp1Info = new PubSubTopicPartitionInfo(pubSubTopic, 1, true);
     List<PubSubTopicPartitionInfo> partitionInfo = Arrays.asList(tp0Info, tp1Info);
-    Map<PubSubTopicPartition, Long> offsetsMap = new ConcurrentHashMap<>();
-    offsetsMap.put(tp0Info.getTopicPartition(), 111L);
-    offsetsMap.put(tp1Info.getTopicPartition(), 222L);
+    Map<PubSubTopicPartition, PubSubPosition> offsetsMap = new HashMap<>(2);
+    offsetsMap.put(tp0Info.getTopicPartition(), ApacheKafkaOffsetPosition.of(111L));
+    offsetsMap.put(tp1Info.getTopicPartition(), ApacheKafkaOffsetPosition.of(222L));
 
     when(consumerMock.partitionsFor(pubSubTopic)).thenReturn(partitionInfo);
-    when(consumerMock.endOffsets(eq(offsetsMap.keySet()), any(Duration.class))).thenReturn(offsetsMap);
+    when(consumerMock.endPositions(eq(offsetsMap.keySet()), any(Duration.class))).thenReturn(offsetsMap);
 
-    Int2LongMap res = topicMetadataFetcher.getTopicLatestOffsets(pubSubTopic);
+    Map<PubSubTopicPartition, PubSubPosition> res = topicMetadataFetcher.getEndPositionsForTopic(pubSubTopic);
     assertEquals(res.size(), offsetsMap.size());
-    assertEquals(res.get(0), 111L);
-    assertEquals(res.get(1), 222L);
+    assertEquals(res.get(tp0Info.getTopicPartition()), ApacheKafkaOffsetPosition.of(111L));
+    assertEquals(res.get(tp1Info.getTopicPartition()), ApacheKafkaOffsetPosition.of(222L));
     assertEquals(
-        topicMetadataFetcher.getLatestOffsetCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, 0)),
-        PubSubConstants.UNKNOWN_LATEST_OFFSET);
+        topicMetadataFetcher.getLatestPositionCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, 0)),
+        PubSubSymbolicPosition.LATEST);
 
     verify(consumerMock, times(3)).partitionsFor(pubSubTopic);
-    verify(consumerMock, times(1)).endOffsets(eq(offsetsMap.keySet()), any(Duration.class));
+    verify(consumerMock, times(1)).endPositions(eq(offsetsMap.keySet()), any(Duration.class));
 
     // check if consumer was released back to the pool
     assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testGetStartPositionsForTopic() {
+    // test consumer::partitionFor --> (null, empty list)
+    when(consumerMock.partitionsFor(pubSubTopic)).thenReturn(null).thenReturn(Collections.emptyList());
+    for (int i = 0; i < 2; i++) {
+      verify(consumerMock, times(i)).partitionsFor(pubSubTopic);
+      Map<PubSubTopicPartition, PubSubPosition> res = topicMetadataFetcher.getStartPositionsForTopic(pubSubTopic);
+      assertEquals(res, Collections.emptyMap());
+      assertEquals(res.size(), 0);
+      verify(consumerMock, times(i + 1)).partitionsFor(pubSubTopic);
+    }
+
+    // test consumer::partitionFor returns non-empty list
+    PubSubTopicPartitionInfo tp0Info = new PubSubTopicPartitionInfo(pubSubTopic, 0, true);
+    PubSubTopicPartitionInfo tp1Info = new PubSubTopicPartitionInfo(pubSubTopic, 1, true);
+    List<PubSubTopicPartitionInfo> partitionInfo = Arrays.asList(tp0Info, tp1Info);
+
+    // Create position objects once for reuse
+    PubSubPosition tp0Position = ApacheKafkaOffsetPosition.of(0L);
+    PubSubPosition tp1Position = ApacheKafkaOffsetPosition.of(10L);
+
+    Map<PubSubTopicPartition, PubSubPosition> offsetsMap = new HashMap<>(2);
+    offsetsMap.put(tp0Info.getTopicPartition(), tp0Position);
+    offsetsMap.put(tp1Info.getTopicPartition(), tp1Position);
+
+    when(consumerMock.partitionsFor(pubSubTopic)).thenReturn(partitionInfo);
+    when(consumerMock.beginningPositions(eq(offsetsMap.keySet()), any(Duration.class))).thenReturn(offsetsMap);
+
+    Map<PubSubTopicPartition, PubSubPosition> res = topicMetadataFetcher.getStartPositionsForTopic(pubSubTopic);
+    assertEquals(res.size(), offsetsMap.size());
+    assertEquals(res.get(tp0Info.getTopicPartition()), tp0Position);
+    assertEquals(res.get(tp1Info.getTopicPartition()), tp1Position);
+
+    verify(consumerMock, times(3)).partitionsFor(pubSubTopic);
+    verify(consumerMock, times(1)).beginningPositions(eq(offsetsMap.keySet()), any(Duration.class));
+
+    // check if consumer was released back to the pool
+    assertEquals(pubSubConsumerPool.size(), 1);
+
+    // mock validate topic
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    // Mock individual partition position calls
+    Map<PubSubTopicPartition, PubSubPosition> tp0SingletonMap = new HashMap<>();
+    tp0SingletonMap.put(tp0Info.getTopicPartition(), tp0Position);
+    Map<PubSubTopicPartition, PubSubPosition> tp1SingletonMap = new HashMap<>();
+    tp1SingletonMap.put(tp1Info.getTopicPartition(), tp1Position);
+
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp0Info.getTopicPartition())), any(Duration.class)))
+        .thenReturn(tp0SingletonMap);
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp1Info.getTopicPartition())), any(Duration.class)))
+        .thenReturn(tp1SingletonMap);
+
+    assertEquals(topicMetadataFetcher.getStartPositionsForPartition(tp0Info.getTopicPartition()), tp0Position);
+    assertEquals(topicMetadataFetcher.getStartPositionsForPartition(tp1Info.getTopicPartition()), tp1Position);
   }
 
   @Test
@@ -287,245 +333,75 @@ public class TopicMetadataFetcherTest {
   }
 
   @Test
-  public void testConsumeLatestRecords() {
-    // test invalid input
-    PubSubTopicPartition invalidTp = new PubSubTopicPartitionImpl(pubSubTopic, -1);
-    Throwable t =
-        expectThrows(IllegalArgumentException.class, () -> topicMetadataFetcher.consumeLatestRecords(invalidTp, 1));
-    assertTrue(t.getMessage().contains("Invalid partition number"));
-
-    // test invalid last record count
-    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
-    t = expectThrows(
-        IllegalArgumentException.class,
-        () -> topicMetadataFetcher.consumeLatestRecords(topicPartition, 0));
-    assertTrue(t.getMessage().contains("Last record count must be greater than or equal to 1."));
-
-    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
-
-    // test when endOffsets returns null
-    when(consumerMock.endOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class))).thenReturn(null);
-    t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.consumeLatestRecords(topicPartition, 1));
-    assertTrue(t.getMessage().contains("Failed to get the end offset for topic-partition:"));
-
-    // test when endOffsets returns empty map
-    when(consumerMock.endOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class)))
-        .thenReturn(Collections.emptyMap());
-    t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.consumeLatestRecords(topicPartition, 1));
-    assertTrue(t.getMessage().contains("Failed to get the end offset for topic-partition:"));
-
-    // test when there are no records to consume as endOffset is 0
-    Map<PubSubTopicPartition, Long> endOffsetsMap = new HashMap<>();
-    endOffsetsMap.put(topicPartition, 0L);
-    when(consumerMock.endOffsets(eq(Collections.singletonList(topicPartition)), any(Duration.class)))
-        .thenReturn(endOffsetsMap);
-    List<DefaultPubSubMessage> consumedRecords = topicMetadataFetcher.consumeLatestRecords(topicPartition, 1);
-    assertEquals(consumedRecords.size(), 0);
-
-    // test when beginningOffset (non-zero) is same as endOffset
-    endOffsetsMap.put(topicPartition, 1L);
-    when(consumerMock.endOffsets(eq(Collections.singletonList(topicPartition)), any(Duration.class)))
-        .thenReturn(endOffsetsMap);
-    when(consumerMock.beginningOffset(eq(topicPartition), any(Duration.class))).thenReturn(1L);
-    consumedRecords = topicMetadataFetcher.consumeLatestRecords(topicPartition, 1);
-    assertEquals(consumedRecords.size(), 0);
-
-    long endOffset = 10;
-    long startOffset = 3;
-    int numRecordsToRead = 5; // read records at offsets 5, 6, 7, 8, 9
-    long consumePastOffset = 4; // subscribe at offset
-    endOffsetsMap.put(topicPartition, endOffset);
-    when(consumerMock.endOffsets(eq(Collections.singletonList(topicPartition)), any(Duration.class)))
-        .thenReturn(endOffsetsMap);
-    when(consumerMock.beginningOffset(eq(topicPartition), any(Duration.class))).thenReturn(startOffset);
-    verify(consumerMock, never()).subscribe(topicPartition, consumePastOffset);
-    verify(consumerMock, never()).poll(anyLong());
-    verify(consumerMock, never()).unSubscribe(eq(topicPartition));
-
-    // test when poll returns no records
-    when(consumerMock.poll(anyLong())).thenReturn(Collections.emptyMap());
-    t = expectThrows(
-        VeniceException.class,
-        () -> topicMetadataFetcher.consumeLatestRecords(topicPartition, numRecordsToRead));
-    assertNotNull(t.getMessage());
-    assertTrue(t.getMessage().contains("Failed to get records from topic-partition:"));
-    verify(consumerMock, times(1)).subscribe(topicPartition, consumePastOffset);
-    verify(consumerMock, times(PUBSUB_CONSUMER_POLLING_FOR_METADATA_RETRY_MAX_ATTEMPT)).poll(anyLong());
-    verify(consumerMock, times(1)).unSubscribe(eq(topicPartition));
-
-    // poll returns 1, then 2 and then 4 records (to simulate a condition where records get added after getEndOffsets
-    // API call)
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> batch1 = new HashMap<>();
-    batch1.put(topicPartition, Collections.singletonList(getPubSubMessage(topicPartition, true, 5)));
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> batch2 = new HashMap<>();
-    batch2.put(
-        topicPartition,
-        Arrays.asList(getPubSubMessage(topicPartition, true, 6), getPubSubMessage(topicPartition, false, 7)));
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> batch3 = new HashMap<>();
-    batch3.put(
-        topicPartition,
-        Arrays.asList(
-            getPubSubMessage(topicPartition, false, 8),
-            getPubSubMessage(topicPartition, true, 9),
-            getPubSubMessage(topicPartition, true, 10),
-            getPubSubMessage(topicPartition, false, 11)));
-    when(consumerMock.poll(anyLong())).thenReturn(batch1).thenReturn(batch2).thenReturn(batch3);
-
-    List<DefaultPubSubMessage> allConsumedRecords =
-        topicMetadataFetcher.consumeLatestRecords(topicPartition, numRecordsToRead);
-    assertTrue(allConsumedRecords.size() >= numRecordsToRead);
-    long firstOffset = allConsumedRecords.get(0).getPosition().getNumericOffset();
-    assertEquals(firstOffset, 5);
-    long lastOffset = allConsumedRecords.get(allConsumedRecords.size() - 1).getPosition().getNumericOffset();
-    assertEquals(lastOffset, 11);
-    verify(consumerMock, times(2)).subscribe(topicPartition, consumePastOffset);
-    verify(consumerMock, times(6)).poll(anyLong()); // 3 from prev test and 3 from this test
-    verify(consumerMock, times(2)).unSubscribe(eq(topicPartition));
-  }
-
-  private DefaultPubSubMessage getHeartBeatPubSubMessage(PubSubTopicPartition topicPartition, long offset) {
-    KafkaKey key = KafkaKey.HEART_BEAT;
-    KafkaMessageEnvelope val = mock(KafkaMessageEnvelope.class);
-    ProducerMetadata producerMetadata = new ProducerMetadata();
-    producerMetadata.setMessageTimestamp(System.nanoTime());
-    when(val.getProducerMetadata()).thenReturn(producerMetadata);
-    return new ImmutablePubSubMessage(
-        key,
-        val,
-        topicPartition,
-        ApacheKafkaOffsetPosition.of(offset),
-        System.currentTimeMillis(),
-        512);
-  }
-
-  private DefaultPubSubMessage getPubSubMessage(
-      PubSubTopicPartition topicPartition,
-      boolean isControlMessage,
-      long offset) {
-    KafkaKey key = mock(KafkaKey.class);
-    when(key.isControlMessage()).thenReturn(isControlMessage);
-    KafkaMessageEnvelope val = mock(KafkaMessageEnvelope.class);
-    ProducerMetadata producerMetadata = new ProducerMetadata();
-    producerMetadata.setMessageTimestamp(System.nanoTime());
-    when(val.getProducerMetadata()).thenReturn(producerMetadata);
-    return new ImmutablePubSubMessage(
-        key,
-        val,
-        topicPartition,
-        ApacheKafkaOffsetPosition.of(offset),
-        System.currentTimeMillis(),
-        512);
-  }
-
-  @Test
-  public void testGetProducerTimestampOfLastDataMessage() {
-    // test when there are no records to consume
-    TopicMetadataFetcher metadataFetcherSpy = spy(topicMetadataFetcher);
-    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
-    doReturn(Collections.emptyList()).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
-    long timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
-    assertEquals(timestamp, PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION);
-    verify(metadataFetcherSpy, times(1)).consumeLatestRecords(eq(topicPartition), anyInt());
-
-    // test when there are no data messages and heartbeat messages to consume
-    DefaultPubSubMessage cm = getPubSubMessage(topicPartition, true, 5);
-    doReturn(Collections.singletonList(cm)).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
-    Throwable t = expectThrows(
-        VeniceException.class,
-        () -> metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition));
-    assertTrue(t.getMessage().contains("No data message found in topic-partition"));
-
-    // test when there are heartbeat messages but no data messages to consume
-    DefaultPubSubMessage hm = getHeartBeatPubSubMessage(topicPartition, 6);
-    doReturn(Collections.singletonList(hm)).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
-    timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
-    assertEquals(timestamp, hm.getValue().getProducerMetadata().getMessageTimestamp());
-
-    // test when there are data messages to consume
-    DefaultPubSubMessage dm0 = getPubSubMessage(topicPartition, false, 4);
-    doReturn(Collections.singletonList(dm0)).when(metadataFetcherSpy)
-        .consumeLatestRecords(eq(topicPartition), anyInt());
-    timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
-    assertEquals(timestamp, dm0.getValue().getProducerMetadata().getMessageTimestamp());
-
-    // test: first return one control message and then one data message
-    doReturn(Collections.singletonList(cm)).doReturn(Collections.singletonList(dm0))
-        .when(metadataFetcherSpy)
-        .consumeLatestRecords(eq(topicPartition), anyInt());
-    timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
-    assertEquals(timestamp, dm0.getValue().getProducerMetadata().getMessageTimestamp());
-
-    // test: return 2 data messages
-    DefaultPubSubMessage dm1 = getPubSubMessage(topicPartition, false, 3);
-    doReturn(Arrays.asList(dm1, dm0)).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
-    timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
-    assertEquals(timestamp, dm0.getValue().getProducerMetadata().getMessageTimestamp());
-  }
-
-  @Test
-  public void testGetLatestOffset() {
+  public void testGetLatestPosition() {
     PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
-    Map<PubSubTopicPartition, Long> offsetMap = new HashMap<>();
-    offsetMap.put(tp0, 1001L);
-    when(consumerMock.endOffsets(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(offsetMap);
-    long latestOffset = topicMetadataFetcher.getLatestOffset(tp0);
-    assertEquals(latestOffset, 1001L);
+    ApacheKafkaOffsetPosition p1001 = ApacheKafkaOffsetPosition.of(1001L);
+    Map<PubSubTopicPartition, PubSubPosition> offsetMap = new HashMap<>();
+    offsetMap.put(tp0, p1001);
+    when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(offsetMap);
+    assertEquals(topicMetadataFetcher.getEndPositionForPartition(tp0), p1001);
 
     // test when endOffsets returns null
-    when(consumerMock.endOffsets(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(Collections.emptyMap());
-    Throwable t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.getLatestOffset(tp0));
-    assertTrue(t.getMessage().contains("Got null as latest offset for"));
+    when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(Collections.emptyMap());
+    Throwable t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.getEndPositionForPartition(tp0));
+    assertTrue(t.getMessage().contains("Got null position for:"), "Got: " + t.getMessage());
     assertEquals(pubSubConsumerPool.size(), 1);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testGetLatestOffsetWithRetries() throws ExecutionException, InterruptedException {
+  public void testGetLatestPositionWithRetries() throws ExecutionException, InterruptedException {
     PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
     when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
 
+    ApacheKafkaOffsetPosition p99 = ApacheKafkaOffsetPosition.of(99L);
     TopicMetadataFetcher topicMetadataFetcherSpy = spy(topicMetadataFetcher);
-    doThrow(new PubSubTopicDoesNotExistException("Test1")).doThrow(new PubSubOpTimeoutException("Test2"))
-        .doThrow(new PubSubOpTimeoutException("Test3"))
-        .doReturn(99L)
-        .when(topicMetadataFetcherSpy)
-        .getLatestOffset(tp0);
-    assertEquals((long) topicMetadataFetcherSpy.getLatestOffsetWithRetriesAsync(tp0, 5).get(), 99L);
-    verify(topicMetadataFetcherSpy, times(4)).getLatestOffset(tp0);
+    TopicMetadataFetcher topicMetadataFetcher3 =
+        doThrow(new PubSubTopicDoesNotExistException("Test1")).doThrow(new PubSubOpTimeoutException("Test2"))
+            .doThrow(new PubSubOpTimeoutException("Test3"))
+            .doReturn(p99)
+            .when(topicMetadataFetcherSpy);
+    topicMetadataFetcher3.getEndPositionForPartition(tp0);
+    assertEquals(topicMetadataFetcherSpy.getLatestOffsetWithRetriesAsync(tp0, 5).get(), p99);
+    TopicMetadataFetcher topicMetadataFetcher2 = verify(topicMetadataFetcherSpy, times(4));
+    topicMetadataFetcher2.getEndPositionForPartition(tp0);
 
-    doThrow(new PubSubTopicDoesNotExistException("Test1")).when(topicMetadataFetcherSpy).getLatestOffset(tp0);
+    TopicMetadataFetcher topicMetadataFetcher1 =
+        doThrow(new PubSubTopicDoesNotExistException("Test1")).when(topicMetadataFetcherSpy);
+    topicMetadataFetcher1.getEndPositionForPartition(tp0);
     expectThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicMetadataFetcherSpy.getLatestOffsetWithRetries(tp0, 1));
+        () -> topicMetadataFetcherSpy.getLatestPositionWithRetries(tp0, 1));
 
-    Map<PubSubTopicPartition, Long> offsetMap = new HashMap<>();
-    offsetMap.put(tp0, 1001L);
-    when(consumerMock.endOffsets(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(offsetMap);
-    long latestOffset = topicMetadataFetcher.getLatestOffsetWithRetries(tp0, 1);
-    assertEquals(latestOffset, 1001L);
+    ApacheKafkaOffsetPosition p1001 = ApacheKafkaOffsetPosition.of(1001L);
+    Map<PubSubTopicPartition, PubSubPosition> offsetMap = new HashMap<>();
+    offsetMap.put(tp0, p1001);
+    when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(offsetMap);
+    assertEquals(topicMetadataFetcher.getLatestPositionWithRetries(tp0, 1), p1001);
 
     // test when endOffsets returns null
-    when(consumerMock.endOffsets(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(Collections.emptyMap());
-    Throwable t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.getLatestOffsetWithRetries(tp0, 1));
-    assertTrue(t.getMessage().contains("Got null as latest offset for"));
+    when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(Collections.emptyMap());
+    Throwable t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.getLatestPositionWithRetries(tp0, 1));
+    assertTrue(t.getMessage().contains("Got null position for:"));
     assertEquals(pubSubConsumerPool.size(), 1);
   }
 
   @Test
-  public void testGetOffsetForTime() {
+  public void testGetPositionForTime() {
     PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
     when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
-    long latestOffset = 12321L;
     TopicMetadataFetcher topicMetadataFetcherSpy = spy(topicMetadataFetcher);
-    doReturn(latestOffset).when(topicMetadataFetcherSpy).getLatestOffset(tp0);
+    ApacheKafkaOffsetPosition endPosition = ApacheKafkaOffsetPosition.of(1234L);
+    doReturn(endPosition).when(topicMetadataFetcherSpy).getEndPositionForPartition(tp0);
 
     long ts = System.currentTimeMillis();
-    when(consumerMock.offsetForTime(eq(tp0), eq(ts), any(Duration.class))).thenReturn(9988L);
-    assertEquals(topicMetadataFetcherSpy.getOffsetForTime(tp0, ts), 9988L);
+    ApacheKafkaOffsetPosition p9988 = ApacheKafkaOffsetPosition.of(9988L);
+    when(consumerMock.getPositionByTimestamp(eq(tp0), eq(ts), any(Duration.class))).thenReturn(p9988);
+    assertEquals(topicMetadataFetcherSpy.getPositionForTime(tp0, ts), p9988);
     assertEquals(pubSubConsumerPool.size(), 1);
 
     // test when offsetForTime returns null
-    when(consumerMock.offsetForTime(eq(tp0), eq(ts), any(Duration.class))).thenReturn(null);
-    assertEquals(topicMetadataFetcherSpy.getOffsetForTime(tp0, ts), latestOffset);
+    when(consumerMock.getPositionByTimestamp(eq(tp0), eq(ts), any(Duration.class))).thenReturn(null);
+    assertEquals(topicMetadataFetcherSpy.getPositionForTime(tp0, ts), endPosition);
     assertEquals(pubSubConsumerPool.size(), 1);
   }
 
@@ -558,5 +434,373 @@ public class TopicMetadataFetcherTest {
     waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       assertEquals(pubSubConsumerPool.size(), 1);
     });
+  }
+
+  @Test
+  public void testInvalidateKeyForPubSubTopic() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(pubSubTopic, 1);
+    PubSubTopic otherTopic = pubSubTopicRepository.getTopic("otherTopic");
+    PubSubTopicPartition otherTp = new PubSubTopicPartitionImpl(otherTopic, 0);
+
+    // Populate caches with test data
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+
+    // Add entries to topic existence cache
+    spyFetcher.getTopicExistenceCache().put(pubSubTopic, spyFetcher.new ValueAndExpiryTime<>(true));
+    spyFetcher.getTopicExistenceCache().put(otherTopic, spyFetcher.new ValueAndExpiryTime<>(true));
+
+    // Add entries to latest position cache
+    spyFetcher.getLatestPositionCache()
+        .put(tp0, spyFetcher.new ValueAndExpiryTime<>(ApacheKafkaOffsetPosition.of(100L)));
+    spyFetcher.getLatestPositionCache()
+        .put(tp1, spyFetcher.new ValueAndExpiryTime<>(ApacheKafkaOffsetPosition.of(200L)));
+    spyFetcher.getLatestPositionCache()
+        .put(otherTp, spyFetcher.new ValueAndExpiryTime<>(ApacheKafkaOffsetPosition.of(300L)));
+
+    // Verify initial state
+    assertEquals(spyFetcher.getTopicExistenceCache().size(), 2);
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 3);
+    assertTrue(spyFetcher.getTopicExistenceCache().containsKey(pubSubTopic));
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp0));
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp1));
+
+    // Test invalidateKey for PubSubTopic
+    spyFetcher.invalidateKey(pubSubTopic);
+
+    // Verify topic existence cache entry is removed
+    assertFalse(spyFetcher.getTopicExistenceCache().containsKey(pubSubTopic));
+    assertTrue(spyFetcher.getTopicExistenceCache().containsKey(otherTopic));
+
+    // Verify all partition entries for the topic are removed
+    assertFalse(spyFetcher.getLatestPositionCache().containsKey(tp0));
+    assertFalse(spyFetcher.getLatestPositionCache().containsKey(tp1));
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(otherTp));
+
+    // Verify final cache sizes
+    assertEquals(spyFetcher.getTopicExistenceCache().size(), 1);
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 1);
+  }
+
+  @Test
+  public void testInvalidateKeyForPubSubTopicPartition() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(pubSubTopic, 1);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+
+    // Add entries to latest position cache
+    spyFetcher.getLatestPositionCache()
+        .put(tp0, spyFetcher.new ValueAndExpiryTime<>(ApacheKafkaOffsetPosition.of(100L)));
+    spyFetcher.getLatestPositionCache()
+        .put(tp1, spyFetcher.new ValueAndExpiryTime<>(ApacheKafkaOffsetPosition.of(200L)));
+
+    // Verify initial state
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 2);
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp0));
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp1));
+
+    // Test invalidateKey for specific partition
+    spyFetcher.invalidateKey(tp0);
+
+    // Verify only the specified partition is removed
+    assertFalse(spyFetcher.getLatestPositionCache().containsKey(tp0));
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp1));
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 1);
+  }
+
+  @Test
+  public void testGetLatestPositionCached() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(500L);
+
+    // Mock getLatestPositionWithRetries to return expected position
+    doReturn(expectedPosition).when(spyFetcher).getLatestPositionWithRetries(eq(tp0), any(Integer.class));
+
+    // Test cache miss - should fetch and cache the position
+    PubSubPosition result = spyFetcher.getLatestPositionCached(tp0);
+    assertEquals(result, expectedPosition);
+
+    // Verify the value was cached
+    assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp0));
+    assertEquals(spyFetcher.getLatestPositionCache().get(tp0).getValue(), expectedPosition);
+
+    // Verify getLatestPositionWithRetries was called once
+    verify(spyFetcher, times(1)).getLatestPositionWithRetries(eq(tp0), any(Integer.class));
+
+    // Test cache hit - should return cached value without calling getLatestPositionWithRetries again
+    PubSubPosition cachedResult = spyFetcher.getLatestPositionCached(tp0);
+    assertEquals(cachedResult, expectedPosition);
+
+    // Verify getLatestPositionWithRetries was not called again
+    verify(spyFetcher, times(1)).getLatestPositionWithRetries(eq(tp0), any(Integer.class));
+  }
+
+  @Test
+  public void testGetLatestPositionCachedWithException() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+
+    // Test PubSubTopicDoesNotExistException - should return LATEST
+    doThrow(new PubSubTopicDoesNotExistException("Topic does not exist")).when(spyFetcher)
+        .getLatestPositionWithRetries(eq(tp0), any(Integer.class));
+
+    PubSubPosition result = spyFetcher.getLatestPositionCached(tp0);
+    assertEquals(result, PubSubSymbolicPosition.LATEST);
+
+    // Test PubSubOpTimeoutException - should return LATEST
+    doThrow(new PubSubOpTimeoutException("Timeout")).when(spyFetcher)
+        .getLatestPositionWithRetries(eq(tp0), any(Integer.class));
+
+    result = spyFetcher.getLatestPositionCached(tp0);
+    assertEquals(result, PubSubSymbolicPosition.LATEST);
+  }
+
+  @Test
+  public void testPopulateCacheWithLatestOffset() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(750L);
+
+    // Mock getLatestPositionWithRetries to return expected position
+    doReturn(expectedPosition).when(spyFetcher).getLatestPositionWithRetries(eq(tp0), any(Integer.class));
+
+    // Test populateCacheWithLatestOffset - should populate cache asynchronously
+    spyFetcher.populateCacheWithLatestOffset(tp0);
+
+    // Wait for async operation to complete
+    waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertTrue(spyFetcher.getLatestPositionCache().containsKey(tp0));
+      assertEquals(spyFetcher.getLatestPositionCache().get(tp0).getValue(), expectedPosition);
+    });
+  }
+
+  @Test
+  public void testGetLatestPositionCachedWithExpiredEntry() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition initialPosition = ApacheKafkaOffsetPosition.of(100L);
+    ApacheKafkaOffsetPosition updatedPosition = ApacheKafkaOffsetPosition.of(200L);
+
+    // Pre-populate cache with expired entry
+    ValueAndExpiryTime<PubSubPosition> expiredEntry = spyFetcher.new ValueAndExpiryTime<>(initialPosition);
+    expiredEntry.setExpiryTimeNs(System.nanoTime() - TimeUnit.SECONDS.toNanos(1)); // Set to expired (1 second ago)
+    spyFetcher.getLatestPositionCache().put(tp0, expiredEntry);
+
+    // Mock async update to return updated position - use a delayed future to prevent immediate completion
+    CompletableFuture<PubSubPosition> delayedFuture = new CompletableFuture<>();
+    doReturn(delayedFuture).when(spyFetcher).getLatestOffsetWithRetriesAsync(eq(tp0), any(Integer.class));
+
+    // Call getLatestPositionCached - with expired entry, it should return cached value but trigger async update
+    PubSubPosition result = spyFetcher.getLatestPositionCached(tp0);
+
+    // The result should be the cached value since computeIfAbsent doesn't replace existing entries
+    assertEquals(result, initialPosition);
+
+    // Verify that async update was triggered
+    verify(spyFetcher, times(1)).getLatestOffsetWithRetriesAsync(eq(tp0), any(Integer.class));
+
+    // Complete the future to simulate async update completion
+    delayedFuture.complete(updatedPosition);
+
+    // Wait for async update to complete and verify cache was updated
+    waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertEquals(spyFetcher.getLatestPositionCache().get(tp0).getValue(), updatedPosition);
+    });
+  }
+
+  @Test
+  public void testGetEarliestPositionCachedScenarios() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(0L);
+
+    // Case 1: Cache miss - should fetch and populate cache
+    Map<PubSubTopicPartition, PubSubPosition> tp0Map = new HashMap<>();
+    tp0Map.put(tp0, expectedPosition);
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class))).thenReturn(tp0Map);
+    PubSubPosition result1 = spyFetcher.getEarliestPositionCached(tp0);
+    assertEquals(result1, expectedPosition);
+    assertTrue(spyFetcher.getEarliestPositionCache().containsKey(tp0));
+    assertEquals(spyFetcher.getEarliestPositionCache().get(tp0).getValue(), expectedPosition);
+
+    // Case 2: Cache hit - should return cached value without fetching again
+    PubSubPosition result2 = spyFetcher.getEarliestPositionCached(tp0);
+    assertEquals(result2, expectedPosition);
+    verify(consumerMock, times(1)).beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class)); // Should
+                                                                                                            // only be
+                                                                                                            // called
+                                                                                                            // once
+
+    // Case 3: Multiple partitions - each should be cached independently
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(pubSubTopic, 1);
+    ApacheKafkaOffsetPosition expectedPosition1 = ApacheKafkaOffsetPosition.of(10L);
+    Map<PubSubTopicPartition, PubSubPosition> tp1Map = new HashMap<>();
+    tp1Map.put(tp1, expectedPosition1);
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp1)), any(Duration.class))).thenReturn(tp1Map);
+    PubSubPosition result3 = spyFetcher.getEarliestPositionCached(tp1);
+    assertEquals(result3, expectedPosition1);
+    assertEquals(spyFetcher.getEarliestPositionCache().size(), 2);
+
+    assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testGetEarliestPositionCachedWithException() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+
+    // Case 1: PubSubTopicDoesNotExistException - should return EARLIEST symbolic position
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class)))
+        .thenThrow(new PubSubTopicDoesNotExistException("Topic does not exist"));
+    PubSubPosition result1 = spyFetcher.getEarliestPositionCached(tp0);
+    assertEquals(result1, PubSubSymbolicPosition.EARLIEST);
+
+    // Case 2: PubSubOpTimeoutException - should return EARLIEST symbolic position
+    spyFetcher.getEarliestPositionCache().clear();
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class)))
+        .thenThrow(new PubSubOpTimeoutException("Timeout"));
+    PubSubPosition result2 = spyFetcher.getEarliestPositionCached(tp0);
+    assertEquals(result2, PubSubSymbolicPosition.EARLIEST);
+
+    assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testGetEarliestPositionCachedNonBlockingScenarios() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(0L);
+
+    // Case 1: Cache miss - should return EARLIEST and trigger async population
+    PubSubPosition result1 = spyFetcher.getEarliestPositionCachedNonBlocking(tp0);
+    assertEquals(result1, PubSubSymbolicPosition.EARLIEST);
+
+    // Case 2: After async population completes, should return cached value
+    Map<PubSubTopicPartition, PubSubPosition> tp0Map = new HashMap<>();
+    tp0Map.put(tp0, expectedPosition);
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class))).thenReturn(tp0Map);
+    spyFetcher.getEarliestPositionCache().put(tp0, spyFetcher.new ValueAndExpiryTime<>(expectedPosition));
+    PubSubPosition result2 = spyFetcher.getEarliestPositionCachedNonBlocking(tp0);
+    assertEquals(result2, expectedPosition);
+
+    // Case 3: Expired cache entry - should return cached value but trigger async update
+    ValueAndExpiryTime<PubSubPosition> expiredEntry = spyFetcher.new ValueAndExpiryTime<>(expectedPosition);
+    expiredEntry.setExpiryTimeNs(System.nanoTime() - TimeUnit.SECONDS.toNanos(1));
+    spyFetcher.getEarliestPositionCache().put(tp0, expiredEntry);
+    PubSubPosition result3 = spyFetcher.getEarliestPositionCachedNonBlocking(tp0);
+    assertEquals(result3, expectedPosition);
+
+    assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testGetEarliestPositionNoRetry() throws ExecutionException, InterruptedException {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition expectedPosition = ApacheKafkaOffsetPosition.of(0L);
+
+    // Case 1: Successful async fetch
+    Map<PubSubTopicPartition, PubSubPosition> tp0Map = new HashMap<>();
+    tp0Map.put(tp0, expectedPosition);
+    when(consumerMock.beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class))).thenReturn(tp0Map);
+    CompletableFuture<PubSubPosition> future1 = spyFetcher.getEarliestPositionNoRetry(tp0);
+    PubSubPosition result1 = future1.get();
+    assertEquals(result1, expectedPosition);
+
+    // Case 2: Multiple concurrent calls should all complete successfully
+    CompletableFuture<PubSubPosition> future2 = spyFetcher.getEarliestPositionNoRetry(tp0);
+    CompletableFuture<PubSubPosition> future3 = spyFetcher.getEarliestPositionNoRetry(tp0);
+    PubSubPosition result2 = future2.get();
+    PubSubPosition result3 = future3.get();
+    assertEquals(result2, expectedPosition);
+    assertEquals(result3, expectedPosition);
+
+    assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testInvalidateKeyRemovesBothCaches() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition earliestPosition = ApacheKafkaOffsetPosition.of(0L);
+    ApacheKafkaOffsetPosition latestPosition = ApacheKafkaOffsetPosition.of(1000L);
+
+    // Case 1: Populate both caches
+    spyFetcher.getEarliestPositionCache().put(tp0, spyFetcher.new ValueAndExpiryTime<>(earliestPosition));
+    spyFetcher.getLatestPositionCache().put(tp0, spyFetcher.new ValueAndExpiryTime<>(latestPosition));
+    assertEquals(spyFetcher.getEarliestPositionCache().size(), 1);
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 1);
+
+    // Case 2: Invalidate partition key - should remove from both caches
+    spyFetcher.invalidateKey(tp0);
+    assertEquals(spyFetcher.getEarliestPositionCache().size(), 0);
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 0);
+
+    // Case 3: Invalidate topic key - should remove all partitions from both caches
+    PubSubTopicPartition tp1 = new PubSubTopicPartitionImpl(pubSubTopic, 1);
+    spyFetcher.getEarliestPositionCache().put(tp0, spyFetcher.new ValueAndExpiryTime<>(earliestPosition));
+    spyFetcher.getEarliestPositionCache().put(tp1, spyFetcher.new ValueAndExpiryTime<>(earliestPosition));
+    spyFetcher.getLatestPositionCache().put(tp0, spyFetcher.new ValueAndExpiryTime<>(latestPosition));
+    spyFetcher.getLatestPositionCache().put(tp1, spyFetcher.new ValueAndExpiryTime<>(latestPosition));
+    assertEquals(spyFetcher.getEarliestPositionCache().size(), 2);
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 2);
+
+    spyFetcher.invalidateKey(pubSubTopic);
+    assertEquals(spyFetcher.getEarliestPositionCache().size(), 0);
+    assertEquals(spyFetcher.getLatestPositionCache().size(), 0);
+
+    assertEquals(pubSubConsumerPool.size(), 1);
+  }
+
+  @Test
+  public void testGetEarliestPositionCachedWithExpiredEntry() {
+    PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
+
+    TopicMetadataFetcher spyFetcher = spy(topicMetadataFetcher);
+    ApacheKafkaOffsetPosition initialPosition = ApacheKafkaOffsetPosition.of(0L);
+    ApacheKafkaOffsetPosition updatedPosition = ApacheKafkaOffsetPosition.of(10L);
+
+    // Case 1: Pre-populate cache with expired entry
+    ValueAndExpiryTime<PubSubPosition> expiredEntry = spyFetcher.new ValueAndExpiryTime<>(initialPosition);
+    expiredEntry.setExpiryTimeNs(System.nanoTime() - TimeUnit.SECONDS.toNanos(1));
+    spyFetcher.getEarliestPositionCache().put(tp0, expiredEntry);
+
+    // Case 2: Mock async update to return updated position
+    CompletableFuture<PubSubPosition> delayedFuture = new CompletableFuture<>();
+    doReturn(delayedFuture).when(spyFetcher).getEarliestPositionNoRetry(eq(tp0));
+
+    // Case 3: Call getEarliestPositionCached - should return cached value but trigger async update
+    PubSubPosition result = spyFetcher.getEarliestPositionCached(tp0);
+    assertEquals(result, initialPosition);
+    verify(spyFetcher, times(1)).getEarliestPositionNoRetry(eq(tp0));
+
+    // Case 4: Complete the future and verify cache was updated
+    delayedFuture.complete(updatedPosition);
+    waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertEquals(spyFetcher.getEarliestPositionCache().get(tp0).getValue(), updatedPosition);
+    });
+
+    assertEquals(pubSubConsumerPool.size(), 1);
   }
 }

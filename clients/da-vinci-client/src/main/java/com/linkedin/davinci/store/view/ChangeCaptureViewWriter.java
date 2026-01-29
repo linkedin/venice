@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -125,24 +126,18 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       return;
     }
 
-    Map<String, Long> sortedWaterMarkOffsets = partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap();
+    Map<String, PubSubPosition> sortedWaterMarkOffsets = partitionConsumptionState.getLatestProcessedRtPositions();
 
-    List<Long> highWaterMarkOffsets;
-    /**
-     * TODO(sushantmane): Once we update OffsetRecord to use PubSubPosition, we should pop up this field from the PCS
-     */
     List<ByteBuffer> highWaterMarkPubSubPositions;
     if (maxColoIdValue > -1) {
-      highWaterMarkOffsets = new ArrayList<>(Collections.nCopies(maxColoIdValue + 1, 0L));
       highWaterMarkPubSubPositions = new ArrayList<>(
-          Collections.nCopies(maxColoIdValue + 1, PubSubSymbolicPosition.EARLIEST.getWireFormatBytes()));
+          Collections.nCopies(maxColoIdValue + 1, PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer()));
       for (String url: sortedWaterMarkOffsets.keySet()) {
-        highWaterMarkOffsets.set(
+        highWaterMarkPubSubPositions.set(
             kafkaClusterUrlToIdMap.getInt(url),
-            partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap().get(url));
+            partitionConsumptionState.getLatestProcessedRtPositions().get(url).toWireFormatBuffer());
       }
     } else {
-      highWaterMarkOffsets = Collections.emptyList();
       highWaterMarkPubSubPositions = Collections.emptyList();
     }
 
@@ -152,7 +147,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     }
 
     veniceWriter.sendControlMessage(
-        constructVersionSwapControlMessage(versionSwapMessage, highWaterMarkOffsets, highWaterMarkPubSubPositions),
+        constructVersionSwapControlMessage(versionSwapMessage, highWaterMarkPubSubPositions),
         partitionConsumptionState.getPartition(),
         Collections.emptyMap(),
         null,
@@ -210,7 +205,6 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
 
   private ControlMessage constructVersionSwapControlMessage(
       VersionSwap versionSwapMessage,
-      List<Long> localHighWatermarks,
       List<ByteBuffer> localHighWatermarkPubSubPositions) {
     ControlMessage controlMessageToBroadcast = new ControlMessage();
     controlMessageToBroadcast.controlMessageType = ControlMessageType.VERSION_SWAP.getValue();
@@ -218,9 +212,16 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     VersionSwap versionSwapToBroadcast = new VersionSwap();
     versionSwapToBroadcast.oldServingVersionTopic = versionSwapMessage.oldServingVersionTopic;
     versionSwapToBroadcast.newServingVersionTopic = versionSwapMessage.newServingVersionTopic;
-    versionSwapToBroadcast.localHighWatermarks = localHighWatermarks;
     versionSwapToBroadcast.localHighWatermarkPubSubPositions = localHighWatermarkPubSubPositions;
+    // Defensive coding, these new fields added to VersionSwap have defaults if they are deserialized from Avro bytes.
+    // However, we could run into NPE if they are constructed in other ways. e.g. the empty constructor.
+    versionSwapToBroadcast.sourceRegion =
+        versionSwapMessage.sourceRegion == null ? "" : versionSwapMessage.sourceRegion;
+    versionSwapToBroadcast.destinationRegion =
+        versionSwapMessage.destinationRegion == null ? "" : versionSwapMessage.destinationRegion;
+    versionSwapToBroadcast.generationId = versionSwapMessage.generationId;
     controlMessageToBroadcast.controlMessageUnion = versionSwapToBroadcast;
+
     return controlMessageToBroadcast;
   }
 }

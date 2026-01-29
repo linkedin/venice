@@ -159,35 +159,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
     SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchemaStr);
 
-    return getValueSchemaIdCanonicalMatch(valueSchemas, valueSchemaEntry);
-  }
-
-  private int getValueSchemaIdCanonicalMatch(Collection<SchemaEntry> valueSchemas, SchemaEntry valueSchemaEntry) {
-    List<SchemaEntry> canonicalizedMatches = AvroSchemaUtils.filterCanonicalizedSchemas(valueSchemaEntry, valueSchemas);
-    int schemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
-    if (!canonicalizedMatches.isEmpty()) {
-      if (canonicalizedMatches.size() == 1) {
-        schemaId = canonicalizedMatches.iterator().next().getId();
-      } else {
-        List<SchemaEntry> exactMatches = AvroSchemaUtils.filterSchemas(valueSchemaEntry, canonicalizedMatches);
-        if (exactMatches.isEmpty()) {
-          schemaId = getSchemaEntryWithLargestId(canonicalizedMatches).getId();
-        } else {
-          schemaId = getSchemaEntryWithLargestId(exactMatches).getId();
-        }
-      }
-    }
-    return schemaId;
-  }
-
-  private SchemaEntry getSchemaEntryWithLargestId(Collection<SchemaEntry> schemas) {
-    SchemaEntry largestIdSchema = schemas.iterator().next();
-    for (SchemaEntry schema: schemas) {
-      if (schema.getId() > largestIdSchema.getId()) {
-        largestIdSchema = schema;
-      }
-    }
-    return largestIdSchema;
+    return AvroSchemaUtils.getSchemaIdCanonicalMatch(valueSchemas, valueSchemaEntry);
   }
 
   /**
@@ -316,6 +288,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
     if (schemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
       int dupSchemaId = getNextAvailableSchemaId(
+          storeName,
           getValueSchemas(storeName),
           newValueSchemaEntry,
           DirectionalSchemaCompatibilityType.FULL);
@@ -366,7 +339,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
               + " please don't use it in the value schema");
     }
 
-    return getNextAvailableSchemaId(getValueSchemas(storeName), valueSchemaEntry, expectedCompatibilityType);
+    return getNextAvailableSchemaId(storeName, getValueSchemas(storeName), valueSchemaEntry, expectedCompatibilityType);
   }
 
   @Override
@@ -377,6 +350,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
         new DerivedSchemaEntry(valueSchemaId, SchemaData.UNKNOWN_SCHEMA_ID, derivedSchemaStr);
 
     return getNextAvailableSchemaId(
+        storeName,
         getDerivedSchemaMap(storeName).get(valueSchemaId),
         derivedSchemaEntry,
         DirectionalSchemaCompatibilityType.BACKWARD);
@@ -393,6 +367,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
         schemaStr,
         valueSchemaId,
         getNextAvailableSchemaId(
+            storeName,
             getDerivedSchemaMap(storeName).get(valueSchemaId),
             newDerivedSchemaEntry,
             DirectionalSchemaCompatibilityType.NONE));
@@ -433,6 +408,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   private int getNextAvailableSchemaId(
+      String storeName,
       Collection<? extends SchemaEntry> schemaEntries,
       SchemaEntry newSchemaEntry,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
@@ -441,12 +417,15 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       if (schemaEntries == null || schemaEntries.isEmpty()) {
         newValueSchemaId = HelixSchemaAccessor.VALUE_SCHEMA_STARTING_ID;
       } else {
+        Store store = storeRepository.getStoreOrThrow(storeName);
+        boolean enumSchemaEvolutionAllowed = store.isEnumSchemaEvolutionAllowed();
         newValueSchemaId = schemaEntries.stream().map(schemaEntry -> {
           if (schemaEntry.equals(newSchemaEntry)
               && !AvroSchemaUtils.hasDocFieldChange(newSchemaEntry.getSchema(), schemaEntry.getSchema())) {
             throw new SchemaDuplicateException(schemaEntry, newSchemaEntry);
           }
-          if (!schemaEntry.isNewSchemaCompatible(newSchemaEntry, expectedCompatibilityType)) {
+          if (!schemaEntry
+              .isNewSchemaCompatible(newSchemaEntry, expectedCompatibilityType, enumSchemaEvolutionAllowed)) {
             throw new SchemaIncompatibilityException(schemaEntry, newSchemaEntry);
           }
 

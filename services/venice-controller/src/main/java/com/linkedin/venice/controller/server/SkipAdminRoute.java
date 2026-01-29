@@ -1,9 +1,10 @@
 package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXECUTION_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SKIP_DIV;
-import static com.linkedin.venice.controllerapi.ControllerRoute.SKIP_ADMIN;
+import static com.linkedin.venice.controllerapi.ControllerRoute.SKIP_ADMIN_MESSAGE;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -36,11 +37,18 @@ public class SkipAdminRoute extends AbstractRoute {
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
-        AdminSparkServer.validateParams(request, SKIP_ADMIN.getParams(), admin);
+        AdminSparkServer.validateParams(request, SKIP_ADMIN_MESSAGE.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
-        long offset = Utils.parseLongFromString(request.queryParams(OFFSET), OFFSET);
+        String typeIdAndBase64PositionBytes = request.queryParams(POSITION);
+        long executionId =
+            request.queryParams(EXECUTION_ID) == null ? -1L : Long.parseLong(request.queryParams(EXECUTION_ID));
         boolean skipDIV = Utils.parseBooleanOrThrow(request.queryParams(SKIP_DIV), SKIP_DIV);
-        admin.skipAdminMessage(responseObject.getCluster(), offset, skipDIV);
+        if (typeIdAndBase64PositionBytes != null && executionId != -1L) {
+          throw new IllegalArgumentException(
+              "Only one of position or executionId can be specified, position " + typeIdAndBase64PositionBytes
+                  + ", execution id " + executionId);
+        }
+        admin.skipAdminMessage(responseObject.getCluster(), typeIdAndBase64PositionBytes, skipDIV, executionId);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);

@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 
+import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import org.testng.Assert;
@@ -58,6 +59,15 @@ public class TestRegionUtils {
     Assert.assertTrue(regionName.contains(TEST_DC_2));
     Assert.assertTrue(regionName.contains(TEST_DC_3));
     Assert.assertEquals(regionName.size(), 3);
+  }
+
+  @Test
+  public void testParseRolloutOrderList() {
+    String rolloutOrder = String.join(",", TEST_DC_1, TEST_DC_2, TEST_DC_3);
+    List<String> order = RegionUtils.parseRegionRolloutOrderList(rolloutOrder);
+    Assert.assertEquals(order.get(0), TEST_DC_1);
+    Assert.assertEquals(order.get(1), TEST_DC_2);
+    Assert.assertEquals(order.get(2), TEST_DC_3);
   }
 
   @Test

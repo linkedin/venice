@@ -3,7 +3,6 @@ package com.linkedin.venice.pubsub.api;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
-import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.lang.reflect.Constructor;
@@ -18,6 +17,8 @@ public class LatestPositionTest {
 
     assertNotNull(instance1, "Singleton instance should not be null");
     assertSame(instance1, instance2, "Should return the same singleton instance");
+    assertTrue(instance1.isSymbolic(), "LatestPosition should be symbolic");
+    assertEquals(instance2.isSymbolic(), true, "LatestPosition should be symbolic");
   }
 
   @Test
@@ -57,11 +58,5 @@ public class LatestPositionTest {
     LatestPosition instance1 = LatestPosition.getInstance();
     LatestPosition instance2 = LatestPosition.getInstance();
     assertEquals(instance1.hashCode(), instance2.hashCode(), "Hash codes should match");
-  }
-
-  @Test
-  public void testNumericOffset() {
-    LatestPosition instance = LatestPosition.getInstance();
-    assertThrows(UnsupportedOperationException.class, () -> instance.getNumericOffset());
   }
 }

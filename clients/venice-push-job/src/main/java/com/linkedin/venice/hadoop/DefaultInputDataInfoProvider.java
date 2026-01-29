@@ -7,7 +7,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PATH_FILTER;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
@@ -78,90 +78,96 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
    */
   @Override
   public InputDataInfo validateInputAndGetInfo(String inputUri) throws Exception {
-    long inputModificationTime = getInputLastModificationTime(inputUri);
     Path srcPath = new Path(inputUri);
-    FileSystem fs = srcPath.getFileSystem(new Configuration());
-    FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
-
-    if (fileStatuses == null || fileStatuses.length == 0) {
-      /*
-       * In order to avoid introducing new checkpoint, we resort to using the existing checkpoint
-       * to categorize no data at the source as invalid input. Venice supports multiple InputDataInfoProvider
-       * and currently other implementations do not adhere to same contract and input validation mechanisms like
-       * throwing same type of exceptions and error categorization. We need to revisit this as this might be a larger
-       * scope of change for the current issue.
-       */
-      throw new VeniceInvalidInputException("No data found at source path: " + srcPath);
-    }
-
-    if (pushJobSetting.isZstdDictCreationRequired) {
-      initZstdConfig(fileStatuses.length);
-    }
-
-    // Check the first file type prior to check schema consistency to make sure a schema can be obtained from it.
-    if (fileStatuses[0].isDirectory()) {
-      throw new VeniceException(
-          "Input directory: " + fileStatuses[0].getPath().getParent().getName() + " should not have sub directory: "
-              + fileStatuses[0].getPath().getName());
-    }
-
-    pushJobSetting.isAvro = !HadoopUtils.isSequenceFile(fs, fileStatuses[0].getPath());
-
-    final AtomicLong inputFileDataSize = new AtomicLong(0);
-    if (pushJobSetting.isAvro) {
-      LOGGER.info("Detected Avro input format.");
-      pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
-      pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
-
-      Pair<Schema, Schema> fileAndOutputValueSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
-
-      pushJobSetting.inputDataSchema = fileAndOutputValueSchema.getFirst();
-      pushJobSetting.valueSchema = fileAndOutputValueSchema.getSecond();
-
-      pushJobSetting.inputDataSchemaString = pushJobSetting.inputDataSchema.toString();
-      pushJobSetting.keySchema = extractAvroSubSchema(pushJobSetting.inputDataSchema, pushJobSetting.keyField);
-    } else {
-      // try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
-      Path firstFilePath = fileStatuses[0].getPath();
-      Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, firstFilePath, false);
-
-      if (!fileMetadata.containsKey(FILE_KEY_SCHEMA) || !fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
-        throw new VeniceException("Input file " + firstFilePath.getName() + " is a SequenceFile but not a Vson file.");
+    try {
+      FileSystem fs = srcPath.getFileSystem(new Configuration());
+      FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
+      if (fileStatuses == null || fileStatuses.length == 0) {
+        /*
+         * In order to avoid introducing new checkpoint, we resort to using the existing checkpoint
+         * to categorize no data at the source as invalid input. Venice supports multiple InputDataInfoProvider
+         * and currently other implementations do not adhere to same contract and input validation mechanisms like
+         * throwing same type of exceptions and error categorization. We need to revisit this as this might be a larger
+         * scope of change for the current issue.
+         */
+        throw new VeniceInvalidInputException("No data found at source path: " + srcPath);
       }
 
-      LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
+      long inputModificationTime = getInputLastModificationTime(inputUri);
 
-      pushJobSetting.vsonInputKeySchemaString = fileMetadata.get(FILE_KEY_SCHEMA);
-      pushJobSetting.vsonInputKeySchema = VsonSchema.parse(pushJobSetting.vsonInputKeySchemaString);
-      pushJobSetting.vsonInputValueSchemaString = fileMetadata.get(FILE_VALUE_SCHEMA);
-      pushJobSetting.vsonInputValueSchema = VsonSchema.parse(pushJobSetting.vsonInputValueSchemaString);
+      if (pushJobSetting.isZstdDictCreationRequired) {
+        initZstdConfig(fileStatuses.length);
+      }
 
-      // key / value fields are optional for Vson input
-      pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, "");
-      pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, "");
-      pushJobSetting.timestampField = props.getString(TIMESTAMP_FIELD_PROP, "");
+      // Check the first file type prior to check schema consistency to make sure a schema can be obtained from it.
+      if (fileStatuses[0].isDirectory()) {
+        throw new VeniceException(
+            "Input directory: " + fileStatuses[0].getPath().getParent().getName() + " should not have sub directory: "
+                + fileStatuses[0].getPath().getName());
+      }
 
-      Pair<VsonSchema, VsonSchema> vsonSchema = checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize);
+      pushJobSetting.isAvro = !HadoopUtils.isSequenceFile(fs, fileStatuses[0].getPath());
 
-      VsonSchema vsonKeySchema = StringUtils.isEmpty(pushJobSetting.keyField)
-          ? vsonSchema.getFirst()
-          : vsonSchema.getFirst().recordSubtype(pushJobSetting.keyField);
-      VsonSchema vsonValueSchema = StringUtils.isEmpty(pushJobSetting.valueField)
-          ? vsonSchema.getSecond()
-          : vsonSchema.getSecond().recordSubtype(pushJobSetting.valueField);
+      final AtomicLong inputFileDataSize = new AtomicLong(0);
+      if (pushJobSetting.isAvro) {
+        LOGGER.info("Detected Avro input format.");
+        pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
+        pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
+        pushJobSetting.rmdField = props.getString(RMD_FIELD_PROP, "");
 
-      pushJobSetting.keySchema = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString());
-      pushJobSetting.valueSchema = VsonAvroSchemaAdapter.parse(vsonValueSchema.toString());
+        Pair<Schema, Schema> fileAndOutputValueSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
+
+        pushJobSetting.inputDataSchema = fileAndOutputValueSchema.getFirst();
+        pushJobSetting.valueSchema = fileAndOutputValueSchema.getSecond();
+
+        pushJobSetting.inputDataSchemaString = pushJobSetting.inputDataSchema.toString();
+        pushJobSetting.keySchema = extractAvroSubSchema(pushJobSetting.inputDataSchema, pushJobSetting.keyField);
+      } else {
+        // try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
+        Path firstFilePath = fileStatuses[0].getPath();
+        Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, firstFilePath, false);
+
+        if (!fileMetadata.containsKey(FILE_KEY_SCHEMA) || !fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
+          throw new VeniceException(
+              "Input file " + firstFilePath.getName() + " is a SequenceFile but not a Vson file.");
+        }
+
+        LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
+
+        pushJobSetting.vsonInputKeySchemaString = fileMetadata.get(FILE_KEY_SCHEMA);
+        pushJobSetting.vsonInputKeySchema = VsonSchema.parse(pushJobSetting.vsonInputKeySchemaString);
+        pushJobSetting.vsonInputValueSchemaString = fileMetadata.get(FILE_VALUE_SCHEMA);
+        pushJobSetting.vsonInputValueSchema = VsonSchema.parse(pushJobSetting.vsonInputValueSchemaString);
+
+        // key / value fields are optional for Vson input
+        pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, "");
+        pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, "");
+        pushJobSetting.rmdField = props.getString(RMD_FIELD_PROP, "");
+
+        Pair<VsonSchema, VsonSchema> vsonSchema = checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize);
+
+        VsonSchema vsonKeySchema = StringUtils.isEmpty(pushJobSetting.keyField)
+            ? vsonSchema.getFirst()
+            : vsonSchema.getFirst().recordSubtype(pushJobSetting.keyField);
+        VsonSchema vsonValueSchema = StringUtils.isEmpty(pushJobSetting.valueField)
+            ? vsonSchema.getSecond()
+            : vsonSchema.getSecond().recordSubtype(pushJobSetting.valueField);
+
+        pushJobSetting.keySchema = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString());
+        pushJobSetting.valueSchema = VsonAvroSchemaAdapter.parse(vsonValueSchema.toString());
+      }
+
+      pushJobSetting.keySchemaString = pushJobSetting.keySchema.toString();
+      pushJobSetting.valueSchemaString = pushJobSetting.valueSchema.toString();
+
+      return new InputDataInfo(
+          inputFileDataSize.get(),
+          fileStatuses.length,
+          hasRecords(pushJobSetting.isAvro, fs, fileStatuses),
+          inputModificationTime);
+    } catch (FileNotFoundException e) {
+      throw new VeniceInvalidInputException("No data found at source path: " + srcPath);
     }
-
-    pushJobSetting.keySchemaString = pushJobSetting.keySchema.toString();
-    pushJobSetting.valueSchemaString = pushJobSetting.valueSchema.toString();
-
-    return new InputDataInfo(
-        inputFileDataSize.get(),
-        fileStatuses.length,
-        hasRecords(pushJobSetting.isAvro, fs, fileStatuses),
-        inputModificationTime);
   }
 
   private boolean hasRecords(boolean isAvroFile, FileSystem fs, FileStatus[] fileStatusList) {
@@ -313,11 +319,11 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   @Override
   public long getInputLastModificationTime(String inputUri) throws IOException {
     Path srcPath = new Path(inputUri);
-    FileSystem fs = srcPath.getFileSystem(new Configuration());
     try {
+      FileSystem fs = srcPath.getFileSystem(new Configuration());
       return fs.getFileStatus(srcPath).getModificationTime();
     } catch (FileNotFoundException e) {
-      throw new RuntimeException("No data found at source path: " + srcPath);
+      throw new VeniceInvalidInputException("No data found at source path: " + srcPath);
     }
   }
 
@@ -365,7 +371,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   private VeniceAvroRecordReader getVeniceAvroRecordReader(FileSystem fs, Path path) {
     String keyField = props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
     String valueField = props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
-    String timestampField = props.getOrDefault(TIMESTAMP_FIELD_PROP, "");
+    String timestampField = props.getOrDefault(RMD_FIELD_PROP, "");
     return new VeniceAvroRecordReader(
         HdfsAvroUtils.getFileSchema(fs, path),
         keyField,

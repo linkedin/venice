@@ -21,8 +21,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.testng.Assert.assertEquals;
 import static org.testng.AssertJUnit.assertTrue;
 
@@ -64,7 +64,6 @@ public class BasicConsumerStatsTest {
   public void testEmitCurrentConsumingVersionMetrics() {
     double minVersion = 1.0;
     double maxVersion = 2.0;
-
     consumerStats.emitCurrentConsumingVersionMetrics((int) minVersion, (int) maxVersion);
 
     validateTehutiMetric(tehutiMetricPrefix + "--" + MINIMUM_CONSUMING_VERSION.getMetricName() + ".Gauge", minVersion);
@@ -76,7 +75,8 @@ public class BasicConsumerStatsTest {
         minVersion,
         maxVersion,
         2,
-        minVersion + maxVersion);
+        minVersion + maxVersion,
+        null);
   }
 
   @Test
@@ -85,56 +85,87 @@ public class BasicConsumerStatsTest {
     consumerStats.emitHeartBeatDelayMetrics((long) delay);
 
     validateTehutiMetric(tehutiMetricPrefix + "--" + MAX_PARTITION_LAG.getMetricName() + ".Max", delay);
-
     validateMinMaxSumAggregationsOtelMetric(
         storeName,
         HEART_BEAT_DELAY.getMetricEntity().getMetricName(),
         delay,
         delay,
         1,
-        delay);
+        delay,
+        null);
   }
 
   @Test
   public void testEmitPollSuccessCountMetrics() {
-    consumerStats.emitPollCountMetrics(SUCCESS);
+    VeniceResponseStatusCategory responseStatusCategory = SUCCESS;
+    consumerStats.emitPollCountMetrics(responseStatusCategory);
+
     validateTehutiRateMetric(tehutiMetricPrefix + "--" + POLL_SUCCESS_COUNT.getMetricName() + ".Rate");
-    validateLongCounterOtelMetric(storeName, POLL_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
+    validateLongCounterOtelMetric(storeName, POLL_COUNT.getMetricEntity().getMetricName(), 1, responseStatusCategory);
   }
 
   @Test
   public void testEmitPollFailCallCountMetrics() {
-    consumerStats.emitPollCountMetrics(FAIL);
+    VeniceResponseStatusCategory responseStatusCategory = FAIL;
+    consumerStats.emitPollCountMetrics(responseStatusCategory);
+
     validateTehutiRateMetric(tehutiMetricPrefix + "--" + POLL_FAIL_COUNT.getMetricName() + ".Rate");
-    validateLongCounterOtelMetric(storeName, POLL_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
+    validateLongCounterOtelMetric(storeName, POLL_COUNT.getMetricEntity().getMetricName(), 1, responseStatusCategory);
   }
 
   @Test
-  public void testEmitVersionSwapSuccessCountMetrics() {
+  public void testEmitVersionSwapCountMetrics() {
+    int defaultNum = 0;
+    int expectedNum = 1;
+
+    // Default metrics
+    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Total", defaultNum);
+    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Total", defaultNum);
+    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), defaultNum, SUCCESS);
+    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), defaultNum, FAIL);
+
     consumerStats.emitVersionSwapCountMetrics(SUCCESS);
-    validateTehutiRateMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Rate");
-    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
-  }
-
-  @Test
-  public void testEmitVersionSwapFailCountMetrics() {
     consumerStats.emitVersionSwapCountMetrics(FAIL);
-    validateTehutiRateMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Rate");
-    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
+
+    // Success metrics
+    validateTehutiMetric(
+        tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Total",
+        expectedNum);
+    validateLongCounterOtelMetric(
+        storeName,
+        VERSION_SWAP_COUNT.getMetricEntity().getMetricName(),
+        expectedNum,
+        SUCCESS);
+
+    // Fail metrics
+    validateTehutiMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Total", expectedNum);
+    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), expectedNum, FAIL);
   }
 
   @Test
   public void testEmitChunkedRecordSuccessCountMetrics() {
-    consumerStats.emitChunkedRecordCountMetrics(SUCCESS);
+    VeniceResponseStatusCategory responseStatusCategory = SUCCESS;
+    consumerStats.emitChunkedRecordCountMetrics(responseStatusCategory);
+
     validateTehutiRateMetric(tehutiMetricPrefix + "--" + CHUNKED_RECORD_SUCCESS_COUNT.getMetricName() + ".Rate");
-    validateLongCounterOtelMetric(storeName, CHUNKED_RECORD_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
+    validateLongCounterOtelMetric(
+        storeName,
+        CHUNKED_RECORD_COUNT.getMetricEntity().getMetricName(),
+        1,
+        responseStatusCategory);
   }
 
   @Test
   public void testEmitChunkedRecordFailCountMetrics() {
-    consumerStats.emitChunkedRecordCountMetrics(FAIL);
+    VeniceResponseStatusCategory responseStatusCategory = FAIL;
+    consumerStats.emitChunkedRecordCountMetrics(responseStatusCategory);
+
     validateTehutiRateMetric(tehutiMetricPrefix + "--" + CHUNKED_RECORD_FAIL_COUNT.getMetricName() + ".Rate");
-    validateLongCounterOtelMetric(storeName, CHUNKED_RECORD_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
+    validateLongCounterOtelMetric(
+        storeName,
+        CHUNKED_RECORD_COUNT.getMetricEntity().getMetricName(),
+        1,
+        responseStatusCategory);
   }
 
   private void validateTehutiMetric(String metricName, double expectedValue) {
@@ -153,9 +184,17 @@ public class BasicConsumerStatsTest {
       double expectedMin,
       double expectedMax,
       long expectedCount,
-      double expectedSum) {
+      double expectedSum,
+      VeniceResponseStatusCategory responseStatusCategory) {
 
-    Attributes expectedAttributes = getExpectedBaseAttributes(storeName);
+    Attributes expectedAttributes;
+
+    if (responseStatusCategory == null) {
+      expectedAttributes = getExpectedBaseAttributes(storeName);
+    } else {
+      expectedAttributes = getExpectedAttributes(storeName, responseStatusCategory);
+    }
+
     validateHistogramPointData(
         inMemoryMetricReader,
         expectedMin,
@@ -173,7 +212,12 @@ public class BasicConsumerStatsTest {
       double expectedValue,
       VeniceResponseStatusCategory responseStatusCategory) {
     Attributes expectedAttributes = getExpectedAttributes(storeName, responseStatusCategory);
-    validateLongPointData(inMemoryMetricReader, (long) expectedValue, expectedAttributes, metricName, otelMetricPrefix);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        (long) expectedValue,
+        expectedAttributes,
+        metricName,
+        otelMetricPrefix);
   }
 
   private Attributes getExpectedBaseAttributes(String storeName) {

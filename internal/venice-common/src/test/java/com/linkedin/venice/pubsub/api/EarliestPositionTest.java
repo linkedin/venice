@@ -3,7 +3,6 @@ package com.linkedin.venice.pubsub.api;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
-import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.lang.reflect.Constructor;
@@ -18,6 +17,8 @@ public class EarliestPositionTest {
 
     assertNotNull(instance1);
     assertSame(instance1, instance2, "Should return the same singleton instance");
+    assertTrue(instance1.isSymbolic(), "EarliestPosition should be symbolic");
+    assertTrue(instance2.isSymbolic(), "EarliestPosition should be symbolic");
   }
 
   @Test
@@ -49,8 +50,8 @@ public class EarliestPositionTest {
     assertEquals(reflectionInstance.toString(), "EARLIEST");
 
     // Check equality
-    assertTrue(instance.equals(reflectionInstance), "Instances should be equal despite being different objects");
-    assertTrue(reflectionInstance.equals(instance), "Equality should be symmetric");
+    assertEquals(reflectionInstance, instance, "Instances should be equal despite being different objects");
+    assertEquals(instance, reflectionInstance, "Equality should be symmetric");
 
     // Check hashCode consistency
     assertEquals(instance.hashCode(), reflectionInstance.hashCode(), "Hash codes must match for equal instances");
@@ -67,40 +68,6 @@ public class EarliestPositionTest {
   @Test
   public void testNumericOffset() {
     EarliestPosition instance = EarliestPosition.getInstance();
-    assertThrows(UnsupportedOperationException.class, () -> instance.getNumericOffset());
-  }
-
-  public static class DummyPosition implements PubSubPosition {
-    public int getHeapSize() {
-      return 0;
-    }
-
-    public int comparePosition(PubSubPosition o) {
-      return 0;
-    }
-
-    public long diff(PubSubPosition o) {
-      return 0;
-    }
-
-    public PubSubPositionWireFormat getPositionWireFormat() {
-      return null;
-    }
-
-    public String toString() {
-      return "DUMMY";
-    }
-
-    public boolean equals(Object obj) {
-      return obj instanceof DummyPosition;
-    }
-
-    public int hashCode() {
-      return 0;
-    }
-
-    public long getNumericOffset() {
-      return 0;
-    }
+    assertEquals(instance.getNumericOffset(), -1, "Numeric offset for EarliestPosition should be -1");
   }
 }

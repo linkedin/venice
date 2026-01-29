@@ -61,6 +61,10 @@ public class VeniceControllerStateModel extends StateModel {
   private HelixVeniceClusterResources clusterResources;
 
   private final ExecutorService workerService;
+  private final Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener;
+
+  // Configurable timeout for testing purposes
+  private long stateTransitionTimeoutMs = TimeUnit.MINUTES.toMillis(DEFAULT_STANDBY_TO_LEADER_ST_TIMEOUT_IN_MIN);
 
   public VeniceControllerStateModel(
       String clusterName,
@@ -72,7 +76,8 @@ public class VeniceControllerStateModel extends StateModel {
       ClusterLeaderInitializationRoutine controllerInitialization,
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       Optional<DynamicAccessController> accessController,
-      HelixAdminClient helixAdminClient) {
+      HelixAdminClient helixAdminClient,
+      Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener) {
     this._currentState = new StateModelParser().getInitialState(VeniceControllerStateModel.class);
     this.clusterName = clusterName;
     this.zkClient = zkClient;
@@ -86,6 +91,7 @@ public class VeniceControllerStateModel extends StateModel {
     this.helixAdminClient = helixAdminClient;
     this.workerService = Executors.newSingleThreadExecutor(
         new DaemonThreadFactory(String.format("Controller-ST-Worker-%s", clusterName), admin.getLogContext()));
+    this.versionLifecycleEventListener = versionLifecycleEventListener;
   }
 
   /**
@@ -186,8 +192,9 @@ public class VeniceControllerStateModel extends StateModel {
      * want to give other good controller a chance to be able to become the leader, if current one was stuck somewhere.
      * If the timeout is reached, we will throw an exception to indicate that the state transition failed.
      */
+    Future<?> stateTransitionFuture = null;
     try {
-      executeStateTransitionAsync(message, () -> {
+      stateTransitionFuture = executeStateTransitionAsync(message, () -> {
         if (helixManagerInitialized()) {
           // TODO: It seems like this should throw an exception. Otherwise the case would be you'd have an instance be
           // leader
@@ -213,9 +220,13 @@ public class VeniceControllerStateModel extends StateModel {
               helixManager.getInstanceName(),
               clusterName);
         }
-      }).get(DEFAULT_STANDBY_TO_LEADER_ST_TIMEOUT_IN_MIN, TimeUnit.MINUTES);
+      });
+      stateTransitionFuture.get(stateTransitionTimeoutMs, TimeUnit.MILLISECONDS);
     } catch (InterruptedException | ExecutionException | TimeoutException e) {
       LOGGER.error("Failed to execute the controller state transition from STANDBY to LEADER for {}", clusterName, e);
+      if (stateTransitionFuture != null && !stateTransitionFuture.isDone()) {
+        stateTransitionFuture.cancel(true);
+      }
       throw new VeniceException(e);
     }
   }
@@ -224,7 +235,9 @@ public class VeniceControllerStateModel extends StateModel {
     return helixManager != null && helixManager.isConnected();
   }
 
-  private void initHelixManager(String controllerName) throws Exception {
+  /** synchronized to prevent race conditions with reset() during shutdown */
+  @VisibleForTesting
+  synchronized void initHelixManager(String controllerName) throws Exception {
     if (helixManagerInitialized()) {
       throw new VeniceException(
           String.format(
@@ -240,10 +253,14 @@ public class VeniceControllerStateModel extends StateModel {
     helixManager.startTimerTasks();
   }
 
-  private void initClusterResources() {
+  /** synchronized to prevent race conditions with reset() during shutdown */
+  @VisibleForTesting
+  synchronized void initClusterResources() {
     if (!helixManagerInitialized()) {
       throw new VeniceException("Helix manager should have been initialized for " + clusterName);
     }
+    VeniceVersionLifecycleEventManager versionLifecycleEventManager = new VeniceVersionLifecycleEventManager();
+    versionLifecycleEventListener.ifPresent(versionLifecycleEventManager::addListener);
     clusterResources = new HelixVeniceClusterResources(
         clusterName,
         zkClient,
@@ -254,13 +271,15 @@ public class VeniceControllerStateModel extends StateModel {
         metricsRepository,
         realTimeTopicSwitcher,
         accessController,
-        helixAdminClient);
+        helixAdminClient,
+        versionLifecycleEventManager);
     clusterResources.refresh();
     clusterResources.startErrorPartitionResetTask();
     clusterResources.startDeadStoreStatsPreFetchTask();
     clusterResources.startLeakedPushStatusCleanUpService();
     clusterResources.startProtocolVersionAutoDetectionService();
     clusterResources.startLogCompactionService();
+    clusterResources.startMultiTaskSchedulerService();
   }
 
   /**
@@ -372,6 +391,7 @@ public class VeniceControllerStateModel extends StateModel {
   /** synchronized because concurrent calls could cause a NPE */
   private synchronized void clearResources() {
     if (clusterResources != null) {
+      clusterResources.stopMultiTaskSchedulerService();
       clusterResources.stopLogCompactionService();
       clusterResources.stopProtocolVersionAutoDetectionService();
       /**
@@ -448,5 +468,10 @@ public class VeniceControllerStateModel extends StateModel {
   @VisibleForTesting
   ExecutorService getWorkService() {
     return workerService;
+  }
+
+  @VisibleForTesting
+  void setStateTransitionTimeout(long timeoutMs) {
+    this.stateTransitionTimeoutMs = timeoutMs;
   }
 }

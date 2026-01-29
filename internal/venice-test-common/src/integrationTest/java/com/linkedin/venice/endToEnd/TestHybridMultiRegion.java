@@ -13,7 +13,18 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -21,10 +32,13 @@ import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -36,6 +50,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -43,16 +58,20 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.AvroRecordUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Optional;
@@ -88,6 +107,105 @@ public class TestHybridMultiRegion {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(sharedVenice);
+  }
+
+  @Test(timeOut = 180
+      * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridBatchPushWithRmd(boolean useNativeInputFormat) throws IOException {
+    String clusterName = sharedVenice.getClusterNames()[0];
+    try (ControllerClient controllerClient =
+        new ControllerClient(clusterName, sharedVenice.getControllerConnectString())) {
+      long streamingRewindSeconds = 25L;
+      long streamingMessageLag = 2L;
+      final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
+
+      // Create store at parent, make it a hybrid store
+      TestUtils.assertCommand(
+          controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
+      TestUtils.assertCommand(
+          controllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+                  .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                  .setHybridRewindSeconds(streamingRewindSeconds)
+                  .setHybridOffsetLagThreshold(streamingMessageLag)));
+      controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+
+      // Prepare input for a batch push with RMD data
+      long recordTimestamp = 123456789L;
+      long ttlStartTimestamp = 123456799L;
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      TestWriteUtils.writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, recordTimestamp); // records
+                                                                                                         // 1-100
+      Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
+      vpjProperties.setProperty(RMD_FIELD_PROP, "rmd");
+      vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+      vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(useNativeInputFormat));
+
+      // VPJ push is expected to succeed, and we validate for new version post the push
+      IntegrationTestPushUtils.runVPJ(vpjProperties);
+      assertExpectedVersionCountAndVersionStatus(controllerClient, storeName, 2, 2);
+      StoreResponse storeResponse;
+
+      // Do a TTL repush to ensure valid RMD was written and can be read properly.
+      VeniceClusterWrapper sharedVeniceClusterWrapper =
+          sharedVenice.getChildRegions().get(0).getClusters().get(clusterName);
+      Properties props = IntegrationTestPushUtils.defaultVPJProps(sharedVenice, "dummyInputPath", storeName);
+      props.setProperty(SOURCE_KAFKA, "true");
+      props.setProperty(KAFKA_INPUT_BROKER_URL, sharedVeniceClusterWrapper.getPubSubBrokerWrapper().getAddress());
+      props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+      props.setProperty(REPUSH_TTL_ENABLE, "true");
+      // Override the TTL repush start TS to work with logical TS setup.
+      props.setProperty(REPUSH_TTL_START_TIMESTAMP, String.valueOf(ttlStartTimestamp));
+      // Override the rewind time to make sure not to consume 24hrs data from RT topic.
+      props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+      IntegrationTestPushUtils.runVPJ(props);
+      assertExpectedVersionCountAndVersionStatus(controllerClient, storeName, 3, 3);
+    }
+  }
+
+  @Test(timeOut = 180
+      * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridBatchPushWithInvalidRmd(boolean useNativeInputFormat) throws IOException {
+    String clusterName = sharedVenice.getClusterNames()[0];
+    try (ControllerClient controllerClient =
+        new ControllerClient(clusterName, sharedVenice.getControllerConnectString())) {
+      long streamingRewindSeconds = 25L;
+      long streamingMessageLag = 2L;
+      final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
+
+      // Create store at parent, make it a hybrid store
+      TestUtils.assertCommand(
+          controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
+      ControllerResponse response = TestUtils.assertCommand(
+          controllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+                  .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+                  .setHybridRewindSeconds(streamingRewindSeconds)
+                  .setHybridOffsetLagThreshold(streamingMessageLag)));
+      TestUtils.assertCommand(
+          controllerClient.sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L, 120000));
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      // records 1-100
+      TestWriteUtils
+          .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, String.valueOf(123456789L).getBytes());
+      Properties vpjProperties = defaultVPJProps(sharedVenice, inputDirPath, storeName);
+      vpjProperties.setProperty(RMD_FIELD_PROP, "rmd");
+      vpjProperties.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+      vpjProperties.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(useNativeInputFormat));
+
+      Assert.assertFalse(response.isError());
+      // push should fail validation
+      VeniceException failureException =
+          Assert.expectThrows(VeniceException.class, () -> IntegrationTestPushUtils.runVPJ(vpjProperties));
+      Assert.assertTrue(
+          failureException.getMessage().contains("Input rmd schema does not match the server side RMD schema"),
+          "The exception message does not match with the expected one RMD validation failure. Got: "
+              + failureException.getMessage());
+    }
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
@@ -270,11 +388,7 @@ public class TestHybridMultiRegion {
             stringSerializer.serialize("value_writer_1"),
             1,
             null,
-            new LeaderMetadataWrapper(
-                upstreamPosition1.getNumericOffset(),
-                0,
-                DEFAULT_TERM_ID,
-                upstreamPosition1.getWireFormatBytes()));
+            new LeaderMetadataWrapper(upstreamPosition1, 0, DEFAULT_TERM_ID));
         veniceWriter1.flush();
 
         PubSubPosition upstreamPosition2 = new ApacheKafkaOffsetPosition(1);
@@ -283,11 +397,7 @@ public class TestHybridMultiRegion {
             stringSerializer.serialize("value_writer_2"),
             1,
             null,
-            new LeaderMetadataWrapper(
-                upstreamPosition2.getNumericOffset(),
-                0,
-                DEFAULT_TERM_ID,
-                upstreamPosition2.getWireFormatBytes()));
+            new LeaderMetadataWrapper(upstreamPosition2, 0, DEFAULT_TERM_ID));
         veniceWriter2.flush();
 
         PubSubPosition upstreamPositionIPlusFive;
@@ -298,11 +408,7 @@ public class TestHybridMultiRegion {
               stringSerializer.serialize("value_" + i),
               1,
               null,
-              new LeaderMetadataWrapper(
-                  upstreamPositionIPlusFive.getNumericOffset(),
-                  0,
-                  DEFAULT_TERM_ID,
-                  upstreamPositionIPlusFive.getWireFormatBytes()));
+              new LeaderMetadataWrapper(upstreamPositionIPlusFive, 0, DEFAULT_TERM_ID));
         }
         veniceWriter1.flush();
 
@@ -312,11 +418,7 @@ public class TestHybridMultiRegion {
             stringSerializer.serialize("value_x"),
             1,
             null,
-            new LeaderMetadataWrapper(
-                upstreamPosition3.getNumericOffset(),
-                0,
-                DEFAULT_TERM_ID,
-                upstreamPosition3.getWireFormatBytes()));
+            new LeaderMetadataWrapper(upstreamPosition3, 0, DEFAULT_TERM_ID));
 
         for (int i = 5; i < 10; ++i) {
           upstreamPositionIPlusFive = new ApacheKafkaOffsetPosition(i + 5);
@@ -325,11 +427,7 @@ public class TestHybridMultiRegion {
               stringSerializer.serialize("value_" + i),
               1,
               null,
-              new LeaderMetadataWrapper(
-                  upstreamPositionIPlusFive.getNumericOffset(),
-                  0,
-                  DEFAULT_TERM_ID,
-                  upstreamPositionIPlusFive.getWireFormatBytes()));
+              new LeaderMetadataWrapper(upstreamPositionIPlusFive, 0, DEFAULT_TERM_ID));
         }
         veniceWriter2.flush();
         veniceWriter1.broadcastEndOfPush(Collections.emptyMap());
@@ -353,6 +451,21 @@ public class TestHybridMultiRegion {
     return new Object[][] { { false, false, REWIND_FROM_EOP }, { false, true, REWIND_FROM_EOP },
         { true, false, REWIND_FROM_EOP }, { true, true, REWIND_FROM_EOP }, { false, false, REWIND_FROM_SOP },
         { false, true, REWIND_FROM_SOP }, { true, false, REWIND_FROM_SOP }, { true, true, REWIND_FROM_SOP } };
+  }
+
+  private static void assertExpectedVersionCountAndVersionStatus(
+      ControllerClient controllerClient,
+      String storeName,
+      int expectedVersionCount,
+      int versionToCheckStatus) {
+    StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
+    Assert.assertEquals(storeResponse.getStore().getVersions().size(), expectedVersionCount);
+    boolean foundVersionOnline = storeResponse.getStore()
+        .getVersion(versionToCheckStatus)
+        .map(Version::getStatus)
+        .filter(status -> status.equals(VersionStatus.ONLINE))
+        .isPresent();
+    Assert.assertTrue(foundVersionOnline, "Version " + versionToCheckStatus + " was not found to be ONLINE");
   }
 
   private static VeniceTwoLayerMultiRegionMultiClusterWrapper setUpCluster() {

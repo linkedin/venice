@@ -3,6 +3,10 @@
 *.ipr
 *.iws
 *.log
+
+# Binary directories and files
+**/bin/
+
 *.project
 *.swp
 *.class
@@ -18,10 +22,21 @@ internal/venice-test-common/tmp/
 internal/venice-test-common/dump.complete.hprof
 internal/venice-test-common/src/jmh/generated
 internal/venice-test-common/file:/
+clients/da-vinci-client/classHash*.txt
+integrations/venice-duckdb/classHash*.txt
+.vscode/
+.cursor/
+.windsurf/
+.github/copilot-instructions.md
+.github/instructions/
+CLAUDE.md
+
+
+# Stuff related to running the docs server locally
 .jekyll-cache/
 _site/
 Gemfile.lock
 .bundles_cache
 docs/vendor/
-clients/da-vinci-client/classHash*.txt
-integrations/venice-duckdb/classHash*.txt
+docs/_site/
+

@@ -26,6 +26,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
+import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -1154,4 +1155,14 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     parentControllerClient.enableStoreReadWrites(storeName, false);
     parentControllerClient.deleteStore(storeName);
   }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void controllerClientCanNotAutoMigrateStore() {
+    String storeName = Utils.getUniqueString("test-store-can-not-migrate");
+    StoreMigrationResponse response = parentControllerClient
+        .autoMigrateStore(storeName, "dest-cluster", Optional.empty(), Optional.empty(), Optional.empty());
+    Assert.assertTrue(response.isError());
+    Assert.assertEquals(response.getErrorType(), ErrorType.STORE_NOT_FOUND);
+  }
+
 }

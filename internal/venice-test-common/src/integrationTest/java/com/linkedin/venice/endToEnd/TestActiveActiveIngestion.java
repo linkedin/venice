@@ -19,14 +19,16 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
+import com.linkedin.venice.annotation.PubSubAgnosticTest;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -41,7 +43,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -83,6 +84,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
+@PubSubAgnosticTest
 public class TestActiveActiveIngestion {
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
   private static final String[] CLUSTER_NAMES =
@@ -150,12 +152,6 @@ public class TestActiveActiveIngestion {
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    TestUtils.assertCommand(
-        parentControllerClient.configureActiveActiveReplicationForCluster(
-            true,
-            VeniceUserStoreType.BATCH_ONLY.toString(),
-            Optional.empty()),
-        "Failed to configure active-active replication for cluster " + clusterName);
   }
 
   @AfterClass(alwaysRun = true)
@@ -269,7 +265,7 @@ public class TestActiveActiveIngestion {
         .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 100, "string2string.avro", oldTimestamp);
     props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
     props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
-    props.setProperty(TIMESTAMP_FIELD_PROP, "timestamp");
+    props.setProperty(RMD_FIELD_PROP, "rmd");
     IntegrationTestPushUtils.runVPJ(props);
 
     // All streaming writes should succeed
@@ -332,6 +328,10 @@ public class TestActiveActiveIngestion {
     // Add a marker record to make sure we have consumed to all the RT record.
     int putWithRmdKeyIndex = 1001;
 
+    int repeatedRecordIndex = 1000000;
+    int repeatedRecordFrequency = 100;
+    String lastExpectedValue = "stream_" + repeatedRecordIndex + "_" + (repeatedRecordFrequency - 1);
+
     // Enable concurrent producer
     try (VeniceSystemProducer veniceProducer = IntegrationTestPushUtils.getSamzaProducerForStream(
         multiRegionMultiClusterWrapper,
@@ -344,6 +344,16 @@ public class TestActiveActiveIngestion {
       produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
       // Produce a PUT record with large timestamp
       produceRecordWithLogicalTimestamp(veniceProducer, storeName, putWithRmdKeyIndex, 1000, false);
+
+      // Write same record multiple times with increasing logical timestamp and value
+      for (int i = 0; i < repeatedRecordFrequency; i++) {
+        sendStreamingRecord(
+            veniceProducer,
+            storeName,
+            Integer.toString(repeatedRecordIndex),
+            "stream_" + repeatedRecordIndex + "_" + i,
+            1000L + i);
+      }
     }
 
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
@@ -353,12 +363,22 @@ public class TestActiveActiveIngestion {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         Assert.assertNotNull(client.get(Integer.toString(putWithRmdKeyIndex)).get());
       });
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        // verify the value matches the last produced value
+        Utf8 value = client.get(Integer.toString(repeatedRecordIndex)).get();
+        Assert.assertNotNull(value, "Value for key: " + repeatedRecordIndex + " is null, but expected to be non-null");
+        Assert.assertEquals(
+            value.toString(),
+            lastExpectedValue,
+            "Value for key: " + repeatedRecordIndex + " does not match the expected value: " + lastExpectedValue);
+      });
     }
 
     // run repush with targeted region push
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    props.setProperty(PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX, "true");
     props.setProperty(TARGETED_REGION_PUSH_ENABLED, "true");
     // intentionally stop re-consuming from RT so stale records don't affect the testing results
     props.setProperty(REWIND_TIME_IN_SECONDS_OVERRIDE, "0");
@@ -397,6 +417,15 @@ public class TestActiveActiveIngestion {
           Assert.assertNotNull(value);
           Assert.assertEquals(value.toString(), "test_name_" + i);
         }
+      });
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        // verify the value matches the last produced value
+        Utf8 value = client.get(Integer.toString(repeatedRecordIndex)).get();
+        Assert.assertNotNull(value, "Value for key: " + repeatedRecordIndex + " is null, but expected to be non-null");
+        Assert.assertEquals(
+            value.toString(),
+            lastExpectedValue,
+            "Value for key: " + repeatedRecordIndex + " does not match the expected value: " + lastExpectedValue);
       });
     }
     try (VeniceSystemProducer veniceProducer =

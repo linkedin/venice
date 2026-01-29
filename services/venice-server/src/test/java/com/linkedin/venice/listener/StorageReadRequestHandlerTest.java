@@ -2,12 +2,14 @@ package com.linkedin.venice.listener;
 
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.intThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -67,7 +69,9 @@ import com.linkedin.venice.listener.response.AbstractReadResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
+import com.linkedin.venice.listener.response.MultiKeyResponseWrapper;
 import com.linkedin.venice.listener.response.SingleGetResponseWrapper;
+import com.linkedin.venice.listener.response.stats.AbstractReadResponseStats;
 import com.linkedin.venice.listener.response.stats.MultiKeyResponseStats;
 import com.linkedin.venice.listener.response.stats.ReadResponseStatsRecorder;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -83,6 +87,11 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.mock.SimplePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -106,9 +115,7 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.streaming.StreamingUtils;
-import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueSize;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
@@ -190,6 +197,9 @@ public class StorageReadRequestHandlerTest {
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer =
       new ChunkedValueManifestSerializer(true);
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
+  private final PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+
+  private PubSubContext pubSubContext;
 
   @BeforeMethod
   public void setUp() {
@@ -203,10 +213,12 @@ public class StorageReadRequestHandlerTest {
     doReturn(partitionerConfig).when(version).getPartitionerConfig();
 
     doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(any());
+    doReturn(true).when(storeRepository).isReadComputationEnabled(any());
     doReturn(new NoopCompressor()).when(compressorFactory).getCompressor(any(), any(), anyInt());
 
     RocksDBServerConfig rocksDBServerConfig = mock(RocksDBServerConfig.class);
     doReturn(rocksDBServerConfig).when(serverConfig).getRocksDBServerConfig();
+    pubSubContext = DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
   }
 
   @AfterMethod
@@ -535,7 +547,7 @@ public class StorageReadRequestHandlerTest {
 
   @Test
   public void testAdminRequestsPassInStorageExecutionHandler() throws Exception {
-    String topic = "test_store_v1";
+    PubSubTopic topic = topicRepository.getTopic("test_store_v1");
     int expectedPartitionId = 12345;
 
     // [0]""/[1]"action"/[2]"store_version"/[3]"dump_ingestion_state"
@@ -547,12 +559,14 @@ public class StorageReadRequestHandlerTest {
     // Mock the AdminResponse from ingestion task
     AdminResponse expectedAdminResponse = new AdminResponse();
     PartitionConsumptionState state = new PartitionConsumptionState(
-        Utils.getReplicaId(topic, expectedPartitionId),
-        expectedPartitionId,
-        new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()),
-        false);
+        new PubSubTopicPartitionImpl(topic, expectedPartitionId),
+        new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
     expectedAdminResponse.addPartitionConsumptionState(state);
-    doReturn(expectedAdminResponse).when(ingestionMetadataRetriever).getConsumptionSnapshots(eq(topic), any());
+    doReturn(expectedAdminResponse).when(ingestionMetadataRetriever)
+        .getConsumptionSnapshots(eq(topic.getName()), any());
 
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, request);
@@ -891,6 +905,150 @@ public class StorageReadRequestHandlerTest {
     verify(context, times(2)).writeAndFlush(shortcutResponseArgumentCaptor.capture());
 
     Assert.assertEquals(shortcutResponseArgumentCaptor.getValue().getStatus(), BAD_REQUEST);
+  }
+
+  @Test
+  public void testSingleGetWithKeyNotFound() throws Exception {
+    String keyString = "missing-key";
+    int partition = 2;
+    doReturn(null).when(storageEngine).get(partition, ByteBuffer.wrap(keyString.getBytes()));
+
+    // [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
+    String uri = "/" + TYPE_STORAGE + "/test-topic_v1/" + partition + "/" + keyString;
+    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
+    GetRouterRequest request =
+        GetRouterRequest.parseGetHttpRequest(httpRequest, RequestHelper.getRequestParts(URI.create(httpRequest.uri())));
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    SingleGetResponseWrapper responseObject = (SingleGetResponseWrapper) argumentCaptor.getValue();
+    Assert.assertNull(responseObject.getValueRecord());
+    assertEquals(((AbstractReadResponseStats) responseObject.getStats()).getKeyNotFoundCount(), 1);
+  }
+
+  @Test
+  public void testMultiGetWithKeyNotFound() throws Exception {
+    int recordCount = 10;
+    int missingRecordCount = 3;
+    RecordSerializer<MultiGetRouterRequestKeyV1> serializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
+    List<MultiGetRouterRequestKeyV1> keys = new ArrayList<>();
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
+
+    for (int i = 0; i < recordCount; ++i) {
+      MultiGetRouterRequestKeyV1 requestKey = new MultiGetRouterRequestKeyV1();
+      String keyString = "key_" + i;
+      byte[] keyBytes = keySerializer.serialize(null, keyString);
+      requestKey.keyBytes = ByteBuffer.wrap(keyBytes);
+      requestKey.keyIndex = i;
+      requestKey.partitionId = 0;
+
+      if (i < (recordCount - missingRecordCount)) {
+        String valueString = "value_" + i;
+        byte[] valueBytes = ValueRecord.create(1, valueString.getBytes()).serialize();
+        doReturn(valueBytes).when(storageEngine).get(eq(0), eq(requestKey.keyBytes));
+      } else {
+        doReturn(null).when(storageEngine).get(eq(0), eq(requestKey.keyBytes));
+      }
+      keys.add(requestKey);
+    }
+
+    String uri = "/" + TYPE_STORAGE + "/test-topic_v1";
+    FullHttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, uri);
+    httpRequest.headers()
+        .set(
+            HttpConstants.VENICE_API_VERSION,
+            ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion());
+    httpRequest.content().writeBytes(serializer.serializeObjects(keys));
+    MultiGetRouterRequestWrapper request = MultiGetRouterRequestWrapper
+        .parseMultiGetHttpRequest(httpRequest, RequestHelper.getRequestParts(URI.create(uri)));
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, timeout(1000).times(1)).writeAndFlush(argumentCaptor.capture());
+    MultiKeyResponseWrapper responseObject = (MultiKeyResponseWrapper) argumentCaptor.getValue();
+    assertEquals(((AbstractReadResponseStats) responseObject.getStats()).getKeyNotFoundCount(), missingRecordCount);
+  }
+
+  @Test
+  public void testComputeWithKeyNotFound() throws Exception {
+    int recordCount = 2;
+    int missingRecordCount = 1;
+
+    String valueSchemaStr = "{" + "  \"type\": \"record\"," + "  \"name\": \"User\"," + "  \"fields\": ["
+        + "    {\"name\": \"name\", \"type\": \"string\"}" + "  ]" + "}";
+    Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(valueSchemaStr);
+    SchemaEntry valueSchemaEntry = new SchemaEntry(1, valueSchema);
+    doReturn(valueSchemaEntry).when(schemaRepository).getValueSchema(any(), anyInt());
+
+    RecordSerializer<GenericRecord> valueSerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(valueSchema);
+
+    String key1Str = "key_1";
+    ByteBuffer key1Bytes = ByteBuffer.wrap(key1Str.getBytes());
+    ComputeRouterRequestKeyV1 requestKey1 = new ComputeRouterRequestKeyV1(0, key1Bytes, 0);
+
+    String key2Str = "key_2";
+    ByteBuffer key2Bytes = ByteBuffer.wrap(key2Str.getBytes());
+    ComputeRouterRequestKeyV1 requestKey2 = new ComputeRouterRequestKeyV1(1, key2Bytes, 0);
+
+    List<ComputeRouterRequestKeyV1> keys = Arrays.asList(requestKey1, requestKey2);
+
+    GenericRecord value = new GenericData.Record(valueSchema);
+    value.put("name", "name_1");
+    byte[] valueBytes = ValueRecord.create(1, valueSerializer.serialize(value)).serialize();
+
+    byte[] key1BytesArray = key1Str.getBytes();
+
+    doAnswer(invocation -> {
+      byte[] bytes = invocation.getArgument(1);
+      if (Arrays.equals(bytes, key1BytesArray)) {
+        return valueBytes;
+      }
+      return null;
+    }).when(storageEngine).get(eq(0), any(byte[].class));
+
+    doAnswer(invocation -> {
+      byte[] bytes = invocation.getArgument(1);
+      if (Arrays.equals(bytes, key1BytesArray)) {
+        return ByteBuffer.wrap(valueBytes);
+      }
+      return null;
+    }).when(storageEngine).get(eq(0), any(byte[].class), any(ByteBuffer.class));
+
+    doAnswer(invocation -> {
+      ByteBuffer bb = invocation.getArgument(1);
+      if (bb != null && bb.equals(key1Bytes)) {
+        return valueBytes;
+      }
+      return null;
+    }).when(storageEngine).get(eq(0), any(ByteBuffer.class));
+
+    ComputeRequest computeRequest = new ComputeRequest();
+    computeRequest.setOperations(Collections.emptyList());
+    computeRequest.setResultSchemaStr(new org.apache.avro.util.Utf8(valueSchemaStr));
+
+    ComputeRouterRequestWrapper request = mock(ComputeRouterRequestWrapper.class);
+    doReturn(keys).when(request).getKeys();
+    doReturn(recordCount).when(request).getKeyCount();
+    doReturn("test-store_v1").when(request).getResourceName();
+    doReturn("test-store").when(request).getStoreName();
+    doReturn(RequestType.COMPUTE).when(request).getRequestType();
+    doReturn(computeRequest).when(request).getComputeRequest();
+    doReturn(1).when(request).getValueSchemaId();
+    doReturn(false).when(request).shouldRequestBeTerminatedEarly();
+    doReturn(false).when(request).isStreamingRequest();
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, timeout(1000).times(1)).writeAndFlush(argumentCaptor.capture());
+    MultiKeyResponseWrapper responseObject = (MultiKeyResponseWrapper) argumentCaptor.getValue();
+    assertEquals(((AbstractReadResponseStats) responseObject.getStats()).getKeyNotFoundCount(), missingRecordCount);
   }
 
   private SchemaReader getMockSchemaReader(Schema keySchema, Schema valueSchema) {

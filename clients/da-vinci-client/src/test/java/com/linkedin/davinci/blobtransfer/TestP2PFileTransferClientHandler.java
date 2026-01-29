@@ -4,16 +4,21 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.client.MetadataAggregator;
 import com.linkedin.davinci.blobtransfer.client.P2PFileTransferClientHandler;
 import com.linkedin.davinci.blobtransfer.client.P2PMetadataTransferHandler;
+import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import io.netty.buffer.Unpooled;
@@ -37,9 +42,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.mockito.Mockito;
@@ -57,15 +66,20 @@ public class TestP2PFileTransferClientHandler {
   int TEST_PARTITION = 0;
   CompletionStage<InputStream> inputStreamFuture;
   StorageMetadataService storageMetadataService;
+  ExecutorService checksumValidationExecutorService;
+  AggBlobTransferStats blobTransferStats;
 
   P2PFileTransferClientHandler clientFileHandler;
   P2PMetadataTransferHandler clientMetadataHandler;
+  VeniceNotifier veniceNotifier;
 
   @BeforeMethod
   public void setUp() throws IOException {
     baseDir = Files.createTempDirectory("tmp");
     inputStreamFuture = new CompletableFuture<>();
     storageMetadataService = Mockito.mock(StorageMetadataService.class);
+    blobTransferStats = Mockito.mock(AggBlobTransferStats.class);
+    checksumValidationExecutorService = Executors.newSingleThreadExecutor();
 
     clientFileHandler = Mockito.spy(
         new P2PFileTransferClientHandler(
@@ -74,8 +88,11 @@ public class TestP2PFileTransferClientHandler {
             TEST_STORE,
             TEST_VERSION,
             TEST_PARTITION,
-            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE));
+            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
+            blobTransferStats,
+            checksumValidationExecutorService));
 
+    veniceNotifier = Mockito.mock(VeniceNotifier.class);
     clientMetadataHandler = Mockito.spy(
         new P2PMetadataTransferHandler(
             storageMetadataService,
@@ -83,7 +100,14 @@ public class TestP2PFileTransferClientHandler {
             TEST_STORE,
             TEST_VERSION,
             TEST_PARTITION,
-            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE));
+            BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
+            () -> veniceNotifier));
+    Mockito.doNothing()
+        .when(veniceNotifier)
+        .startOfIncrementalPushReceived(Mockito.anyString(), Mockito.anyInt(), Mockito.any(), Mockito.anyString());
+    Mockito.doNothing()
+        .when(veniceNotifier)
+        .endOfIncrementalPushReceived(Mockito.anyString(), Mockito.anyInt(), Mockito.any(), Mockito.anyString());
 
     Mockito.doNothing().when(clientMetadataHandler).updateStorePartitionMetadata(Mockito.any(), Mockito.any());
 
@@ -91,7 +115,7 @@ public class TestP2PFileTransferClientHandler {
   }
 
   @AfterMethod
-  public void teardown() throws IOException {
+  public void tearDown() throws IOException {
     ch.close();
     Files.walk(baseDir).sorted(Comparator.reverseOrder()).forEach(path -> {
       try {
@@ -169,6 +193,11 @@ public class TestP2PFileTransferClientHandler {
 
     ch.writeInbound(response);
     ch.writeInbound(chunk1);
+
+    // Write BLOB_TRANSFER_COMPLETED as exception is validated there.
+    DefaultHttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    endOfTransfer.headers().add(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
+    ch.writeInbound(endOfTransfer);
     try {
       inputStreamFuture.toCompletableFuture().get(1, TimeUnit.MINUTES);
       Assert.fail("Expected exception not thrown");
@@ -231,6 +260,10 @@ public class TestP2PFileTransferClientHandler {
     Path file1 = dest.resolve("test_file.txt");
     Assert.assertTrue(Files.exists(file1));
     Assert.assertEquals(Files.size(file1), 5);
+
+    // Verify the temp directory is cleaned up
+    Path tempDir = Paths.get(payload.getTempPartitionDir());
+    Assert.assertFalse(Files.exists(tempDir), "Temporary directory should be cleaned up after transfer.");
   }
 
   @Test
@@ -292,8 +325,17 @@ public class TestP2PFileTransferClientHandler {
     expectedMetadata.setPartitionId(TEST_PARTITION);
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     offsetRecord.setOffsetLag(1000L);
+    Map<String, IncrementalPushReplicaStatus> incrementalPushInfo = new HashMap<>();
+    incrementalPushInfo.put(
+        "pushJobVersion1",
+        new IncrementalPushReplicaStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue(), 1000L));
+    incrementalPushInfo.put(
+        "pushJobVersion2",
+        new IncrementalPushReplicaStatus(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED.getValue(), 2000L));
+    offsetRecord.setTrackingIncrementalPushStatus(incrementalPushInfo);
+
     expectedMetadata.setOffsetRecord(ByteBuffer.wrap(offsetRecord.toBytes()));
 
     ObjectMapper objectMapper = new ObjectMapper();
@@ -364,7 +406,7 @@ public class TestP2PFileTransferClientHandler {
     expectMetadata.setPartitionId(TEST_PARTITION);
     InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
     offsetRecord.setOffsetLag(1000L);
     expectMetadata.setOffsetRecord(ByteBuffer.wrap(offsetRecord.toBytes()));
 
@@ -420,6 +462,10 @@ public class TestP2PFileTransferClientHandler {
     Assert.assertEquals(actualMetadata.getTopicName(), expectMetadata.getTopicName());
     Assert.assertEquals(actualMetadata.getPartitionId(), expectMetadata.getPartitionId());
     Assert.assertEquals(actualMetadata.getOffsetRecord(), expectMetadata.getOffsetRecord());
+
+    // Verify the temp directory is cleaned up
+    Path tempDir = Paths.get(payload.getTempPartitionDir());
+    Assert.assertFalse(Files.exists(tempDir), "Temporary directory should be cleaned up after transfer.");
 
     // Ensure the future is completed
     Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());

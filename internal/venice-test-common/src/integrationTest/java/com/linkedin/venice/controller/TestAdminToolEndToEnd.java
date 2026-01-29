@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
+import static com.linkedin.venice.ConfigKeys.IS_DARK_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
@@ -16,12 +17,14 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.PubSubPositionJsonWireFormat;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.endToEnd.TestHybrid;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixReadOnlyDarkClusterConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -33,6 +36,7 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
@@ -65,7 +69,8 @@ public class TestAdminToolEndToEnd {
   @BeforeClass
   public void setUp() {
     Properties properties = new Properties();
-    properties.setProperty(LOCAL_REGION_NAME, "dc-0");
+    String regionName = "dc-0";
+    properties.setProperty(LOCAL_REGION_NAME, regionName);
     properties.setProperty(ALLOW_CLUSTER_WIPE, "true");
     properties.setProperty(TOPIC_CLEANUP_DELAY_FACTOR, "0");
 
@@ -73,7 +78,11 @@ public class TestAdminToolEndToEnd {
     properties.setProperty(REPUSH_ORCHESTRATOR_CLASS_NAME, TestHybrid.TestRepushOrchestratorImpl.class.getName());
     properties.setProperty(LOG_COMPACTION_ENABLED, "true");
 
+    // dark cluster configs
+    properties.setProperty(IS_DARK_CLUSTER, "true");
+
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .regionName(regionName)
         .numberOfServers(1)
         .numberOfRouters(1)
         .replicationFactor(1)
@@ -135,6 +144,52 @@ public class TestAdminToolEndToEnd {
       Assert.fail("Store migration should be denied");
     } catch (VeniceException e) {
       Assert.assertTrue(e.getMessage().contains("does not allow store migration"));
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUpdateDarkClusterConfig() throws Exception {
+    ZkClient zkClient = ZkClientFactory.newZkClient(venice.getZk().getAddress());
+    HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
+    HelixReadOnlyDarkClusterConfigRepository darkClusterConfigRepository =
+        new HelixReadOnlyDarkClusterConfigRepository(zkClient, adapterSerializer, clusterName);
+
+    try (ControllerClient controllerClient =
+        new ControllerClient(clusterName, venice.getLeaderVeniceController().getControllerUrl())) {
+      String testStoreName1 = Utils.getUniqueString("test-store");
+      NewStoreResponse newStoreResponse =
+          controllerClient.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
+      Assert.assertFalse(newStoreResponse.isError());
+
+      String testStoreName2 = Utils.getUniqueString("test-store");
+      newStoreResponse = controllerClient.createNewStore(testStoreName2, "test", "\"string\"", "\"string\"");
+      Assert.assertFalse(newStoreResponse.isError());
+
+      String storesParam = testStoreName1 + "," + testStoreName2;
+      String[] adminToolArgs =
+          { "--update-dark-cluster-config", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
+              clusterName, "--" + Arg.STORES_TO_REPLICATE.getArgName(), storesParam };
+      AdminTool.main(adminToolArgs);
+
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        darkClusterConfigRepository.refresh();
+        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getStoresToReplicate().contains(testStoreName1));
+        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getStoresToReplicate().contains(testStoreName2));
+        Assert.assertEquals(darkClusterConfigRepository.getConfigs().getStoresToReplicate().size(), 2);
+      });
+
+      // Update the list to contain only test store 1
+      String[] adminToolArgsWithOnlyOneStore =
+          { "--update-dark-cluster-config", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
+              clusterName, "--" + Arg.STORES_TO_REPLICATE.getArgName(), testStoreName1 };
+      AdminTool.main(adminToolArgsWithOnlyOneStore);
+
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        darkClusterConfigRepository.refresh();
+        Assert.assertEquals(darkClusterConfigRepository.getConfigs().getStoresToReplicate().size(), 1);
+        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getStoresToReplicate().contains(testStoreName1));
+        Assert.assertFalse(darkClusterConfigRepository.getConfigs().getStoresToReplicate().contains(testStoreName2));
+      });
     }
   }
 
@@ -250,8 +305,8 @@ public class TestAdminToolEndToEnd {
 
   @Test(timeOut = 4 * TEST_TIMEOUT)
   public void testUpdateAdminOperationVersion() throws Exception {
-    Long defaultVersion = -1L;
     Long newVersion = 80L;
+    PubSubPositionJsonWireFormat defaultPosition = PubSubSymbolicPosition.EARLIEST.toJsonWireFormat();
     String storeName = Utils.getUniqueString("test-store");
     try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
@@ -271,10 +326,10 @@ public class TestAdminToolEndToEnd {
 
       // Verify the original metadata - default value
       AdminTopicMetadataResponse originalMetadata = parentControllerClient.getAdminTopicMetadata(Optional.empty());
-      Assert.assertEquals(originalMetadata.getAdminOperationProtocolVersion(), (long) defaultVersion);
-      Assert.assertEquals(originalMetadata.getExecutionId(), (long) defaultVersion);
-      Assert.assertEquals(originalMetadata.getOffset(), (long) defaultVersion);
-      Assert.assertEquals(originalMetadata.getUpstreamOffset(), (long) defaultVersion);
+      Assert.assertEquals(originalMetadata.getAdminOperationProtocolVersion(), -1L);
+      Assert.assertEquals(originalMetadata.getExecutionId(), -1L);
+      Assert.assertEquals(originalMetadata.getPosition(), defaultPosition);
+      Assert.assertEquals(originalMetadata.getUpstreamPosition(), defaultPosition);
 
       // Create store
       NewStoreResponse newStoreResponse =
@@ -293,15 +348,16 @@ public class TestAdminToolEndToEnd {
       AdminTopicMetadataResponse metdataAfterStoreCreation =
           parentControllerClient.getAdminTopicMetadata(Optional.empty());
       long baselineExecutionId = metdataAfterStoreCreation.getExecutionId();
-      long baselineOffset = metdataAfterStoreCreation.getOffset();
-      long baselineUpstreamOffset = metdataAfterStoreCreation.getUpstreamOffset();
+      PubSubPositionJsonWireFormat baselinePosition = metdataAfterStoreCreation.getPosition();
+      PubSubPositionJsonWireFormat baselineUpstreamPosition = metdataAfterStoreCreation.getUpstreamPosition();
       long baselineAdminVersion = metdataAfterStoreCreation.getAdminOperationProtocolVersion();
 
       // Execution id and offset should be positive now since we have created a store and updated the store config
-      Assert.assertEquals(baselineAdminVersion, (long) defaultVersion);
+      Assert.assertEquals(baselineAdminVersion, -1L);
       Assert.assertTrue(baselineExecutionId > 0);
-      Assert.assertTrue(baselineOffset > 0);
-      Assert.assertEquals(baselineUpstreamOffset, (long) defaultVersion);
+      Assert.assertNotNull(baselinePosition);
+      Assert.assertNotEquals(defaultPosition, baselinePosition);
+      Assert.assertEquals(defaultPosition, baselineUpstreamPosition);
 
       // Update the admin operation version to newVersion - 80
       String[] updateAdminOperationVersionArgs =
@@ -315,8 +371,8 @@ public class TestAdminToolEndToEnd {
         AdminTopicMetadataResponse updatedMetadata = parentControllerClient.getAdminTopicMetadata(Optional.empty());
         Assert.assertEquals(updatedMetadata.getAdminOperationProtocolVersion(), (long) newVersion);
         Assert.assertEquals(updatedMetadata.getExecutionId(), baselineExecutionId);
-        Assert.assertEquals(updatedMetadata.getOffset(), baselineOffset);
-        Assert.assertEquals(updatedMetadata.getUpstreamOffset(), baselineUpstreamOffset);
+        Assert.assertEquals(updatedMetadata.getPosition(), baselinePosition);
+        Assert.assertEquals(updatedMetadata.getUpstreamPosition(), baselineUpstreamPosition);
       });
     }
   }

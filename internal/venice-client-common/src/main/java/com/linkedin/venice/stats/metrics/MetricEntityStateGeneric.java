@@ -1,7 +1,5 @@
 package com.linkedin.venice.stats.metrics;
 
-import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.REDUNDANT_LOG_FILTER;
-
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
@@ -50,7 +48,24 @@ public class MetricEntityStateGeneric extends MetricEntityState {
         registerTehutiSensorFn,
         tehutiMetricNameEnum,
         tehutiMetricStats);
+    validateMetricType(metricEntity);
     validateRequiredDimensions(metricEntity, baseDimensionsMap);
+  }
+
+  /**
+   * MetricEntityStateGeneric does not support async counter types because it doesn't cache
+   * MetricAttributesData and cannot provide the getAllMetricAttributesData() iteration required for
+   * observable counter reporting. Use one of the enum-based MetricEntityState subclasses for
+   * ASYNC_COUNTER_FOR_HIGH_PERF_CASES or ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES metrics.
+   */
+  private void validateMetricType(MetricEntity metricEntity) {
+    MetricType metricType = metricEntity.getMetricType();
+    if (metricType.isObservableCounterType()) {
+      throw new IllegalArgumentException(
+          "MetricEntityStateGeneric does not support " + metricType + " metric type. "
+              + "Use MetricEntityStateOneEnum, MetricEntityStateTwoEnums, etc. for metric: "
+              + metricEntity.getMetricName());
+    }
   }
 
   /** Factory method to keep the API consistent with other subclasses like {@link MetricEntityStateOneEnum} */
@@ -152,10 +167,18 @@ public class MetricEntityStateGeneric extends MetricEntityState {
     try {
       super.record(value, getAttributes(dimensions));
     } catch (IllegalArgumentException e) {
-      getOtelRepository().recordFailureMetric();
-      if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
-        LOGGER.error("Error recording metric: ", e);
-      }
+      getOtelRepository().recordFailureMetric(getMetricEntity(), e);
     }
+  }
+
+  @Override
+  /**
+   * MetricEntityStateGeneric does not support ASYNC_COUNTER_FOR_HIGH_PERF_CASES because it doesn't cache
+   * MetricAttributesData and cannot provide the getAllMetricAttributesData() iteration required for
+   * observable counter reporting. Use one of the enum-based MetricEntityState subclasses for
+   * ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics.
+   */
+  protected Iterable<MetricAttributesData> getAllMetricAttributesData() {
+    return null;
   }
 }

@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.server.VersionRole;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -20,10 +21,7 @@ public class PartitionReplicaIngestionContext {
   private final PubSubTopic versionTopic;
   private final VersionRole versionRole;
   private final WorkloadType workloadType;
-
-  public enum VersionRole {
-    CURRENT, BACKUP, FUTURE
-  }
+  private final boolean isReadyToServe;
 
   // TODO: Add more workload types if needed, here we only care about active active or write compute workload.
   public enum WorkloadType {
@@ -35,10 +33,20 @@ public class PartitionReplicaIngestionContext {
       PubSubTopicPartition pubSubTopicPartition,
       VersionRole versionRole,
       WorkloadType workloadType) {
+    this(versionTopic, pubSubTopicPartition, versionRole, workloadType, true);
+  }
+
+  public PartitionReplicaIngestionContext(
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition,
+      VersionRole versionRole,
+      WorkloadType workloadType,
+      boolean isReadyToServe) {
     this.versionTopic = versionTopic;
     this.pubSubTopicPartition = pubSubTopicPartition;
     this.versionRole = versionRole;
     this.workloadType = workloadType;
+    this.isReadyToServe = isReadyToServe;
   }
 
   public VersionRole getVersionRole() {
@@ -55,6 +63,10 @@ public class PartitionReplicaIngestionContext {
 
   public WorkloadType getWorkloadType() {
     return workloadType;
+  }
+
+  public boolean isReadyToServe() {
+    return isReadyToServe;
   }
 
   public static WorkloadType determineWorkloadType(

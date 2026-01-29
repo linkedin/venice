@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.model.ClusterConfig;
+import org.apache.helix.model.IdealState;
 import org.apache.helix.model.RESTConfig;
 
 
@@ -158,4 +159,8 @@ public interface HelixAdminClient {
       String instanceName,
       InstanceConstants.InstanceOperation instanceOperation,
       String reason);
+
+  IdealState getResourceIdealState(String clusterName, String resourceName);
+
+  void updateIdealState(String clusterName, String resourceName, IdealState idealState);
 }

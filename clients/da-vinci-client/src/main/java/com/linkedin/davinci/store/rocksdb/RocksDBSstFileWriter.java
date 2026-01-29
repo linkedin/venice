@@ -265,7 +265,8 @@ public class RocksDBSstFileWriter {
             throw new VeniceChecksumException(
                 "verifyChecksum: failure. last sstFile checksum didn't match for store: " + storeName + ", partition: "
                     + partitionId + ", sstFile: " + fullPathForLastFinishedSSTFile + ", records: "
-                    + recordNumInLastSSTFile + ", latency(ms): " + LatencyUtils.getElapsedTimeFromMsToMs(startMs));
+                    + recordNumInLastSSTFile + ", latency(ms): " + LatencyUtils.getElapsedTimeFromMsToMs(startMs),
+                partitionId);
           }
         }
       } else if (!isRMD) {
@@ -412,7 +413,7 @@ public class RocksDBSstFileWriter {
       }
       return result;
     } catch (Exception e) {
-      throw new VeniceChecksumException("Checksum mismatch in SST files.", e);
+      throw new VeniceChecksumException("Checksum mismatch in SST files.", e, partitionId);
     } finally {
       /**
        * close the iterator first before closing the reader, otherwise iterator is not closed at all, based on implementation
@@ -454,7 +455,7 @@ public class RocksDBSstFileWriter {
       for (LiveFileMetaData file: oldIngestedSSTFiles) {
         if (Arrays.equals(file.columnFamilyName(), columnFamilyHandle.getName())) {
           count++;
-          rocksDB.deleteFile(file.fileName());
+          rocksDB.deprecated_deleteFile(file.fileName());
         }
       }
       LOGGER.info(

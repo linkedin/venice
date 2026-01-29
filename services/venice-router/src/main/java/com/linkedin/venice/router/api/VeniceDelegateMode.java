@@ -22,8 +22,11 @@ import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
+import com.linkedin.venice.router.stats.RouteHttpStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.RouterThrottler;
+import com.linkedin.venice.stats.ThreadPoolStats;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -31,7 +34,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -53,6 +62,14 @@ import javax.annotation.Nonnull;
  * this potential leaking issue.
  */
 public class VeniceDelegateMode extends ScatterGatherMode {
+  public static final Logger LOGGER = LogManager.getLogger(VeniceDelegateMode.class);
+  /**
+   * The following constant defines the threshold for selecting a host based on its average latency.
+   * If the host avg latency is lower than the minimum latency of all hosts by more than 50%, it will be considered for selection.
+   * This is used to not skew traffic to a small set of hosts and to avoid routing to a host that has significantly higher latency
+   * than other hosts.
+   */
+  private static final double AVG_LATENCY_SPECTRUM_FOR_HOST_SELECTION = 1.5;
   /**
    * This mode will route single get to the least loaded replica.
    */
@@ -90,14 +107,23 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   private final VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private final ScatterGatherMode scatterGatherModeForMultiKeyRequest;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
+  private final RouterStats<RouteHttpStats> perRouteStatsByType;
+  private final boolean latencyBasedRoutingEnabled;
+
+  private final RoutingComputationMode routingComputationMode;
+  private final ThreadPoolExecutor parallelRoutingExecutor;
+  private final int parallelRoutingChunkSize;
 
   public VeniceDelegateMode(
       VeniceRouterConfig config,
       RouterStats<AggRouterHttpRequestStats> routerStats,
-      RouteHttpRequestStats routeHttpRequestStats) {
+      RouteHttpRequestStats routeHttpRequestStats,
+      RouterStats<RouteHttpStats> perRouteStatsByType) {
     super("VENICE_DELEGATE_MODE", false);
     this.routerStats = routerStats;
     this.routeHttpRequestStats = routeHttpRequestStats;
+    this.perRouteStatsByType = perRouteStatsByType;
+    this.latencyBasedRoutingEnabled = config.isLatencyBasedRoutingEnabled();
     this.multiKeyRoutingStrategy = config.getMultiKeyRoutingStrategy();
     switch (this.multiKeyRoutingStrategy) {
       case GROUP_BY_PRIMARY_HOST_ROUTING:
@@ -114,6 +140,34 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         break;
       default:
         throw new VeniceException("Unknown multi-key routing strategy: " + this.multiKeyRoutingStrategy);
+    }
+    this.routingComputationMode = config.getRoutingComputationMode();
+    this.parallelRoutingChunkSize = config.getParallelRoutingChunkSize();
+    if (this.routingComputationMode.equals(RoutingComputationMode.PARALLEL)) {
+      int parallelRoutingThreadCount = config.getParallelRoutingThreadCount();
+      if (parallelRoutingThreadCount <= 0) {
+        throw new VeniceException(
+            "Parallel routing thread count must be greater than 0, but received: " + parallelRoutingThreadCount);
+      }
+      this.parallelRoutingExecutor = new ThreadPoolExecutor(
+          parallelRoutingThreadCount,
+          parallelRoutingThreadCount,
+          0L,
+          TimeUnit.MILLISECONDS,
+          new LinkedBlockingQueue<>(),
+          new DaemonThreadFactory("Venice-Parallel-Routing"));
+      if (routeHttpRequestStats.getMetricsRepository() != null) {
+        new ThreadPoolStats(
+            routeHttpRequestStats.getMetricsRepository(),
+            parallelRoutingExecutor,
+            "ParallelRoutingExecutor");
+      }
+      LOGGER.info(
+          "Venice router parallel routing enabled, with thread pool size: {}, chunk size: {}",
+          parallelRoutingThreadCount,
+          parallelRoutingChunkSize);
+    } else {
+      this.parallelRoutingExecutor = null;
     }
   }
 
@@ -309,41 +363,130 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     return finalScatter;
   }
 
-  // Select host with the least pending queue depth.
-  private <H> H selectLeastLoadedHost(List<H> hosts, VenicePath path) throws RouterException {
-    H host;
-    long minCount = Long.MAX_VALUE;
+  /**
+   * Select the least loaded host from the available healthy replicas.
+   * Behavior depends on the latencyBasedRoutingEnabled config flag:
+   *
+   * When enabled, uses average response latency as the criterion with a 1.5x spectrum
+   * threshold among the healthy host list. Ref {@link #AVG_LATENCY_SPECTRUM_FOR_HOST_SELECTION}.
+   * Randomly selects within the latency spectrum to avoid skewed traffic.
+   *
+   * When disabled (default), uses pending request count to decide on the host selection
+   * among the healthy host list.
+   *
+   * Note: Healthy host list is based on {@link VeniceHostHealth#isHostHealthy}
+   */
+  private <H> H selectLeastLoadedHost(List<H> hosts, VenicePath path, RouteHttpStats routeHttpStats)
+      throws RouterException {
+    if (latencyBasedRoutingEnabled) {
+      return selectLeastLoadedHostByLatency(hosts, path, routeHttpStats);
+    } else {
+      return selectLeastLoadedHostByPendingCount(hosts, path);
+    }
+  }
+
+  /**
+   * Select host with the lowest pending request count:
+   * This has concerns where a host with low pending count but high latency could be
+   * selected when the QPS is low, leading to suboptimal routing decisions.
+   */
+  private <H> H selectLeastLoadedHostByPendingCount(List<H> hosts, VenicePath path) throws RouterException {
     H minHost = null;
+    long smallestPendingCount = Long.MAX_VALUE;
+
     for (H h: hosts) {
       Instance node = (Instance) h;
-      if (!path.canRequestStorageNode(node.getNodeId()))
+      String nodeId = node.getNodeId();
+
+      if (!path.canRequestStorageNode(nodeId)) {
         continue;
-      long pendingRequestCount = routeHttpRequestStats.getPendingRequestCount(node.getNodeId());
-      if (pendingRequestCount < minCount) {
-        minCount = pendingRequestCount;
+      }
+
+      long currentPendingCount = routeHttpRequestStats.getPendingRequestCount(nodeId);
+      if (currentPendingCount < smallestPendingCount) {
+        smallestPendingCount = currentPendingCount;
         minHost = h;
       }
     }
+
     if (minHost == null) {
-      if (path.isRetryRequest()) {
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            path.getStoreName(),
-            path.getRequestType(),
-            SERVICE_UNAVAILABLE,
-            "Retry request aborted because of slow route for request path: " + path.getResourceName(),
-            RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
-      } else {
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            path.getStoreName(),
-            path.getRequestType(),
-            SERVICE_UNAVAILABLE,
-            "Could not find ready-to-serve replica for request path: " + path.getResourceName());
-      }
+      throwNoHostAvailableException(path);
     }
     H finalHost = minHost;
     hosts.removeIf(aHost -> !aHost.equals(finalHost));
-    host = finalHost;
-    return host;
+    return finalHost;
+  }
+
+  /**
+   * Select host based on low latency with spectrum threshold.
+   * 1. Find the minimum latency among all eligible hosts (eligible = based on {@link VeniceHostHealth#isHostHealthy})
+   * 2. Select all hosts with latency <= minLatency * {@link #AVG_LATENCY_SPECTRUM_FOR_HOST_SELECTION}
+   * 3. Randomly pick one from the candidate hosts to avoid skewed traffic
+   */
+  private <H> H selectLeastLoadedHostByLatency(List<H> hosts, VenicePath path, RouteHttpStats routeHttpStats)
+      throws RouterException {
+    double minLatency = Double.MAX_VALUE;
+    Map<H, Double> hostLatencyMapping = new HashMap<>();
+
+    for (H h: hosts) {
+      Instance node = (Instance) h;
+
+      if (!path.canRequestStorageNode(node.getNodeId())) {
+        continue;
+      }
+
+      double avgHostLatency = routeHttpStats.getHostResponseWaitingTimeAvg(node.getHost());
+      if (avgHostLatency <= 0) {
+        // No datapoint, which means this host hasn't received any traffic so far, so just return it.
+        hosts.removeIf(aHost -> !aHost.equals(h));
+        return h;
+      }
+
+      hostLatencyMapping.put(h, avgHostLatency);
+      if (avgHostLatency < minLatency) {
+        minLatency = avgHostLatency;
+      }
+    }
+
+    if (hostLatencyMapping.isEmpty()) {
+      throwNoHostAvailableException(path);
+    }
+
+    // Randomly pick one host if the avg latency is not 50% higher than the minimum latency
+    // to avoid skewed traffic towards one host if there is a slight difference in latency.
+    final List<H> candidateHosts = new ArrayList<>(hostLatencyMapping.size());
+    final double minLatencyFinal = minLatency;
+    hostLatencyMapping.forEach((host, avgLatency) -> {
+      // Only consider hosts that have a latency not more than 50% higher than the minimum latency
+      if (avgLatency <= minLatencyFinal * AVG_LATENCY_SPECTRUM_FOR_HOST_SELECTION) {
+        candidateHosts.add(host);
+      }
+    });
+
+    Collections.shuffle(candidateHosts);
+    H selectedHost = candidateHosts.get(0);
+    hosts.removeIf(aHost -> !aHost.equals(selectedHost));
+    return selectedHost;
+  }
+
+  /**
+   * Helper method to throw appropriate exception when no host is available.
+   */
+  private void throwNoHostAvailableException(VenicePath path) throws RouterException {
+    if (path.isRetryRequest()) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          path.getStoreName(),
+          path.getRequestType(),
+          SERVICE_UNAVAILABLE,
+          "Retry request aborted because of slow route for request path: " + path.getResourceName(),
+          RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
+    } else {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          path.getStoreName(),
+          path.getRequestType(),
+          SERVICE_UNAVAILABLE,
+          "Could not find ready-to-serve replica for request path: " + path.getResourceName());
+    }
   }
 
   /**
@@ -393,7 +536,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       if (hosts.isEmpty()) {
         scatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), keySet));
       } else if (hosts.size() > 1) {
-        H host = selectLeastLoadedHost(hosts, venicePath);
+        H host =
+            selectLeastLoadedHost(hosts, venicePath, perRouteStatsByType.getStatsByType(venicePath.getRequestType()));
         scatter.addOnlineRequest(new ScatterGatherRequest<>(Collections.singletonList(host), keySet));
       } else {
         scatter.addOnlineRequest(new ScatterGatherRequest<>(hosts, keySet));
@@ -509,58 +653,96 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       /**
        * Group by host
        */
-      Map<Instance, KeyPartitionSet<Instance, RouterKey>> hostMap = new HashMap<>();
+      Map<Instance, KeyPartitionSet<Instance, RouterKey>> hostMap = routingComputationMode.getHostMapSupplier().get();
       int helixGroupNum = getHelixGroupNum();
       int assignedHelixGroupId = getAssignedHelixGroupId(venicePath);
       // This is used to record the request start time for the whole Router request.
       venicePath.recordOriginalRequestStartTimestamp();
-      currentPartition = 0;
-      try {
-        for (; currentPartition < partitionCount; currentPartition++) {
-          keysForCurrentPartition = keysPerPartition.get(currentPartition);
-          if (keysForCurrentPartition.isEmpty()) {
-            continue;
-          }
-          List<Instance> hosts = veniceHostFinder.findHosts(
-              requestMethod,
-              resourceName,
-              venicePath.getStoreName(),
-              currentPartition,
-              veniceHostHealthMonitor);
 
-          if (hosts.isEmpty()) {
-            veniceScatter.addOfflineRequest(
-                new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keysForCurrentPartition)));
-          } else if (hosts.size() == 1) {
-            Instance host = hosts.get(0);
-            populateHostMap(hostMap, host, keysForCurrentPartition);
-          } else {
-            try {
-              selectHostForPartition(
-                  hosts,
-                  keysForCurrentPartition,
-                  venicePath,
-                  hostMap,
-                  helixGroupNum,
-                  assignedHelixGroupId);
-            } catch (RouterException e) {
-              /**
-               * We don't want to throw exception here to fail the whole request since for streaming, partial scatter is acceptable.
-               */
-              veniceScatter.addOfflineRequest(
-                  new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keysForCurrentPartition)));
+      class RoutingFunction implements Runnable {
+        private List<Integer> nonEmptyPartitions;
+
+        public RoutingFunction(List<Integer> nonEmptyPartitions) {
+          this.nonEmptyPartitions = nonEmptyPartitions;
+        }
+
+        @Override
+        public void run() {
+          for (int partitionId: nonEmptyPartitions) {
+            List<RouterKey> keys = keysPerPartition.get(partitionId);
+            List<Instance> hosts = veniceHostFinder.findHosts(
+                requestMethod,
+                resourceName,
+                venicePath.getStoreName(),
+                partitionId,
+                veniceHostHealthMonitor);
+
+            if (hosts.isEmpty()) {
+              veniceScatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keys)));
+            } else if (hosts.size() == 1) {
+              Instance host = hosts.get(0);
+              populateHostMap(hostMap, host, keys);
+            } else {
+              try {
+                selectHostForPartition(hosts, keys, venicePath, hostMap, helixGroupNum, assignedHelixGroupId);
+              } catch (RouterException e) {
+                /**
+                 * We don't want to throw exception here to fail the whole request since for streaming, partial scatter is acceptable.
+                 */
+                veniceScatter
+                    .addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keys)));
+              }
+            }
+            // Important to clear the inner list since it is thread-local state, which will be re-used by the next
+            // request
+            keys.clear();
+          }
+        }
+      }
+
+      try {
+        if (routingComputationMode.equals(RoutingComputationMode.PARALLEL)) {
+          List<Integer> nonEmptyPartitions = new ArrayList<>(parallelRoutingChunkSize);
+          List<CompletableFuture> chunkFutures = new ArrayList<>();
+          for (int currPartition = 0; currPartition < partitionCount; currPartition++) {
+            keysForCurrentPartition = keysPerPartition.get(currPartition);
+            if (!keysForCurrentPartition.isEmpty()) {
+              nonEmptyPartitions.add(currPartition);
+              if (nonEmptyPartitions.size() == parallelRoutingChunkSize) {
+                chunkFutures
+                    .add(CompletableFuture.runAsync(new RoutingFunction(nonEmptyPartitions), parallelRoutingExecutor));
+                nonEmptyPartitions = new ArrayList<>();
+              }
             }
           }
-          // Important to clear the inner list since it is thread-local state, which will be re-used by the next request
-          keysForCurrentPartition.clear();
+          if (nonEmptyPartitions.size() < parallelRoutingChunkSize) {
+            chunkFutures
+                .add(CompletableFuture.runAsync(new RoutingFunction(nonEmptyPartitions), parallelRoutingExecutor));
+          }
+          if (chunkFutures.size() > 0) {
+            CompletableFuture.allOf(chunkFutures.toArray(new CompletableFuture[0])).get(1, TimeUnit.SECONDS);
+          }
+        } else {
+          List<Integer> nonEmptyPartitions = new ArrayList<>(partitionCount);
+          for (int currPartition = 0; currPartition < partitionCount; currPartition++) {
+            keysForCurrentPartition = keysPerPartition.get(currPartition);
+            if (!keysForCurrentPartition.isEmpty()) {
+              nonEmptyPartitions.add(currPartition);
+            }
+          }
+          new RoutingFunction(nonEmptyPartitions).run();
         }
-      } finally {
-        for (; currentPartition < partitionCount; currentPartition++) {
-          // This would only happen if the body of the try threw an exception.
-          // If that were to happen we would do a final cleanup here out of an abundance of caution.
-          keysForCurrentPartition = keysPerPartition.get(currentPartition);
-          keysForCurrentPartition.clear();
+      } catch (Exception e) {
+        // If any exception occurs during the routing, we should clear the keys for all partitions to avoid memory leak.
+        for (int i = 0; i < partitionCount; i++) {
+          keysPerPartition.get(i).clear();
         }
+        LOGGER.error("Error occurred while routing multi-key request", e);
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+            venicePath.getStoreName(),
+            venicePath.getRequestType(),
+            INTERNAL_SERVER_ERROR,
+            "Error occurred while routing multi-key request: " + e.getMessage());
       }
 
       /**
@@ -601,7 +783,10 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         Map<H, KeyPartitionSet<H, K>> hostMap,
         int groupNum,
         int assignedGroupId) throws RouterException {
-      H selectedHost = selectLeastLoadedHost(partitionReplicas, venicePath);
+      H selectedHost = selectLeastLoadedHost(
+          partitionReplicas,
+          venicePath,
+          perRouteStatsByType.getStatsByType(venicePath.getRequestType()));
       populateHostMap(hostMap, selectedHost, partitionKeys);
     }
   }

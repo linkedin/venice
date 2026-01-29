@@ -12,9 +12,9 @@ import javax.annotation.Nullable;
 public class DaemonThreadFactory implements ThreadFactory {
   protected final AtomicInteger threadNumber;
   private final String namePrefix;
-  private final Object logContext;
+  private final LogContext logContext;
 
-  public DaemonThreadFactory(String threadNamePrefix, @Nullable Object logContext) {
+  public DaemonThreadFactory(String threadNamePrefix, @Nullable LogContext logContext) {
     this.threadNumber = new AtomicInteger(0);
     this.namePrefix = threadNamePrefix;
     this.logContext = logContext;

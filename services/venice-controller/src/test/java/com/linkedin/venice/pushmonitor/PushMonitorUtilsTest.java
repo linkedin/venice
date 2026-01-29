@@ -13,6 +13,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -225,6 +227,8 @@ public class PushMonitorUtilsTest {
         maxOfflineInstanceCount,
         maxOfflineInstanceRatio,
         useDaVinciSpecificExecutionStatusForError);
+
+    System.out.println(executionStatusWithDetails.getDetails());
     Assert.assertEquals(executionStatusWithDetails.getStatus(), ExecutionStatus.STARTED);
     // Sleep 1ms and try again.
     Utils.sleep(1);
@@ -236,6 +240,7 @@ public class PushMonitorUtilsTest {
         maxOfflineInstanceCount,
         maxOfflineInstanceRatio,
         useDaVinciSpecificExecutionStatusForError);
+    System.out.println(executionStatusWithDetails.getDetails());
     Assert.assertEquals(executionStatusWithDetails.getStatus(), expectedStatus);
     if (expectedStatus.isError()) {
       Assert.assertEquals(executionStatusWithDetails.getDetails(), expectedErrorDetails);
@@ -257,6 +262,253 @@ public class PushMonitorUtilsTest {
         maxOfflineInstanceCount,
         maxOfflineInstanceRatio,
         true);
+    System.out.println(executionStatusWithDetails.getDetails());
     Assert.assertEquals(executionStatusWithDetails.getStatus(), expectedStatus);
+  }
+
+  @Test
+  public void testIncompletePartitionDetailsWithInstances() {
+    PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
+
+    // Mock partition status with different execution statuses
+    Map<CharSequence, Integer> partition0Status = new HashMap<>();
+    partition0Status.put("instance1", 2); // STARTED
+    partition0Status.put("instance2", 2); // STARTED
+    partition0Status.put("bootstrappingInstance", 2); // STARTED but should be ignored
+
+    Map<CharSequence, Integer> partition1Status = new HashMap<>();
+    partition1Status.put("instance3", 10); // COMPLETED
+    partition1Status.put("instance4", 2); // STARTED
+
+    Map<CharSequence, Integer> partition2Status = new HashMap<>();
+    partition2Status.put("instance5", 2); // STARTED
+    partition1Status.put("instance6", 10); // COMPLETED
+
+    // Mock the reader to return different statuses for different partitions
+    doReturn(partition0Status).when(reader).getPartitionStatus("store", 1, 0, Optional.empty());
+    doReturn(partition1Status).when(reader).getPartitionStatus("store", 1, 1, Optional.empty());
+    doReturn(partition2Status).when(reader).getPartitionStatus("store", 1, 2, Optional.empty());
+
+    // Mock version status to return null so it falls back to partition level
+    doReturn(null).when(reader).getVersionStatus("store", 1, Optional.empty());
+
+    // Mock instance status for all instances
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance1");
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance2");
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance3");
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance4");
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance5");
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance6");
+    doReturn(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING).when(reader)
+        .getInstanceStatus("store", "bootstrappingInstance");
+
+    // Set instances to ignore
+    Set<CharSequence> instancesToIgnore = new HashSet<>();
+    instancesToIgnore.add("bootstrappingInstance");
+
+    // Call the method under test
+    ExecutionStatusWithDetails result = PushMonitorUtils.getDaVinciPartitionLevelPushStatusAndDetails(
+        reader,
+        "store_v1",
+        3, // 3 partitions
+        Optional.empty(),
+        2, // maxOfflineInstanceCount
+        0.25, // maxOfflineInstanceRatio
+        true, // useDaVinciSpecificExecutionStatusForError
+        instancesToIgnore);
+
+    // Verify the result contains the expected details
+    String details = result.getDetails();
+    System.out.println("Details: " + details);
+
+    // Parse and validate the partition details structure
+    Set<String> partition0Instances = new HashSet<>();
+    partition0Instances.add("instance1");
+    partition0Instances.add("instance2");
+    validatePartitionInstances(details, 0, partition0Instances);
+
+    Set<String> partition1Instances = new HashSet<>();
+    partition1Instances.add("instance4");
+    validatePartitionInstances(details, 1, partition1Instances);
+
+    Set<String> partition2Instances = new HashSet<>();
+    partition2Instances.add("instance5");
+    validatePartitionInstances(details, 2, partition2Instances);
+
+    // Verify that bootstrapping instance is not included
+    Assert.assertFalse(details.contains("bootstrappingInstance"));
+
+    // Verify that completed instances are not included
+    Assert.assertFalse(details.contains("instance3"));
+    Assert.assertFalse(details.contains("instance6"));
+  }
+
+  /**
+   * Helper method to validate that a partition contains the expected instances.
+   * This method parses the details string to find the specific partition and validates
+   * that it contains exactly the expected instances, regardless of order.
+   */
+  private void validatePartitionInstances(String details, int partitionId, Set<String> expectedInstances) {
+    // Find the partition section
+    String partitionPattern = "Partition: " + partitionId + " \\(instances: \\[(.*?)\\]\\)";
+    Pattern pattern = Pattern.compile(partitionPattern);
+    Matcher matcher = pattern.matcher(details);
+
+    Assert.assertTrue(matcher.find(), "Partition: " + partitionId + " not found in details: " + details);
+
+    // Extract the instances string and parse it
+    String instancesStr = matcher.group(1);
+    Set<String> actualInstances = new HashSet<>();
+
+    if (!instancesStr.trim().isEmpty()) {
+      String[] instanceArray = instancesStr.split(", ");
+      for (String instance: instanceArray) {
+        actualInstances.add(instance.trim());
+      }
+    }
+
+    // Validate that the actual instances match the expected ones (order doesn't matter)
+    Assert.assertEquals(
+        actualInstances,
+        expectedInstances,
+        "Partition: " + partitionId + " instances mismatch. Expected: " + expectedInstances + ", Actual: "
+            + actualInstances);
+  }
+
+  @Test
+  public void testIncompletePartitionDetailsWithMoreThan10Partitions() {
+    PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
+
+    // Create more than 10 partitions to test the capping logic
+    for (int i = 0; i < 15; i++) {
+      Map<CharSequence, Integer> partitionStatus = new HashMap<>();
+      partitionStatus.put("instance" + i, 2); // STARTED status
+      doReturn(partitionStatus).when(reader).getPartitionStatus("store", 1, i, Optional.empty());
+    }
+
+    // Mock version status to return null so it falls back to partition level
+    doReturn(null).when(reader).getVersionStatus("store", 1, Optional.empty());
+
+    // Mock instance status for all instances
+    for (int i = 0; i < 15; i++) {
+      doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance" + i);
+    }
+
+    // Call the method under test
+    ExecutionStatusWithDetails result = PushMonitorUtils.getDaVinciPartitionLevelPushStatusAndDetails(
+        reader,
+        "store_v1",
+        15, // 15 partitions
+        Optional.empty(),
+        2, // maxOfflineInstanceCount
+        0.25, // maxOfflineInstanceRatio
+        true, // useDaVinciSpecificExecutionStatusForError
+        Collections.emptySet()); // no instances to ignore
+
+    // Verify that only partition IDs are shown (capped at 10) when more than 10 partitions
+    String details = result.getDetails();
+    Assert.assertTrue(details.contains("[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]"));
+    Assert.assertFalse(details.contains("Partition 10"));
+    Assert.assertFalse(details.contains("instances:"));
+  }
+
+  @Test
+  public void testIncompletePartitionDetailsWithExactly10Partitions() {
+    PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
+
+    // Create exactly 10 partitions to test the boundary case
+    for (int i = 0; i < 10; i++) {
+      Map<CharSequence, Integer> partitionStatus = new HashMap<>();
+      partitionStatus.put("instance" + i, 2); // STARTED status
+      doReturn(partitionStatus).when(reader).getPartitionStatus("store", 1, i, Optional.empty());
+    }
+
+    // Mock version status to return null so it falls back to partition level
+    doReturn(null).when(reader).getVersionStatus("store", 1, Optional.empty());
+
+    // Mock instance status for all instances
+    for (int i = 0; i < 10; i++) {
+      doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance" + i);
+    }
+
+    // Call the method under test
+    ExecutionStatusWithDetails result = PushMonitorUtils.getDaVinciPartitionLevelPushStatusAndDetails(
+        reader,
+        "store_v1",
+        10, // exactly 10 partitions
+        Optional.empty(),
+        2, // maxOfflineInstanceCount
+        0.25, // maxOfflineInstanceRatio
+        true, // useDaVinciSpecificExecutionStatusForError
+        Collections.emptySet()); // no instances to ignore
+
+    // Verify that instance details are shown for exactly 10 partitions
+    String details = result.getDetails();
+
+    // Validate a few key partitions to ensure instance details are shown
+    Set<String> partition0Instances = new HashSet<>();
+    partition0Instances.add("instance0");
+    validatePartitionInstances(details, 0, partition0Instances);
+
+    Set<String> partition9Instances = new HashSet<>();
+    partition9Instances.add("instance9");
+    validatePartitionInstances(details, 9, partition9Instances);
+    Assert.assertTrue(details.contains("instances:"));
+  }
+
+  @Test
+  public void testIncompletePartitionDetailsWithMixedStatuses() {
+    PushStatusStoreReader reader = mock(PushStatusStoreReader.class);
+
+    // Create partitions with mixed execution statuses
+    Map<CharSequence, Integer> partition0Status = new HashMap<>();
+    partition0Status.put("instance1", 2); // STARTED
+    partition0Status.put("instance2", 10); // COMPLETED
+    partition0Status.put("instance3", 3); // ERROR
+
+    Map<CharSequence, Integer> partition1Status = new HashMap<>();
+    partition1Status.put("instance4", 2); // STARTED
+    partition1Status.put("instance5", 2); // STARTED
+
+    doReturn(partition0Status).when(reader).getPartitionStatus("store", 1, 0, Optional.empty());
+    doReturn(partition1Status).when(reader).getPartitionStatus("store", 1, 1, Optional.empty());
+
+    // Mock version status to return null so it falls back to partition level
+    doReturn(null).when(reader).getVersionStatus("store", 1, Optional.empty());
+
+    // Mock instance status for all instances
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance1");
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance2");
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance3");
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance4");
+    doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus("store", "instance5");
+
+    // Call the method under test
+    ExecutionStatusWithDetails result = PushMonitorUtils.getDaVinciPartitionLevelPushStatusAndDetails(
+        reader,
+        "store_v1",
+        2, // 2 partitions
+        Optional.empty(),
+        2, // maxOfflineInstanceCount
+        0.25, // maxOfflineInstanceRatio
+        true, // useDaVinciSpecificExecutionStatusForError
+        Collections.emptySet()); // no instances to ignore
+
+    // Verify that only non-completed instances are included
+    String details = result.getDetails();
+
+    // Validate that partitions contain the correct instances
+    Set<String> partition0Instances = new HashSet<>();
+    partition0Instances.add("instance1");
+    partition0Instances.add("instance3");
+    validatePartitionInstances(details, 0, partition0Instances);
+
+    Set<String> partition1Instances = new HashSet<>();
+    partition1Instances.add("instance4");
+    partition1Instances.add("instance5");
+    validatePartitionInstances(details, 1, partition1Instances);
+
+    // Verify that completed instance is not included
+    Assert.assertFalse(details.contains("instance2"));
   }
 }

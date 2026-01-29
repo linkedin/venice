@@ -366,6 +366,12 @@ public class SemanticDetector {
         }
         break;
       case STRING:
+        // For string with default not-empty value, the default value type is org.apache.avro.util.Utf8,
+        // the above defaultValue equal check will not work for utf8 and String comparison.
+        if (object instanceof String && String.valueOf(object).equals(String.valueOf(defaultValue))) {
+          return;
+        }
+
         if (!((object instanceof String) && ((String) object).isEmpty())) {
           throw new VeniceProtocolException(
               String

@@ -25,8 +25,10 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -93,7 +95,7 @@ public class RecoverStoreMetadata {
     PubSubTopicPartition adminTopicPartition = new PubSubTopicPartitionImpl(
         pubSubTopicRepository.getTopic(adminTopic),
         AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    consumer.subscribe(adminTopicPartition, -1);
+    consumer.subscribe(adminTopicPartition, PubSubSymbolicPosition.EARLIEST, false);
     AdminOperationSerializer deserializer = new AdminOperationSerializer();
     KafkaMessageEnvelope messageEnvelope = null;
 
@@ -109,11 +111,11 @@ public class RecoverStoreMetadata {
       }
 
       Iterator<DefaultPubSubMessage> recordsIterator = Utils.iterateOnMapOfLists(records);
-
+      long consumedRecords = 0;
       while (recordsIterator.hasNext()) {
         DefaultPubSubMessage record = recordsIterator.next();
-        if (record.getPosition().getNumericOffset() % 1000 == 0) {
-          System.out.println("Consumed " + record.getPosition() + " messages");
+        if (++consumedRecords % 1000 == 0) {
+          System.out.println("Consumed " + consumedRecords + " messages");
         }
         messageEnvelope = record.getValue();
         // check message type
@@ -229,6 +231,7 @@ public class RecoverStoreMetadata {
           updateParams.setEtledProxyUserAccount(deletedStore.getEtlStoreConfig().getEtledUserProxyAccount());
           updateParams.setRegularVersionETLEnabled(deletedStore.getEtlStoreConfig().isRegularVersionETLEnabled());
           updateParams.setFutureVersionETLEnabled(deletedStore.getEtlStoreConfig().isFutureVersionETLEnabled());
+          updateParams.setETLStrategy(deletedStore.getEtlStoreConfig().getETLStrategy());
         }
         updateParams.setCompressionStrategy(deletedStore.getCompressionStrategy())
             .setClientDecompressionEnabled(deletedStore.getClientDecompressionEnabled())
@@ -255,10 +258,13 @@ public class RecoverStoreMetadata {
             .setMaxRecordSizeBytes(deletedStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(deletedStore.getMaxNearlineRecordSizeBytes())
             .setBlobTransferEnabled(deletedStore.isBlobTransferEnabled())
+            .setBlobTransferInServerEnabled(
+                ConfigCommonUtils.ActivationState.valueOf(deletedStore.getBlobTransferInServerEnabled()))
             .setTargetRegionSwap(deletedStore.getTargetSwapRegion())
             .setTargetRegionSwapWaitTime(deletedStore.getTargetSwapRegionWaitTime())
             .setIsDavinciHeartbeatReported(deletedStore.getIsDavinciHeartbeatReported())
-            .setGlobalRtDivEnabled(deletedStore.isGlobalRtDivEnabled());
+            .setGlobalRtDivEnabled(deletedStore.isGlobalRtDivEnabled())
+            .setFlinkVeniceViewsEnabled(deletedStore.isFlinkVeniceViewsEnabled());
         System.out.println(
             "Updating store: " + storeName + " in cluster: " + recoverCluster + " with params: "
                 + updateParams.toString());

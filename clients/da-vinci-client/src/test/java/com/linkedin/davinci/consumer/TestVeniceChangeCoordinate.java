@@ -1,8 +1,15 @@
 package com.linkedin.davinci.consumer;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -22,8 +29,9 @@ public class TestVeniceChangeCoordinate {
   @Test
   public void testReadAndWriteExternal() throws IOException, ClassNotFoundException {
     PubSubPosition position = ApacheKafkaOffsetPosition.of(TEST_OFFSET);
+    long sequenceId = 123L;
     VeniceChangeCoordinate veniceChangeCoordinate =
-        new VeniceChangeCoordinate(TEST_STORE_TOPIC, position, TEST_PARTITION);
+        new VeniceChangeCoordinate(TEST_STORE_TOPIC, position, TEST_PARTITION, sequenceId);
 
     ByteArrayOutputStream inMemoryOutputStream = new ByteArrayOutputStream();
     ObjectOutputStream objectOutputStream = new ObjectOutputStream(inMemoryOutputStream);
@@ -41,31 +49,106 @@ public class TestVeniceChangeCoordinate {
     Assert.assertEquals(restoredCoordinate.getStoreName(), TEST_STORE_NAME);
     Assert.assertEquals(restoredCoordinate.getPartition(), TEST_PARTITION);
     Assert.assertEquals(restoredCoordinate.getPosition(), position);
+    Assert.assertEquals(restoredCoordinate.getConsumerSequenceId(), sequenceId);
+    Assert.assertEquals(
+        restoredCoordinate,
+        veniceChangeCoordinate,
+        "Restored VeniceChangeCoordinate should be equal to the original one");
+    Assert.assertEquals(restoredCoordinate.hashCode(), veniceChangeCoordinate.hashCode());
+  }
 
+  @Test
+  public void testReadExternalBackwardsCompatible() throws IOException, ClassNotFoundException {
+    PubSubPosition position = ApacheKafkaOffsetPosition.of(TEST_OFFSET);
+    long sequenceId = 123L;
+    VeniceChangeCoordinate veniceChangeCoordinate =
+        new VeniceChangeCoordinate(TEST_STORE_TOPIC, position, TEST_PARTITION, sequenceId);
+    ByteArrayOutputStream inMemoryOutputStream = new ByteArrayOutputStream();
+    ObjectOutputStream objectOutputStream = new ObjectOutputStream(inMemoryOutputStream);
+    // Manually write an output stream without the consumer id field
+    objectOutputStream.writeUTF(veniceChangeCoordinate.getTopic());
+    objectOutputStream.writeInt(veniceChangeCoordinate.getPartition());
+    objectOutputStream.writeObject(veniceChangeCoordinate.getPosition().getPositionWireFormat());
+    objectOutputStream.flush();
+    objectOutputStream.close();
+
+    byte[] data = inMemoryOutputStream.toByteArray();
+    ByteArrayInputStream inMemoryInputStream = new ByteArrayInputStream(data);
+    ObjectInputStream objectInputStream = new ObjectInputStream(inMemoryInputStream);
+    VeniceChangeCoordinate restoredCoordinate = new VeniceChangeCoordinate();
+    restoredCoordinate.readExternal(objectInputStream);
+
+    Assert.assertEquals(restoredCoordinate.getStoreName(), TEST_STORE_NAME);
+    Assert.assertEquals(restoredCoordinate.getPartition(), TEST_PARTITION);
+    Assert.assertEquals(restoredCoordinate.getPosition(), position);
+    Assert.assertEquals(
+        restoredCoordinate.getConsumerSequenceId(),
+        VeniceChangeCoordinate.UNDEFINED_CONSUMER_SEQUENCE_ID);
   }
 
   @Test
   public void testComparePosition() {
+    PubSubConsumerAdapter pubSubConsumer = mock(PubSubConsumerAdapter.class);
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    doAnswer(invocation -> {
+      PubSubTopicPartition partition = invocation.getArgument(0);
+      PubSubPosition position1 = invocation.getArgument(1);
+      PubSubPosition position2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(partition, position1, position2, pubSubConsumer);
+    }).when(pubSubConsumer).positionDifference(any(), any(), any());
+
     VeniceChangeCoordinate veniceChangeCoordinate =
         new VeniceChangeCoordinate(TEST_STORE_TOPIC, ApacheKafkaOffsetPosition.of(TEST_OFFSET), TEST_PARTITION);
     VeniceChangeCoordinate veniceChangeCoordinate_1 =
         new VeniceChangeCoordinate(TEST_STORE_TOPIC, ApacheKafkaOffsetPosition.of(TEST_OFFSET), TEST_PARTITION);
-    Assert.assertEquals(veniceChangeCoordinate.comparePosition(veniceChangeCoordinate_1), 0);
+    Assert.assertEquals(
+        veniceChangeCoordinate.comparePosition(pubSubConsumer, topicPartition, veniceChangeCoordinate_1),
+        0);
 
     VeniceChangeCoordinate veniceChangeCoordinate_2 =
         new VeniceChangeCoordinate(TEST_STORE_TOPIC, ApacheKafkaOffsetPosition.of(TEST_OFFSET), TEST_PARTITION + 1);
-    Assert.assertThrows(VeniceException.class, () -> veniceChangeCoordinate.comparePosition(veniceChangeCoordinate_2));
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> veniceChangeCoordinate.comparePosition(pubSubConsumer, topicPartition, veniceChangeCoordinate_2));
 
     VeniceChangeCoordinate veniceChangeCoordinate_3 =
         new VeniceChangeCoordinate(TEST_STORE_TOPIC, ApacheKafkaOffsetPosition.of(TEST_OFFSET - 1), TEST_PARTITION);
-    Assert.assertTrue(veniceChangeCoordinate.comparePosition(veniceChangeCoordinate_3) > 0);
+    Assert.assertTrue(
+        veniceChangeCoordinate.comparePosition(pubSubConsumer, topicPartition, veniceChangeCoordinate_3) > 0);
 
     VeniceChangeCoordinate veniceChangeCoordinate_4 =
         new VeniceChangeCoordinate(TEST_STORE_TOPIC, ApacheKafkaOffsetPosition.of(TEST_OFFSET + 1), TEST_PARTITION);
-    Assert.assertTrue(veniceChangeCoordinate.comparePosition(veniceChangeCoordinate_4) < 0);
+    Assert.assertTrue(
+        veniceChangeCoordinate.comparePosition(pubSubConsumer, topicPartition, veniceChangeCoordinate_4) < 0);
 
     VeniceChangeCoordinate veniceChangeCoordinate_5 =
         new VeniceChangeCoordinate(TEST_STORE_TOPIC + "v2", ApacheKafkaOffsetPosition.of(TEST_OFFSET), TEST_PARTITION);
-    Assert.assertTrue(veniceChangeCoordinate.comparePosition(veniceChangeCoordinate_5) < 0);
+    Assert.assertTrue(
+        veniceChangeCoordinate.comparePosition(pubSubConsumer, topicPartition, veniceChangeCoordinate_5) < 0);
+  }
+
+  @Test
+  public void testComparePositionWithDifferentConsumerSequenceId() {
+    PubSubConsumerAdapter pubSubConsumer = mock(PubSubConsumerAdapter.class);
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    doAnswer(invocation -> {
+      PubSubTopicPartition partition = invocation.getArgument(0);
+      PubSubPosition position1 = invocation.getArgument(1);
+      PubSubPosition position2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(partition, position1, position2, pubSubConsumer);
+    }).when(pubSubConsumer).positionDifference(any(), any(), any());
+
+    VeniceChangeCoordinate veniceChangeCoordinate =
+        new VeniceChangeCoordinate(TEST_STORE_TOPIC, ApacheKafkaOffsetPosition.of(TEST_OFFSET), TEST_PARTITION, 1L);
+    VeniceChangeCoordinate veniceChangeCoordinate_1 =
+        new VeniceChangeCoordinate(TEST_STORE_TOPIC, ApacheKafkaOffsetPosition.of(TEST_OFFSET), TEST_PARTITION, 2L);
+    Assert.assertTrue(
+        veniceChangeCoordinate.comparePosition(pubSubConsumer, topicPartition, veniceChangeCoordinate_1) < 0);
+    // Should fall back to use topic name and position if one of the change coordinate doesn't have consumer sequence id
+    VeniceChangeCoordinate veniceChangeCoordinate_2 =
+        new VeniceChangeCoordinate(TEST_STORE_TOPIC, ApacheKafkaOffsetPosition.of(TEST_OFFSET), TEST_PARTITION);
+    Assert.assertEquals(
+        veniceChangeCoordinate.comparePosition(pubSubConsumer, topicPartition, veniceChangeCoordinate_2),
+        0);
   }
 }

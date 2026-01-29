@@ -10,8 +10,11 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessStats;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -69,6 +72,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
    */
   private long connectionTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
+  private final PubSubPositionDeserializer pubSubPositionDeserializer;
 
   public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, VeniceConfigLoader configLoader) {
     this.configLoader = configLoader;
@@ -89,6 +93,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
         .childOption(ChannelOption.TCP_NODELAY, true);
 
     heartbeatClient = new MainIngestionRequestClient(configLoader);
+    PubSubPositionTypeRegistry pubSubPositionTypeRegistry =
+        PubSubPositionTypeRegistry.fromPropertiesOrDefault(configLoader.getCombinedProperties());
+    pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
   }
 
   @Override
@@ -125,6 +132,10 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   public List<VeniceNotifier> getIngestionNotifier() {
     return ingestionNotifierList;
+  }
+
+  public PubSubPositionDeserializer getPubSubPositionDeserializer() {
+    return pubSubPositionDeserializer;
   }
 
   public void addPushStatusNotifier(VeniceNotifier pushStatusNotifier) {
@@ -180,7 +191,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     if (partitionIngestionStatus != null) {
       partitionIngestionStatus.removePartitionIngestionStatus(partitionId);
     }
-    LOGGER.info("Ingestion status removed from main process for topic: {}, partition: {}", topicName, partitionId);
+    String replicaId = Utils.getReplicaId(topicName, partitionId);
+    LOGGER.info("Ingestion status removed from main process for replica: {}", replicaId);
   }
 
   public void cleanupTopicState(String topicName) {
@@ -250,13 +262,13 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
       topicIngestionStatusMap.forEach((topic, partitionStatus) -> {
         partitionStatus.getPartitionIngestionStatusSet().forEach((partition, status) -> {
           if (status.equals(MainPartitionIngestionStatus.ISOLATED)) {
+            String replicaId = Utils.getReplicaId(topic, partition);
             try {
               client.startConsumption(topic, partition);
-              LOGGER
-                  .info("Recovered ingestion task in isolated process for topic: {}, partition: {}", topic, partition);
+              LOGGER.info("Recovered ingestion task in isolated process for replica: {}", replicaId);
               count.addAndGet(1);
             } catch (Exception e) {
-              LOGGER.warn("Recovery of ingestion failed for topic: {}, partition: {}", topic, partition, e);
+              LOGGER.warn("Recovery of ingestion failed for replica: {}", replicaId, e);
             }
           }
         });

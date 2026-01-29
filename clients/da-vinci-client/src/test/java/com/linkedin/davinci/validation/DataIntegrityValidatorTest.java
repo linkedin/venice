@@ -6,9 +6,12 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.validation.PartitionTracker.TopicType;
 import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -25,10 +28,13 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -57,8 +63,11 @@ public class DataIntegrityValidatorTest {
     final long maxAgeInMs = 1000;
     Time time = new TestMockTime();
     String topicName = Utils.getUniqueString("TestStore") + "_v1";
-    DataIntegrityValidator validator =
-        new DataIntegrityValidator(topicName, DataIntegrityValidator.DISABLED, maxAgeInMs);
+    DataIntegrityValidator validator = new DataIntegrityValidator(
+        topicName,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER,
+        DataIntegrityValidator.DISABLED,
+        maxAgeInMs);
     PubSubTopicPartition topicPartition0 = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0);
     PubSubTopicPartition topicPartition1 = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 1);
     long offsetForPartition0 = 0;
@@ -171,7 +180,8 @@ public class DataIntegrityValidatorTest {
   public void testStatelessDIV() {
     String topicName = Utils.getUniqueString("TestStore") + "_v1";
     long logCompactionLagInMs = TimeUnit.HOURS.toMillis(24); // 24 hours
-    DataIntegrityValidator statelessDiv = new DataIntegrityValidator(topicName, logCompactionLagInMs);
+    DataIntegrityValidator statelessDiv =
+        new DataIntegrityValidator(topicName, PubSubPositionDeserializer.DEFAULT_DESERIALIZER, logCompactionLagInMs);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 1);
 
     /**
@@ -248,6 +258,41 @@ public class DataIntegrityValidatorTest {
         MissingDataException.class,
         () -> statelessDiv.checkMissingMessage(record5, Optional.of(errorMetricCallback)));
     verify(errorMetricCallback, times(1)).execute(any());
+  }
+
+  @Test
+  public void testHasGlobalRtDivState() {
+    int partition = 1;
+    String topicName = Utils.getUniqueString("TestStore") + "_v1";
+    DataIntegrityValidator validator = new DataIntegrityValidator(
+        topicName,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER,
+        DataIntegrityValidator.DISABLED);
+    PubSubTopic topic = pubSubTopicRepository.getTopic(topicName);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partition);
+
+    // No tracker/state yet -> false
+    assertFalse(validator.hasVtDivState(partition));
+    assertFalse(validator.hasGlobalRtDivState(partition));
+
+    // Add VT state by sending SOS + PUT on VERSION_TOPIC
+    GUID producerGuid = GuidUtils.getGUID(VeniceProperties.empty());
+    long now = System.currentTimeMillis();
+    DefaultPubSubMessage sos = buildSoSRecord(topicPartition, 0L, producerGuid, now, null, CheckSumType.NONE);
+    validator.validateMessage(PartitionTracker.VERSION_TOPIC, sos, false, Lazy.FALSE);
+    DefaultPubSubMessage put = buildPutRecord(topicPartition, 1L, producerGuid, 0, 1, now + 1);
+    validator.validateMessage(PartitionTracker.VERSION_TOPIC, put, false, Lazy.FALSE);
+    assertTrue(validator.hasVtDivState(partition));
+
+    // Build RT topic type with a broker URL and add RT state by sending SOS + PUT
+    TopicType rtType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, "brokerUrl-1");
+    validator.validateMessage(rtType, sos, false, Lazy.FALSE);
+    validator.validateMessage(rtType, put, false, Lazy.FALSE);
+    assertTrue(validator.hasGlobalRtDivState(partition));
+
+    // Clear RT segments and ensure it returns false again
+    validator.clearRtSegments(partition);
+    assertFalse(validator.hasGlobalRtDivState(partition));
   }
 
   private static DefaultPubSubMessage buildPutRecord(
@@ -330,7 +375,7 @@ public class DataIntegrityValidatorTest {
     messageEnvelope.producerMetadata.messageSequenceNumber = sequenceNumber;
     messageEnvelope.producerMetadata.messageTimestamp = brokerTimestamp;
     messageEnvelope.leaderMetadataFooter = new LeaderMetadata();
-    messageEnvelope.leaderMetadataFooter.upstreamOffset = -1;
+    messageEnvelope.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     messageEnvelope.payloadUnion = payload;
 
     if (offsetRecord != null && offsetRecord.getMaxMessageTimeInMs() < brokerTimestamp) {

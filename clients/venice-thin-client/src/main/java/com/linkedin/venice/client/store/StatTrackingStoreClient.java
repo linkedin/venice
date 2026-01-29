@@ -113,23 +113,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
-    CompletableFuture<VeniceResponseMap<K, V>> streamingResultFuture = streamingBatchGet(keys);
-
-    streamingResultFuture.whenComplete((response, throwable) -> {
-      if (throwable != null) {
-        resultFuture.completeExceptionally(throwable);
-      } else if (!response.isFullResponse()) {
-        resultFuture.completeExceptionally(
-            new VeniceClientException(
-                "Received partial response, returned entry count: " + response.getTotalEntryCount()
-                    + ", and key count: " + keys.size()));
-      } else {
-        resultFuture.complete(response);
-      }
-    });
-    // We intentionally use stats for batch-get streaming since blocking impl of batch-get is deprecated.
-    return AppTimeOutTrackingCompletableFuture.track(resultFuture, multiGetStreamingStats);
+    return AppTimeOutTrackingCompletableFuture.track(internalBatchGet(keys), multiGetStreamingStats);
   }
 
   @Override
@@ -141,29 +125,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         () -> new VeniceResponseMapImpl(resultMap, nonExistingKeyList, false),
         keys.size(),
         Optional.of(multiGetStreamingStats));
-    streamingBatchGet(keys, new StreamingCallback<K, V>() {
-      @Override
-      public void onRecordReceived(K key, V value) {
-        if (value != null) {
-          /**
-           * {@link java.util.concurrent.ConcurrentHashMap#put} won't take 'null' as the value.
-           */
-          resultMap.put(key, value);
-        } else {
-          nonExistingKeyList.add(key);
-        }
-      }
-
-      @Override
-      public void onCompletion(Optional<Exception> exception) {
-        if (exception.isPresent()) {
-          resultFuture.completeExceptionally(exception.get());
-        } else {
-          boolean isFullResponse = (resultMap.size() + nonExistingKeyList.size() == keys.size());
-          resultFuture.complete(new VeniceResponseMapImpl(resultMap, nonExistingKeyList, isFullResponse));
-        }
-      }
-    });
+    streamingBatchGet(keys, super.getStreamingCallback(keys, resultMap, nonExistingKeyList, resultFuture));
     return resultFuture;
   }
 

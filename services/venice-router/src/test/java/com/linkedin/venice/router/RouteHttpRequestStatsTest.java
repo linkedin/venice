@@ -24,19 +24,20 @@ public class RouteHttpRequestStatsTest {
   private RouteHttpRequestStats stats;
   private RouterHttpRequestStats routerHttpRequestStats;
   private InFlightRequestStat inFlightRequestStat;
+  private MetricsRepository metricsRepository;
 
   @BeforeSuite
   public void setUp() {
-    MetricsRepository metrics = MetricsRepositoryUtils.createSingleThreadedVeniceMetricsRepository();
+    metricsRepository = MetricsRepositoryUtils.createSingleThreadedVeniceMetricsRepository();
     reporter = new MockTehutiReporter();
-    metrics.addReporter(reporter);
+    metricsRepository.addReporter(reporter);
     VeniceRouterConfig mockConfig = mock(VeniceRouterConfig.class);
     doReturn(1).when(mockConfig).getRouterInFlightMetricWindowSeconds();
     inFlightRequestStat = new InFlightRequestStat(mockConfig);
     Sensor totalInflightRequestSensor = inFlightRequestStat.getTotalInflightRequestSensor();
-    stats = new RouteHttpRequestStats(metrics, mock(StorageNodeClient.class));
+    stats = new RouteHttpRequestStats(metricsRepository, mock(StorageNodeClient.class));
     routerHttpRequestStats = new RouterHttpRequestStats(
-        metrics,
+        metricsRepository,
         "test-store",
         "test-cluster",
         RequestType.SINGLE_GET,
@@ -54,6 +55,9 @@ public class RouteHttpRequestStatsTest {
 
     stats.recordPendingRequest("my_host1");
     Assert.assertEquals(stats.getPendingRequestCount("my_host1"), 2);
+
+    Assert.assertEquals(metricsRepository.metrics().get(".my_host1--pending_request_count.Max").value(), 2.0);
+    Assert.assertEquals(metricsRepository.metrics().get(".my_host2--pending_request_count.Max").value(), 1.0);
 
     stats.recordFinishedRequest("my_host1");
     stats.recordFinishedRequest("my_host2");

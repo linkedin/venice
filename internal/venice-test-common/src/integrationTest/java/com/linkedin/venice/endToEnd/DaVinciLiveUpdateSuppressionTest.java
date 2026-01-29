@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static org.testng.Assert.assertEquals;
@@ -13,6 +14,9 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -97,7 +101,7 @@ public class DaVinciLiveUpdateSuppressionTest {
   }
 
   @Test(dataProvider = "Isolated-Ingestion", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
-  public void testLiveUpdateSuppression(IngestionMode ingestionMode) throws Exception {
+  public void testLiveUpdateSuppression(IngestionMode ingestionMode, Boolean isD2ClientEnabled) throws Exception {
     final String storeName = Utils.getUniqueString("store");
     AtomicReference<StoreInfo> storeInfo = new AtomicReference<>();
     cluster.useControllerClient(client -> {
@@ -123,6 +127,7 @@ public class DaVinciLiveUpdateSuppressionTest {
     Map<String, Object> extraBackendConfigMap =
         (ingestionMode.equals(IngestionMode.ISOLATED)) ? TestUtils.getIngestionIsolationPropertyMap() : new HashMap<>();
     extraBackendConfigMap.put(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, true);
+    extraBackendConfigMap.put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled);
 
     Future[] writerFutures = new Future[KEY_COUNT];
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
@@ -169,6 +174,18 @@ public class DaVinciLiveUpdateSuppressionTest {
       }
       for (int i = 0; i < KEY_COUNT; i++) {
         writerFutures[i].get();
+      }
+
+      // Wait until the RT data is in the VT
+      try (AvroGenericStoreClient thinClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+        for (int i = 0; i < KEY_COUNT; i++) {
+          int finalI = i;
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            int result = (int) thinClient.get(finalI).get();
+            assertEquals(result, finalI * 1000);
+          });
+        }
       }
 
       /**

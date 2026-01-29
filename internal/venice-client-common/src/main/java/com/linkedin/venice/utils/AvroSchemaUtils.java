@@ -13,6 +13,7 @@ import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -172,6 +173,12 @@ public class AvroSchemaUtils {
     ObjectNode schemaOb = mapper.readValue(schemaStr, ObjectNode.class);
     schemaOb.put(NAMESPACE_FIELD, namespace);
     return Schema.parse(schemaOb.toString());
+  }
+
+  public static boolean compareSchema(Schema s1, Schema s2) {
+    String canonicalSchema1 = AvroCompatibilityHelper.toParsingForm(s1);
+    String canonicalSchema2 = AvroCompatibilityHelper.toParsingForm(s2);
+    return canonicalSchema2.equals(canonicalSchema1);
   }
 
   /**
@@ -477,5 +484,33 @@ public class AvroSchemaUtils {
    */
   public static boolean isUnresolvedUnionExceptionAvailable() {
     return AvroCompatibilityHelperCommon.getRuntimeAvroVersion().laterThan(AvroVersion.AVRO_1_4);
+  }
+
+  public static int getSchemaIdCanonicalMatch(Collection<SchemaEntry> schemas, SchemaEntry schemaEntry) {
+    List<SchemaEntry> canonicalizedMatches = AvroSchemaUtils.filterCanonicalizedSchemas(schemaEntry, schemas);
+    int schemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+    if (!canonicalizedMatches.isEmpty()) {
+      if (canonicalizedMatches.size() == 1) {
+        schemaId = canonicalizedMatches.iterator().next().getId();
+      } else {
+        List<SchemaEntry> exactMatches = AvroSchemaUtils.filterSchemas(schemaEntry, canonicalizedMatches);
+        if (exactMatches.isEmpty()) {
+          schemaId = getSchemaEntryWithLargestId(canonicalizedMatches).getId();
+        } else {
+          schemaId = getSchemaEntryWithLargestId(exactMatches).getId();
+        }
+      }
+    }
+    return schemaId;
+  }
+
+  private static SchemaEntry getSchemaEntryWithLargestId(Collection<SchemaEntry> schemas) {
+    SchemaEntry largestIdSchema = schemas.iterator().next();
+    for (SchemaEntry schema: schemas) {
+      if (schema.getId() > largestIdSchema.getId()) {
+        largestIdSchema = schema;
+      }
+    }
+    return largestIdSchema;
   }
 }

@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashSet;
 import java.util.Set;
@@ -28,10 +29,11 @@ public class ListenerManager<T> {
 
   private static final Logger LOGGER = LogManager.getLogger(ListenerManager.class);
 
-  public ListenerManager(Object logContext) {
+  public ListenerManager(LogContext logContext) {
     listenerMap = new ConcurrentHashMap<>();
     // TODO maybe we can share the thread pool with other use-cases.
-    threadPool = Executors.newFixedThreadPool(threadCount, new DaemonThreadFactory("Venice-controller", logContext));
+    threadPool =
+        Executors.newFixedThreadPool(threadCount, new DaemonThreadFactory("Venice-controller-listener", logContext));
   }
 
   public synchronized void subscribe(String key, T listener) {

@@ -22,6 +22,7 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -127,7 +128,7 @@ public class TestHelixCustomizedView {
         veniceCluster.getClusterName(),
         zkClient,
         adapterSerializer,
-        veniceCluster.getRegionName(),
+        LogContext.newBuilder().setComponentName(TestHelixCustomizedView.class.getName()).build(),
         3);
     HelixUtils.create(
         offlinePushStatusAccessor.getOfflinePushStatusAccessor(),

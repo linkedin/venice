@@ -3,29 +3,31 @@ package com.linkedin.davinci.consumer;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.expectThrows;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.data.ByteString;
-import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.schemas.TestKeyRecord;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.views.ChangeCaptureView;
@@ -36,8 +38,10 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -54,6 +58,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
     consumerProperties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, localKafkaUrl);
+    consumerProperties.put(ConfigKeys.KME_SCHEMA_READER_FOR_SCHEMA_EVOLUTION_ENABLED, false);
 
     SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
     Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
@@ -79,7 +84,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     mockStoreInfo.setViewConfigs(viewConfigMap);
     Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
     Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
-    Mockito.when(mockControllerClient.retryableRequest(Mockito.anyInt(), Mockito.any())).thenReturn(mockStoreResponse);
+    Mockito.when(mockControllerClient.retryableRequest(anyInt(), Mockito.any())).thenReturn(mockStoreResponse);
     VeniceChangelogConsumer consumer = veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME);
 
     Assert.assertTrue(consumer instanceof VeniceAfterImageConsumerImpl);
@@ -210,7 +215,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
   }
 
   @Test
-  public void testGetBootstrappingChangelogConsumer()
+  public void testGetStatefulChangelogConsumer()
       throws ExecutionException, InterruptedException, JsonProcessingException {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
@@ -246,28 +251,15 @@ public class VeniceChangelogConsumerClientFactoryTest {
     mockStoreInfo.setViewConfigs(viewConfigMap);
     Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
     Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
-    BootstrappingVeniceChangelogConsumer consumer =
-        veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
+    StatefulVeniceChangelogConsumer consumer =
+        veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME);
 
-    Assert.assertTrue(consumer instanceof LocalBootstrappingVeniceChangelogConsumer);
+    Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
 
     globalChangelogClientConfig.setViewName(VIEW_NAME);
 
-    NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
-    Store store = mock(Store.class);
-    Version mockVersion = new VersionImpl(STORE_NAME, 1, "foo");
-    mockVersion.setPartitionCount(2);
-    Mockito.when(store.getCurrentVersion()).thenReturn(1);
-    Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
-    Mockito.when(store.getPartitionCount()).thenReturn(2);
-    Mockito.when(store.getVersion(anyInt())).thenReturn(mockVersion);
-    Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
-    Mockito.when(store.getVersionOrThrow(Mockito.anyInt())).thenReturn(mockVersion);
-
-    ((LocalBootstrappingVeniceChangelogConsumer) consumer).setStoreRepository(mockRepository);
-
-    consumer = veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
-    Assert.assertTrue(consumer instanceof LocalBootstrappingVeniceChangelogConsumer);
+    consumer = veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME);
+    Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
 
     D2ServiceDiscoveryResponse serviceDiscoveryResponse = new D2ServiceDiscoveryResponse();
     serviceDiscoveryResponse.setCluster(TEST_CLUSTER);
@@ -301,12 +293,12 @@ public class VeniceChangelogConsumerClientFactoryTest {
     veniceChangelogConsumerClientFactory.setD2ControllerClient(mockControllerClient);
     veniceChangelogConsumerClientFactory.setConsumer(mockKafkaConsumer);
 
-    consumer = veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME);
-    Assert.assertTrue(consumer instanceof LocalBootstrappingVeniceChangelogConsumer);
+    consumer = veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME);
+    Assert.assertTrue(consumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
   }
 
   @Test
-  public void testGetBootstrappingChangelogConsumerThrowsException() {
+  public void testGetStatefulChangelogConsumerThrowsException() {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = "http://www.fooAddress.linkedin.com:16337";
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
@@ -338,6 +330,61 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
     Mockito.when(mockControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);
     globalChangelogClientConfig.setViewName(VIEW_NAME);
-    Assert.assertThrows(() -> veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(STORE_NAME));
+    Assert.assertThrows(() -> veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(STORE_NAME));
+  }
+
+  @DataProvider(name = "kmeDeserializerScenarios", parallel = true)
+  public Object[][] kmeDeserializerScenarios() {
+    return new Object[][] {
+        // kmeProp, d2Present, expectClientFactoryCall
+        { "true", true, true }, // KME enabled, D2 present => KME evolution path
+        { "true", false, false }, // KME enabled, no D2 => default path
+        { "false", true, false }, // KME disabled, D2 present => default path
+        { "false", false, false }, // KME disabled, no D2 => default path
+        { null, false, false }, // No property, no D2 => default path
+        { null, true, true }, // No property, D2 present => KME defaults to enabled => KME evolution path
+    };
+  }
+
+  @Test(dataProvider = "kmeDeserializerScenarios")
+  public void testCreatePubSubMessageDeserializer(
+      String kmeProp,
+      boolean d2Present,
+      boolean expectKmeWithSchemaReaderCall) {
+    // Build properties
+    Properties props = new Properties();
+    if (kmeProp != null) {
+      props.put(ConfigKeys.KME_SCHEMA_READER_FOR_SCHEMA_EVOLUTION_ENABLED, kmeProp);
+    }
+
+    // Build config
+    D2Client d2 = d2Present ? mock(D2Client.class) : null;
+    ChangelogClientConfig config = new ChangelogClientConfig().setConsumerProperties(props).setD2Client(d2);
+
+    // Static mocking for ClientFactory only when needed. Use try-with-resources to avoid leaks.
+    if (expectKmeWithSchemaReaderCall) {
+      try (MockedStatic<ClientFactory> clientFactoryMock = org.mockito.Mockito.mockStatic(ClientFactory.class)) {
+        SchemaReader mockSchemaReader = mock(SchemaReader.class);
+        clientFactoryMock.when(() -> ClientFactory.getSchemaReader(any(ClientConfig.class), eq(null)))
+            .thenReturn(mockSchemaReader);
+
+        PubSubMessageDeserializer result = VeniceChangelogConsumerClientFactory.createPubSubMessageDeserializer(config);
+        assertNotNull(result, "Deserializer should not be null");
+
+        // Verify KME path taken exactly once
+        clientFactoryMock.verify(() -> ClientFactory.getSchemaReader(any(ClientConfig.class), eq(null)), times(1));
+      }
+    } else {
+      // No KME with schema reader expected. Do not set up static mocking. Just call and assert non-null.
+      PubSubMessageDeserializer result = VeniceChangelogConsumerClientFactory.createPubSubMessageDeserializer(config);
+      assertNotNull(result, "Deserializer should not be null when default path is taken");
+    }
+  }
+
+  @Test
+  public void testCreatePubSubMessageDeserializer_nullConfig() {
+    expectThrows(
+        NullPointerException.class,
+        () -> VeniceChangelogConsumerClientFactory.createPubSubMessageDeserializer(null));
   }
 }

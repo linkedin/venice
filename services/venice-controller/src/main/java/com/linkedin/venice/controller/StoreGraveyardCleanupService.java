@@ -60,7 +60,7 @@ public class StoreGraveyardCleanupService extends AbstractVeniceService {
   private class StoreGraveyardCleanupTask implements Runnable {
     @Override
     public void run() {
-      LogContext.setStructuredLogContext(multiClusterConfig.getLogContext());
+      LogContext.setLogContext(multiClusterConfig.getLogContext());
       LOGGER.info("Started running {}", getClass().getSimpleName());
       while (!stop.get()) {
         try {

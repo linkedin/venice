@@ -40,7 +40,6 @@ public class TestCheckMigrationStatus {
     mockMultiStoreResponse.setStores(new String[] { SYSTEM_STORE_NAME, STORE_NAME });
     ChildAwareResponse mockChildAwareResponse = Mockito.mock(ChildAwareResponse.class);
     Mockito.when(mockChildAwareResponse.getChildDataCenterControllerUrlMap()).thenReturn(new HashMap<>());
-    Mockito.when(mockChildAwareResponse.getChildDataCenterControllerD2Map()).thenReturn(new HashMap<>());
     Mockito.when(mockSourceControllerClient.listChildControllers(SRC_CLUSTER_NAME)).thenReturn(mockChildAwareResponse);
     Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
     Mockito.when(mockSourceControllerClient.getStore(STORE_NAME)).thenReturn(mockStoreResponse);

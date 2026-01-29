@@ -14,6 +14,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REMOTE_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
@@ -41,6 +42,7 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceStoreAclException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
@@ -119,6 +121,8 @@ public class CreateVersion extends AbstractRoute {
 
     // Retrieve certificate from request if ACL is enabled
     request.setCertificateInRequest(isAclEnabled ? getCertificate(httpRequest) : null);
+
+    request.setRepushTtlSeconds(Integer.parseInt(httpRequest.queryParamOrDefault(REPUSH_TTL_SECONDS, "-1")));
   }
 
   /**
@@ -276,7 +280,7 @@ public class CreateVersion extends AbstractRoute {
     String storeName = request.getStoreName();
     PushType pushType = request.getPushType();
     // Check if requestTopicForPush can be handled by child controllers for the given store
-    if (!admin.whetherEnableBatchPushFromAdmin(storeName)) {
+    if (!admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)) {
       throw new VeniceUnsupportedOperationException(
           request.getPushType().name(),
           "Please push data to Venice Parent Colo instead");
@@ -298,7 +302,8 @@ public class CreateVersion extends AbstractRoute {
         Optional.ofNullable(request.getEmergencySourceRegion()),
         request.isDeferVersionSwap(),
         request.getTargetedRegions(),
-        request.getRepushSourceVersion());
+        request.getRepushSourceVersion(),
+        request.getRepushTtlSeconds());
 
     // Set the partition count
     response.setPartitions(version.getPartitionCount());
@@ -342,6 +347,31 @@ public class CreateVersion extends AbstractRoute {
     response.setPartitions(referenceHybridVersion.getPartitionCount());
     response.setCompressionStrategy(CompressionStrategy.NO_OP);
     response.setKafkaTopic(Utils.getRealTimeTopicName(referenceHybridVersion));
+
+    // Override Kafka bootstrap servers if source grid fabric is set and feature is enabled
+    String sourceGridFabric = request.getSourceGridFabric();
+    if (sourceGridFabric != null
+        && admin.getControllerConfig(request.getClusterName()).isEnableStreamPushSourceGridFabricOverride()
+        && referenceHybridVersion.isActiveActiveReplicationEnabled()) {
+      String bootstrapServerAddress = admin.getPubSubBootstrapServersForRegion(sourceGridFabric);
+      if (bootstrapServerAddress == null) {
+        LOGGER.error(
+            "Failed to get the broker server URL for source grid fabric: {} for pushJob: {} store: {} in cluster: {}. Will use default PubSub bootstrap servers.",
+            sourceGridFabric,
+            request.getPushJobId(),
+            store.getName(),
+            request.getClusterName());
+      } else {
+        LOGGER.info(
+            "Stream push job source region is being overridden with: {} address: {} for pushJob: {} on store: {} in cluster: {}",
+            sourceGridFabric,
+            bootstrapServerAddress,
+            request.getPushJobId(),
+            store.getName(),
+            request.getClusterName());
+        response.setKafkaBootstrapServers(bootstrapServerAddress);
+      }
+    }
   }
 
   /**
@@ -422,11 +452,11 @@ public class CreateVersion extends AbstractRoute {
         // Also allow allowList users to run this command
         if (!isAllowListUser(request)) {
           if (!hasWriteAccessToTopic(request)) {
-            return buildAclErrorResponse(request, response, true, false);
+            buildStoreAclErrorAndThrowException(request, response, true, false);
           }
 
           if (this.checkReadMethodForKafka && !hasReadAccessToTopic(request)) {
-            return buildAclErrorResponse(request, response, false, true);
+            buildStoreAclErrorAndThrowException(request, response, false, true);
           }
         }
 
@@ -442,6 +472,7 @@ public class CreateVersion extends AbstractRoute {
 
         // populate the request object with optional parameters
         extractOptionalParamsFromRequestTopicRequest(request, requestTopicForPushRequest, isAclEnabled());
+
         // Invoke the handler to get the topic for pushing data
         handleRequestTopicForPushing(admin, requestTopicForPushRequest, responseObject);
       } catch (Throwable e) {
@@ -457,24 +488,23 @@ public class CreateVersion extends AbstractRoute {
    * When partners have ACL issues for their push, we should provide an accurate and informative messages that
    * help partners to unblock by themselves.
    */
-  private String buildAclErrorResponse(
+  private void buildStoreAclErrorAndThrowException(
       Request request,
       Response response,
       boolean missingWriteAccess,
       boolean missingReadAccess) throws JsonProcessingException {
     response.status(HttpStatus.SC_FORBIDDEN);
-    VersionCreationResponse responseObject = new VersionCreationResponse();
     String userId = getPrincipalId(request);
-    String errorMessage = "Missing [{}] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
+    String errorMessage = "Missing [%s] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
     if (missingWriteAccess) {
       errorMessage = String.format(errorMessage, "write");
-    }
-    if (missingReadAccess) {
+    } else if (missingReadAccess) {
       errorMessage = String.format(errorMessage, "read");
+    } else {
+      errorMessage = String.format(errorMessage, "read and write");
     }
-    responseObject.setError(errorMessage);
-    responseObject.setErrorType(ErrorType.BAD_REQUEST);
-    return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+
+    throw new VeniceStoreAclException(errorMessage);
   }
 
   /**
@@ -527,7 +557,7 @@ public class CreateVersion extends AbstractRoute {
     if (overRideSourceRegion == null) {
       return;
     }
-    String bootstrapServerAddress = admin.getNativeReplicationKafkaBootstrapServerAddress(overRideSourceRegion);
+    String bootstrapServerAddress = admin.getPubSubBootstrapServersForRegion(overRideSourceRegion);
     if (bootstrapServerAddress == null) {
       throw new VeniceException("Failed to get the broker server URL for the source region: " + overRideSourceRegion);
     }
@@ -629,6 +659,7 @@ public class CreateVersion extends AbstractRoute {
             rewindTimeInSecondsOverride,
             replicationMetadataVersionId,
             false,
+            -1,
             -1);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
@@ -725,13 +756,13 @@ public class CreateVersion extends AbstractRoute {
         AdminSparkServer.validateParams(request, EMPTY_PUSH.getParams(), admin);
 
         String storeName = request.queryParams(NAME);
-        if (!admin.whetherEnableBatchPushFromAdmin(storeName)) {
+        clusterName = request.queryParams(CLUSTER);
+        if (!admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)) {
           throw new VeniceUnsupportedOperationException(
               "EMPTY PUSH",
               "Please push data to Venice Parent Colo instead or use Aggregate mode if you are running Samza GF Job.");
         }
 
-        clusterName = request.queryParams(CLUSTER);
         String pushJobId = request.queryParams(PUSH_JOB_ID);
         int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
@@ -746,7 +777,32 @@ public class CreateVersion extends AbstractRoute {
           throw new VeniceNoStoreException(storeName, clusterName);
         }
         Set<Version> previousVersions = new HashSet<>(store.getVersions());
-        version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
+        boolean isDeferredVersionSwapForEmptyPushEnabled = admin.isDeferredVersionSwapForEmptyPushEnabled(storeName);
+        if (isDeferredVersionSwapForEmptyPushEnabled) {
+          String targetRegion = admin.getDeferredVersionSwapRegionRollforwardOrder(storeName);
+          version = admin.incrementVersionIdempotent(
+              clusterName,
+              storeName,
+              pushJobId,
+              partitionNum,
+              replicationFactor,
+              Version.PushType.BATCH,
+              true,
+              false,
+              null,
+              Optional.empty(),
+              Optional.empty(),
+              -1,
+              Optional.empty(),
+              true,
+              targetRegion,
+              -1,
+              -1);
+        } else {
+          version =
+              admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
+        }
+
         int versionNumber = version.getNumber();
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);

@@ -3,7 +3,9 @@ package com.linkedin.davinci.helix;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -15,23 +17,30 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class VeniceLeaderFollowerStateModelTest extends
     AbstractVenicePartitionStateModelTest<LeaderFollowerPartitionStateModel, LeaderFollowerIngestionProgressNotifier> {
   private HeartbeatMonitoringService spyHeartbeatMonitoringService;
+  private HelixCustomizedViewOfflinePushRepository mockCustomizedViewRepository;
+  private LeaderFollowerPartitionStateModel systemStoreStateModel;
 
   @Override
   protected LeaderFollowerPartitionStateModel getParticipantStateModel() {
@@ -39,8 +48,13 @@ public class VeniceLeaderFollowerStateModelTest extends
     doReturn(new HashSet<>()).when(serverConfig).getRegionNames();
     doReturn("local").when(serverConfig).getRegionName();
     doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
-    HeartbeatMonitoringService heartbeatMonitoringService =
-        new HeartbeatMonitoringService(new MetricsRepository(), mockReadOnlyStoreRepository, serverConfig, null);
+    mockCustomizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        new MetricsRepository(),
+        mockReadOnlyStoreRepository,
+        serverConfig,
+        null,
+        CompletableFuture.completedFuture(mockCustomizedViewRepository));
     spyHeartbeatMonitoringService = spy(heartbeatMonitoringService);
     return new LeaderFollowerPartitionStateModel(
         mockIngestionBackend,
@@ -51,16 +65,50 @@ public class VeniceLeaderFollowerStateModelTest extends
         CompletableFuture.completedFuture(mockPushStatusAccessor),
         null,
         mockParticipantStateTransitionStats,
-        spyHeartbeatMonitoringService);
+        spyHeartbeatMonitoringService,
+        resourceName);
   }
 
   @Override
-  protected LeaderFollowerIngestionProgressNotifier getNotifier() {
-    return mock(LeaderFollowerIngestionProgressNotifier.class);
+  protected LeaderFollowerIngestionProgressNotifier getNotifier() throws InterruptedException {
+    LeaderFollowerIngestionProgressNotifier mockNotifier = mock(LeaderFollowerIngestionProgressNotifier.class);
+    doAnswer(invocation -> {
+      Thread.sleep(3000);
+      return null;
+    }).when(mockNotifier).waitConsumptionCompleted(anyString(), anyInt(), anyInt(), any());
+    return mockNotifier;
+  }
+
+  private LeaderFollowerPartitionStateModel getSystemStoreStateModel() {
+    // Create a separate state model instance for system store resource
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(new HashSet<>()).when(serverConfig).getRegionNames();
+    doReturn("local").when(serverConfig).getRegionName();
+    doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        new MetricsRepository(),
+        mockReadOnlyStoreRepository,
+        serverConfig,
+        null,
+        CompletableFuture.completedFuture(mockCustomizedViewRepository));
+    return new LeaderFollowerPartitionStateModel(
+        mockIngestionBackend,
+        mockStoreConfig,
+        testPartition,
+        mockNotifier,
+        mockReadOnlyStoreRepository,
+        CompletableFuture.completedFuture(mockPushStatusAccessor),
+        null,
+        mockParticipantStateTransitionStats,
+        spy(heartbeatMonitoringService),
+        systemStoreResourceName); // Use system store resource name
   }
 
   @Test
   public void testOnBecomeFollowerFromOffline() throws Exception {
+    // Create separate state model for system store
+    systemStoreStateModel = getSystemStoreStateModel();
+
     // if the resource is not the current serving version, latch is not placed.
     // Note that the mockStore has version 1 for the resource
     when(mockStore.getCurrentVersion()).thenReturn(2);
@@ -72,8 +120,9 @@ public class VeniceLeaderFollowerStateModelTest extends
         Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
         mockStoreIngestionService);
 
+    // Test system store with non-current version using separate state model
     when(mockSystemStore.getCurrentVersion()).thenReturn(2);
-    testStateModel.onBecomeStandbyFromOffline(mockSystemStoreMessage, mockContext);
+    systemStoreStateModel.onBecomeStandbyFromOffline(mockSystemStoreMessage, mockContext);
     verify(mockNotifier, never()).startConsumption(mockSystemStoreMessage.getResourceName(), testPartition);
     verify(mockNotifier, never()).waitConsumptionCompleted(
         mockSystemStoreMessage.getResourceName(),
@@ -83,7 +132,7 @@ public class VeniceLeaderFollowerStateModelTest extends
 
     // When serving current version system store, it should have latch in place.
     when(mockSystemStore.getCurrentVersion()).thenReturn(1);
-    testStateModel.onBecomeStandbyFromOffline(mockSystemStoreMessage, mockContext);
+    systemStoreStateModel.onBecomeStandbyFromOffline(mockSystemStoreMessage, mockContext);
     verify(mockNotifier).startConsumption(mockSystemStoreMessage.getResourceName(), testPartition);
     verify(mockNotifier).waitConsumptionCompleted(
         mockSystemStoreMessage.getResourceName(),
@@ -188,5 +237,25 @@ public class VeniceLeaderFollowerStateModelTest extends
     testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);
     verify(mockParticipantStateTransitionStats, times(2)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
     verify(mockParticipantStateTransitionStats, times(2)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+  }
+
+  @Test
+  public void testSetHeartbeatMonitoringWhen() {
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockReadOnlyStoreRepository.waitVersion(eq(storeName), eq(version), any(), anyLong()))
+        .thenReturn(new StoreVersionInfo(mockStore, null));
+    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+      testStateModel.onBecomeStandbyFromOffline(mockMessage, mockContext);
+    });
+    try {
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+        // Make sure lag monitor happens before wait latch action completes.
+        verify(spyHeartbeatMonitoringService)
+            .updateLagMonitor(any(), eq(testPartition), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR));
+        Assert.assertFalse(future.isDone());
+      });
+    } finally {
+      future.complete(null);
+    }
   }
 }

@@ -8,11 +8,24 @@ import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
+import static com.linkedin.venice.guid.GuidUtils.DEFAULT_GUID_GENERATOR_IMPLEMENTATION;
+import static com.linkedin.venice.guid.GuidUtils.GUID_GENERATOR_IMPLEMENTATION;
+import static com.linkedin.venice.spark.SparkConstants.CHUNKED_KEY_SUFFIX_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA_WITH_PARTITION;
+import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA_WITH_SCHEMA_ID;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SPARK_CLUSTER;
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE;
+import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.OFFSET;
+import static com.linkedin.venice.spark.SparkConstants.OFFSET_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.PARTITION_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
+import static com.linkedin.venice.spark.SparkConstants.REPLICATION_METADATA_PAYLOAD;
+import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.RMD_VERSION_ID_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.SCHEMA_ID_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_CASE_SENSITIVE_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_CLUSTER_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_DATA_WRITER_CONF_PREFIX;
@@ -35,6 +48,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
@@ -51,9 +65,11 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CRE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_SUCCESS;
 
 import com.github.luben.zstd.Zstd;
+import com.google.common.collect.Iterators;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
@@ -61,27 +77,43 @@ import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.spark.chunk.SparkChunkAssembler;
 import com.linkedin.venice.spark.datawriter.partition.PartitionSorter;
 import com.linkedin.venice.spark.datawriter.partition.VeniceSparkPartitioner;
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkInputRecordProcessorFactory;
+import com.linkedin.venice.spark.datawriter.recordprocessor.SparkLogicalTimestampProcessor;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.datawriter.writer.SparkPartitionWriterFactory;
+import com.linkedin.venice.spark.input.kafka.ttl.SparkKafkaInputTTLFilter;
+import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.spark.utils.SparkPartitionUtils;
 import com.linkedin.venice.spark.utils.SparkScalaUtils;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
+import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.FlatMapGroupsFunction;
+import org.apache.spark.api.java.function.MapFunction;
+import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RuntimeConfig;
 import org.apache.spark.sql.SparkSession;
@@ -93,6 +125,7 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.AccumulatorV2;
+import org.apache.spark.util.LongAccumulator;
 
 
 /**
@@ -103,7 +136,6 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
   private VeniceProperties props;
   private PushJobSetting pushJobSetting;
-
   private String jobGroupId;
   private SparkSession sparkSession;
   private DataWriterAccumulators accumulatorsForDataWriterJob;
@@ -219,6 +251,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     } else {
       jobConf.set(VALUE_SCHEMA_ID_PROP, pushJobSetting.valueSchemaId);
       jobConf.set(DERIVED_SCHEMA_ID_PROP, pushJobSetting.derivedSchemaId);
+      jobConf.set(RMD_SCHEMA_ID_PROP, pushJobSetting.rmdSchemaId);
     }
     jobConf.set(ENABLE_WRITE_COMPUTE, pushJobSetting.enableWriteCompute);
     if (pushJobSetting.replicationMetadataSchemaString != null) {
@@ -254,11 +287,19 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
     jobConf.set(ZSTD_DICTIONARY_CREATION_SUCCESS, pushJobSetting.isZstdDictCreationSuccess);
 
-    // We generate a random UUID once, and the tasks of the compute job can use this to build the same producerGUID
-    // deterministically.
-    UUID producerGuid = UUID.randomUUID();
-    jobConf.set(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
-    jobConf.set(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
+    if (pushJobSetting.isSortedIngestionEnabled) {
+      // We generate a random UUID once, and the tasks of the compute job can use this to build the same producerGUID
+      // deterministically.
+      UUID producerGuid = UUID.randomUUID();
+      jobConf.set(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
+      jobConf.set(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
+    } else {
+      // Use unique GUID for every speculative producers when the config `isSortedIngestionEnabled` is false
+      // This prevents log compaction of control message which triggers the following during rebalance or store
+      // migration
+      // UNREGISTERED_PRODUCER data detected for producer
+      jobConf.set(GUID_GENERATOR_IMPLEMENTATION, DEFAULT_GUID_GENERATOR_IMPLEMENTATION);
+    }
 
     if (pushJobSetting.materializedViewConfigFlatMap != null) {
       jobConf.set(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
@@ -291,12 +332,284 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
    */
   protected abstract Dataset<Row> getUserInputDataFrame();
 
+  /*
+   * Validates the presence of RMD field and then ensures the input schema is valid for the rest of the pipeline to run.
+   * In case of input RMD being logical timestamp, we adapt the timestamp to RMD in # getUserInputDataFrame().
+   * Otherwise, check for subset check with the RMD schema associated with the store for the given input value schema.
+   */
+  protected void validateRmdSchema(PushJobSetting pushJobSetting) {
+    if (RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
+      Schema inputRmdSchema = RmdPushUtils.getInputRmdSchema(pushJobSetting);
+      if ((!RmdPushUtils.containsLogicalTimestamp(pushJobSetting) && !AvroSchemaUtils.compareSchema(
+          inputRmdSchema,
+          AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(pushJobSetting.replicationMetadataSchemaString)))) {
+        throw new VeniceException(
+            "Input rmd schema does not match the server side RMD schema. Input rmd schema: " + inputRmdSchema
+                + " , server side schema: " + pushJobSetting.replicationMetadataSchemaString);
+      }
+    }
+  }
+
   private Dataset<Row> getInputDataFrame() {
     if (pushJobSetting.isSourceKafka) {
-      throw new VeniceUnsupportedOperationException("Spark push job for repush workloads");
+      Dataset<Row> rawKafkaInput = getKafkaInputDataFrame();
+
+      // Apply TTL filter first on RAW_PUBSUB_INPUT_TABLE_SCHEMA (if enabled)
+      Dataset<Row> filteredInput = applyTTLFilter(rawKafkaInput);
+
+      // Only apply explicit compaction if chunking is DISABLED.
+      // If chunking is enabled, applyChunkAssembly will handle both assembly and deduplication.
+      Dataset<Row> processedInput;
+      if (!pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()) {
+        LOGGER.info("Applying compaction to non-chunked Kafka input.");
+        processedInput = applyCompaction(filteredInput);
+      } else {
+        LOGGER.info("Skipping explicit compaction as chunking is enabled. Deduplication will happen during assembly.");
+        processedInput = filteredInput;
+      }
+
+      // If chunking is enabled, keep offset, message_type, and chunked_key_suffix for chunk assembly
+      // Otherwise, just select the basic columns
+      if (pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()) {
+        LOGGER.info("Chunking is enabled - selecting columns for chunk assembly");
+        return processedInput.selectExpr(
+            KEY_COLUMN_NAME,
+            VALUE_COLUMN_NAME,
+            "CAST(" + REPLICATION_METADATA_PAYLOAD + " AS BINARY) as " + RMD_COLUMN_NAME,
+            SCHEMA_ID_COLUMN_NAME + " as " + SCHEMA_ID_COLUMN_NAME,
+            RMD_VERSION_ID_COLUMN_NAME + " as " + RMD_VERSION_ID_COLUMN_NAME,
+            OFFSET + " as " + OFFSET_COLUMN_NAME,
+            MESSAGE_TYPE + " as " + MESSAGE_TYPE_COLUMN_NAME,
+            CHUNKED_KEY_SUFFIX_COLUMN_NAME + " as " + CHUNKED_KEY_SUFFIX_COLUMN_NAME);
+      } else {
+        // Non-chunked: don't need offset/message_type or schema IDs
+        return processedInput.selectExpr(
+            KEY_COLUMN_NAME,
+            VALUE_COLUMN_NAME,
+            "CAST(" + REPLICATION_METADATA_PAYLOAD + " AS BINARY) as " + RMD_COLUMN_NAME);
+      }
     } else {
       return getUserInputDataFrame();
     }
+  }
+
+  /**
+   * Get the input DataFrame from Kafka/PubSub source for repush workloads.
+   * This method reads from a Venice version topic (Kafka) and returns a DataFrame
+   * with the RAW_PUBSUB_INPUT_TABLE_SCHEMA.
+   *
+   * @return DataFrame containing the Kafka input data
+   */
+  protected abstract Dataset<Row> getKafkaInputDataFrame();
+
+  /**
+   * Apply TTL filtering to the Kafka input dataframe.
+   * This method filters out records that are older than the configured TTL threshold.
+   * The input dataframe must have the RAW_PUBSUB_INPUT_TABLE_SCHEMA
+   * (region, partition, offset, message_type, schema_id, key, value, rmd_version_id, rmd_payload).
+   *
+   * @param dataFrame Input dataframe with RAW_PUBSUB_INPUT_TABLE_SCHEMA
+   * @return Filtered dataframe (with stale records removed if TTL filtering is enabled)
+   */
+  protected Dataset<Row> applyTTLFilter(Dataset<Row> dataFrame) {
+    if (!pushJobSetting.repushTTLEnabled) {
+      LOGGER.info("TTL filtering is not enabled for this repush job");
+      return dataFrame;
+    }
+
+    boolean isChunkingEnabled = pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled();
+    LOGGER.info(
+        "Applying TTL filtering with start timestamp: {} (chunking enabled: {})",
+        pushJobSetting.repushTTLStartTimeMs,
+        isChunkingEnabled);
+
+    try (JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext())) {
+      // Create properties for TTL filter
+      Properties filterProps = new Properties();
+      this.sparkSession.conf().getAll().foreach(entry -> filterProps.setProperty(entry._1, entry._2));
+
+      // Broadcast the filter configuration
+      Broadcast<Properties> broadcastFilterProps = sparkContext.broadcast(filterProps);
+
+      // Get schema for the encoder
+      StructType schema = dataFrame.schema();
+      ExpressionEncoder<Row> encoder = RowEncoder.apply(schema);
+
+      // Apply filter using mapPartitions for efficiency (one filter instance per partition)
+      dataFrame = dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
+        SparkKafkaInputTTLFilter ttlFilter =
+            new SparkKafkaInputTTLFilter(new VeniceProperties(broadcastFilterProps.value()));
+        try {
+          // Filter rows in this partition
+          return Iterators.filter(iterator, row -> {
+            int schemaId = row.getInt(4); // schema_id is at index 4 in RAW_PUBSUB_INPUT_TABLE_SCHEMA
+
+            // If chunking enabled, skip chunk/manifest records - they will be assembled first
+            if (isChunkingEnabled && (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
+                || schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion())) {
+              return true; // Keep chunk/manifest records for assembly
+            }
+
+            // shouldFilter returns true if record should be removed
+            // We negate to keep records that should NOT be filtered
+            boolean shouldRemove = ttlFilter.shouldFilter(row);
+
+            if (shouldRemove) {
+              // Increment counter for filtered records
+              accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter.add(1);
+            }
+
+            return !shouldRemove; // Keep if NOT filtered
+          });
+        } catch (Exception e) {
+          LOGGER.error("Error during TTL filtering", e);
+          throw new VeniceException("TTL filtering failed", e);
+        } finally {
+          ttlFilter.close();
+        }
+      }, encoder);
+
+      LOGGER.info("TTL filtering applied successfully");
+      return dataFrame;
+
+    } catch (Exception e) {
+      LOGGER.error("Failed to apply TTL filter", e);
+      throw new VeniceException("Failed to apply TTL filter", e);
+    }
+  }
+
+  /**
+   * Apply compaction to the Kafka input dataframe.
+   * For each key, keep only the record with the highest offset.
+   *
+   * @param dataFrame Input dataframe with RAW_PUBSUB_INPUT_TABLE_SCHEMA
+   * @return Compacted dataframe with duplicate keys removed
+   */
+  protected Dataset<Row> applyCompaction(Dataset<Row> dataFrame) {
+    if (!pushJobSetting.isSourceKafka) {
+      // Compaction only applies to Kafka input (repush)
+      return dataFrame;
+    }
+
+    LOGGER.info("Applying compaction to Kafka input. Input schema: {}", dataFrame.schema());
+
+    ExpressionEncoder<Row> encoder = RowEncoder.apply(RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+
+    // Extract accumulators to local variables to avoid serialization issues
+    final LongAccumulator totalDupKeyAcc = accumulatorsForDataWriterJob.totalDuplicateKeyCounter;
+    final LongAccumulator dupKeyDistinctValueAcc = accumulatorsForDataWriterJob.duplicateKeyWithDistinctValueCounter;
+    final LongAccumulator dupKeyIdenticalValueAcc = accumulatorsForDataWriterJob.duplicateKeyWithIdenticalValueCounter;
+
+    dataFrame = dataFrame
+        // Group by key
+        .groupByKey((MapFunction<Row, byte[]>) row -> row.getAs(KEY_COLUMN_NAME), Encoders.BINARY())
+        // For each key group, keep only the latest record (highest offset)
+        .flatMapGroups((FlatMapGroupsFunction<byte[], Row, Row>) (keyBytes, rowsIterator) -> {
+          List<Row> rowsList = new ArrayList<>();
+          rowsIterator.forEachRemaining(rowsList::add);
+
+          if (rowsList.isEmpty()) {
+            return Collections.emptyIterator();
+          }
+
+          // Track duplicate keys
+          if (rowsList.size() > 1) {
+            totalDupKeyAcc.add(1);
+
+            // Check if values are identical or distinct
+            boolean hasDistinctValues = false;
+            byte[] firstValue = rowsList.get(0).getAs(VALUE_COLUMN_NAME);
+            for (int i = 1; i < rowsList.size(); i++) {
+              byte[] currentValue = rowsList.get(i).getAs(VALUE_COLUMN_NAME);
+              if (!java.util.Arrays.equals(firstValue, currentValue)) {
+                hasDistinctValues = true;
+                break;
+              }
+            }
+
+            if (hasDistinctValues) {
+              dupKeyDistinctValueAcc.add(1);
+            } else {
+              dupKeyIdenticalValueAcc.add(1);
+            }
+          }
+
+          // Sort by offset DESC and keep the first (latest) record
+          Row latestRecord =
+              rowsList.stream().max(Comparator.comparingLong(r -> (long) r.getAs(OFFSET_COLUMN_NAME))).orElse(null);
+
+          if (latestRecord == null) {
+            return Collections.emptyIterator();
+          }
+
+          return Collections.singletonList(latestRecord).iterator();
+        }, encoder);
+
+    LOGGER.info("Compaction completed. Output schema: {}", dataFrame.schema());
+    return dataFrame;
+  }
+
+  /**
+   * Apply chunk assembly if chunking is enabled.
+   * Groups records by key, sorts by offset DESC, and assembles chunks into complete values/RMDs.
+   * If TTL filtering is enabled, the assembler also filters assembled records post-assembly.
+   *
+   * @param dataFrame Input with SCHEMA_FOR_CHUNK_ASSEMBLY (7 columns)
+   * @return DataFrame with DEFAULT_SCHEMA_WITH_SCHEMA_ID (5 columns - assembled records)
+   */
+  protected Dataset<Row> applyChunkAssembly(Dataset<Row> dataFrame) {
+    boolean isRmdChunkingEnabled = pushJobSetting.sourceKafkaInputVersionInfo.isRmdChunkingEnabled();
+    boolean isTTLEnabled = pushJobSetting.repushTTLEnabled;
+
+    LOGGER.info("Chunk assembly starting (TTL filtering: {}). Input schema: {}", isTTLEnabled, dataFrame.schema());
+
+    // Prepare TTL filter properties if enabled
+    VeniceProperties filterProps = null;
+    if (isTTLEnabled) {
+      Properties props = new Properties();
+      this.sparkSession.conf().getAll().foreach(entry -> props.setProperty(entry._1, entry._2));
+      filterProps = new VeniceProperties(props);
+    }
+    final VeniceProperties broadcastFilterProps = filterProps;
+
+    ExpressionEncoder<Row> encoder = RowEncoder.apply(DEFAULT_SCHEMA_WITH_SCHEMA_ID);
+
+    dataFrame = dataFrame
+        // Group by key
+        .groupByKey((MapFunction<Row, byte[]>) row -> row.getAs(KEY_COLUMN_NAME), Encoders.BINARY())
+        // For each key group, sort by offset DESC and assemble
+        .flatMapGroups((FlatMapGroupsFunction<byte[], Row, Row>) (keyBytes, rowsIterator) -> {
+          // Collect rows and sort by offset DESC (highest first)
+          List<Row> rowsList = new ArrayList<>();
+          rowsIterator.forEachRemaining(rowsList::add);
+
+          if (rowsList.isEmpty()) {
+            return Collections.emptyIterator();
+          }
+
+          // Sort by offset DESC
+          rowsList.sort((r1, r2) -> {
+            long offset1 = r1.getAs(OFFSET_COLUMN_NAME);
+            long offset2 = r2.getAs(OFFSET_COLUMN_NAME);
+            return Long.compare(offset2, offset1);
+          });
+
+          // Assemble chunks (and apply TTL filtering if enabled)
+          SparkChunkAssembler assembler =
+              new SparkChunkAssembler(isRmdChunkingEnabled, isTTLEnabled, broadcastFilterProps);
+          Row assembled = assembler.assembleChunks(keyBytes, rowsList.iterator());
+
+          if (assembled == null) {
+            // Latest record is DELETE, chunks incomplete, or filtered by TTL
+            accumulatorsForDataWriterJob.emptyRecordCounter.add(1);
+            return Collections.emptyIterator();
+          }
+
+          return Collections.singletonList(assembled).iterator();
+        }, encoder);
+
+    LOGGER.info("Chunk assembly completed. Output schema: {}", dataFrame.schema());
+    return dataFrame;
   }
 
   // Set configs for both SparkSession (data processing) and DataFrameReader (input format)
@@ -308,6 +621,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   @Override
   public DataWriterTaskTracker getTaskTracker() {
     return taskTracker;
+  }
+
+  @VisibleForTesting
+  protected DataWriterAccumulators getAccumulatorsForDataWriterJob() {
+    return accumulatorsForDataWriterJob;
   }
 
   // This is a part of the public API. Do not remove.
@@ -327,6 +645,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     // Load data from input path
     Dataset<Row> dataFrame = getInputDataFrame();
     validateDataFrame(dataFrame);
+    validateRmdSchema(pushJobSetting);
 
     ExpressionEncoder<Row> rowEncoder = RowEncoder.apply(DEFAULT_SCHEMA);
     ExpressionEncoder<Row> rowEncoderWithPartition = RowEncoder.apply(DEFAULT_SCHEMA_WITH_PARTITION);
@@ -339,10 +658,30 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     LOGGER.info("Triggering Spark job for data writer");
     try {
-      // Convert all rows to byte[], byte[] pairs (compressed if compression is enabled)
-      // We could have worked with "map", but because of spraying all PartitionWriters, we need to use "flatMap"
-      dataFrame = dataFrame
-          .flatMap(new SparkInputRecordProcessorFactory(broadcastProperties, accumulatorsForDataWriterJob), rowEncoder);
+      if (pushJobSetting.isSourceKafka) {
+        // Apply chunk assembly if chunking is enabled
+        if (pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()) {
+          LOGGER.info(
+              "Applying chunk assembly (RMD chunking: {})",
+              pushJobSetting.sourceKafkaInputVersionInfo.isRmdChunkingEnabled());
+          dataFrame = applyChunkAssembly(dataFrame);
+        }
+
+        // Drop schema ID columns (current behavior - no writer changes)
+        LOGGER.info("Dropping schema ID columns before writing");
+        dataFrame = dataFrame.drop(SCHEMA_ID_COLUMN_NAME, RMD_VERSION_ID_COLUMN_NAME);
+      } else {
+        // For HDFS input, convert all rows to byte[], byte[] pairs (compressed if compression is enabled)
+        dataFrame = dataFrame
+            .map(
+                new SparkLogicalTimestampProcessor(
+                    RmdPushUtils.containsLogicalTimestamp(pushJobSetting),
+                    pushJobSetting.replicationMetadataSchemaString),
+                rowEncoder)
+            .flatMap(
+                new SparkInputRecordProcessorFactory(broadcastProperties, accumulatorsForDataWriterJob),
+                rowEncoder);
+      }
 
       // TODO: Add map-side combiner to reduce the data size before shuffling
 
@@ -357,7 +696,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
       // Write the data to PubSub
       dataFrame = dataFrame.mapPartitions(
-          new SparkPartitionWriterFactory(broadcastProperties, accumulatorsForDataWriterJob),
+          createPartitionWriterFactory(broadcastProperties, accumulatorsForDataWriterJob),
           rowEncoderWithPartition);
 
       // For VPJ, we don't care about the output from the DAG. ".count()" is an action that will trigger execution of
@@ -382,6 +721,19 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     }
   }
 
+  /**
+   * Creates the partition writer factory. Can be overridden for testing purposes.
+   * @param broadcastProperties the broadcast job properties
+   * @param accumulators the data writer accumulators
+   * @return the partition writer factory
+   */
+  @VisibleForTesting
+  protected MapPartitionsFunction<Row, Row> createPartitionWriterFactory(
+      Broadcast<Properties> broadcastProperties,
+      DataWriterAccumulators accumulators) {
+    return new SparkPartitionWriterFactory(broadcastProperties, accumulators);
+  }
+
   @Override
   public void close() throws IOException {
     // We don't close the SparkSession to help with reusability across multiple Spark jobs, and it will eventually be
@@ -400,17 +752,20 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     logAccumulatorValue(accumulatorsForDataWriterJob.sprayAllPartitionsTriggeredCount);
     logAccumulatorValue(accumulatorsForDataWriterJob.partitionWriterCloseCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.totalDuplicateKeyCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.writeAclAuthorizationFailureCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.recordTooLargeFailureCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithIdenticalValueCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithDistinctValueCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.largestUncompressedValueSize);
   }
 
   private void logAccumulatorValue(AccumulatorV2<?, ?> accumulator) {
     LOGGER.info("  {}: {}", accumulator.name().get(), accumulator.value());
   }
 
-  private void validateDataFrame(Dataset<Row> dataFrameForDataWriterJob) {
+  @VisibleForTesting
+  void validateDataFrame(Dataset<Row> dataFrameForDataWriterJob) {
     if (dataFrameForDataWriterJob == null) {
       throw new VeniceInvalidInputException("The input data frame cannot be null");
     }
@@ -418,47 +773,16 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     StructType dataSchema = dataFrameForDataWriterJob.schema();
     StructField[] fields = dataSchema.fields();
 
-    if (fields.length < 2) {
+    if (fields.length < 3) {
       String errorMessage =
           String.format("The provided input data does not have enough fields. Provided schema: %s.", dataSchema);
       throw new VeniceInvalidInputException(errorMessage);
     }
 
-    int keyFieldIndex = SparkScalaUtils.getFieldIndex(dataSchema, KEY_COLUMN_NAME);
+    validateDataFrameFieldAndTypes(fields, dataSchema, KEY_COLUMN_NAME, DataTypes.BinaryType);
+    validateDataFrameFieldAndTypes(fields, dataSchema, VALUE_COLUMN_NAME, DataTypes.BinaryType);
 
-    if (keyFieldIndex == -1) {
-      String errorMessage = String.format(
-          "The provided input data frame does not have a %s field. Provided schema: %s.",
-          KEY_COLUMN_NAME,
-          dataSchema);
-      throw new VeniceInvalidInputException(errorMessage);
-    }
-
-    StructField keyField = fields[keyFieldIndex];
-    DataType keyType = keyField.dataType();
-    if (!keyType.equals(DataTypes.BinaryType)) {
-      String errorMessage =
-          String.format("The provided input key field's schema must be %s. Got: %s.", DataTypes.BinaryType, keyType);
-      throw new VeniceInvalidInputException(errorMessage);
-    }
-
-    int valueFieldIndex = SparkScalaUtils.getFieldIndex(dataSchema, VALUE_COLUMN_NAME);
-
-    if (valueFieldIndex == -1) {
-      String errorMessage = String.format(
-          "The provided input data frame does not have a %s field. Provided schema: %s.",
-          VALUE_COLUMN_NAME,
-          dataSchema);
-      throw new VeniceInvalidInputException(errorMessage);
-    }
-
-    StructField valueField = fields[valueFieldIndex];
-    DataType valueType = valueField.dataType();
-    if (!fields[valueFieldIndex].dataType().equals(DataTypes.BinaryType)) {
-      String errorMessage = String
-          .format("The provided input value field's schema must be %s. Got: %s.", DataTypes.BinaryType, valueType);
-      throw new VeniceInvalidInputException(errorMessage);
-    }
+    validateDataFrameFieldAndTypes(fields, dataSchema, RMD_COLUMN_NAME, DataTypes.BinaryType);
 
     for (StructField field: fields) {
       if (field.name().startsWith("_")) {
@@ -466,6 +790,32 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
             .format("The provided input must not have fields that start with an underscore. Got: %s", field.name());
         throw new VeniceInvalidInputException(errorMessage);
       }
+    }
+  }
+
+  @VisibleForTesting
+  void validateDataFrameFieldAndTypes(
+      StructField[] fields,
+      StructType dataSchema,
+      String fieldName,
+      DataType allowedType) {
+    int fieldIndex = SparkScalaUtils.getFieldIndex(dataSchema, fieldName);
+
+    if (fieldIndex == -1) {
+      String errorMessage = String.format(
+          "The provided input data frame does not have a %s field. Provided schema: %s.",
+          fieldName,
+          dataSchema);
+      throw new VeniceInvalidInputException(errorMessage);
+    }
+
+    StructField field = fields[fieldIndex];
+    DataType fieldType = field.dataType();
+
+    if (!allowedType.equals(fieldType)) {
+      String errorMessage =
+          String.format("The provided input %s schema must be %s. Got: %s.", fieldName, allowedType, fieldType);
+      throw new VeniceInvalidInputException(errorMessage);
     }
   }
 }

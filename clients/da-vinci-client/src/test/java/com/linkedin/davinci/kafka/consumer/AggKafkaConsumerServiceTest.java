@@ -12,22 +12,25 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.StuckConsumerRepairStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext.PubSubPropertiesSupplier;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -99,18 +102,25 @@ public class AggKafkaConsumerServiceTest {
     when(metricsRepository.sensor(anyString(), any())).thenReturn(dummySensor);
     PubSubConsumerAdapter adapter = mock(PubSubConsumerAdapter.class);
     when(consumerFactory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(adapter);
+
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    when(mockPubSubClientsFactory.getConsumerAdapterFactory()).thenReturn(consumerFactory);
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    when(mockPubSubContext.getPubSubMessageDeserializer()).thenReturn(pubSubDeserializer);
+    when(mockPubSubContext.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
+
     aggKafkaConsumerService = new AggKafkaConsumerService(
-        consumerFactory,
         pubSubPropertiesSupplier,
         serverConfig,
         ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         staleTopicChecker,
-        pubSubDeserializer,
         killIngestionTaskRunnable,
         t -> false,
-        metadataRepository);
+        metadataRepository,
+        mockPubSubContext);
   }
 
   // test subscribeConsumerFor
@@ -130,17 +140,26 @@ public class AggKafkaConsumerServiceTest {
     PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
         topic,
         topicPartition,
-        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
-    StorePartitionDataReceiver dataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerServiceSpy
-        .subscribeConsumerFor(PUBSUB_URL, storeIngestionTask, partitionReplicaIngestionContext, -1);
+    StorePartitionDataReceiver dataReceiver =
+        (StorePartitionDataReceiver) aggKafkaConsumerServiceSpy.subscribeConsumerFor(
+            PUBSUB_URL,
+            storeIngestionTask,
+            partitionReplicaIngestionContext,
+            PubSubSymbolicPosition.EARLIEST,
+            false);
 
     // regular pubsub url uses the default cluster id
     Assert.assertEquals(dataReceiver.getKafkaClusterId(), 0);
     verify(topicManager).prefetchAndCacheLatestOffset(topicPartition);
 
-    dataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerServiceSpy
-        .subscribeConsumerFor(PUBSUB_URL_SEP, storeIngestionTask, partitionReplicaIngestionContext, -1);
+    dataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerServiceSpy.subscribeConsumerFor(
+        PUBSUB_URL_SEP,
+        storeIngestionTask,
+        partitionReplicaIngestionContext,
+        PubSubSymbolicPosition.EARLIEST,
+        false);
     // pubsub url for sep topic uses a different cluster id
     Assert.assertEquals(dataReceiver.getKafkaClusterId(), 1);
 
@@ -149,31 +168,6 @@ public class AggKafkaConsumerServiceTest {
     AbstractKafkaConsumerService kafkaConsumerServiceForSep =
         aggKafkaConsumerService.getKafkaConsumerService(PUBSUB_URL_SEP);
     Assert.assertSame(kafkaConsumerService, kafkaConsumerServiceForSep);
-  }
-
-  @Test
-  public void testGetOffsetLagBasedOnMetrics() {
-    AggKafkaConsumerService aggKafkaConsumerServiceSpy = spy(aggKafkaConsumerService);
-
-    doReturn(null).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(PUBSUB_URL);
-    assertEquals(aggKafkaConsumerServiceSpy.getOffsetLagBasedOnMetrics(PUBSUB_URL, topic, topicPartition), -1);
-
-    AbstractKafkaConsumerService consumerService = mock(AbstractKafkaConsumerService.class);
-    when(consumerService.getOffsetLagBasedOnMetrics(topic, topicPartition)).thenReturn(123L);
-    doReturn(consumerService).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(any());
-    assertEquals(aggKafkaConsumerServiceSpy.getOffsetLagBasedOnMetrics(PUBSUB_URL, topic, topicPartition), 123L);
-  }
-
-  @Test
-  public void testGetLatestOffsetBasedOnMetrics() {
-    AggKafkaConsumerService aggKafkaConsumerServiceSpy = spy(aggKafkaConsumerService);
-    doReturn(null).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(PUBSUB_URL);
-    assertEquals(aggKafkaConsumerServiceSpy.getLatestOffsetBasedOnMetrics(PUBSUB_URL, topic, topicPartition), -1);
-
-    AbstractKafkaConsumerService consumerService = mock(AbstractKafkaConsumerService.class);
-    when(consumerService.getLatestOffsetBasedOnMetrics(topic, topicPartition)).thenReturn(1234L);
-    doReturn(consumerService).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(any());
-    assertEquals(aggKafkaConsumerServiceSpy.getLatestOffsetBasedOnMetrics(PUBSUB_URL, topic, topicPartition), 1234L);
   }
 
   @Test
@@ -353,5 +347,119 @@ public class AggKafkaConsumerServiceTest {
         stuckConsumerRepairStats,
         killIngestionTaskRunnable);
     return repairRunnable;
+  }
+
+  @Test
+  public void testGetIngestionInfoForSuccess() {
+    String regionName = "region1";
+    String kafkaUrl = "kafka://test-cluster:9092";
+
+    Map<String, String> kafkaClusterUrlToAliasMap = new HashMap<>();
+    kafkaClusterUrlToAliasMap.put(kafkaUrl, regionName);
+    when(serverConfig.getKafkaClusterUrlToAliasMap()).thenReturn(kafkaClusterUrlToAliasMap);
+
+    AggKafkaConsumerService testService = createTestService();
+    AggKafkaConsumerService serviceSpy = spy(testService);
+
+    AbstractKafkaConsumerService mockConsumerService = mock(AbstractKafkaConsumerService.class);
+    doReturn(mockConsumerService).when(serviceSpy).getKafkaConsumerService(kafkaUrl);
+
+    TopicPartitionIngestionInfo mockIngestionInfo =
+        new TopicPartitionIngestionInfo(1000L, 50L, 10.5, 1024.0, "consumer-1", 100L, 200L, topic.getName());
+    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> mockIngestionInfoMap = new HashMap<>();
+    mockIngestionInfoMap.put(topicPartition, mockIngestionInfo);
+    when(mockConsumerService.getIngestionInfoFor(topic, topicPartition, true)).thenReturn(mockIngestionInfoMap);
+
+    String result = serviceSpy.getIngestionInfoFor(topic, topicPartition, regionName);
+
+    Assert.assertNotNull(result);
+    Assert.assertTrue(result.contains(topicPartition.toString()));
+    Assert.assertTrue(result.contains("latestOffset:1000"));
+    Assert.assertTrue(result.contains("offsetLag:50"));
+    Assert.assertTrue(result.contains("msgRate:10.5"));
+    Assert.assertTrue(result.contains("consumer-1"));
+
+    verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition, true);
+  }
+
+  @Test
+  public void testGetIngestionInfoForNullRegionName() {
+    String result = aggKafkaConsumerService.getIngestionInfoFor(topic, topicPartition, null);
+    Assert.assertTrue(result.contains("kafkaUrl is not found for region"));
+  }
+
+  @Test
+  public void testGetIngestionInfoForUnknownRegionName() {
+    Map<String, String> kafkaClusterUrlToAliasMap = new HashMap<>();
+    kafkaClusterUrlToAliasMap.put("kafka://existing:9092", "existing-region");
+    when(serverConfig.getKafkaClusterUrlToAliasMap()).thenReturn(kafkaClusterUrlToAliasMap);
+
+    AggKafkaConsumerService testService = createTestService();
+    String result = testService.getIngestionInfoFor(topic, topicPartition, "unknown-region");
+    Assert.assertTrue(result.contains("kafkaUrl is not found for region"));
+  }
+
+  @Test
+  public void testGetIngestionInfoForNullConsumerService() {
+    String regionName = "region1";
+    String kafkaUrl = "kafka://test-cluster:9092";
+
+    Map<String, String> kafkaClusterUrlToAliasMap = new HashMap<>();
+    kafkaClusterUrlToAliasMap.put(kafkaUrl, regionName);
+    when(serverConfig.getKafkaClusterUrlToAliasMap()).thenReturn(kafkaClusterUrlToAliasMap);
+
+    AggKafkaConsumerService testService = createTestService();
+    AggKafkaConsumerService serviceSpy = spy(testService);
+
+    doReturn(null).when(serviceSpy).getKafkaConsumerService(kafkaUrl);
+
+    String result = serviceSpy.getIngestionInfoFor(topic, topicPartition, regionName);
+    Assert.assertTrue(result.contains("Kafka consumer service is not found"));
+  }
+
+  @Test
+  public void testGetIngestionInfoForEmptyIngestionInfo() {
+    String regionName = "region1";
+    String kafkaUrl = "kafka://test-cluster:9092";
+
+    Map<String, String> kafkaClusterUrlToAliasMap = new HashMap<>();
+    kafkaClusterUrlToAliasMap.put(kafkaUrl, regionName);
+    when(serverConfig.getKafkaClusterUrlToAliasMap()).thenReturn(kafkaClusterUrlToAliasMap);
+
+    AggKafkaConsumerService testService = createTestService();
+    AggKafkaConsumerService serviceSpy = spy(testService);
+
+    AbstractKafkaConsumerService mockConsumerService = mock(AbstractKafkaConsumerService.class);
+    doReturn(mockConsumerService).when(serviceSpy).getKafkaConsumerService(kafkaUrl);
+
+    when(mockConsumerService.getIngestionInfoFor(topic, topicPartition, true)).thenReturn(new HashMap<>());
+
+    String result = serviceSpy.getIngestionInfoFor(topic, topicPartition, regionName);
+
+    Assert.assertNotNull(result);
+    Assert.assertEquals(result, "");
+
+    verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition, true);
+  }
+
+  private AggKafkaConsumerService createTestService() {
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    when(mockPubSubClientsFactory.getConsumerAdapterFactory()).thenReturn(consumerFactory);
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    when(mockPubSubContext.getPubSubMessageDeserializer()).thenReturn(pubSubDeserializer);
+    when(mockPubSubContext.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
+
+    return new AggKafkaConsumerService(
+        pubSubPropertiesSupplier,
+        serverConfig,
+        ingestionThrottler,
+        kafkaClusterBasedRecordThrottler,
+        metricsRepository,
+        staleTopicChecker,
+        killIngestionTaskRunnable,
+        t -> false,
+        metadataRepository,
+        mockPubSubContext);
   }
 }

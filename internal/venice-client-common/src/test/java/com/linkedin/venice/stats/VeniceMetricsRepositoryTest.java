@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats;
 
+import static io.tehuti.metrics.stats.AsyncGauge.DEFAULT_ASYNC_GAUGE_EXECUTOR;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -10,9 +11,11 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.utils.DataProviderUtils;
 import io.tehuti.metrics.MetricConfig;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import org.mockito.Mockito;
@@ -104,5 +107,26 @@ public class VeniceMetricsRepositoryTest {
 
     // Verify that close methods are called
     Mockito.verify(mockOpenTelemetryRepository).close();
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetVeniceMetricsRepositoryWithSingleThreadedConfig(boolean useSingleThreadedMetricsRepository) {
+    VeniceMetricsRepository repository = VeniceMetricsRepository.getVeniceMetricsRepository(
+        "test_service",
+        "test_prefix",
+        Collections.emptyList(),
+        Collections.emptyMap(),
+        useSingleThreadedMetricsRepository);
+
+    assertNotNull(repository, "Repository should not be null");
+    assertNotNull(repository.getVeniceMetricsConfig(), "VeniceMetricsConfig should not be null");
+
+    MetricConfig tehutiConfig = repository.getVeniceMetricsConfig().getTehutiMetricConfig();
+    assertNotNull(tehutiConfig, "TehutiMetricConfig should not be null");
+
+    assertEquals(
+        tehutiConfig.getAsyncGaugeExecutor().equals(DEFAULT_ASYNC_GAUGE_EXECUTOR),
+        !useSingleThreadedMetricsRepository);
+    repository.close();
   }
 }

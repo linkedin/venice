@@ -4,6 +4,7 @@ import static com.linkedin.venice.utils.concurrent.BlockingQueueType.ARRAY_BLOCK
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -27,7 +28,7 @@ public final class ThreadPoolFactory {
   public static ThreadPoolExecutor createThreadPool(
       int threadCount,
       String threadNamePrefix,
-      @Nullable Object logContext,
+      @Nullable LogContext logContext,
       int capacity,
       BlockingQueueType blockingQueueType) {
     ThreadPoolExecutor executor = new ThreadPoolExecutor(

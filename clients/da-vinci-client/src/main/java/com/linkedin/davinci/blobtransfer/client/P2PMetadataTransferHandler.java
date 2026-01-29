@@ -5,11 +5,15 @@ import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -21,6 +25,8 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
+import java.util.Map;
+import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -38,6 +44,7 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
   private final BlobTransferPayload payload;
   private BlobTransferPartitionMetadata metadata;
   private StorageMetadataService storageMetadataService;
+  private Supplier<VeniceNotifier> veniceNotifierSupplier;
 
   public P2PMetadataTransferHandler(
       StorageMetadataService storageMetadataService,
@@ -45,8 +52,10 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
       String storeName,
       int version,
       int partition,
-      BlobTransferTableFormat tableFormat) {
+      BlobTransferTableFormat tableFormat,
+      Supplier<VeniceNotifier> veniceNotifierSupplier) {
     this.storageMetadataService = storageMetadataService;
+    this.veniceNotifierSupplier = veniceNotifierSupplier;
     this.payload = new BlobTransferPayload(baseDir, storeName, version, partition, tableFormat);
   }
 
@@ -103,13 +112,103 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
     LOGGER.info(
         "Start updating store partition metadata for {}",
         Utils.getReplicaId(transferredPartitionMetadata.topicName, transferredPartitionMetadata.partitionId));
-    // update the offset record in storage service
-    storageMetadataService.put(
-        transferredPartitionMetadata.topicName,
-        transferredPartitionMetadata.partitionId,
-        new OffsetRecord(transferredPartitionMetadata.offsetRecord.array(), partitionStateSerializer));
-    // update the metadata SVS
+    OffsetRecord transferredOffsetRecord =
+        new OffsetRecord(transferredPartitionMetadata.offsetRecord.array(), partitionStateSerializer, null);
+    // 1. update the offset incremental push job information
+    updateIncrementalPushInfoToStore(transferredOffsetRecord, transferredPartitionMetadata);
+    // 2. update the offset record in storage service
+    storageMetadataService
+        .put(transferredPartitionMetadata.topicName, transferredPartitionMetadata.partitionId, transferredOffsetRecord);
+    // 3. update the metadata SVS
     updateStorageVersionState(storageMetadataService, transferredPartitionMetadata);
+  }
+
+  /**
+   * Update the incremental push info to push status store from the transferred offset record trackingIncrementalPushStatus
+   * @param offsetRecord
+   * @param transferredPartitionMetadata
+   */
+  public void updateIncrementalPushInfoToStore(
+      OffsetRecord offsetRecord,
+      BlobTransferPartitionMetadata transferredPartitionMetadata) {
+    String storeName = Version.parseStoreFromKafkaTopicName(transferredPartitionMetadata.getTopicName());
+    int partitionId = transferredPartitionMetadata.getPartitionId();
+    String kafkaTopic = transferredPartitionMetadata.getTopicName();
+    Map<String, IncrementalPushReplicaStatus> incPushVersionToStatusMap =
+        offsetRecord.getTrackingIncrementalPushStatus();
+
+    if (incPushVersionToStatusMap == null || incPushVersionToStatusMap.isEmpty()) {
+      LOGGER.info(
+          "No incremental push info to update to push status store for {}, partition: {}",
+          storeName,
+          partitionId);
+      return;
+    }
+
+    VeniceNotifier veniceNotifier = getVeniceNotifier();
+    if (veniceNotifier == null) {
+      LOGGER.error(
+          "VeniceNotifier is not available, cannot write incremental push status for replica: {}",
+          Utils.getReplicaId(kafkaTopic, partitionId));
+      return;
+    }
+
+    // update the incremental push info to push status store per inc push version
+    for (Map.Entry<String, IncrementalPushReplicaStatus> entry: incPushVersionToStatusMap.entrySet()) {
+      String incPushVersion = entry.getKey();
+      IncrementalPushReplicaStatus replicaStatus = entry.getValue();
+      writeIncrementalPushStatusToPushStatusStore(
+          veniceNotifier,
+          kafkaTopic,
+          partitionId,
+          incPushVersion,
+          replicaStatus);
+    }
+
+    LOGGER.info(
+        "Successfully updated incremental push info to push status store for {}, partition: {}, incPushVersionToStatusMap: {}",
+        storeName,
+        partitionId,
+        incPushVersionToStatusMap);
+  }
+
+  /**
+   * Helper method to safely get VeniceNotifier from supplier
+   * @return VeniceNotifier instance or null if not available
+   */
+  private VeniceNotifier getVeniceNotifier() {
+    if (veniceNotifierSupplier == null) {
+      return null;
+    }
+
+    try {
+      return veniceNotifierSupplier.get();
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  private void writeIncrementalPushStatusToPushStatusStore(
+      VeniceNotifier veniceNotifier,
+      String kafkaTopic,
+      int partitionId,
+      String incPushVersion,
+      IncrementalPushReplicaStatus incrementalPushReplicaStatus) {
+
+    ExecutionStatus executionStatus = ExecutionStatus.valueOf(incrementalPushReplicaStatus.status);
+
+    // Notify based on execution status
+    if (executionStatus == ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED) {
+      veniceNotifier.startOfIncrementalPushReceived(kafkaTopic, partitionId, null, incPushVersion);
+    } else if (executionStatus == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED) {
+      veniceNotifier.endOfIncrementalPushReceived(kafkaTopic, partitionId, null, incPushVersion);
+    } else {
+      LOGGER.warn(
+          "Unexpected execution status {} for incremental push. Replica: {}, inc push version: {}",
+          executionStatus,
+          Utils.getReplicaId(kafkaTopic, partitionId),
+          incPushVersion);
+    }
   }
 
   private void updateStorageVersionState(

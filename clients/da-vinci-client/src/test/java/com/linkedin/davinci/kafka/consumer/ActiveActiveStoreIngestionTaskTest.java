@@ -1,8 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
@@ -25,18 +22,12 @@ import static org.testng.Assert.expectThrows;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
-import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.store.StorageEngine;
-import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -54,19 +45,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.HybridStoreConfigImpl;
-import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.ReadStrategy;
-import com.linkedin.venice.meta.RoutingStrategy;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -78,6 +57,7 @@ import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -87,7 +67,6 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -97,7 +76,6 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
@@ -106,8 +84,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
@@ -124,10 +100,6 @@ import org.testng.annotations.Test;
 public class ActiveActiveStoreIngestionTaskTest {
   private static final Logger LOGGER = LogManager.getLogger(ActiveActiveStoreIngestionTaskTest.class);
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
-  String STORE_NAME = "Thvorusleikir_store";
-  String PUSH_JOB_ID = "yule";
-  String BOOTSTRAP_SERVER = "Stekkjastaur";
-  String TEST_CLUSTER_NAME = "venice-GRYLA";
 
   @DataProvider(name = "CompressionStrategy")
   public static Object[] compressionStrategyProvider() {
@@ -201,96 +173,6 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertEquals("Hello World", new String(resultByteArray));
   }
 
-  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "ingestionTaskReusableObjectsStrategy")
-  public void testisReadyToServeAnnouncedWithRTLag(IngestionTaskReusableObjects.Strategy itroStrategy) {
-    // Setup store/schema/storage repository
-    ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
-    ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
-    StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
-    when(storageEngineRepository.getLocalStorageEngine(any())).thenReturn(new BlackHoleStorageEngine(STORE_NAME));
-
-    // Setup server config
-    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-    when(serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists()).thenReturn(false);
-    when(serverConfig.getKafkaClusterUrlResolver()).thenReturn(null);
-    when(serverConfig.getKafkaClusterUrlToIdMap()).thenReturn(new Object2IntArrayMap<>());
-    when(serverConfig.getKafkaClusterIdToUrlMap()).thenReturn(new Int2ObjectArrayMap<>());
-    when(serverConfig.getConsumerPoolSizePerKafkaCluster()).thenReturn(1);
-
-    // Set up IngestionTask Builder
-    StoreIngestionTaskFactory.Builder builder = new StoreIngestionTaskFactory.Builder();
-    builder.setPubSubTopicRepository(TOPIC_REPOSITORY);
-    builder.setHostLevelIngestionStats(mock(AggHostLevelIngestionStats.class));
-    builder.setAggKafkaConsumerService(mock(AggKafkaConsumerService.class));
-    builder.setMetadataRepository(readOnlyStoreRepository);
-    builder.setServerConfig(serverConfig);
-    builder.setSchemaRepository(readOnlySchemaRepository);
-    builder.setReusableObjectsSupplier(itroStrategy.supplier());
-
-    // Set up version config and store config
-    HybridStoreConfig hybridStoreConfig =
-        new HybridStoreConfigImpl(100L, 100L, 100L, BufferReplayPolicy.REWIND_FROM_EOP);
-
-    StorageService storageService = mock(StorageService.class);
-    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(storageService)
-        .getRefCountedStorageEngine(anyString());
-
-    Store store = new ZKStore(
-        STORE_NAME,
-        "Felix",
-        100L,
-        PersistenceType.BLACK_HOLE,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_ALL_REPLICAS,
-        1);
-    store.setHybridStoreConfig(hybridStoreConfig);
-    Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
-    mockVersion.setHybridStoreConfig(hybridStoreConfig);
-    store.setVersions(Collections.singletonList(mockVersion));
-
-    Properties kafkaConsumerProperties = new Properties();
-    kafkaConsumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, BOOTSTRAP_SERVER);
-    kafkaConsumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
-    kafkaConsumerProperties.put(ZOOKEEPER_ADDRESS, BOOTSTRAP_SERVER);
-    VeniceStoreVersionConfig storeVersionConfig =
-        new VeniceStoreVersionConfig(STORE_NAME + "_v1", new VeniceProperties(kafkaConsumerProperties));
-    int port = 123;
-    ActiveActiveStoreIngestionTask ingestionTask = new ActiveActiveStoreIngestionTask(
-        storageService,
-        builder,
-        store,
-        mockVersion,
-        kafkaConsumerProperties,
-        () -> true,
-        storeVersionConfig,
-        1,
-        false,
-        Optional.empty(),
-        null,
-        null);
-
-    PartitionConsumptionState badPartitionConsumptionState = mock(PartitionConsumptionState.class);
-    when(badPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);
-    // short circuit isReadyToServe
-    when(badPartitionConsumptionState.isEndOfPushReceived()).thenReturn(false);
-    ingestionTask.addPartitionConsumptionState(1, badPartitionConsumptionState);
-
-    Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
-
-    PartitionConsumptionState goodPartitionConsumptionState = mock(PartitionConsumptionState.class);
-    when(goodPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);
-    when(goodPartitionConsumptionState.isEndOfPushReceived()).thenReturn(true);
-    when(goodPartitionConsumptionState.isWaitingForReplicationLag()).thenReturn(false);
-    ingestionTask.addPartitionConsumptionState(1, goodPartitionConsumptionState);
-
-    Assert.assertFalse(ingestionTask.isReadyToServeAnnouncedWithRTLag());
-
-    ingestionTask.addPartitionConsumptionState(2, badPartitionConsumptionState);
-
-    Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
-  }
-
   @Test
   public void testMaybeBatchReportEOIP() {
     ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
@@ -360,7 +242,7 @@ public class ActiveActiveStoreIngestionTaskTest {
               PubSubProducerCallback callback = invocation.getArgument(5);
               PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
               offset.addAndGet(1);
-              when(produceResult.getOffset()).thenReturn(offset.get());
+              when(produceResult.getPubSubPosition()).thenReturn(InMemoryPubSubPosition.of(offset.get()));
               MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope.messageType);
               when(produceResult.getSerializedSize()).thenReturn(
                   kafkaKey.getKeyLength() + (messageType.equals(MessageType.PUT)
@@ -667,7 +549,7 @@ public class ActiveActiveStoreIngestionTaskTest {
           .getUpstreamKafkaUrlFromKafkaValue(msgWithAbsentUpstreamCluster, sourceKafka, kafkaClusterIdToUrlMap);
     } catch (VeniceException e) {
       LOGGER.info("kmeWithAbsentUpstreamCluster", e);
-      assertTrue(e.getMessage().startsWith("No Kafka cluster ID found in the cluster ID to Kafka URL map."));
+      assertTrue(e.getMessage().startsWith("No PubSub cluster ID found in the cluster ID to PubSub URL map."));
       assertTrue(e.getMessage().contains("Message type: " + MessageType.PUT));
     }
 
@@ -691,7 +573,7 @@ public class ActiveActiveStoreIngestionTaskTest {
           .getUpstreamKafkaUrlFromKafkaValue(msgForControlMessage, sourceKafka, kafkaClusterIdToUrlMap);
     } catch (VeniceException e) {
       LOGGER.info("kmeForControlMessage", e);
-      assertTrue(e.getMessage().startsWith("No Kafka cluster ID found in the cluster ID to Kafka URL map."));
+      assertTrue(e.getMessage().startsWith("No PubSub cluster ID found in the cluster ID to PubSub URL map."));
       assertTrue(
           e.getMessage()
               .contains("Message type: " + MessageType.CONTROL_MESSAGE + "/" + ControlMessageType.TOPIC_SWITCH));
@@ -734,12 +616,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(serverConfig.getKafkaClusterIdToUrlMap()).thenReturn(clusterIdToUrlMap);
     when(serverConfig.getDedicatedConsumerPoolSizeForSepRTLeader()).thenReturn(3);
     when(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader()).thenReturn(5);
-    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 10), 31);
-    when(serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()).thenReturn(true);
-    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 10), 25);
-    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1), 4);
+    assertEquals(AggKafkaConsumerService.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 10), 31);
     // Test when current version prioritization strategy is enabled.
-    when(serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()).thenReturn(false);
     when(serverConfig.getConsumerPoolStrategyType())
         .thenReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION);
     when(serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()).thenReturn(10);
@@ -747,12 +625,12 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader()).thenReturn(20);
     when(serverConfig.getConsumerPoolSizeForCurrentVersionNonAAWCLeader()).thenReturn(30);
     when(serverConfig.getConsumerPoolSizeForNonCurrentVersionNonAAWCLeader()).thenReturn(40);
-    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 121);
+    assertEquals(AggKafkaConsumerService.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 121);
 
     // Test with parallel compute is enabled
     when(serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize()).thenReturn(8);
     when(serverConfig.isAAWCWorkloadParallelProcessingEnabled()).thenReturn(true);
-    assertEquals(ActiveActiveStoreIngestionTask.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 961);
+    assertEquals(AggKafkaConsumerService.getKeyLevelLockMaxPoolSizeBasedOnServerConfig(serverConfig, 1000), 961);
   }
 
   @Test
@@ -767,27 +645,28 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(mockServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(kafkaClusterUrlToIdMap);
 
     // Set up real method call
-    doCallRealMethod().when(ingestionTask).consumerSubscribe(any(), anyLong(), anyString());
+    doCallRealMethod().when(ingestionTask).consumerSubscribe(any(), any(), anyString());
 
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test"), 0);
+    PubSubPosition p100 = ApacheKafkaOffsetPosition.of(100L);
     VeniceException exception = expectThrows(
         VeniceException.class,
-        () -> ingestionTask.consumerSubscribe(pubSubTopicPartition, 100L, "invalidPubSubAddress"));
+        () -> ingestionTask.consumerSubscribe(pubSubTopicPartition, p100, "invalidPubSubAddress"));
     assertNotNull(exception.getMessage(), "Exception message should not be null");
     assertTrue(
         exception.getMessage().contains("is not in the pubsub cluster map"),
         "Exception message should contain the expected message but found: " + exception.getMessage());
 
-    verify(ingestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, 100L, "invalidPubSubAddress");
+    verify(ingestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, p100, "invalidPubSubAddress");
 
     // Case 2: DaVinci client
     ActiveActiveStoreIngestionTask dvcIngestionTask = mock(ActiveActiveStoreIngestionTask.class);
-    doCallRealMethod().when(dvcIngestionTask).consumerSubscribe(any(), anyLong(), anyString());
+    doCallRealMethod().when(dvcIngestionTask).consumerSubscribe(any(), any(), anyString());
     when(dvcIngestionTask.getServerConfig()).thenReturn(mockServerConfig);
     when(dvcIngestionTask.isDaVinciClient()).thenReturn(true);
     when(mockServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(Object2IntMaps.emptyMap());
     try {
-      dvcIngestionTask.consumerSubscribe(pubSubTopicPartition, 100L, "validPubSubAddress");
+      dvcIngestionTask.consumerSubscribe(pubSubTopicPartition, p100, "validPubSubAddress");
     } catch (Exception e) {
       if (e.getMessage() != null) {
         assertFalse(
@@ -795,7 +674,7 @@ public class ActiveActiveStoreIngestionTaskTest {
             "Exception message should not contain the expected message but found: " + e.getMessage());
       }
     }
-    verify(dvcIngestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, 100L, "validPubSubAddress");
+    verify(dvcIngestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, p100, "validPubSubAddress");
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

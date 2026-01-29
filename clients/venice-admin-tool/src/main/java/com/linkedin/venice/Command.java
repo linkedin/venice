@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.Arg.ABORT_ON_FAILURE;
 import static com.linkedin.venice.Arg.ACCESS_CONTROL;
 import static com.linkedin.venice.Arg.ACL_PERMS;
 import static com.linkedin.venice.Arg.ACTIVE_ACTIVE_REPLICATION_ENABLED;
@@ -12,6 +13,7 @@ import static com.linkedin.venice.Arg.BACKUP_VERSION_RETENTION_DAY;
 import static com.linkedin.venice.Arg.BASE_PATH;
 import static com.linkedin.venice.Arg.BATCH_GET_LIMIT;
 import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
+import static com.linkedin.venice.Arg.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR;
 import static com.linkedin.venice.Arg.CHECKPOINT_FILE;
 import static com.linkedin.venice.Arg.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
@@ -21,6 +23,7 @@ import static com.linkedin.venice.Arg.CLUSTER;
 import static com.linkedin.venice.Arg.CLUSTER_DEST;
 import static com.linkedin.venice.Arg.CLUSTER_LIST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
+import static com.linkedin.venice.Arg.COMPACTION_THRESHOLD_MILLISECONDS;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.Arg.DATETIME;
 import static com.linkedin.venice.Arg.DAVINCI_HEARTBEAT_REPORTED;
@@ -32,16 +35,20 @@ import static com.linkedin.venice.Arg.DEST_ZK_SSL_CONFIG_FILE;
 import static com.linkedin.venice.Arg.DEST_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.Arg.DISABLE_META_STORE;
+import static com.linkedin.venice.Arg.ENABLE_COMPACTION;
 import static com.linkedin.venice.Arg.ENABLE_DISABLED_REPLICA;
 import static com.linkedin.venice.Arg.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.Arg.END_DATE;
+import static com.linkedin.venice.Arg.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.Arg.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.Arg.EXECUTION;
+import static com.linkedin.venice.Arg.EXECUTION_ID;
 import static com.linkedin.venice.Arg.EXPECTED_ROUTER_COUNT;
 import static com.linkedin.venice.Arg.EXTRA_COMMAND_ARGS;
 import static com.linkedin.venice.Arg.FABRIC;
 import static com.linkedin.venice.Arg.FABRIC_A;
 import static com.linkedin.venice.Arg.FABRIC_B;
+import static com.linkedin.venice.Arg.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.Arg.FORCE;
 import static com.linkedin.venice.Arg.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.Arg.GLOBAL_RT_DIV_ENABLED;
@@ -56,6 +63,7 @@ import static com.linkedin.venice.Arg.HYBRID_TIME_LAG;
 import static com.linkedin.venice.Arg.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.Arg.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.Arg.INFILE;
+import static com.linkedin.venice.Arg.INITIAL_STEP;
 import static com.linkedin.venice.Arg.INSTANCES;
 import static com.linkedin.venice.Arg.INTERVAL;
 import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
@@ -68,12 +76,20 @@ import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.Arg.KEY;
 import static com.linkedin.venice.Arg.KEY_SCHEMA;
+import static com.linkedin.venice.Arg.KEY_URN_COMPRESSION_EANBLED;
+import static com.linkedin.venice.Arg.KEY_URN_FIELDS;
 import static com.linkedin.venice.Arg.LAG_FILTER_ENABLED;
 import static com.linkedin.venice.Arg.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LATEST_SUPERSET_SCHEMA_ID;
+import static com.linkedin.venice.Arg.LOG_DATA_RECORD;
+import static com.linkedin.venice.Arg.LOG_METADATA;
+import static com.linkedin.venice.Arg.LOG_RMD_RECORD;
+import static com.linkedin.venice.Arg.LOG_TS_RECORD;
+import static com.linkedin.venice.Arg.LOOK_BACK_MS;
 import static com.linkedin.venice.Arg.MAX_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.Arg.MAX_NEARLINE_RECORD_SIZE_BYTES;
+import static com.linkedin.venice.Arg.MAX_POLL_ATTEMPTS;
 import static com.linkedin.venice.Arg.MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.Arg.MESSAGE_COUNT;
 import static com.linkedin.venice.Arg.MIGRATION_PUSH_STRATEGY;
@@ -84,14 +100,15 @@ import static com.linkedin.venice.Arg.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
 import static com.linkedin.venice.Arg.NEARLINE_PRODUCER_COUNT_PER_WRITER;
 import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
-import static com.linkedin.venice.Arg.OFFSET;
 import static com.linkedin.venice.Arg.OUTFILE;
 import static com.linkedin.venice.Arg.OWNER;
+import static com.linkedin.venice.Arg.PARENT_DIRECTORY;
 import static com.linkedin.venice.Arg.PARTITION;
 import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
 import static com.linkedin.venice.Arg.PARTITIONER_PARAMS;
 import static com.linkedin.venice.Arg.PARTITION_COUNT;
 import static com.linkedin.venice.Arg.PARTITION_DETAIL_ENABLED;
+import static com.linkedin.venice.Arg.POSITION;
 import static com.linkedin.venice.Arg.PRINCIPAL;
 import static com.linkedin.venice.Arg.PROGRESS_INTERVAL;
 import static com.linkedin.venice.Arg.PUSH_ID;
@@ -118,6 +135,7 @@ import static com.linkedin.venice.Arg.SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.SRC_ZK_SSL_CONFIG_FILE;
 import static com.linkedin.venice.Arg.SRC_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
+import static com.linkedin.venice.Arg.STARTING_POSITION;
 import static com.linkedin.venice.Arg.START_DATE;
 import static com.linkedin.venice.Arg.STORAGE_NODE;
 import static com.linkedin.venice.Arg.STORAGE_NODE_READ_QUOTA_ENABLED;
@@ -125,9 +143,10 @@ import static com.linkedin.venice.Arg.STORAGE_PERSONA;
 import static com.linkedin.venice.Arg.STORAGE_QUOTA;
 import static com.linkedin.venice.Arg.STORE;
 import static com.linkedin.venice.Arg.STORES;
+import static com.linkedin.venice.Arg.STORES_TO_REPLICATE;
 import static com.linkedin.venice.Arg.STORE_FILTER_FILE;
+import static com.linkedin.venice.Arg.STORE_LIFECYCLE_HOOKS_LIST;
 import static com.linkedin.venice.Arg.STORE_SIZE;
-import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
 import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
 import static com.linkedin.venice.Arg.TARGET_SWAP_REGION;
@@ -140,6 +159,7 @@ import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA_ID;
 import static com.linkedin.venice.Arg.VENICE_CLIENT_SSL_CONFIG_FILE;
+import static com.linkedin.venice.Arg.VENICE_ETL_STRATEGY;
 import static com.linkedin.venice.Arg.VENICE_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.VERSION;
 import static com.linkedin.venice.Arg.VIEW_CLASS;
@@ -204,7 +224,10 @@ public enum Command {
       "Query the ingest status of a running push job. If a version is not specified, the job status of the last job will be printed.",
       new Arg[] { URL, STORE }, new Arg[] { CLUSTER, VERSION }
   ), KILL_JOB("kill-job", "Kill a running push job", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }),
-  SKIP_ADMIN("skip-admin", "Skip an admin message", new Arg[] { URL, CLUSTER, OFFSET }, new Arg[] { SKIP_DIV }),
+  SKIP_ADMIN_MESSAGE(
+      "skip-admin-message", "Skip an admin message", new Arg[] { URL, CLUSTER },
+      new Arg[] { SKIP_DIV, POSITION, EXECUTION_ID }
+  ),
   NEW_STORE(
       "new-store", "", new Arg[] { URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA }, new Arg[] { OWNER, VSON_STORE }
   ),
@@ -294,19 +317,26 @@ public enum Command {
           BATCH_GET_LIMIT, NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED, READ_COMPUTATION_ENABLED,
           BACKUP_STRATEGY, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED,
           BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR, HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED,
-          FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
-          BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
-          ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
-          STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, MIN_COMPACTION_LAG_SECONDS,
+          FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, VENICE_ETL_STRATEGY, NATIVE_REPLICATION_ENABLED,
+          PUSH_STREAM_SOURCE_ADDRESS, BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR,
+          NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS, ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER,
+          DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE, STORAGE_PERSONA, STORE_VIEW_CONFIGS,
+          LATEST_SUPERSET_SCHEMA_ID, ENABLE_COMPACTION, COMPACTION_THRESHOLD_MILLISECONDS, MIN_COMPACTION_LAG_SECONDS,
           MAX_COMPACTION_LAG_SECONDS, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES,
           UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED, SEPARATE_REALTIME_TOPIC_ENABLED,
           NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER, TARGET_SWAP_REGION,
-          TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION, GLOBAL_RT_DIV_ENABLED }
+          TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION, GLOBAL_RT_DIV_ENABLED,
+          ENUM_SCHEMA_EVOLUTION_ALLOWED, STORE_LIFECYCLE_HOOKS_LIST, BLOB_TRANSFER_IN_SERVER_ENABLED,
+          KEY_URN_COMPRESSION_EANBLED, KEY_URN_FIELDS, FLINK_VENICE_VIEWS_ENABLED }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
       new Arg[] { FABRIC, SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, ALLOW_STORE_MIGRATION,
           CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED }
+  ),
+  UPDATE_DARK_CLUSTER_CONFIG(
+      "update-dark-cluster-config", "Update dark cluster configs under /darkClusterConfig znode",
+      new Arg[] { URL, CLUSTER }, new Arg[] { STORES_TO_REPLICATE }
   ),
   EMPTY_PUSH(
       "empty-push", "Do an empty push into an existing store", new Arg[] { URL, STORE, PUSH_ID, STORE_SIZE },
@@ -369,17 +399,20 @@ public enum Command {
   ),
   DUMP_ADMIN_MESSAGES(
       "dump-admin-messages", "Dump admin messages",
-      new Arg[] { CLUSTER, KAFKA_BOOTSTRAP_SERVERS, STARTING_OFFSET, MESSAGE_COUNT, KAFKA_CONSUMER_CONFIG_FILE }
+      new Arg[] { CLUSTER, KAFKA_BOOTSTRAP_SERVERS, MESSAGE_COUNT, KAFKA_CONSUMER_CONFIG_FILE },
+      new Arg[] { STARTING_OFFSET, STARTING_POSITION }
   ),
   DUMP_CONTROL_MESSAGES(
       "dump-control-messages", "Dump control messages in a partition",
       new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, KAFKA_TOPIC_PARTITION,
-          STARTING_OFFSET, MESSAGE_COUNT }
+          STARTING_OFFSET, STARTING_POSITION, MESSAGE_COUNT }
   ),
   DUMP_KAFKA_TOPIC(
       "dump-kafka-topic",
       "Dump a Kafka topic for a Venice cluster.  If start offset and message count are not specified, the entire partition will be dumped.  PLEASE REFRAIN FROM USING SERVER CERTIFICATES, IT IS A GDPR VIOLATION, GET ADDED TO THE STORE ACL'S OR GET FAST ACCESS TO THE KAFKA TOPIC!!",
-      new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, CLUSTER, URL }
+      new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, CLUSTER, URL },
+      new Arg[] { KAFKA_TOPIC_PARTITION, MESSAGE_COUNT, PARENT_DIRECTORY, MAX_POLL_ATTEMPTS, START_DATE, END_DATE,
+          LOG_METADATA, LOG_DATA_RECORD, LOG_RMD_RECORD, LOG_TS_RECORD, STARTING_OFFSET, STARTING_POSITION }
   ),
   QUERY_KAFKA_TOPIC(
       "query-kafka-topic", "Query some specific keys from the Venice Topic",
@@ -390,6 +423,10 @@ public enum Command {
   MIGRATE_STORE(
       "migrate-store", "Migrate store from one cluster to another within the same fabric",
       new Arg[] { URL, STORE, CLUSTER_SRC, CLUSTER_DEST }
+  ),
+  AUTO_MIGRATE_STORE(
+      "auto-migrate-store", "Auto migrate store from one cluster to another cluster",
+      new Arg[] { URL, STORE, CLUSTER_SRC, CLUSTER_DEST }, new Arg[] { INITIAL_STEP, ABORT_ON_FAILURE }
   ),
   MIGRATION_STATUS(
       "migration-status", "Get store migration status", new Arg[] { URL, STORE, CLUSTER_SRC, CLUSTER_DEST }
@@ -429,16 +466,6 @@ public enum Command {
       "remove-from-store-acl", "Remove a principal from ACL's for an existing store",
       new Arg[] { URL, STORE, PRINCIPAL }, new Arg[] { CLUSTER, READABILITY, WRITEABILITY }
   ),
-  ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
-      "enable-active-active-replication-for-cluster",
-      "enable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER }
-  ),
-  DISABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
-      "disable-active-active-replication-for-cluster",
-      "disable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER }
-  ),
   GET_DELETABLE_STORE_TOPICS(
       "get-deletable-store-topics",
       "Get a list of deletable store topics in the fabric that belongs to the controller handling the request",
@@ -470,7 +497,7 @@ public enum Command {
   ),
   GET_DEAD_STORES(
       "get-dead-stores", "Get the stores that are considered dead via ACL DB and Store Discovery",
-      new Arg[] { URL, CLUSTER }, new Arg[] { STORE, INCLUDE_SYSTEM_STORES }
+      new Arg[] { URL, CLUSTER }, new Arg[] { STORE, INCLUDE_SYSTEM_STORES, LOOK_BACK_MS }
   ),
   LIST_STORE_PUSH_INFO(
       "list-store-push-info", "List information about current pushes and push history for a specific store.",

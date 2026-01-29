@@ -5,7 +5,10 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -16,10 +19,12 @@ import java.util.concurrent.CompletableFuture;
 public interface StoreIngestionService {
   /**
    * Starts consuming messages from Kafka Partition corresponding to Venice Partition.
-   * @param veniceStore Venice Store for the partition.
-   * @param partitionId Venice partition's id.
+   *
+   * @param veniceStore    Venice Store for the partition.
+   * @param partitionId    Venice partition's id.
+   * @param pubSubPosition
    */
-  void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId);
+  void startConsumption(VeniceStoreVersionConfig veniceStore, int partitionId, Optional<PubSubPosition> pubSubPosition);
 
   /**
    * Stops consuming messages from Kafka Partition corresponding to Venice Partition.
@@ -104,4 +109,10 @@ public interface StoreIngestionService {
   VeniceConfigLoader getVeniceConfigLoader();
 
   VeniceWriterFactory getVeniceWriterFactory();
+
+  Optional<PubSubPosition> getPubSubPosition(
+      VeniceStoreVersionConfig veniceStore,
+      int partitionId,
+      Map<Integer, Long> timestampMap,
+      Map<Integer, PubSubPosition> pubSubPosition);
 }

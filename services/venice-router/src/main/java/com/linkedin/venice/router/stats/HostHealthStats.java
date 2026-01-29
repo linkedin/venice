@@ -20,7 +20,6 @@ public class HostHealthStats extends AbstractVeniceStats {
   private final Sensor unhealthyHostOfflineInstance;
   private final Sensor unhealthyHostTooManyPendingRequest;
   private final Sensor unhealthyHostHeartBeatFailure;
-  private final Sensor pendingRequestCount;
   private final Sensor leakedPendingRequestCount;
   private final Sensor unhealthyPendingQueueDuration;
   private final Sensor unhealthyPendingRateSensor;
@@ -34,7 +33,6 @@ public class HostHealthStats extends AbstractVeniceStats {
     this.unhealthyHostOfflineInstance = registerSensor("unhealthy_host_offline_instance", new Count());
     this.unhealthyHostTooManyPendingRequest = registerSensor("unhealthy_host_too_many_pending_request", new Count());
     this.unhealthyHostHeartBeatFailure = registerSensor("unhealthy_host_heart_beat_failure", new Count());
-    this.pendingRequestCount = registerSensor("pending_request_count", new Max());
     this.leakedPendingRequestCount = registerSensor("leaked_pending_request_count", new Count());
     this.unhealthyPendingQueueDuration =
         registerSensor("unhealthy_pending_queue_duration", new Avg(), new Min(), new Max(), new SampledTotal());
@@ -60,10 +58,6 @@ public class HostHealthStats extends AbstractVeniceStats {
 
   public void recordUnhealthyHostHeartBeatFailure() {
     unhealthyHostHeartBeatFailure.record();
-  }
-
-  public void recordPendingRequestCount(long cnt) {
-    pendingRequestCount.record(cnt);
   }
 
   public void recordLeakedPendingRequestCount() {

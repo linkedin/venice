@@ -52,7 +52,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.apache.avro.Schema;
@@ -402,36 +401,34 @@ public class TestActiveActiveReplicationForIncPush {
     PubSubTopicPartition realTimeTopicPartition =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.getRealTimeTopicName(storeInfo)), 0);
     try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
-      // TODO: Once server part separate topic ingestion logic is ready, we should avoid runAsync here and add extra
-      // check
-      CompletableFuture.runAsync(job::run);
-      waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-        assertEquals(
-            job.getKafkaUrl(),
-            childDatacenters.get(dcIndexForSourceRegion).getKafkaBrokerWrapper().getAddress());
+      job.run();
+      assertEquals(
+          job.getKafkaUrl(),
+          childDatacenters.get(dcIndexForSourceRegion).getKafkaBrokerWrapper().getAddress());
+
+      waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, true, () -> {
         for (int dcIndex = 0; dcIndex < childDatacenters.size(); dcIndex++) {
-          long separateTopicOffset =
-              topicManagers.get(dcIndex).getLatestOffsetWithRetries(separateRealTimeTopicPartition, 3);
-          long realTimeTopicOffset = topicManagers.get(dcIndex).getLatestOffsetWithRetries(realTimeTopicPartition, 3);
-          // Real-time topic will have heartbeat messages, so the offset will be non-zero but smaller than the record
-          // count.
-          // DC 2 separeate real-time topic should get enough data.
+          long separateTopicRecordCount =
+              topicManagers.get(dcIndex).getNumRecordsInPartition(separateRealTimeTopicPartition);
+          long realTimeTopicRecordCount = topicManagers.get(dcIndex).getNumRecordsInPartition(realTimeTopicPartition);
+          // Real-time topic will have heartbeat messages, so the record count will be non-zero but smaller than the
+          // user data record count.
+          // DC 2 separate real-time topic should get enough data.
           if (dcIndex == dcIndexForSourceRegion) {
             assertTrue(
-                separateTopicOffset > TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT,
-                "Records # is not enough: " + separateTopicOffset);
+                separateTopicRecordCount > TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT,
+                "Records # is not enough: " + separateTopicRecordCount);
             assertTrue(
-                realTimeTopicOffset < TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT / 10,
-                "Records # is more than expected: " + realTimeTopicOffset);
+                realTimeTopicRecordCount < TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT / 10,
+                "Records # is more than expected: " + realTimeTopicRecordCount);
           } else {
-            assertTrue(separateTopicOffset > 0, "Records # is not enough: " + separateTopicOffset);
+            assertTrue(separateTopicRecordCount > 0, "Records # is not enough: " + separateTopicRecordCount);
             assertTrue(
-                realTimeTopicOffset < TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT / 10,
-                "Records # is more than expected: " + realTimeTopicOffset);
+                realTimeTopicRecordCount < TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT / 10,
+                "Records # is more than expected: " + realTimeTopicRecordCount);
           }
         }
       });
-      job.cancel();
     }
   }
 

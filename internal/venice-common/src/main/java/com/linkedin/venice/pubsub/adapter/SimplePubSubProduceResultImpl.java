@@ -22,11 +22,6 @@ public class SimplePubSubProduceResultImpl implements PubSubProduceResult {
   }
 
   @Override
-  public long getOffset() {
-    return pubSubPosition.getNumericOffset();
-  }
-
-  @Override
   public PubSubPosition getPubSubPosition() {
     return pubSubPosition;
   }

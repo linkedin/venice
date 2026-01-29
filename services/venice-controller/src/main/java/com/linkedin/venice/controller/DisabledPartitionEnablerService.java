@@ -56,7 +56,7 @@ public class DisabledPartitionEnablerService extends AbstractVeniceService {
   private class DisabledPartitionEnablerTask implements Runnable {
     @Override
     public void run() {
-      LogContext.setStructuredLogContext(multiClusterConfig.getLogContext());
+      LogContext.setLogContext(multiClusterConfig.getLogContext());
       while (!stop.get()) {
         try {
           time.sleep(sleepInterval);

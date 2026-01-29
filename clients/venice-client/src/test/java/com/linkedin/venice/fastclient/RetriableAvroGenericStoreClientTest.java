@@ -62,7 +62,10 @@ import org.testng.annotations.Test;
 public class RetriableAvroGenericStoreClientTest {
   private static final int TEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
   private final ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
-  private static final int LONG_TAIL_RETRY_THRESHOLD_IN_MS = 100; // 100ms
+  private static final long LONG_TAIL_RETRY_THRESHOLD_IN_MS = 100L;// 100ms for single get
+  // Batch get uses dynamic thresholds: "1-5:15,6-20:30,21-150:50,151-500:100,501-:500"
+  // For 2 keys (BATCH_GET_KEYS size), threshold is 15ms (from "1-5:15" range)
+  private static final long BATCH_GET_LONG_TAIL_RETRY_THRESHOLD_IN_MS = 15L;
   private static final Schema STORE_VALUE_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileAsString("TestRecord.avsc"));
   private static final RandomRecordGenerator rrg = new RandomRecordGenerator();
@@ -116,13 +119,11 @@ public class RetriableAvroGenericStoreClientTest {
         .setLongTailRetryEnabledForSingleGet(true)
         .setLongTailRetryThresholdForSingleGetInMicroSeconds(
             (int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS))
-        .setLongTailRetryEnabledForBatchGet(true)
-        .setLongTailRetryThresholdForBatchGetInMicroSeconds(
-            (int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS))
+        // Configure batch-get long tail retry thresholds explicitly (2 keys -> 15ms)
+        .setLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds("1-5:15,6-20:30,21-150:50,151-500:100,501-:500")
         .setLongTailRetryEnabledForCompute(true)
         .setRetryBudgetEnabled(isRetryBudgetEnabled())
-        .setLongTailRetryThresholdForComputeInMicroSeconds(
-            (int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS));
+        .setLongTailRangeBasedRetryThresholdForComputeInMilliSeconds("1-5:15,6-20:30,21-150:50,151-500:100,501-:500");
     BATCH_GET_KEYS.add("test_key_1");
     BATCH_GET_KEYS.add("test_key_2");
     GenericRecord value1 = (GenericRecord) rrg.randomGeneric(STORE_VALUE_SCHEMA);
@@ -560,11 +561,8 @@ public class RetriableAvroGenericStoreClientTest {
         String batchGetRetryBudgetMetricName =
             "." + RetriableAvroGenericStoreClient.MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName()
                 + "--retry_limit_per_seconds.Gauge";
-        if (isRetryBudgetEnabled()) {
-          assertNotNull(metrics.get(batchGetRetryBudgetMetricName), "Retry limit per second metric should not be null");
-        } else {
-          assertNull(metrics.get(batchGetRetryBudgetMetricName), "Retry limit per second metric should be null");
-        }
+        // Batch get retry manager is always initialized now
+        assertNotNull(metrics.get(batchGetRetryBudgetMetricName), "Retry limit per second metric should not be null");
       } else if (singleGet) {
         assertTrue(getRequestContext.retryContext.longTailRetryRequestTriggered);
         // Check retry budget metrics
@@ -575,8 +573,6 @@ public class RetriableAvroGenericStoreClientTest {
           assertNotNull(
               metrics.get(singleGetRetryBudgetMetricName),
               "Retry limit per second metric should not be null");
-        } else {
-          assertNull(metrics.get(singleGetRetryBudgetMetricName), "Retry limit per second metric should be null");
         }
       }
     } else {
@@ -614,18 +610,24 @@ public class RetriableAvroGenericStoreClientTest {
 
   /**
    * Original request is faster than retry threshold.
+   * For single get: threshold is 100ms
+   * For batch get with 2 keys: threshold is 15ms (from "1-5:15" range in dynamic config)
    */
   @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testGetWithoutTriggeringLongTailRetry(boolean batchGet, boolean keyNotFound)
       throws ExecutionException, InterruptedException {
     clientConfigBuilder.setMetricsRepository(getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true));
     clientConfig = clientConfigBuilder.build();
+
+    // Use appropriate threshold based on request type
+    long thresholdMs = batchGet ? BATCH_GET_LONG_TAIL_RETRY_THRESHOLD_IN_MS : LONG_TAIL_RETRY_THRESHOLD_IN_MS;
+
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(
             false,
-            LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2,
+            thresholdMs / 2, // Original request completes faster than threshold
             false,
-            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 2,
+            thresholdMs * 2, // Retry would be slower (but won't be triggered)
             keyNotFound,
             false,
             clientConfig),
@@ -641,18 +643,24 @@ public class RetriableAvroGenericStoreClientTest {
 
   /**
    * Original request latency is higher than retry threshold, but still faster than retry request
+   * Uses dynamic thresholds: 100ms for single get, 15ms for batch get (2 keys), 100ms for compute
    */
   @Test(dataProvider = "FastClient-RequestTypes", timeOut = TEST_TIMEOUT)
   public void testGetWithTriggeringLongTailRetryAndOriginalWins(RequestType requestType)
       throws ExecutionException, InterruptedException {
     clientConfigBuilder.setMetricsRepository(getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true));
     clientConfig = clientConfigBuilder.build();
+
+    // Use appropriate threshold based on request type
+    boolean isBatchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
+    long thresholdMs = isBatchGet ? BATCH_GET_LONG_TAIL_RETRY_THRESHOLD_IN_MS : LONG_TAIL_RETRY_THRESHOLD_IN_MS;
+
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(
             false,
-            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 10,
+            thresholdMs * 10, // Original request exceeds threshold but completes
             false,
-            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 50,
+            thresholdMs * 50, // Retry is slower, so original wins
             false,
             false,
             clientConfig),
@@ -674,6 +682,7 @@ public class RetriableAvroGenericStoreClientTest {
 
   /**
    * Original request latency is higher than retry threshold and slower than the retry request
+   * Uses dynamic thresholds: 100ms for single get, 15ms for batch get (2 keys), 100ms for compute
    */
   @Test(dataProvider = "FastClient-RequestTypes-And-Two-Boolean", timeOut = TEST_TIMEOUT)
   public void testGetWithTriggeringLongTailRetryAndRetryWins(
@@ -682,12 +691,17 @@ public class RetriableAvroGenericStoreClientTest {
       boolean noReplicaFound) throws ExecutionException, InterruptedException {
     clientConfigBuilder.setMetricsRepository(getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true));
     clientConfig = clientConfigBuilder.build();
+
+    // Use appropriate threshold based on request type
+    boolean isBatchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
+    long thresholdMs = isBatchGet ? BATCH_GET_LONG_TAIL_RETRY_THRESHOLD_IN_MS : LONG_TAIL_RETRY_THRESHOLD_IN_MS;
+
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(
             false,
-            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 10,
+            thresholdMs * 10, // Original request is slow, exceeds threshold
             false,
-            LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2,
+            thresholdMs / 2, // Retry is fast and wins
             keyNotFound,
             noReplicaFound,
             clientConfig),
@@ -735,14 +749,20 @@ public class RetriableAvroGenericStoreClientTest {
 
   /**
    * Original request latency exceeds the retry threshold but succeeds and the retry fails.
+   * Uses dynamic thresholds: 100ms for single get, 15ms for batch get (2 keys), 100ms for compute
    */
   @Test(dataProvider = "FastClient-RequestTypes", timeOut = TEST_TIMEOUT)
   public void testGetWithTriggeringLongTailRetryAndRetryFails(RequestType requestType)
       throws ExecutionException, InterruptedException {
     clientConfigBuilder.setMetricsRepository(getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true));
     clientConfig = clientConfigBuilder.build();
+
+    // Use appropriate threshold based on request type
+    boolean isBatchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
+    long thresholdMs = isBatchGet ? BATCH_GET_LONG_TAIL_RETRY_THRESHOLD_IN_MS : LONG_TAIL_RETRY_THRESHOLD_IN_MS;
+
     retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(false, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, false, false, clientConfig),
+        prepareDispatchingClient(false, 10 * thresholdMs, true, 0, false, false, clientConfig),
         clientConfig,
         timeoutProcessor);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
@@ -761,14 +781,20 @@ public class RetriableAvroGenericStoreClientTest {
 
   /**
    * Original request latency exceeds the retry threshold, and both the original request and the retry fails.
+   * Uses dynamic thresholds: 100ms for single get, 15ms for batch get (2 keys), 100ms for compute
    */
   @Test(dataProvider = "FastClient-RequestTypes", timeOut = TEST_TIMEOUT)
   public void testGetWithTriggeringLongTailRetryAndBothFailsV1(RequestType requestType)
       throws InterruptedException, ExecutionException {
     clientConfigBuilder.setMetricsRepository(getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true));
     clientConfig = clientConfigBuilder.build();
+
+    // Use appropriate threshold based on request type
+    boolean isBatchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;
+    long thresholdMs = isBatchGet ? BATCH_GET_LONG_TAIL_RETRY_THRESHOLD_IN_MS : LONG_TAIL_RETRY_THRESHOLD_IN_MS;
+
     retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(true, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, false, false, clientConfig),
+        prepareDispatchingClient(true, 10 * thresholdMs, true, 0, false, false, clientConfig),
         clientConfig,
         timeoutProcessor);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);

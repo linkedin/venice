@@ -32,7 +32,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
             serverConfig.getStoreWriterBufferMemoryCapacity(),
             serverConfig.getStoreWriterBufferNotifyDelta(),
             serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
-            serverConfig.getRegionName(),
+            serverConfig.getLogContext(),
             metricsRepository,
             true),
         new StoreBufferService(
@@ -40,7 +40,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
             serverConfig.getStoreWriterBufferMemoryCapacity(),
             serverConfig.getStoreWriterBufferNotifyDelta(),
             serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
-            serverConfig.getRegionName(),
+            serverConfig.getLogContext(),
             metricsRepository,
             false));
     LOGGER.info(
@@ -100,8 +100,10 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   public void execSyncOffsetFromSnapshotAsync(
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDivSnapshot,
+      CompletableFuture<Void> lastRecordPersistedFuture,
       StoreIngestionTask ingestionTask) throws InterruptedException {
-    getDelegate(ingestionTask).execSyncOffsetFromSnapshotAsync(topicPartition, vtDivSnapshot, ingestionTask);
+    getDelegate(ingestionTask)
+        .execSyncOffsetFromSnapshotAsync(topicPartition, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask);
   }
 
   @Override

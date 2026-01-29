@@ -5,6 +5,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SY
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -24,6 +26,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -32,9 +35,11 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.commons.cli.AlreadySelectedException;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -335,10 +340,83 @@ public class AdminToolE2ETest {
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       StoreResponse getStoreResponse = childControllerClient.getStore(storeName1);
-      Assert.assertEquals(getStoreResponse.getErrorType(), ErrorType.STORE_NOT_FOUND);
+      assertEquals(getStoreResponse.getErrorType(), ErrorType.STORE_NOT_FOUND);
     });
 
     AdminTool.main(adminToolArgs);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "skipAdminMessageOptions")
+  public void testSkipAdminMessage(String[] extraArgs, boolean expectFailure) throws Exception {
+    String storeName1 = Utils.getUniqueString("testSkipAdminMessage");
+    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    String clusterName = clusterNames[0];
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    ControllerClient childControllerClient = ControllerClient
+        .constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+
+    createStore(parentControllerClient, childControllerClient, storeName1);
+
+    // Build full args: base + data-driven extras
+    List<String> args = new ArrayList<>();
+    args.add("--url");
+    args.add(childControllerClient.getLeaderControllerUrl());
+    args.add("--cluster");
+    args.add(clusterName);
+    args.add("--skip-admin-message");
+    args.addAll(Arrays.asList(extraArgs));
+    String[] adminToolArgs = args.toArray(new String[0]);
+
+    if (expectFailure) {
+      try {
+        AdminTool.main(adminToolArgs);
+        fail("Expected failure for args: " + java.util.Arrays.toString(adminToolArgs));
+      } catch (RuntimeException e) {
+        // expected
+      }
+    } else {
+      AdminTool.main(adminToolArgs);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "dumpAdminMessageOptions")
+  public void testDumpAdminMessage(String[] extraArgs, Class<? extends Exception> expectedException) throws Exception {
+    String clusterName = clusterNames[0];
+    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      List<String> args = new ArrayList<>();
+      args.add("--url");
+      args.add(parentControllerClient.getLeaderControllerUrl());
+      args.add("--cluster");
+      args.add(clusterName);
+      args.add("--kafka-bootstrap-servers");
+      args.add(multiRegionMultiClusterWrapper.getControllerConnectString());
+      args.add("--message_count");
+      args.add("10");
+      args.add("--dump-admin-messages");
+      args.addAll(Arrays.asList(extraArgs));
+      String[] adminToolArgs = args.toArray(new String[0]);
+
+      if (expectedException != null) {
+        Exception thrownException = expectThrows(expectedException, () -> AdminTool.main(adminToolArgs));
+        assertEquals(
+            thrownException.getClass(),
+            expectedException,
+            "Expected " + expectedException.getSimpleName() + " but got " + thrownException.getClass().getSimpleName()
+                + " for args: " + Arrays.toString(adminToolArgs) + ". Exception: " + thrownException.getMessage());
+      } else {
+        try {
+          AdminTool.main(adminToolArgs);
+        } catch (Exception e) {
+          fail("Unexpected failure for args: " + Arrays.toString(adminToolArgs) + ". Exception: " + e.getMessage(), e);
+        }
+      }
+    }
   }
 
   private void createStore(
@@ -386,5 +464,26 @@ public class AdminToolE2ETest {
         assertFalse(storeInfo.isMigrating(), "Store::isMigrating should be false in " + region);
       }
     });
+  }
+
+  @DataProvider(name = "skipAdminMessageOptions")
+  public Object[][] skipAdminOptions() {
+    return new Object[][] {
+        // 1) execution-id only -> should pass
+        { new String[] { "--execution-id", "10" }, false },
+        // 2) position only -> should pass
+        { new String[] { "--position", "0:0twI" }, false },
+        // 3) neither provided -> should fail
+        { new String[] {}, true },
+        // 4) both provided -> should fail
+        { new String[] { "--position", "0:0twI", "--execution-id", "10" }, true } };
+  }
+
+  @DataProvider(name = "dumpAdminMessageOptions")
+  public Object[][] dumpAdminOptions() {
+    return new Object[][] { { new String[] { "--starting_offset", "3" }, null },
+        { new String[] { "--starting_position", "0:0twI" }, null }, { new String[] {}, RuntimeException.class },
+        { new String[] { "--starting_offset", "10", "--starting_position", "0:0o1e" },
+            AlreadySelectedException.class } };
   }
 }

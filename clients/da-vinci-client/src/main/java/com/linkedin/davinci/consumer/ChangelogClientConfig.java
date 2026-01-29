@@ -1,10 +1,13 @@
 package com.linkedin.davinci.consumer;
 
+import static java.util.concurrent.TimeUnit.MINUTES;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -40,7 +43,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private int seekThreadPoolSize = 10;
 
   /**
-   * This will be used in BootstrappingVeniceChangelogConsumer to determine when to sync updates with the underlying
+   * This will be used in {@link StatefulVeniceChangelogConsumer} to determine when to sync updates with the underlying
    * storage engine, e.g. flushes entity and offset data to disk. Default is 32 MB.
    */
   private long databaseSyncBytesInterval = 32 * 1024 * 1024L;
@@ -58,19 +61,53 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private boolean skipFailedToAssembleRecords = true;
 
-  private Boolean isExperimentalClientEnabled = false;
+  private Boolean isNewStatelessClientEnabled = false;
   private int maxBufferSize = 1000;
+
+  /**
+   * If non-null, {@link VeniceChangelogConsumer} will subscribe to a specific version of a Venice store.
+   * It is only intended for internal use.
+   */
+  private Integer storeVersion;
+
+  /**
+   * If true, {@link StatefulVeniceChangelogConsumer} will be used and all records will be persisted onto disk.
+   * If false, VeniceChangelogConsumer will be used and records won't be persisted onto disk.
+   */
+  private boolean isStateful = false;
 
   /**
    * Internal fields derived from the consumer properties.
    * These are refreshed each time a new set of consumer properties is applied.
    */
   private PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
-  private PubSubPositionDeserializer pubSubPositionDeserializer;
-  private PubSubMessageDeserializer pubSubMessageDeserializer;
-  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
+  private PubSubContext pubSubContext;
+  private boolean versionSwapByControlMessageEnabled = false;
+  /**
+   * Client region name used for filtering version swap messages from other regions in A/A setup. The client will only
+   * react to version swap messages with the same source region as the client region name.
+   */
+  private String clientRegionName = "";
+  /**
+   * Total region count used for version swap in A/A setup. Each subscribed partition need to receive this many
+   * corresponding version swap messages before it can safely go to the new version to ensure data completeness.
+   */
+  private int totalRegionCount = 0;
+  /**
+   * Version swap timeout in milliseconds. If the version swap is not completed within this time, the consumer will swap
+   * to the new version and resume normal consumption from EOP for any incomplete partitions. Default is 30 minutes.
+   */
+  private long versionSwapTimeoutInMs = MINUTES.toMillis(30);
 
-  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  /**
+   * Whether to include control messages in buffer for users to poll. Default is false.
+   * The config is only applicable to the version specific stateless changelog consumer.
+   */
+  private boolean includeControlMessages = false;
+  /**
+   * Whether to deserialize the replication metadata and provide it as a {@link org.apache.avro.generic.GenericRecord}
+   */
+  private boolean deserializeReplicationMetadata = false;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -247,8 +284,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   }
 
   /**
-   * If you're using the experimental client, and you want to deserialize your keys into
-   * {@link org.apache.avro.specific.SpecificRecord} thenr set this configuration.
+   * If you're using the {@link StatefulVeniceChangelogConsumer}, and you want to deserialize your keys into
+   * {@link org.apache.avro.specific.SpecificRecord} then set this configuration.
    */
   public ChangelogClientConfig setSpecificKey(Class specificKey) {
     this.innerClientConfig.setSpecificKeyClass(specificKey);
@@ -261,7 +298,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   }
 
   /**
-   * If you're using the experimental client, and you want to deserialize your values into
+   * If you're using the {@link StatefulVeniceChangelogConsumer}, and you want to deserialize your values into
    * {@link org.apache.avro.specific.SpecificRecord} then set this configuration.
    */
   public ChangelogClientConfig setSpecificValueSchema(Schema specificValueSchema) {
@@ -276,6 +313,72 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   public boolean shouldSkipFailedToAssembleRecords() {
     return skipFailedToAssembleRecords;
+  }
+
+  /**
+   * Sets {@link #storeVersion}
+   */
+  public ChangelogClientConfig setStoreVersion(Integer storeVersion) {
+    this.storeVersion = storeVersion;
+    return this;
+  }
+
+  /**
+   * @return {@link #storeVersion}
+   */
+  public Integer getStoreVersion() {
+    return this.storeVersion;
+  }
+
+  /**
+   * Sets {@link #isStateful}
+   */
+  public ChangelogClientConfig setIsStateful(boolean isStateful) {
+    this.isStateful = isStateful;
+    return this;
+  }
+
+  /**
+   * @return {@link #storeVersion}
+   */
+  public boolean isStateful() {
+    return this.isStateful;
+  }
+
+  public boolean isVersionSwapByControlMessageEnabled() {
+    return this.versionSwapByControlMessageEnabled;
+  }
+
+  public ChangelogClientConfig setVersionSwapByControlMessageEnabled(boolean isVersionSwapByControlMessageEnabled) {
+    this.versionSwapByControlMessageEnabled = isVersionSwapByControlMessageEnabled;
+    return this;
+  }
+
+  public String getClientRegionName() {
+    return this.clientRegionName;
+  }
+
+  public ChangelogClientConfig setClientRegionName(String clientRegionName) {
+    this.clientRegionName = clientRegionName;
+    return this;
+  }
+
+  public int getTotalRegionCount() {
+    return this.totalRegionCount;
+  }
+
+  public ChangelogClientConfig setTotalRegionCount(int totalRegionCount) {
+    this.totalRegionCount = totalRegionCount;
+    return this;
+  }
+
+  public long getVersionSwapTimeoutInMs() {
+    return this.versionSwapTimeoutInMs;
+  }
+
+  public ChangelogClientConfig setVersionSwapTimeoutInMs(long versionSwapTimeoutInMs) {
+    this.versionSwapTimeoutInMs = versionSwapTimeoutInMs;
+    return this;
   }
 
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
@@ -296,11 +399,21 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
         .setIsBeforeImageView(config.isBeforeImageView())
-        .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled())
+        .setIsNewStatelessClientEnabled(config.isNewStatelessClientEnabled())
         .setMaxBufferSize(config.getMaxBufferSize())
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords())
-        .setInnerClientConfig(config.getInnerClientConfig());
+        .setIncludeControlMessages(config.shouldIncludeControlMessages())
+        .setDeserializeReplicationMetadata(config.shouldDeserializeReplicationMetadata())
+        .setInnerClientConfig(config.getInnerClientConfig())
+        // Store version should not be cloned
+        .setStoreVersion(null)
+        // Is stateful config should not be cloned
+        .setIsStateful(false)
+        .setVersionSwapByControlMessageEnabled(config.isVersionSwapByControlMessageEnabled())
+        .setClientRegionName(config.getClientRegionName())
+        .setTotalRegionCount(config.getTotalRegionCount())
+        .setVersionSwapTimeoutInMs(config.getVersionSwapTimeoutInMs());
     return newConfig;
   }
 
@@ -313,16 +426,36 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-  protected Boolean isExperimentalClientEnabled() {
-    return isExperimentalClientEnabled;
+  protected Boolean isNewStatelessClientEnabled() {
+    return isNewStatelessClientEnabled;
   }
 
   /**
-   * This uses a highly experimental client.
-   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
+   * Set this to true to use the new {@link VeniceChangelogConsumer}.
    */
-  public ChangelogClientConfig setIsExperimentalClientEnabled(Boolean experimentalClientEnabled) {
-    isExperimentalClientEnabled = experimentalClientEnabled;
+  public ChangelogClientConfig setIsNewStatelessClientEnabled(Boolean newStatelessClientEnabled) {
+    this.isNewStatelessClientEnabled = newStatelessClientEnabled;
+    return this;
+  }
+
+  /**
+   * Get whether to pass through control messages to the user.
+   */
+  public Boolean shouldIncludeControlMessages() {
+    return includeControlMessages;
+  }
+
+  public ChangelogClientConfig setIncludeControlMessages(Boolean includeControlMessages) {
+    this.includeControlMessages = includeControlMessages;
+    return this;
+  }
+
+  public boolean shouldDeserializeReplicationMetadata() {
+    return deserializeReplicationMetadata;
+  }
+
+  public ChangelogClientConfig setDeserializeReplicationMetadata(boolean deserializeReplicationMetadata) {
+    this.deserializeReplicationMetadata = deserializeReplicationMetadata;
     return this;
   }
 
@@ -334,8 +467,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * Sets the maximum number of records that can be buffered and returned to the user when calling poll.
    * When the maximum number of records is reached, ingestion will be paused until the buffer is drained.
    * Please note that this is separate from {@link com.linkedin.venice.ConfigKeys#SERVER_KAFKA_MAX_POLL_RECORDS}.
-   * In order for this feature to be used, {@link #setIsExperimentalClientEnabled(Boolean)} must be set to true.
-   * It is currently only supported for {@link BootstrappingVeniceChangelogConsumer}.
+   * It is currently only supported for {@link StatefulVeniceChangelogConsumer}.
    */
   public ChangelogClientConfig setMaxBufferSize(int maxBufferSize) {
     this.maxBufferSize = maxBufferSize;
@@ -347,10 +479,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    *
    * <p>This method sets up:
    * <ul>
-   *   <li>{@link #pubSubPositionTypeRegistry} – derived from consumer properties</li>
-   *   <li>{@link #pubSubPositionDeserializer} – uses the initialized position type registry</li>
-   *   <li>{@link #pubSubConsumerAdapterFactory} – created based on resolved consumer configuration</li>
-   *   <li>{@link #pubSubMessageDeserializer} – stateless shared instance</li>
+   *   <li>{@link PubSubPositionTypeRegistry} – derived from consumer properties</li>
+   *   <li>{@link PubSubPositionDeserializer} – uses the initialized position type registry</li>
+   *   <li>{@link PubSubConsumerAdapterFactory} – created based on resolved consumer configuration</li>
+   *   <li>{@link PubSubMessageDeserializer} – stateless shared instance</li>
    * </ul>
    *
    * <p><strong>Note:</strong> These fields are derived from the {@link #consumerProperties} and should
@@ -360,30 +492,23 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private void initializePubSubInternals() {
     VeniceProperties pubSubProperties = new VeniceProperties(this.consumerProperties);
-    this.pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties);
-    this.pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
+    PubSubPositionTypeRegistry typeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties);
+    PubSubPositionDeserializer pubSubPositionDeserializer = new PubSubPositionDeserializer(typeRegistry);
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    // todo(sushantmane): Consider passing TopicManagerRepository from outside if required.
+    this.pubSubContext = new PubSubContext.Builder().setPubSubPositionDeserializer(pubSubPositionDeserializer)
+        .setPubSubPositionTypeRegistry(typeRegistry)
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .build();
     this.pubSubConsumerAdapterFactory = PubSubClientsFactory.createConsumerFactory(pubSubProperties);
-    this.pubSubMessageDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
   }
 
   protected PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> getPubSubConsumerAdapterFactory() {
     return pubSubConsumerAdapterFactory;
   }
 
-  protected PubSubPositionDeserializer getPubSubPositionDeserializer() {
-    return pubSubPositionDeserializer;
-  }
-
-  protected PubSubMessageDeserializer getPubSubMessageDeserializer() {
-    return pubSubMessageDeserializer;
-  }
-
-  protected PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
-    return pubSubPositionTypeRegistry;
-  }
-
-  protected PubSubTopicRepository getPubSubTopicRepository() {
-    return pubSubTopicRepository;
+  protected PubSubContext getPubSubContext() {
+    return pubSubContext;
   }
 
   private ChangelogClientConfig setInnerClientConfig(ClientConfig<T> innerClientConfig) {

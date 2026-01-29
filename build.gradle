@@ -132,7 +132,7 @@ ext.libraries = [
     pulsarIoCommon: "${pulsarGroup}:pulsar-io-common:${pulsarVersion}",
     r2: "com.linkedin.pegasus:r2:${pegasusVersion}",
     restliCommon: "com.linkedin.pegasus:restli-common:${pegasusVersion}",
-    rocksdbjni: 'org.rocksdb:rocksdbjni:8.8.1',
+    rocksdbjni: 'org.rocksdb:rocksdbjni:9.11.2',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
     beamSdk: 'org.apache.beam:beam-sdks-java-core:2.60.0',
     beamExtensionAvro: 'org.apache.beam:beam-sdks-java-extensions-avro:2.60.0',
@@ -142,7 +142,7 @@ ext.libraries = [
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4', // Spark-Java Rest framework
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
-    tehuti: 'io.tehuti:tehuti:0.12.3',
+    tehuti: 'io.tehuti:tehuti:0.12.5',
     testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
     tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',
@@ -171,6 +171,10 @@ publishing {
       }
     }
   }
+}
+
+afterEvaluate {
+  mavenPublishing.ensureCatchAllModuleGetsPublishedLast(publishing.repositories)
 }
 
 def parser = new XmlSlurper()
@@ -319,9 +323,12 @@ subprojects {
     outputs.cacheIf { true }
 
     doFirst {
+      // Protocol changes should pin the current version via this override and remove the override in a follow-up PR
+      // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
+      // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
       def versionOverrides = [
-//        project(':internal:venice-common').file('src/main/resources/avro/StoreVersionState/v5', PathValidation.DIRECTORY)
-          project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v17', PathValidation.DIRECTORY),
+          project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v39', PathValidation.DIRECTORY),
+          project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v94', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]
@@ -596,7 +603,7 @@ subprojects {
 
   // Only publish artifacts for projects that are at the leaf level
   if (isLeafSubModule) {
-    publishing.configureArtifactPublishing(project, testJar)
+    mavenPublishing.configureArtifactPublishing(project, testJar)
   }
 }
 
@@ -765,6 +772,9 @@ ext.createDiffFile = { ->
       // venice-common
       ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
       ':!internal/venice-common/src/main/java/com/linkedin/venice/acl/handler/StoreAclHandler.java',
+
+      // venice-client-common
+      ':!internal/venice-client-common/src/main/java/com/linkedin/venice/schema/avro/SchemaCompatibility19.java',
 
       // venice-test-common
       ':!internal/venice-test-common/*',

@@ -4,15 +4,19 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkClientFactory;
+import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.system.store.MetaStoreWriter;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
@@ -76,7 +80,8 @@ public class TestVeniceHelixResources {
         new MetricsRepository(),
         mock(RealTimeTopicSwitcher.class),
         Optional.empty(),
-        mock(HelixAdminClient.class));
+        mock(HelixAdminClient.class),
+        mock(VeniceVersionLifecycleEventManager.class));
   }
 
   @Test
@@ -115,5 +120,23 @@ public class TestVeniceHelixResources {
     Thread.sleep(300); // Let it run a few times
     resources.stopDeadStoreStatsPreFetchTask();
     Assert.assertTrue(true, "Dead store stats task started and stopped cleanly");
+  }
+
+  @Test
+  public void testIsSourceCluster() {
+    String storeName = Utils.getUniqueString("test-is-source-store");
+    String sourceCluster = "source-cluster";
+    String nonSourceCluster = "non-source-cluster";
+    HelixVeniceClusterResources resources = getVeniceHelixResources(sourceCluster);
+    StoreConfig storeConfig = new StoreConfig(storeName);
+    storeConfig.setCluster(sourceCluster);
+    ZkStoreConfigAccessor mockStoreConfigAccessor = mock(ZkStoreConfigAccessor.class);
+    doReturn(storeConfig).when(mockStoreConfigAccessor).getStoreConfig(storeName);
+    resources.setStoreConfigAccessor(mockStoreConfigAccessor);
+    Assert.assertTrue(resources.isSourceCluster(sourceCluster, storeName));
+    Assert.assertFalse(resources.isSourceCluster(nonSourceCluster, storeName));
+    Assert.assertThrows(IllegalArgumentException.class, () -> resources.isSourceCluster(null, storeName));
+    Assert
+        .assertThrows(VeniceNoStoreException.class, () -> resources.isSourceCluster(sourceCluster, "non-exist-store"));
   }
 }

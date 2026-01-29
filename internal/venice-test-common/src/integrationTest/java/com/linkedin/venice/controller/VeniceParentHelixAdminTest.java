@@ -12,9 +12,12 @@ import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WR
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V5;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicPushCompletion;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -36,12 +39,14 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -55,8 +60,10 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -620,7 +627,7 @@ public class VeniceParentHelixAdminTest {
           isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
       try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl, sslFactory);
           ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl, sslFactory)) {
-        testBadDefaultSchemaValidation(parentControllerClient);
+        testBadDefaultSchemaValidation(parentControllerClient, childControllerClient);
         testBackupVersionRetentionUpdate(parentControllerClient, childControllerClient);
         testLatestSupersetSchemaIdUpdate(parentControllerClient, childControllerClient);
         testSuperSetSchemaGen(parentControllerClient);
@@ -633,7 +640,86 @@ public class VeniceParentHelixAdminTest {
         testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
         testSupersetSchemaGenerationWithUpdateDefaultValue(parentControllerClient);
         testUpdateConfigs(parentControllerClient, childControllerClient);
+        testEnumSchemaEvolution(parentControllerClient, childControllerClient);
+        testKeyUrnCompression(parentControllerClient, childControllerClient);
       }
+    }
+  }
+
+  @Test
+  public void testRollbackToBackupVersion() throws IOException {
+    File inputDir = getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("testRollbackToBackupVersion");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = "\"string\"";
+    createStoreForJob(clusterName, keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, new UpdateStoreQueryParams())
+        .close();
+
+    try (ControllerClient parentControllerClient =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {
+      // Create version 1
+      IntegrationTestPushUtils.runVPJ(props);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      // Create version 2
+      IntegrationTestPushUtils.runVPJ(props);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 2),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      // Rollback to backup version
+      parentControllerClient.rollbackToBackupVersion(storeName);
+
+      // Verify store is back on version 1
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Map<String, Integer> coloVersions =
+            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+        coloVersions.forEach((colo, version) -> {
+          Assert.assertEquals((int) version, 1);
+        });
+      });
+
+      // Check that child version status is marked as ERROR after rollback
+      for (VeniceMultiClusterWrapper childDatacenter: multiRegionMultiClusterWrapper.getChildRegions()) {
+        ControllerClient childControllerClient =
+            new ControllerClient(clusterName, childDatacenter.getControllerConnectString());
+        StoreResponse store = childControllerClient.getStore(storeName);
+        Optional<Version> version = store.getStore().getVersion(2);
+        assertNotNull(version);
+        assertEquals(version.get().getStatus(), VersionStatus.ERROR);
+      }
+
+      // Create version 3
+      IntegrationTestPushUtils.runVPJ(props);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 3),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      // Rollback to backup version
+      parentControllerClient.rollbackToBackupVersion(storeName);
+
+      // Verify store is back on version 1 even after version 3 creation
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Map<String, Integer> coloVersions =
+            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+        coloVersions.forEach((colo, version) -> {
+          Assert.assertEquals((int) version, 1);
+        });
+      });
     }
   }
 
@@ -678,7 +764,9 @@ public class VeniceParentHelixAdminTest {
     });
   }
 
-  private void testBadDefaultSchemaValidation(ControllerClient parentControllerClient) {
+  private void testBadDefaultSchemaValidation(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient) {
     String storeName = Utils.getUniqueString("test_store_");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
@@ -700,6 +788,16 @@ public class VeniceParentHelixAdminTest {
     Assert.assertTrue(
         addSchemaResponse.getError()
             .contains("Invalid default for field KeyRecord.salary: 123 (a IntNode) not a \"float\""));
+
+    // Check whether storage quota is enabled or not
+    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
+    assertTrue(
+        store.isStorageNodeReadQuotaEnabled(),
+        "Storage Node read quota should be enabled by default for new store");
+    store = childControllerClient.getStore(storeName).getStore();
+    assertTrue(
+        store.isStorageNodeReadQuotaEnabled(),
+        "Storage Node read quota should be enabled by default for new store");
   }
 
   private void testLatestSupersetSchemaIdUpdate(
@@ -937,6 +1035,10 @@ public class VeniceParentHelixAdminTest {
     testUpdateNearlineProducerConfig(parentControllerClient, childControllerClient);
     testUpdateTargetSwapRegion(parentControllerClient, childControllerClient);
     testUpdateGlobalRtDivEnabled(parentControllerClient, childControllerClient);
+    testUpdateCompactionEnabled(parentControllerClient, childControllerClient);
+    testUpdateCompactionThreshold(parentControllerClient, childControllerClient);
+    testUpdateEnumSchemaEvolution(parentControllerClient, childControllerClient);
+    testUpdateStoreFlinkVeniceViewsEnable(parentControllerClient, childControllerClient);
   }
 
   /**
@@ -1049,6 +1151,44 @@ public class VeniceParentHelixAdminTest {
         childClient,
         params -> params.setGlobalRtDivEnabled(true),
         response -> Assert.assertTrue(response.getStore().isGlobalRtDivEnabled()));
+  }
+
+  private void testUpdateCompactionEnabled(ControllerClient parentClient, ControllerClient childClient) {
+    final boolean expectedCompactionEnabled = false;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setCompactionEnabled(expectedCompactionEnabled);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert.assertEquals(response.getStore().isCompactionEnabled(), expectedCompactionEnabled);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
+  private void testUpdateCompactionThreshold(ControllerClient parentClient, ControllerClient childClient) {
+    final long expectedCompactionThreshold = 1000;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setCompactionThresholdMilliseconds(expectedCompactionThreshold);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert.assertEquals(response.getStore().getCompactionThreshold(), expectedCompactionThreshold);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
+  private void testUpdateEnumSchemaEvolution(ControllerClient parentClient, ControllerClient childClient) {
+    testUpdateConfig(
+        parentClient,
+        childClient,
+        params -> params.setEnumSchemaEvolutionAllowed(true),
+        response -> Assert.assertTrue(response.getStore().isEnumSchemaEvolutionAllowed()));
+  }
+
+  private void testUpdateStoreFlinkVeniceViewsEnable(ControllerClient parentClient, ControllerClient childClient) {
+    testUpdateConfig(
+        parentClient,
+        childClient,
+        params -> params.setFlinkVeniceViewsEnabled(true),
+        response -> Assert.assertTrue(response.getStore().isFlinkVeniceViewsEnabled()));
   }
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {
@@ -1248,6 +1388,129 @@ public class VeniceParentHelixAdminTest {
         () -> Assert
             .assertEquals(parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId(), 3));
 
+  }
+
+  private void testEnumSchemaEvolution(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient) {
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String valueSchemaWithEnumDefaultDefined = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
+        + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
+        + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"testEnum\",\n" + "      \"type\": {\n"
+        + "        \"type\": \"enum\",\n" + "        \"name\": \"TestEnum\",\n"
+        + "        \"symbols\": [\"A\", \"B\", \"C\"],\n" + "        \"default\": \"A\"\n" + "      }\n" + "    }\n"
+        + "  ]\n" + "}";
+    String valueSchemaWithEnumEvolved = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
+        + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
+        + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"testEnum\",\n" + "      \"type\": {\n"
+        + "        \"type\": \"enum\",\n" + "        \"name\": \"TestEnum\",\n"
+        + "        \"symbols\": [\"A\", \"B\", \"C\", \"D\", \"E\"],\n" + "        \"default\": \"A\"\n" + "      }\n"
+        + "    }\n" + "  ]\n" + "}";
+    // Create a store with value schema with enum default defined
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaWithEnumDefaultDefined);
+    // Try to evolve the enum field in the value schema
+    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
+    assertFalse(store.isEnumSchemaEvolutionAllowed());
+    SchemaResponse schemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaWithEnumEvolved);
+    assertTrue(schemaResponse.isError(), "Enum schema evolution should not be allowed by default.");
+    MultiSchemaResponse allValueSchemaResponse = childControllerClient.getAllValueSchema(storeName);
+    assertEquals(allValueSchemaResponse.getSchemas().length, 1);
+    // Enable enum schema evolution
+    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams();
+    updateStoreQueryParams.setEnumSchemaEvolutionAllowed(true);
+    parentControllerClient.updateStore(storeName, updateStoreQueryParams);
+    // Try to evolve the enum field in the value schema again
+    store = parentControllerClient.getStore(storeName).getStore();
+    assertTrue(store.isEnumSchemaEvolutionAllowed());
+    schemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaWithEnumEvolved);
+    assertFalse(schemaResponse.isError(), "Enum schema evolution should be allowed now.");
+    // Make sure the child region has the evolved schema too
+    store = childControllerClient.getStore(storeName).getStore();
+    assertTrue(store.isEnumSchemaEvolutionAllowed());
+    allValueSchemaResponse = childControllerClient.getAllValueSchema(storeName);
+    assertEquals(allValueSchemaResponse.getSchemas().length, 2);
+  }
+
+  private void testKeyUrnCompression(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String stringKeySchemaStr = "\"string\"";
+    String longKeySchemaStr = "\"long\"";
+    String valueSchemaStr = "\"string\"";
+    String keySchemaWithMultipleUrnFields = "{\n" + "  \"name\": \"ComplexKey\",\n" + "  \"type\": \"record\",\n"
+        + "  \"fields\": [\n" + "    {\"name\": \"string_field1\", \"type\": \"string\"},\n"
+        + "    {\"name\": \"string_field2\", \"type\": \"string\"},\n"
+        + "    {\"name\": \"int_field\", \"type\": \"int\"}\n" + "  ]\n" + "}";
+
+    // Create a store with simple string key schema
+    parentControllerClient.createNewStore(storeName, owner, stringKeySchemaStr, valueSchemaStr);
+    // Enable key urn compression
+    parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true));
+
+    // Validate key urn compression is enabled in Parent
+    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
+    assertTrue(store.isKeyUrnCompressionEnabled());
+    // Validate key urn compression is enabled in Child
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreInfo childStore = childControllerClient.getStore(storeName).getStore();
+      assertTrue(childStore.isKeyUrnCompressionEnabled());
+    });
+
+    // Create a store with simple long key schema
+    String storeName2 = storeName + "2";
+    parentControllerClient.createNewStore(storeName2, owner, longKeySchemaStr, valueSchemaStr);
+    // Enable key urn compression
+    ControllerResponse response =
+        parentControllerClient.updateStore(storeName2, new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true));
+    assertTrue(response.isError(), "Key urn compression should not be allowed for long key schema");
+
+    // Create a store with complex key schema with multiple string fields
+    String storeName3 = storeName + "3";
+    parentControllerClient.createNewStore(storeName3, owner, keySchemaWithMultipleUrnFields, valueSchemaStr);
+    // Enable key urn compression
+    response =
+        parentControllerClient.updateStore(storeName3, new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true));
+    assertTrue(
+        response.isError(),
+        "Key urn compression should not be allowed for complex key schema with multiple string fields without specifying all the top-level urn fields");
+    response = parentControllerClient.updateStore(
+        storeName3,
+        new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true)
+            .setKeyUrnFields(Arrays.asList("string_field1", "int_field")));
+    assertTrue(response.isError(), "Key urn compression should not be allowed for non-string top-level fields");
+    response = parentControllerClient.updateStore(
+        storeName3,
+        new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true)
+            .setKeyUrnFields(Arrays.asList("string_field1", "string_field2", "string_field3")));
+    assertTrue(response.isError(), "Key urn compression should not be allowed for non-existing top-level urn fields");
+    parentControllerClient.updateStore(
+        storeName3,
+        new UpdateStoreQueryParams().setKeyUrnCompressionEnabled(true)
+            .setKeyUrnFields(Arrays.asList("string_field1", "string_field2")));
+    // Validate key urn compression is enabled in Parent
+    store = parentControllerClient.getStore(storeName3).getStore();
+    assertTrue(store.isKeyUrnCompressionEnabled());
+
+    // Create a new version to make sure the new version will have key urn compression enabled
+    parentControllerClient.requestTopicForWrites(
+        storeName3,
+        1000L,
+        Version.PushType.BATCH,
+        Utils.getUniqueString("job_"),
+        true,
+        false,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        0);
+    store = parentControllerClient.getStore(storeName3).getStore();
+    Optional<Version> version = store.getVersion(1);
+    assertNotNull(version);
+    assertTrue(version.get().isKeyUrnCompressionEnabled());
   }
 
   private List<MultiSchemaResponse.Schema> getWriteComputeSchemaStrs(MultiSchemaResponse.Schema[] registeredSchemas) {

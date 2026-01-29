@@ -15,7 +15,8 @@ public interface SchemaReader extends Closeable {
   Schema getValueSchema(int id);
 
   /**
-   * Return the schema ID of any schema that has the same parsing canonical form as the schema provided.
+   * Return the schema ID of any schema that has the same parsing canonical form as the schema provided. If multiple
+   * schemas have the same parsing canonical form, return the one with the largest ID.
    * @param schema The schema for which the schema ID is needed
    * @return The ID of the schema that has the same parsing canonical form as the schema provided
    */
@@ -28,6 +29,10 @@ public interface SchemaReader extends Closeable {
    * schema is not the value schema with the largest id
    */
   Integer getLatestValueSchemaId();
+
+  default Integer getLatestValueSchemaId(boolean forceRefresh) {
+    return getLatestValueSchemaId();
+  }
 
   Schema getUpdateSchema(int valueSchemaId);
 

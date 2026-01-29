@@ -5,12 +5,15 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.systemstore.schemas.StoreLifecycleHooksRecord;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import com.linkedin.venice.utils.AvroRecordUtils;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.StoreUtils;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -224,17 +227,26 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setViewConfigs(store.getViewConfigs());
     setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
     setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
+    setCompactionEnabled(store.isCompactionEnabled());
+    setCompactionThresholdMilliseconds(store.getCompactionThresholdMilliseconds());
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
     setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     setBlobTransferEnabled(store.isBlobTransferEnabled());
+    setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
     setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
     setTargetSwapRegion(store.getTargetSwapRegion());
     setTargetSwapRegionWaitTime(store.getTargetSwapRegionWaitTime());
     setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
     setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
+    setTTLRepushEnabled(store.isTTLRepushEnabled());
+    setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
+    setStoreLifecycleHooks(store.getStoreLifecycleHooks());
+    setKeyUrnCompressionEnabled(store.isKeyUrnCompressionEnabled());
+    setKeyUrnFields(store.getKeyUrnFields());
+    setFlinkVeniceViewsEnabled(store.isFlinkVeniceViewsEnabled());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -500,6 +512,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
           .stream()
           .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().dataModel()));
     }
+  }
+
+  @Override
+  public boolean isFlinkVeniceViewsEnabled() {
+    return this.storeProperties.flinkVeniceViewsEnabled;
+  }
+
+  @Override
+  public void setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    this.storeProperties.flinkVeniceViewsEnabled = flinkVeniceViewsEnabled;
   }
 
   @Override
@@ -870,6 +892,26 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public void setCompactionEnabled(boolean compactionEnabled) {
+    this.storeProperties.compactionEnabled = compactionEnabled;
+  }
+
+  @Override
+  public boolean isCompactionEnabled() {
+    return this.storeProperties.compactionEnabled;
+  }
+
+  @Override
+  public void setCompactionThresholdMilliseconds(long compactionThresholdMilliseconds) {
+    this.storeProperties.compactionThresholdMilliseconds = compactionThresholdMilliseconds;
+  }
+
+  @Override
+  public long getCompactionThresholdMilliseconds() {
+    return this.storeProperties.compactionThresholdMilliseconds;
+  }
+
+  @Override
   public void setMinCompactionLagSeconds(long minCompactionLagSeconds) {
     this.storeProperties.minCompactionLagSeconds = minCompactionLagSeconds;
   }
@@ -925,6 +967,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public void setBlobTransferInServerEnabled(String blobTransferServerEnabled) {
+    this.storeProperties.blobTransferInServerEnabled = blobTransferServerEnabled;
+  }
+
+  @Override
+  public String getBlobTransferInServerEnabled() {
+    return this.storeProperties.blobTransferInServerEnabled.toString();
+  }
+
+  @Override
   public boolean isNearlineProducerCompressionEnabled() {
     return this.storeProperties.nearlineProducerCompressionEnabled;
   }
@@ -977,6 +1029,79 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
     this.storeProperties.globalRtDivEnabled = globalRtDivEnabled;
+  }
+
+  @Override
+  public boolean isTTLRepushEnabled() {
+    return this.storeProperties.ttlRepushEnabled;
+  }
+
+  @Override
+  public void setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    this.storeProperties.ttlRepushEnabled = ttlRepushEnabled;
+  }
+
+  @Override
+  public boolean isEnumSchemaEvolutionAllowed() {
+    return this.storeProperties.enumSchemaEvolutionAllowed;
+  }
+
+  @Override
+  public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    this.storeProperties.enumSchemaEvolutionAllowed = enumSchemaEvolutionAllowed;
+  }
+
+  @Override
+  public List<LifecycleHooksRecord> getStoreLifecycleHooks() {
+    if (this.storeProperties.storeLifecycleHooks.isEmpty()) {
+      return Collections.emptyList();
+    }
+
+    List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
+    for (StoreLifecycleHooksRecord storeLifecycleHooksRecord: this.storeProperties.storeLifecycleHooks) {
+      storeLifecycleHooks.add(
+          new LifecycleHooksRecordImpl(
+              storeLifecycleHooksRecord.getStoreLifecycleHooksClassName().toString(),
+              CollectionUtils
+                  .convertCharSequenceMapToStringMap(storeLifecycleHooksRecord.getStoreLifecycleHooksParams())));
+    }
+    return storeLifecycleHooks;
+  }
+
+  @Override
+  public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
+    List<StoreLifecycleHooksRecord> convertedStoreLifecycleHooks = new ArrayList<>();
+    for (LifecycleHooksRecord storeLifecycleHooksRecord: storeLifecycleHooks) {
+      convertedStoreLifecycleHooks.add(
+          new StoreLifecycleHooksRecord(
+              storeLifecycleHooksRecord.getStoreLifecycleHooksClassName(),
+              CollectionUtils
+                  .convertStringMapToCharSequenceMap(storeLifecycleHooksRecord.getStoreLifecycleHooksParams())));
+    }
+    this.storeProperties.storeLifecycleHooks = convertedStoreLifecycleHooks;
+  }
+
+  @Override
+  public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+    this.storeProperties.keyUrnCompressionEnabled = keyUrnCompressionEnabled;
+  }
+
+  @Override
+  public boolean isKeyUrnCompressionEnabled() {
+    return this.storeProperties.keyUrnCompressionEnabled;
+  }
+
+  @Override
+  public void setKeyUrnFields(List<String> keyUrnFields) {
+    this.storeProperties.keyUrnFields = keyUrnFields.stream().map(Objects::toString).collect(Collectors.toList());
+  }
+
+  @Override
+  public List<String> getKeyUrnFields() {
+    if (this.storeProperties.keyUrnFields == null) {
+      return Collections.emptyList();
+    }
+    return this.storeProperties.keyUrnFields.stream().map(Objects::toString).collect(Collectors.toList());
   }
 
   @Override

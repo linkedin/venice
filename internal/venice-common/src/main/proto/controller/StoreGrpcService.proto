@@ -12,6 +12,8 @@ service StoreGrpcService {
   rpc getAclForStore(GetAclForStoreGrpcRequest) returns (GetAclForStoreGrpcResponse);
   rpc deleteAclForStore(DeleteAclForStoreGrpcRequest) returns (DeleteAclForStoreGrpcResponse);
   rpc checkResourceCleanupForStoreCreation(ClusterStoreGrpcInfo) returns (ResourceCleanupCheckGrpcResponse) {}
+  rpc validateStoreDeleted(ValidateStoreDeletedGrpcRequest) returns (ValidateStoreDeletedGrpcResponse);
+  rpc listStores(ListStoresGrpcRequest) returns (ListStoresGrpcResponse);
 }
 
 message CreateStoreGrpcRequest {
@@ -58,4 +60,26 @@ message ResourceCleanupCheckGrpcResponse {
   ClusterStoreGrpcInfo storeInfo = 1;
   bool hasLingeringResources = 2;
   optional string description = 3;
+}
+
+message ValidateStoreDeletedGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+}
+
+message ValidateStoreDeletedGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  bool storeDeleted = 2;
+  optional string reason = 3;
+}
+
+message ListStoresGrpcRequest {
+  string clusterName = 1;
+  optional bool includeSystemStores = 2;
+  optional string storeConfigNameFilter = 3;
+  optional string storeConfigValueFilter = 4;
+}
+
+message ListStoresGrpcResponse {
+  string clusterName = 1;
+  repeated string storeNames = 2;
 }

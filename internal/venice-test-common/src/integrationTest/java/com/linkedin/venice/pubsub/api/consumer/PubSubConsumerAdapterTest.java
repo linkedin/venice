@@ -11,6 +11,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.annotation.PubSubAgnosticTest;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -28,8 +29,10 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -65,6 +68,7 @@ import org.testng.annotations.Test;
 /**
  * Tests to verify the contract of {@link PubSubConsumerAdapter}
  */
+@PubSubAgnosticTest
 public class PubSubConsumerAdapterTest {
   // timeout for pub-sub operations
   private static final Duration PUBSUB_OP_TIMEOUT = Duration.ofSeconds(15);
@@ -142,6 +146,36 @@ public class PubSubConsumerAdapterTest {
                     .build()));
   }
 
+  /**
+   * Helper method to assert that the position difference from earliest equals the expected number of messages
+   */
+  private void assertPositionDifferenceFromEarliest(
+      PubSubTopicPartition partition,
+      PubSubPosition endPosition,
+      long expectedMessages,
+      String message) {
+    assertEquals(
+        pubSubConsumerAdapter.positionDifference(partition, endPosition, PubSubSymbolicPosition.EARLIEST),
+        expectedMessages,
+        message);
+  }
+
+  private void assertBeginningPositionForPartition(
+      PubSubTopic topic,
+      int partitionNumber,
+      long expectedTimeoutVariance) {
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(topic, partitionNumber);
+    long startTime = System.currentTimeMillis();
+    PubSubPosition beginningPosition = pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT);
+    PubSubPosition endPosition = pubSubConsumerAdapter.endPosition(partition);
+    long elapsedTime = System.currentTimeMillis() - startTime;
+    assertEquals(
+        pubSubConsumerAdapter.positionDifference(partition, endPosition, beginningPosition),
+        0,
+        "Beginning position should be equal to end position for an existing topic with no messages");
+    assertTrue(elapsedTime <= expectedTimeoutVariance, "beginningPosition should not block");
+  }
+
   protected Properties getPubSubProperties() {
     Properties properties = new Properties();
     properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
@@ -196,9 +230,9 @@ public class PubSubConsumerAdapterTest {
     assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "PartitionsFor should not block");
   }
 
-  // Test: When endOffsets is called on a non-existent topic, it should throw PubSubOpTimeoutException
+  // Test: When endPositions is called on a non-existent topic, it should throw PubSubOpTimeoutException
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testEndOffsetsForNonExistentTopic() {
+  public void testEndPositionsForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     List<PubSubTopicPartition> partitions = new ArrayList<>(2);
     partitions.add(new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0));
@@ -206,16 +240,18 @@ public class PubSubConsumerAdapterTest {
 
     assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
     long startTime = System.currentTimeMillis();
-    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffsets(partitions, PUBSUB_OP_TIMEOUT));
+    assertThrows(
+        PubSubOpTimeoutException.class,
+        () -> pubSubConsumerAdapter.endPositions(partitions, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
-  // Test: When endOffsets is called on an existing topic, it should return a map of partition to end offset
+  // Test: When endPositions is called on an existing topic, it should return a map of partition to end offset
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testEndOffsetsForExistingTopic() {
+  public void testEndPositionsForExistingTopic() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 3;
 
@@ -227,21 +263,30 @@ public class PubSubConsumerAdapterTest {
     partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 0));
     partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 1));
     long startTime = System.currentTimeMillis();
-    Map<PubSubTopicPartition, Long> endOffsets = pubSubConsumerAdapter.endOffsets(partitions, PUBSUB_OP_TIMEOUT);
+    Map<PubSubTopicPartition, PubSubPosition> endPositions =
+        pubSubConsumerAdapter.endPositions(partitions, PUBSUB_OP_TIMEOUT);
     long elapsedTime = System.currentTimeMillis() - startTime;
-    assertNotNull(endOffsets, "End offsets should not be null for an existing topic");
-    assertFalse(endOffsets.isEmpty(), "End offsets should not be empty for an existing topic");
-    assertEquals(endOffsets.size(), partitions.size(), "Number of end offsets does not match");
-    assertTrue(endOffsets.values().stream().allMatch(offset -> offset == 0), "End offsets should be 0 for a new topic");
+    assertNotNull(endPositions, "End offsets should not be null for an existing topic");
+    assertFalse(endPositions.isEmpty(), "End offsets should not be empty for an existing topic");
+    assertEquals(endPositions.size(), partitions.size(), "Number of end offsets does not match");
+    for (PubSubTopicPartition partition: partitions) {
+      assertTrue(endPositions.containsKey(partition), "End offsets should contain all requested partitions");
+      assertNotNull(endPositions.get(partition), "End offset should not be null for a partition");
+      assertEquals(
+          pubSubConsumerAdapter
+              .positionDifference(partition, endPositions.get(partition), PubSubSymbolicPosition.EARLIEST),
+          0,
+          "End position should be equal to beginning position for an empty topic");
+    }
     assertTrue(
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
-  // Test: When endOffsets is called for a non-existent and existing topic in the same API call,
+  // Test: When endPositions is called for a non-existent and existing topic in the same API call,
   // it should throw a PubSubOpTimeoutException.
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testEndOffsetsForNonExistentAndExistingTopic() {
+  public void testEndPositionsForNonExistentAndExistingTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 3;
@@ -256,17 +301,19 @@ public class PubSubConsumerAdapterTest {
     partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 1));
 
     long startTime = System.currentTimeMillis();
-    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffsets(partitions, PUBSUB_OP_TIMEOUT));
+    assertThrows(
+        PubSubOpTimeoutException.class,
+        () -> pubSubConsumerAdapter.endPositions(partitions, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
-  // Test: When endOffsets is called on an existing topic with a non-existent partition, it should throw
+  // Test: When endPositions is called on an existing topic with a non-existent partition, it should throw
   // PubSubOpTimeoutException
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testEndOffsetsForExistingTopicWithNonExistentPartition() {
+  public void testEndPositionsForExistingTopicWithNonExistentPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
 
@@ -283,7 +330,9 @@ public class PubSubConsumerAdapterTest {
     partitions.add(new PubSubTopicPartitionImpl(existingPubSubTopic, 1));
 
     long startTime = System.currentTimeMillis();
-    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffsets(partitions, PUBSUB_OP_TIMEOUT));
+    assertThrows(
+        PubSubOpTimeoutException.class,
+        () -> pubSubConsumerAdapter.endPositions(partitions, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
@@ -293,7 +342,7 @@ public class PubSubConsumerAdapterTest {
   // Test: When endOffset (without explicit timeout) is called on a non-existent partition,
   // it should throw PubSubOpTimeoutException after the default API timeout.
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testEndOffsetWithoutExplicitTimeoutForNonExistentPartition() {
+  public void testEndPositionWithoutExplicitTimeoutForNonExistentPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
 
@@ -311,18 +360,21 @@ public class PubSubConsumerAdapterTest {
 
     // try to get the end offset for an existing topic with a valid partition but no messages
     long startTime = System.currentTimeMillis();
-    Long endOffset = pubSubConsumerAdapter.endOffset(partitions.get(0));
+    PubSubPosition endPosition = pubSubConsumerAdapter.endPosition(partitions.get(0));
     long elapsedTime = System.currentTimeMillis() - startTime;
-    assertNotNull(endOffset, "End offset should not be null for an existing topic partition");
-    assertEquals(endOffset, Long.valueOf(0), "End offset should be 0 for an existing topic partition");
-    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "endOffset should not block");
+    assertNotNull(endPosition, "End offset should not be null for an existing topic partition");
+    assertEquals(
+        pubSubConsumerAdapter.positionDifference(partitions.get(0), endPosition, PubSubSymbolicPosition.EARLIEST),
+        0,
+        "Position difference should be 0 for an existing topic partition with no messages");
+    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "endPosition should not block");
 
     // try to get the end offset for a non-existent topic partition
     startTime = System.currentTimeMillis();
-    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endOffset(partitions.get(1)));
+    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.endPosition(partitions.get(1)));
     elapsedTime = System.currentTimeMillis() - startTime;
     // elapsed time should be around PUBSUB_OP_TIMEOUT but not too much greater
-    assertTrue(elapsedTime <= 2 * PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "endOffset should not block");
+    assertTrue(elapsedTime <= 2 * PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "endPosition should not block");
   }
 
   // Test: When beginningOffset is called on a non-existent topic, it should throw PubSubOpTimeoutException
@@ -335,7 +387,7 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     assertThrows(
         PubSubOpTimeoutException.class,
-        () -> pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT));
+        () -> pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
@@ -344,7 +396,7 @@ public class PubSubConsumerAdapterTest {
 
   // Test: When beginningOffset is called on an existing topic, it should return an offset
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testBeginningOffsetForExistingTopic() {
+  public void testBeginningPositionForExistingTopic() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 3;
 
@@ -352,32 +404,16 @@ public class PubSubConsumerAdapterTest {
         .createTopic(existingPubSubTopic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
 
-    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
-    long startTime = System.currentTimeMillis();
-    long beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
-    long elapsedTime = System.currentTimeMillis() - startTime;
-    assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
-    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "beginningOffset should not block");
-
-    partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
-    startTime = System.currentTimeMillis();
-    beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
-    elapsedTime = System.currentTimeMillis() - startTime;
-    assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "beginningOffset should not block");
-
-    partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 2);
-    startTime = System.currentTimeMillis();
-    beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
-    elapsedTime = System.currentTimeMillis() - startTime;
-    assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "beginningOffset should not block");
+    // Test all three partitions using the helper method
+    assertBeginningPositionForPartition(existingPubSubTopic, 0, PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE);
+    assertBeginningPositionForPartition(existingPubSubTopic, 1, PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE);
+    assertBeginningPositionForPartition(existingPubSubTopic, 2, PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE);
   }
 
   // Test: When beginningOffset is called on an existing topic with a non-existent partition, it should throw
   // PubSubOpTimeoutException
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testBeginningOffsetForExistingTopicWithNonExistentPartition() {
+  public void testBeginningPositionForExistingTopicWithNonExistentPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
 
@@ -389,24 +425,22 @@ public class PubSubConsumerAdapterTest {
         1,
         "Topic should have only 1 partition");
 
-    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
-    long beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
-    assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
+    assertBeginningPositionForPartition(existingPubSubTopic, 0, PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE);
 
     PubSubTopicPartition nonExistentPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     long startTime = System.currentTimeMillis();
     assertThrows(
         PubSubOpTimeoutException.class,
-        () -> pubSubConsumerAdapter.beginningOffset(nonExistentPartition, PUBSUB_OP_TIMEOUT));
+        () -> pubSubConsumerAdapter.beginningPosition(nonExistentPartition, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
-  // Test: When offsetForTime is called on a non-existent topic, it should throw PubSubOpTimeoutException
+  // Test: When getPositionByTimestamp is called on a non-existent topic, it should throw PubSubOpTimeoutException
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeForNonExistentTopic() {
+  public void testGetPositionByTimestampForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
 
@@ -414,17 +448,17 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     assertThrows(
         PubSubOpTimeoutException.class,
-        () -> pubSubConsumerAdapter.offsetForTime(partition, 0, PUBSUB_OP_TIMEOUT));
+        () -> pubSubConsumerAdapter.getPositionByTimestamp(partition, 0, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
-  // Test: When offsetForTime is called on an existing topic with a valid partition but no messages, it should return
-  // null
+  // Test: When getPositionByTimestamp is called on an existing topic with a valid partition but no messages,
+  // it should return null
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeForExistingTopicWithValidPartitionsButNoMessages() {
+  public void testGetPositionByTimestampForExistingTopicWithValidPartitionsButNoMessages() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 2;
 
@@ -434,23 +468,24 @@ public class PubSubConsumerAdapterTest {
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
     long startTime = System.currentTimeMillis();
-    Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
+    PubSubPosition position =
+        pubSubConsumerAdapter.getPositionByTimestamp(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
     long elapsedTime = System.currentTimeMillis() - startTime;
-    assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
+    assertNull(position, "PubSubPosition should be null for an existing topic with no messages");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     startTime = System.currentTimeMillis();
-    offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
+    position = pubSubConsumerAdapter.getPositionByTimestamp(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
+    assertNull(position, "PubSubPosition should be null for an existing topic with no messages");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
   }
 
-  // Test: When offsetForTime is called on an existing topic with invalid partition, it should throw
+  // Test: When getPositionByTimestamp is called on an existing topic with invalid partition, it should throw
   // PubSubOpTimeoutException
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeForExistingTopicWithInvalidPartition() {
+  public void testGetPositionByTimestampForExistingTopicWithInvalidPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
 
@@ -464,26 +499,28 @@ public class PubSubConsumerAdapterTest {
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
     long startTime = System.currentTimeMillis();
-    Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
+    PubSubPosition position =
+        pubSubConsumerAdapter.getPositionByTimestamp(partition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT);
     long elapsedTime = System.currentTimeMillis() - startTime;
-    assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
+    assertNull(position, "PubSubPosition should be null for an existing topic with no messages");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
 
     PubSubTopicPartition invalidPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     startTime = System.currentTimeMillis();
     assertThrows(
         PubSubOpTimeoutException.class,
-        () -> pubSubConsumerAdapter.offsetForTime(invalidPartition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT));
+        () -> pubSubConsumerAdapter
+            .getPositionByTimestamp(invalidPartition, System.currentTimeMillis(), PUBSUB_OP_TIMEOUT));
     elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Timeout should be around the specified timeout but not too much greater");
   }
 
-  // Test: When offsetForTime is called on an existing topic with a valid partition and messages, it should return an
-  // offset
+  // Test: When getPositionByTimestamp is called on an existing topic with a valid partition and messages,
+  // it should return a PubSubPosition
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeForExistingTopicWithValidPartitionsAndMessages()
+  public void testGetPositionByTimestampForExistingTopicWithValidPartitionsAndMessages()
       throws ExecutionException, InterruptedException, TimeoutException {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 2;
@@ -494,7 +531,7 @@ public class PubSubConsumerAdapterTest {
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(existingPubSubTopic), "Topic should exist");
 
     Map<Integer, Long> timestamps = new HashMap<>(10);
-    Map<Integer, Long> offsets = new HashMap<>(10);
+    Map<Integer, PubSubPosition> msgIdxToPositionsMap = new HashMap<>(10);
 
     PubSubProducerAdapter pubSubProducerAdapter = pubSubProducerAdapterLazy.get();
     /*
@@ -513,79 +550,92 @@ public class PubSubConsumerAdapterTest {
       PubSubProduceResult pubSubProduceResult = pubSubProducerAdapter
           .sendMessage(existingPubSubTopic.getName(), 0, PubSubHelper.getDummyKey(), value, null, null)
           .get(15, TimeUnit.SECONDS);
-      offsets.put(i, pubSubProduceResult.getOffset());
+      msgIdxToPositionsMap.put(i, pubSubProduceResult.getPubSubPosition());
       Thread.sleep(1);
     }
 
     long startTime;
     long elapsedTime;
-    PubSubTopicPartition partitionWitMessages = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
-    // iterate over the messages and verify the offset for each timestamp
+    PubSubTopicPartition partitionWithMessages = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
+    // iterate over the messages and verify the position for each timestamp
     for (int i = 0; i < numMessages; i++) {
       startTime = System.currentTimeMillis();
-      Long offset = pubSubConsumerAdapter.offsetForTime(partitionWitMessages, timestamps.get(i), PUBSUB_OP_TIMEOUT);
+      PubSubPosition position =
+          pubSubConsumerAdapter.getPositionByTimestamp(partitionWithMessages, timestamps.get(i), PUBSUB_OP_TIMEOUT);
       elapsedTime = System.currentTimeMillis() - startTime;
-      assertNotNull(offset, "Offset should not be null for an existing topic with messages");
-      assertEquals(offset, offsets.get(i), "Offset should match for an existing topic with messages");
-      assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
+      assertNotNull(position, "PubSubPosition should not be null for an existing topic with messages");
+      assertEquals(
+          position,
+          msgIdxToPositionsMap.get(i),
+          "PubSubPosition should match for an existing topic with messages");
+      assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
     }
 
-    // try 0 as timestamp; this should return the first offset
+    // try 0 as timestamp; this should return the first position
     startTime = System.currentTimeMillis();
-    Long offset = pubSubConsumerAdapter.offsetForTime(partitionWitMessages, 0, PUBSUB_OP_TIMEOUT);
+    PubSubPosition position = pubSubConsumerAdapter.getPositionByTimestamp(partitionWithMessages, 0, PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertNotNull(offset, "Offset should not be null for an existing topic with messages");
-    assertEquals(offset, Long.valueOf(0), "Offset should match for an existing topic with messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
+    assertNotNull(position, "PubSubPosition should not be null for an existing topic with messages");
+    assertTrue(
+        pubSubConsumerAdapter.positionDifference(
+            partitionWithMessages,
+            position,
+            pubSubConsumerAdapter.beginningPosition(partitionWithMessages, PUBSUB_OP_TIMEOUT)) == 0,
+        "Position should be at the beginning");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
 
-    // check one month before the first message timestamp; this should return the first offset
+    // check one month before the first message timestamp; this should return the first position
     long oneMonthBeforeFirstMessageTimestamp = timestamps.get(0) - Duration.ofDays(30).toMillis();
     startTime = System.currentTimeMillis();
-    offset = pubSubConsumerAdapter
-        .offsetForTime(partitionWitMessages, oneMonthBeforeFirstMessageTimestamp, PUBSUB_OP_TIMEOUT);
+    position = pubSubConsumerAdapter
+        .getPositionByTimestamp(partitionWithMessages, oneMonthBeforeFirstMessageTimestamp, PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertNotNull(offset, "Offset should not be null for an existing topic with messages");
-    assertEquals(offset, Long.valueOf(0), "Offset should match for an existing topic with messages");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
-
+    assertNotNull(position, "PubSubPosition should not be null for an existing topic with messages");
+    assertTrue(
+        pubSubConsumerAdapter.positionDifference(
+            partitionWithMessages,
+            position,
+            pubSubConsumerAdapter.beginningPosition(partitionWithMessages, PUBSUB_OP_TIMEOUT)) == 0,
+        "Position should be at the beginning");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
     // check for a timestamp that is after the last message; this should return null
     long currentTimestamp = System.currentTimeMillis();
     assertTrue(
         currentTimestamp > timestamps.get(numMessages - 1),
         "Current timestamp should be greater than the last message timestamp");
-    offset = pubSubConsumerAdapter.offsetForTime(partitionWitMessages, currentTimestamp, PUBSUB_OP_TIMEOUT);
-    assertNull(offset, "Offset should be null for an existing topic with out of range timestamp");
+    position = pubSubConsumerAdapter.getPositionByTimestamp(partitionWithMessages, currentTimestamp, PUBSUB_OP_TIMEOUT);
+    assertNull(position, "PubSubPosition should be null for an existing topic with out of range timestamp");
 
     // check one month from the last message timestamp; this should return null
     long oneMonthFromLastMessageTimestamp = timestamps.get(numMessages - 1) + Duration.ofDays(30).toMillis();
     startTime = System.currentTimeMillis();
-    offset =
-        pubSubConsumerAdapter.offsetForTime(partitionWitMessages, oneMonthFromLastMessageTimestamp, PUBSUB_OP_TIMEOUT);
+    position = pubSubConsumerAdapter
+        .getPositionByTimestamp(partitionWithMessages, oneMonthFromLastMessageTimestamp, PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertNull(offset, "Offset should be null for an existing topic with out of range timestamp");
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "offsetForTime should not block");
+    assertNull(position, "PubSubPosition should be null for an existing topic with out of range timestamp");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "getPositionByTimestamp should not block");
   }
 
-  // Test: When offsetForTime (without explicit timeout) is called on a non-existent topic,
+  // Test: When getPositionByTimestamp (without explicit timeout) is called on a non-existent topic,
   // it should throw PubSubOpTimeoutException
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeWithoutExplicitTimeoutForNonExistentTopic() {
+  public void testGetPositionByTimestampWithoutExplicitTimeoutForNonExistentTopic() {
     PubSubTopic nonExistentPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("non-existent-topic-"));
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(nonExistentPubSubTopic, 0);
 
     assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
     long startTime = System.currentTimeMillis();
-    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.offsetForTime(partition, 0));
+    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.getPositionByTimestamp(partition, 0));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be around the default timeout but not too much greater");
   }
 
-  // Test: When offsetForTime (without explicit timeout) is called on an existing topic with invalid partition,
+  // Test: When getPositionByTimestamp (without explicit timeout) is called on an existing topic with invalid partition,
   // it should throw PubSubOpTimeoutException
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeWithoutExplicitTimeoutForExistingTopicWithInvalidPartition() {
+  public void testGetPositionByTimestampWithoutExplicitTimeoutForExistingTopicWithInvalidPartition() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 1;
 
@@ -598,22 +648,25 @@ public class PubSubConsumerAdapterTest {
         "Topic should have only 1 partition");
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
-    Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis());
-    assertNull(offset, "Offset should be null for an existing topic with no messages");
+    PubSubPosition position = pubSubConsumerAdapter.getPositionByTimestamp(partition, System.currentTimeMillis());
+    assertNull(position, "PubSubPosition should be null for an existing topic with no messages");
 
     PubSubTopicPartition invalidPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     long startTime = System.currentTimeMillis();
-    assertThrows(PubSubOpTimeoutException.class, () -> pubSubConsumerAdapter.offsetForTime(invalidPartition, 0));
+    assertThrows(
+        PubSubOpTimeoutException.class,
+        () -> pubSubConsumerAdapter.getPositionByTimestamp(invalidPartition, 0));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
         "Timeout should be around the default timeout but not too much greater");
   }
 
-  // Test: When offsetForTime (without explicit timeout) is called on an existing topic with a valid partition but no
+  // Test: When getPositionByTimestamp (without explicit timeout) is called on an existing topic with a valid partition
+  // but no
   // messages, it should return null
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testOffsetForTimeWithoutExplicitTimeoutForExistingTopicWithValidPartitionsButNoMessages() {
+  public void testGetPositionByTimestampWithoutExplicitTimeoutForExistingTopicWithValidPartitionsButNoMessages() {
     PubSubTopic existingPubSubTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("existing-topic-"));
     int numPartitions = 2;
 
@@ -623,17 +676,21 @@ public class PubSubConsumerAdapterTest {
 
     long startTime = System.currentTimeMillis();
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
-    Long offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis());
+    PubSubPosition position = pubSubConsumerAdapter.getPositionByTimestamp(partition, System.currentTimeMillis());
     long elapsedTime = System.currentTimeMillis() - startTime;
-    assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "offsetForTime should not block");
+    assertNull(position, "PubSubPosition should be null for an existing topic with no messages");
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
+        "getPositionByTimestamp should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     startTime = System.currentTimeMillis();
-    offset = pubSubConsumerAdapter.offsetForTime(partition, System.currentTimeMillis());
+    position = pubSubConsumerAdapter.getPositionByTimestamp(partition, System.currentTimeMillis());
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertNull(offset, "Offset should be null for an existing topic with no messages");
-    assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "OffsetForTime should not block");
+    assertNull(position, "PubSubPosition should be null for an existing topic with no messages");
+    assertTrue(
+        elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
+        "getPositionByTimestamp should not block");
   }
 
   // Test: Subscribe to non-existent topic should throw PubSubTopicDoesNotExistException
@@ -644,7 +701,9 @@ public class PubSubConsumerAdapterTest {
 
     assertFalse(pubSubAdminAdapterLazy.get().containsTopic(nonExistentPubSubTopic), "Topic should not exist");
     long startTime = System.currentTimeMillis();
-    assertThrows(PubSubTopicDoesNotExistException.class, () -> pubSubConsumerAdapter.subscribe(partition, 0));
+    assertThrows(
+        PubSubTopicDoesNotExistException.class,
+        () -> pubSubConsumerAdapter.subscribe(partition, PubSubSymbolicPosition.EARLIEST));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
@@ -669,7 +728,9 @@ public class PubSubConsumerAdapterTest {
 
     PubSubTopicPartition invalidPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 2);
     long startTime = System.currentTimeMillis();
-    assertThrows(PubSubTopicDoesNotExistException.class, () -> pubSubConsumerAdapter.subscribe(invalidPartition, 0));
+    assertThrows(
+        PubSubTopicDoesNotExistException.class,
+        () -> pubSubConsumerAdapter.subscribe(invalidPartition, PubSubSymbolicPosition.EARLIEST));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
@@ -692,7 +753,7 @@ public class PubSubConsumerAdapterTest {
         "Topic should have only 1 partition");
 
     long startTime = System.currentTimeMillis();
-    pubSubConsumerAdapter.subscribe(partition, 0);
+    pubSubConsumerAdapter.subscribe(partition, PubSubSymbolicPosition.EARLIEST);
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
@@ -700,7 +761,7 @@ public class PubSubConsumerAdapterTest {
 
     // re-subscribe to the same topic and partition; this should not take longer than the default timeout
     startTime = System.currentTimeMillis();
-    pubSubConsumerAdapter.subscribe(partition, 0);
+    pubSubConsumerAdapter.subscribe(partition, PubSubSymbolicPosition.EARLIEST);
     elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE,
@@ -741,7 +802,7 @@ public class PubSubConsumerAdapterTest {
         "Topic should have only 1 partition");
 
     // subscribe to an existing topic and partition
-    pubSubConsumerAdapter.subscribe(partition, 0);
+    pubSubConsumerAdapter.subscribe(partition, PubSubSymbolicPosition.EARLIEST);
 
     // unsubscribe from an existing topic and partition
     long startTime = System.currentTimeMillis();
@@ -785,7 +846,7 @@ public class PubSubConsumerAdapterTest {
     assertFalse(pubSubConsumerAdapter.hasAnySubscription(), "Should not be subscribed to any topic");
 
     // subscribe to an existing topic and partition
-    pubSubConsumerAdapter.subscribe(validPartition, 0);
+    pubSubConsumerAdapter.subscribe(validPartition, PubSubSymbolicPosition.EARLIEST);
     assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
     assertTrue(
         pubSubConsumerAdapter.hasSubscription(validPartition),
@@ -837,26 +898,28 @@ public class PubSubConsumerAdapterTest {
     lastMessageFuture.get(10, TimeUnit.SECONDS);
 
     // subscribe to the topic and partition
-    pubSubConsumerAdapter.subscribe(partition, 0);
+    pubSubConsumerAdapter.subscribe(partition, PubSubSymbolicPosition.EARLIEST);
     assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
     assertTrue(pubSubConsumerAdapter.hasSubscription(partition), "Should be subscribed to the topic and partition");
 
     // consume 5 messages
     int minRecordsToConsume = 5;
-    long offsetOfLastConsumedMessage = -1;
+    PubSubPosition positionOfLastConsumedMessage = PubSubSymbolicPosition.EARLIEST;
     while (minRecordsToConsume > 0) {
       Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = pubSubConsumerAdapter.poll(15);
       assertNotNull(messages, "Messages should not be null");
       List<DefaultPubSubMessage> partitionMessages = messages.get(partition);
       if (partitionMessages != null && !partitionMessages.isEmpty()) {
         minRecordsToConsume -= partitionMessages.size();
-        offsetOfLastConsumedMessage =
-            partitionMessages.get(partitionMessages.size() - 1).getPosition().getNumericOffset();
+        positionOfLastConsumedMessage = partitionMessages.get(partitionMessages.size() - 1).getPosition();
       }
     }
-    assertTrue(offsetOfLastConsumedMessage > 0, "Offset of last consumed message should be greater than 0");
+    assertTrue(
+        pubSubConsumerAdapter
+            .positionDifference(partition, positionOfLastConsumedMessage, PubSubSymbolicPosition.EARLIEST) >= 4,
+        "Should have consumed at least 5 messages");
 
-    // reset offset to the beginning
+    // reset position to the beginning
     long startTime = System.currentTimeMillis();
     pubSubConsumerAdapter.resetOffset(partition);
     long elapsedTime = System.currentTimeMillis() - startTime;
@@ -865,17 +928,21 @@ public class PubSubConsumerAdapterTest {
         "Timeout should be less than the default timeout");
 
     minRecordsToConsume = 1;
-    long offsetOfFirstConsumedMessage = -1L;
+    PubSubPosition offsetOfFirstConsumedMessage = PubSubSymbolicPosition.LATEST;
     while (minRecordsToConsume > 0) {
       Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = pubSubConsumerAdapter.poll(15);
       List<DefaultPubSubMessage> partitionMessages = messages.get(partition);
       if (partitionMessages != null && !partitionMessages.isEmpty()) {
-        offsetOfFirstConsumedMessage = partitionMessages.get(0).getPosition().getNumericOffset();
+        offsetOfFirstConsumedMessage = partitionMessages.get(0).getPosition();
         minRecordsToConsume--;
       }
     }
     // verify that the offset of the first consumed message is 0
-    assertEquals(offsetOfFirstConsumedMessage, 0, "Offset of first consumed message should be 0 after resetOffset");
+    assertEquals(
+        pubSubConsumerAdapter
+            .positionDifference(partition, offsetOfFirstConsumedMessage, PubSubSymbolicPosition.EARLIEST),
+        0,
+        "Offset of first consumed message should be 0 after resetOffset");
   }
 
   // Test: resetOffset should throw PubSubUnsubscribedTopicPartitionException when called on an existing topic with a
@@ -926,10 +993,10 @@ public class PubSubConsumerAdapterTest {
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(topicB), "Topic should exist");
 
     // subscribe to the topic and partition
-    pubSubConsumerAdapter.subscribe(partitionA0, -1);
-    pubSubConsumerAdapter.subscribe(partitionA1, -1);
-    pubSubConsumerAdapter.subscribe(partitionB0, -1);
-    pubSubConsumerAdapter.subscribe(partitionB1, -1);
+    pubSubConsumerAdapter.subscribe(partitionA0, PubSubSymbolicPosition.EARLIEST);
+    pubSubConsumerAdapter.subscribe(partitionA1, PubSubSymbolicPosition.EARLIEST);
+    pubSubConsumerAdapter.subscribe(partitionB0, PubSubSymbolicPosition.EARLIEST);
+    pubSubConsumerAdapter.subscribe(partitionB1, PubSubSymbolicPosition.EARLIEST);
     assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
     assertTrue(pubSubConsumerAdapter.hasSubscription(partitionA0), "Should be subscribed to the topic and partition");
     assertTrue(pubSubConsumerAdapter.hasSubscription(partitionA1), "Should be subscribed to the topic and partition");
@@ -961,16 +1028,32 @@ public class PubSubConsumerAdapterTest {
     CompletableFuture.allOf(lastMessageFutures.values().toArray(new CompletableFuture[0])).get(60, TimeUnit.SECONDS);
     // check end offsets
     long startTime = System.currentTimeMillis();
-    Map<PubSubTopicPartition, Long> endOffsets = pubSubConsumerAdapter.endOffsets(
+    Map<PubSubTopicPartition, PubSubPosition> endPositions = pubSubConsumerAdapter.endPositions(
         new HashSet<>(Arrays.asList(partitionA0, partitionA1, partitionB0, partitionB1)),
         PUBSUB_OP_TIMEOUT);
     long elapsedTime = System.currentTimeMillis() - startTime;
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "endOffsets should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "endPositions should not block");
 
-    assertEquals(endOffsets.get(partitionA0), Long.valueOf(numMessages), "End offset should match");
-    assertEquals(endOffsets.get(partitionA1), Long.valueOf(numMessages), "End offset should match");
-    assertEquals(endOffsets.get(partitionB0), Long.valueOf(numMessages), "End offset should match");
-    assertEquals(endOffsets.get(partitionB1), Long.valueOf(numMessages), "End offset should match");
+    assertPositionDifferenceFromEarliest(
+        partitionA0,
+        endPositions.get(partitionA0),
+        numMessages,
+        "End position difference from start should match number of messages");
+    assertPositionDifferenceFromEarliest(
+        partitionA1,
+        endPositions.get(partitionA1),
+        numMessages,
+        "End position difference from start should match number of messages");
+    assertPositionDifferenceFromEarliest(
+        partitionB0,
+        endPositions.get(partitionB0),
+        numMessages,
+        "End position difference from start should match number of messages");
+    assertPositionDifferenceFromEarliest(
+        partitionB1,
+        endPositions.get(partitionB1),
+        numMessages,
+        "End position difference from start should match number of messages");
 
     // poll at lest "minRecordsToConsume" messages per topic-partition; since poll does not guarantee even distribution
     // of messages across topic-partitions, we poll until we get at least "minRecordsToConsume" messages per
@@ -978,12 +1061,12 @@ public class PubSubConsumerAdapterTest {
     int minRecordsToConsume = 2;
     long pollTimeout = 1;
     long pollTimeoutWithVariance = pollTimeout + 3000;
-    // keep track of the last consumed offset for each topic-partition
-    Map<PubSubTopicPartition, Long> lastConsumedOffsetMap = new HashMap<>(4);
+    // keep track of the last consumed position for each topic-partition
+    Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositionMap = new HashMap<>(4);
     // keep track of the number of messages consumed for each topic-partition
     Map<PubSubTopicPartition, Integer> numMessagesConsumedMap = new HashMap<>(4);
-    // first consumed message offset map
-    Map<PubSubTopicPartition, Long> firstConsumedOffsetMap = new HashMap<>(4);
+    // first consumed message position map
+    Map<PubSubTopicPartition, PubSubPosition> firstConsumedPositionMap = new HashMap<>(4);
 
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = null;
     Set<PubSubTopicPartition> consumptionBarMet = new HashSet<>();
@@ -1002,25 +1085,32 @@ public class PubSubConsumerAdapterTest {
           continue;
         }
         // update first consumed offset
-        Long oldVal =
-            firstConsumedOffsetMap.putIfAbsent(partition, partitionMessages.get(0).getPosition().getNumericOffset());
+        PubSubPosition oldVal = firstConsumedPositionMap.putIfAbsent(partition, partitionMessages.get(0).getPosition());
         if (oldVal == null) {
-          // assert offset is zero since this is the first time we are consuming from this topic-partition and
-          // and we started consuming from the beginning (-1 last consumed offset)
-          assertEquals(firstConsumedOffsetMap.get(partition), Long.valueOf(0), "First consumed offset should be 0");
+          // assert position is zero since this is the first time we are consuming from this topic-partition and
+          // and we started consuming from the beginning
+          assertEquals(
+              pubSubConsumerAdapter.positionDifference(
+                  partition,
+                  firstConsumedPositionMap.get(partition),
+                  pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT)),
+              0,
+              "First consumed position should be 0");
         }
         // update last consumed offset
-        lastConsumedOffsetMap
-            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getPosition().getNumericOffset());
+        lastConsumedPositionMap.put(partition, partitionMessages.get(partitionMessages.size() - 1).getPosition());
         // update number of messages consumed so far
         numMessagesConsumedMap
             .compute(partition, (k, v) -> v == null ? partitionMessages.size() : v + partitionMessages.size());
         long consumedCountSoFar = numMessagesConsumedMap.get(partition);
         // verify lastConsumedOffset matches records consumed so far
+        PubSubPosition lastConsumedPosition = lastConsumedPositionMap.get(partition);
+        long delta = pubSubConsumerAdapter
+            .positionDifference(partition, lastConsumedPosition, firstConsumedPositionMap.get(partition));
         assertEquals(
-            lastConsumedOffsetMap.get(partition),
-            Long.valueOf(consumedCountSoFar - 1),
-            "Last consumed offset should match records consumed so far");
+            delta + 1,
+            consumedCountSoFar,
+            "Position difference + 1 should match records consumed so far for partition " + partition);
         if (consumedCountSoFar >= minRecordsToConsume) {
           consumptionBarMet.add(partition);
         }
@@ -1047,9 +1137,10 @@ public class PubSubConsumerAdapterTest {
     assertTrue(pubSubConsumerAdapter.hasSubscription(partitionB1), "Should be subscribed to the topic-partition: B1");
 
     // consume all messages for A1; and check that no messages are consumed for A0, B0, and B1
-    long endOffsetOfA1 = endOffsets.get(partitionA1);
-    while (lastConsumedOffsetMap.get(partitionA1) != (endOffsetOfA1 - 1)) {
-      System.out.println(lastConsumedOffsetMap);
+    PubSubPosition endPositionOfA1 = endPositions.get(partitionA1);
+    while (pubSubConsumerAdapter
+        .positionDifference(partitionA1, endPositionOfA1, lastConsumedPositionMap.get(partitionA1)) != 1) {
+      System.out.println(lastConsumedPositionMap);
       startTime = System.currentTimeMillis();
       messages = pubSubConsumerAdapter.poll(pollTimeout);
       elapsedTime = System.currentTimeMillis() - startTime;
@@ -1068,14 +1159,14 @@ public class PubSubConsumerAdapterTest {
           continue;
         }
         // update last consumed offset
-        lastConsumedOffsetMap
-            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getPosition().getNumericOffset());
+        lastConsumedPositionMap.put(partition, partitionMessages.get(partitionMessages.size() - 1).getPosition());
         int consumedCountSoFar = numMessagesConsumedMap.getOrDefault(partition, 0) + partitionMessages.size();
         // verify lastConsumedOffset matches records consumed so far
-        assertEquals(
-            lastConsumedOffsetMap.get(partition),
-            Long.valueOf(consumedCountSoFar - 1),
-            "Last consumed offset should match records consumed so far");
+        long delta = pubSubConsumerAdapter.positionDifference(
+            partition,
+            lastConsumedPositionMap.get(partition),
+            firstConsumedPositionMap.get(partition));
+        assertEquals(delta, consumedCountSoFar - 1, "Last consumed offset should match records consumed so far");
 
         numMessagesConsumedMap.put(partition, consumedCountSoFar);
       }
@@ -1083,12 +1174,13 @@ public class PubSubConsumerAdapterTest {
 
     // check A1's last consumed offset and consumed count
     assertEquals(
-        lastConsumedOffsetMap.get(partitionA1),
-        Long.valueOf(numMessages - 1),
-        "Last consumed offset should match number of messages");
-    lastConsumedOffsetMap.remove(partitionA1);
+        pubSubConsumerAdapter
+            .positionDifference(partitionA1, lastConsumedPositionMap.get(partitionA1), PubSubSymbolicPosition.EARLIEST),
+        numMessages - 1,
+        "Position difference from beginning should match number of messages");
+    lastConsumedPositionMap.remove(partitionA1);
     numMessagesConsumedMap.remove(partitionA1);
-    firstConsumedOffsetMap.remove(partitionA1);
+    firstConsumedPositionMap.remove(partitionA1);
     pubSubConsumerAdapter.resetOffset(partitionA1);
 
     // resume subscription to A0
@@ -1120,35 +1212,42 @@ public class PubSubConsumerAdapterTest {
           continue;
         }
         // check A1 starts from 0
-        Long oldVal =
-            firstConsumedOffsetMap.putIfAbsent(partition, partitionMessages.get(0).getPosition().getNumericOffset());
+        PubSubPosition oldVal = firstConsumedPositionMap.putIfAbsent(partition, partitionMessages.get(0).getPosition());
         if (oldVal == null) {
           // we reset the offset for A1 to beginning; so the first consumed offset should be 0
-          assertEquals(firstConsumedOffsetMap.get(partition), Long.valueOf(0), "First consumed offset should be 0");
+          assertEquals(
+              pubSubConsumerAdapter.positionDifference(
+                  partition,
+                  firstConsumedPositionMap.get(partition),
+                  pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT)),
+              0,
+              "First consumed position should be 0 since we reset the position for A1 to beginning");
         }
 
-        // update last consumed offset
-        lastConsumedOffsetMap
-            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getPosition().getNumericOffset());
+        // update last consumed position
+        lastConsumedPositionMap.put(partition, partitionMessages.get(partitionMessages.size() - 1).getPosition());
         int consumedCountSoFar = numMessagesConsumedMap.getOrDefault(partition, 0) + partitionMessages.size();
         // verify lastConsumedOffset matches records consumed so far
         assertEquals(
-            lastConsumedOffsetMap.get(partition),
-            Long.valueOf(consumedCountSoFar - 1),
+            pubSubConsumerAdapter.positionDifference(
+                partition,
+                lastConsumedPositionMap.get(partition),
+                firstConsumedPositionMap.get(partition)) + 1,
+            consumedCountSoFar,
             "Last consumed offset should match records consumed so far");
         numMessagesConsumedMap.put(partition, consumedCountSoFar);
       }
 
       // loop through all topic-partitions and check if consumption bar is met
-      for (PubSubTopicPartition partition: lastConsumedOffsetMap.keySet()) {
+      for (PubSubTopicPartition partition: lastConsumedPositionMap.keySet()) {
         if (numMessagesConsumedMap.get(partition) >= numMessages) {
           consumptionBarMet.add(partition);
         }
       }
     }
 
-    firstConsumedOffsetMap.clear();
-    lastConsumedOffsetMap.clear();
+    firstConsumedPositionMap.clear();
+    lastConsumedPositionMap.clear();
     numMessagesConsumedMap.clear();
     consumptionBarMet.clear();
 
@@ -1199,14 +1298,14 @@ public class PubSubConsumerAdapterTest {
           continue;
         }
         // update last consumed offset
-        lastConsumedOffsetMap
-            .put(partition, partitionMessages.get(partitionMessages.size() - 1).getPosition().getNumericOffset());
+        lastConsumedPositionMap.put(partition, partitionMessages.get(partitionMessages.size() - 1).getPosition());
         int consumedCountSoFar = numMessagesConsumedMap.getOrDefault(partition, 0) + partitionMessages.size();
         // verify lastConsumedOffset matches records consumed so far
         assertEquals(
-            lastConsumedOffsetMap.get(partition),
-            Long.valueOf(consumedCountSoFar - 1),
-            "Last consumed offset should match records consumed so far");
+            pubSubConsumerAdapter
+                .positionDifference(partition, lastConsumedPositionMap.get(partition), PubSubSymbolicPosition.EARLIEST),
+            consumedCountSoFar - 1,
+            "Last consumed position should match records consumed so far");
 
         numMessagesConsumedMap.put(partition, consumedCountSoFar);
       }
@@ -1240,7 +1339,7 @@ public class PubSubConsumerAdapterTest {
     // greater than the end offset, the consumer will seek to the beginning of the partition. Subsequent polls
     // will return the first message in the partition.
     assertFalse(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
-    pubSubConsumerAdapter.subscribe(partitionA0, endOffsets.get(partitionA0)); // sub will add +1 to the offset
+    pubSubConsumerAdapter.subscribe(partitionA0, endPositions.get(partitionA0)); // sub will add +1 to the offset
     messages = Collections.emptyMap();
     while (messages.isEmpty()) {
       messages = pubSubConsumerAdapter.poll(pollTimeout);
@@ -1251,10 +1350,12 @@ public class PubSubConsumerAdapterTest {
     assertTrue(messages.containsKey(partitionA0), "Should have messages for A0");
     assertTrue(messages.get(partitionA0).size() > 0, "Should have messages for A0");
     // offset should be at the first message
+
+    PubSubPosition firstPosition = messages.get(partitionA0).get(0).getPosition();
     assertEquals(
-        messages.get(partitionA0).get(0).getPosition().getNumericOffset(),
+        pubSubConsumerAdapter.positionDifference(partitionA0, firstPosition, PubSubSymbolicPosition.EARLIEST),
         0,
-        "Poll should start from the beginning");
+        "First consumed position should be 0 since we reset the position for A0 to beginning");
   }
 
   // Note: The following test may not work for non-Kafka PubSub implementations.
@@ -1283,10 +1384,10 @@ public class PubSubConsumerAdapterTest {
     assertTrue(pubSubAdminAdapterLazy.get().containsTopic(topicB), "Topic should exist");
 
     // subscribe to the topic and partition
-    pubSubConsumerAdapter.subscribe(partitionA0, -1);
-    pubSubConsumerAdapter.subscribe(partitionA1, -1);
-    pubSubConsumerAdapter.subscribe(partitionB0, -1);
-    pubSubConsumerAdapter.subscribe(partitionB1, -1);
+    pubSubConsumerAdapter.subscribe(partitionA0, PubSubSymbolicPosition.EARLIEST);
+    pubSubConsumerAdapter.subscribe(partitionA1, PubSubSymbolicPosition.EARLIEST);
+    pubSubConsumerAdapter.subscribe(partitionB0, PubSubSymbolicPosition.EARLIEST);
+    pubSubConsumerAdapter.subscribe(partitionB1, PubSubSymbolicPosition.EARLIEST);
     assertTrue(pubSubConsumerAdapter.hasAnySubscription(), "Should be subscribed to the topic and partition");
     assertTrue(pubSubConsumerAdapter.hasSubscription(partitionA0), "Should be subscribed to the topic and partition");
     assertTrue(pubSubConsumerAdapter.hasSubscription(partitionA1), "Should be subscribed to the topic and partition");
@@ -1318,16 +1419,24 @@ public class PubSubConsumerAdapterTest {
     CompletableFuture.allOf(lastMessageFutures.values().toArray(new CompletableFuture[0])).get(60, TimeUnit.SECONDS);
     // check end offsets
     long startTime = System.currentTimeMillis();
-    Map<PubSubTopicPartition, Long> endOffsets = pubSubConsumerAdapter.endOffsets(
+    Map<PubSubTopicPartition, PubSubPosition> endPositions = pubSubConsumerAdapter.endPositions(
         new HashSet<>(Arrays.asList(partitionA0, partitionA1, partitionB0, partitionB1)),
         PUBSUB_OP_TIMEOUT);
     long elapsedTime = System.currentTimeMillis() - startTime;
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "endOffsets should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "endPositions should not block");
 
-    assertEquals(endOffsets.get(partitionA0), Long.valueOf(numMessages), "End offset should match");
-    assertEquals(endOffsets.get(partitionA1), Long.valueOf(numMessages), "End offset should match");
-    assertEquals(endOffsets.get(partitionB0), Long.valueOf(numMessages), "End offset should match");
-    assertEquals(endOffsets.get(partitionB1), Long.valueOf(numMessages), "End offset should match");
+    long delta = pubSubConsumerAdapter
+        .positionDifference(partitionA0, endPositions.get(partitionA0), PubSubSymbolicPosition.EARLIEST);
+    assertEquals(delta, numMessages, "End position difference from start should match number of messages");
+    delta = pubSubConsumerAdapter
+        .positionDifference(partitionA1, endPositions.get(partitionA1), PubSubSymbolicPosition.EARLIEST);
+    assertEquals(delta, numMessages, "End position difference from start should match number of messages");
+    delta = pubSubConsumerAdapter
+        .positionDifference(partitionB0, endPositions.get(partitionB0), PubSubSymbolicPosition.EARLIEST);
+    assertEquals(delta, numMessages, "End position difference from  start should match number of messages");
+    delta = pubSubConsumerAdapter
+        .positionDifference(partitionB1, endPositions.get(partitionB1), PubSubSymbolicPosition.EARLIEST);
+    assertEquals(delta, numMessages, "End position difference from start should match number of messages");
 
     Set<PubSubTopicPartition> consumptionBarMet = new HashSet<>();
     while (consumptionBarMet.size() != 4) {
@@ -1345,9 +1454,10 @@ public class PubSubConsumerAdapterTest {
           continue;
         }
         // check offset of the last consumed message and see if it is one less than the end offset; if yes bar is met
-        if (partitionMessages.get(partitionMessages.size() - 1)
-            .getPosition()
-            .getNumericOffset() == endOffsets.get(partition) - 1) {
+        PubSubPosition lastMessagePosition = partitionMessages.get(partitionMessages.size() - 1).getPosition();
+        PubSubPosition endPosition = endPositions.get(partition);
+        delta = pubSubConsumerAdapter.positionDifference(partition, endPosition, lastMessagePosition);
+        if (delta == 1) {
           consumptionBarMet.add(partition);
         }
       }
@@ -1389,9 +1499,10 @@ public class PubSubConsumerAdapterTest {
           continue;
         }
         // check offset of the last consumed message and see if it is one less than the end offset; if yes bar is met
-        if (partitionMessages.get(partitionMessages.size() - 1)
-            .getPosition()
-            .getNumericOffset() == endOffsets.get(partition) - 1) {
+        PubSubPosition lastMessagePosition = partitionMessages.get(partitionMessages.size() - 1).getPosition();
+        PubSubPosition endPosition = endPositions.get(partition);
+        delta = pubSubConsumerAdapter.positionDifference(partition, endPosition, lastMessagePosition);
+        if (delta == 1) {
           consumptionBarMet.add(partition);
         }
       }
@@ -1416,16 +1527,24 @@ public class PubSubConsumerAdapterTest {
     CompletableFuture.allOf(lastMessageFutures.values().toArray(new CompletableFuture[0])).get(60, TimeUnit.SECONDS);
     // check end offsets
     startTime = System.currentTimeMillis();
-    endOffsets = pubSubConsumerAdapter.endOffsets(
+    endPositions = pubSubConsumerAdapter.endPositions(
         new HashSet<>(Arrays.asList(partitionA0, partitionA1, partitionB0, partitionB1)),
         PUBSUB_OP_TIMEOUT);
     elapsedTime = System.currentTimeMillis() - startTime;
-    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "endOffsets should not block");
+    assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "endPositions should not block");
 
-    assertEquals(endOffsets.get(partitionA0), Long.valueOf(numMessages), "End offset should match");
-    assertEquals(endOffsets.get(partitionA1), Long.valueOf(numMessages), "End offset should match");
-    assertEquals(endOffsets.get(partitionB0), Long.valueOf(numMessages), "End offset should match");
-    assertEquals(endOffsets.get(partitionB1), Long.valueOf(numMessages), "End offset should match");
+    delta = pubSubConsumerAdapter
+        .positionDifference(partitionA0, endPositions.get(partitionA0), PubSubSymbolicPosition.EARLIEST);
+    assertEquals(delta, numMessages, "End position difference from start should match number of messages");
+    delta = pubSubConsumerAdapter
+        .positionDifference(partitionA1, endPositions.get(partitionA1), PubSubSymbolicPosition.EARLIEST);
+    assertEquals(delta, numMessages, "End position difference from start should match number of messages");
+    delta = pubSubConsumerAdapter
+        .positionDifference(partitionB0, endPositions.get(partitionB0), PubSubSymbolicPosition.EARLIEST);
+    assertEquals(delta, numMessages, "End position difference from  start should match number of messages");
+    delta = pubSubConsumerAdapter
+        .positionDifference(partitionB1, endPositions.get(partitionB1), PubSubSymbolicPosition.EARLIEST);
+    assertEquals(delta, numMessages, "End position difference from start should match number of messages");
 
     // only messages for B0 should be consumed as B1 reached end offset before deletion and recreation; A0 and A1
     // should not consume any messages as they already consumed all messages
@@ -1449,9 +1568,10 @@ public class PubSubConsumerAdapterTest {
           continue;
         }
         // check offset of the last consumed message and see if it is one less than the end offset; if yes bar is met
-        if (partitionMessages.get(partitionMessages.size() - 1)
-            .getPosition()
-            .getNumericOffset() == endOffsets.get(partition) - 1) {
+        PubSubPosition lastMessagePosition = partitionMessages.get(partitionMessages.size() - 1).getPosition();
+        PubSubPosition endPosition = endPositions.get(partition);
+        delta = pubSubConsumerAdapter.positionDifference(partition, endPosition, lastMessagePosition);
+        if (delta == 1) {
           consumptionBarMet.add(partition);
         }
       }

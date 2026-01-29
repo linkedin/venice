@@ -43,7 +43,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
         Lazy.of(() -> null),
         new RmdWithValueSchemaId(oldValueSchemaID, RMD_VERSION_ID, rmdRecord),
         deleteOperationTimestamp,
-        1L, // Same as the old value schema ID.
+        P1, // Same as the old value schema ID.
         0,
         0);
     Assert.assertTrue(mergeResult.isUpdateIgnored());
@@ -72,7 +72,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
         Lazy.of(() -> null),
         new RmdWithValueSchemaId(oldValueSchemaID, RMD_VERSION_ID, rmdRecord),
         11L,
-        1L,
+        P1,
         0,
         0);
     Assert.assertFalse(mergeResult.isUpdateIgnored());
@@ -112,7 +112,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     // Case 1: Delete one field with the same delete timestamp.
     long deleteOperationTimestamp = 10L;
     MergeConflictResult result = mergeConflictResolver
-        .delete(Lazy.of(() -> oldValueBytes), oldRmdWithValueSchemaID, deleteOperationTimestamp, 1L, 0, 0);
+        .delete(Lazy.of(() -> oldValueBytes), oldRmdWithValueSchemaID, deleteOperationTimestamp, P1, 0, 0);
     Assert.assertFalse(result.isUpdateIgnored());
     GenericRecord updatedRmd = result.getRmdRecord();
     GenericRecord updatedPerFieldTimestampRecord = (GenericRecord) updatedRmd.get(TIMESTAMP_FIELD_NAME);
@@ -130,7 +130,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     // Case 2: Delete two fields with the a higher delete timestamp.
     deleteOperationTimestamp = 25L;
     result = mergeConflictResolver
-        .delete(Lazy.of(() -> oldValueBytes), oldRmdWithValueSchemaID, deleteOperationTimestamp, 1L, 0, 0);
+        .delete(Lazy.of(() -> oldValueBytes), oldRmdWithValueSchemaID, deleteOperationTimestamp, P1, 0, 0);
     Assert.assertFalse(result.isUpdateIgnored());
     updatedRmd = result.getRmdRecord();
     updatedPerFieldTimestampRecord = (GenericRecord) updatedRmd.get(TIMESTAMP_FIELD_NAME);
@@ -148,7 +148,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     // Case 3: Delete all three fields with the a higher delete timestamp.
     deleteOperationTimestamp = 99L;
     result = mergeConflictResolver
-        .delete(Lazy.of(() -> oldValueBytes), oldRmdWithValueSchemaID, deleteOperationTimestamp, 1L, 0, 0);
+        .delete(Lazy.of(() -> oldValueBytes), oldRmdWithValueSchemaID, deleteOperationTimestamp, P1, 0, 0);
     Assert.assertFalse(result.isUpdateIgnored());
     updatedRmd = result.getRmdRecord();
     Object timestampObj = updatedRmd.get(TIMESTAMP_FIELD_NAME);

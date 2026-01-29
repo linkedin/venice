@@ -20,6 +20,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_SECURE_GRPC_PORT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
@@ -55,6 +56,7 @@ import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
@@ -67,7 +69,8 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
-import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -116,6 +119,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private final MetricsRepository metricsRepository;
   private final String regionName;
 
+  private final Map<String, D2Client> d2Clients;
+
   private VeniceControllerWrapper(
       String regionName,
       String serviceName,
@@ -129,7 +134,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       boolean isParent,
       List<ServiceDiscoveryAnnouncer> d2ServerList,
       String zkAddress,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository,
+      Map<String, D2Client> d2Clients) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.configs = configs;
@@ -142,6 +148,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     this.d2ServerList = d2ServerList;
     this.metricsRepository = metricsRepository;
     this.regionName = regionName;
+    this.d2Clients = d2Clients;
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(VeniceControllerCreateOptions options) {
@@ -228,7 +235,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
                 PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
                 pubSubClientsFactory.getConsumerAdapterFactory().getClass().getName())
             .put(PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS, pubSubClientsFactory.getAdminAdapterFactory().getClass().getName())
-            .put(extraProps.toProperties());
+            .put(extraProps.toProperties())
+            // Set store recreation time window to 0 seconds by default to allow immediate recreation in tests
+            // This is set after extraProps so tests can override it if needed
+            .putIfAbsent(CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS, 0);
 
         if (sslEnabled) {
           builder.put(SslUtils.getVeniceLocalSslProperties());
@@ -354,7 +364,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       }
 
       D2Client d2Client = D2TestUtils.getAndStartD2Client(options.getZkAddress());
-      MetricsRepository metricsRepository = TehutiUtils.getMetricsRepository(D2_SERVICE_NAME);
+      MetricsRepository metricsRepository = VeniceMetricsRepository.getVeniceMetricsRepository(
+          D2_SERVICE_NAME,
+          VeniceController.CONTROLLER_SERVICE_METRIC_PREFIX,
+          VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES,
+          propertiesList.get(0).getAsMap() // TODO repush otel: not sure if properties is accessed this way
+      );
 
       Optional<ClientConfig> consumerClientConfig = Optional.empty();
       Object clientConfig = options.getExtraProperties().get(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER);
@@ -366,11 +381,13 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (passedSupersetSchemaGenerator instanceof SupersetSchemaGenerator) {
         supersetSchemaGenerator = Optional.of((SupersetSchemaGenerator) passedSupersetSchemaGenerator);
       }
+      Map<String, D2Client> d2Clients = options.getD2Clients();
       VeniceControllerContext ctx = new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
           .setMetricsRepository(metricsRepository)
           .setServiceDiscoveryAnnouncers(d2ServerList)
           .setAuthorizerService(options.getAuthorizerService())
           .setD2Client(d2Client)
+          .setD2Clients(d2Clients)
           .setRouterClientConfig(consumerClientConfig.orElse(null))
           .setExternalSupersetSchemaGenerator(supersetSchemaGenerator.orElse(null))
           .setAccessController(options.getDynamicAccessController())
@@ -389,7 +406,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           options.isParent(),
           d2ServerList,
           options.getZkAddress(),
-          metricsRepository);
+          metricsRepository,
+          d2Clients);
     };
   }
 
@@ -481,6 +499,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         new VeniceControllerContext.Builder().setPropertiesList(configs)
             .setServiceDiscoveryAnnouncers(d2ServerList)
             .setD2Client(d2Client)
+            .setD2Clients(d2Clients)
             .build());
   }
 
@@ -520,7 +539,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   }
 
   @Override
-  public String getComponentTagForLogging() {
-    return getComponentTagPrefix(regionName) + super.getComponentTagForLogging();
+  public LogContext getComponentTagForLogging() {
+    return LogContext.newBuilder()
+        .setComponentName(VeniceComponent.CONTROLLER.name())
+        .setRegionName(regionName)
+        .setInstanceName(Utils.getHelixNodeIdentifier(getHost(), getPort()))
+        .build();
   }
 }

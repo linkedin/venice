@@ -1,11 +1,13 @@
 package com.linkedin.venice.server;
 
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.blobtransfer.P2PBlobTransferConfig;
+import com.linkedin.davinci.blobtransfer.VeniceAdaptiveBlobTransferTrafficThrottler;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -15,6 +17,7 @@ import com.linkedin.davinci.kafka.consumer.AdaptiveThrottlerSignalService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
@@ -127,7 +130,10 @@ public class VeniceServer {
   private ServerReadMetadataRepository serverReadMetadataRepository;
   private BlobTransferManager<Void> blobTransferManager;
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
+  private AggBlobTransferStats aggBlobTransferStats;
   private Lazy<ZKHelixAdmin> zkHelixAdmin;
+
+  private final Optional<D2Client> d2Client;
 
   /**
    * @deprecated Use {@link VeniceServer#VeniceServer(VeniceServerContext)} instead.
@@ -194,6 +200,7 @@ public class VeniceServer {
     this.routerAccessController = Optional.ofNullable(ctx.getRouterAccessController());
     this.storeAccessController = Optional.ofNullable(ctx.getStoreAccessController());
     this.clientConfigForConsumer = Optional.ofNullable(ctx.getClientConfigForConsumer());
+    this.d2Client = Optional.ofNullable(ctx.getD2Client());
   }
 
   /**
@@ -233,6 +240,7 @@ public class VeniceServer {
               sslFactory,
               localControllerUrl,
               d2ServiceName,
+              d2Client,
               d2ZkHost,
               false);
       ControllerClientBackedSystemSchemaInitializer kmeSchemaInitializer =
@@ -245,6 +253,7 @@ public class VeniceServer {
               sslFactory,
               localControllerUrl,
               d2ServiceName,
+              d2Client,
               d2ZkHost,
               false);
       metaSystemStoreSchemaInitializer.execute();
@@ -375,9 +384,12 @@ public class VeniceServer {
     HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats =
         new HeartbeatMonitoringServiceStats(metricsRepository, clusterConfig.getClusterName());
 
-    heartbeatMonitoringService =
-        new HeartbeatMonitoringService(metricsRepository, metadataRepo, serverConfig, heartbeatMonitoringServiceStats);
-    services.add(heartbeatMonitoringService);
+    heartbeatMonitoringService = new HeartbeatMonitoringService(
+        metricsRepository,
+        metadataRepo,
+        serverConfig,
+        heartbeatMonitoringServiceStats,
+        customizedViewFuture);
 
     this.zkHelixAdmin = Lazy.of(() -> new ZKHelixAdmin(serverConfig.getZookeeperAddress()));
     this.adaptiveThrottlerSignalService = null;
@@ -404,14 +416,14 @@ public class VeniceServer {
         false,
         compressorFactory,
         Optional.empty(),
-        null,
         false,
         remoteIngestionRepairService,
         pubSubClientsFactory,
         sslFactory,
         heartbeatMonitoringService,
         zkHelixAdmin,
-        adaptiveThrottlerSignalService);
+        adaptiveThrottlerSignalService,
+        d2Client);
 
     this.diskHealthCheckService = new DiskHealthCheckService(
         serverConfig.isDiskHealthCheckServiceEnabled(),
@@ -475,7 +487,9 @@ public class VeniceServer {
      */
     if (BlobTransferUtils.isBlobTransferManagerEnabled(serverConfig, false)) {
       aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
-
+      aggBlobTransferStats = new AggBlobTransferStats(
+          aggVersionedBlobTransferStats,
+          kafkaStoreIngestionService.getHostLevelIngestionStats());
       P2PBlobTransferConfig p2PBlobTransferConfig = new P2PBlobTransferConfig(
           serverConfig.getDvcP2pBlobTransferServerPort(),
           serverConfig.getDvcP2pBlobTransferClientPort(),
@@ -491,16 +505,47 @@ public class VeniceServer {
           serverConfig.getBlobTransferPeersConnectivityFreshnessInSeconds(),
           serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
           serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
-          serverConfig.getSnapshotCleanupIntervalInMins());
-
+          serverConfig.getSnapshotCleanupIntervalInMins(),
+          serverConfig.getMaxConcurrentBlobReceiveReplicas());
+      VeniceAdaptiveBlobTransferTrafficThrottler writeThrottler = null;
+      VeniceAdaptiveBlobTransferTrafficThrottler readThrottler = null;
+      if (serverConfig.isAdaptiveThrottlerEnabled() && serverConfig.isBlobTransferAdaptiveThrottlerEnabled()) {
+        writeThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(
+            serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+            serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
+            serverConfig.getBlobTransferAdaptiveThrottlerUpdatePercentage(),
+            true);
+        readThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(
+            serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+            serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
+            serverConfig.getBlobTransferAdaptiveThrottlerUpdatePercentage(),
+            false);
+        // Setup Limiter Signal for Read
+        readThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
+        readThrottler
+            .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentFollowerMaxHeartbeatLagSignalActive);
+        readThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
+        // Setup Limiter Signal for Write
+        writeThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
+        writeThrottler
+            .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentFollowerMaxHeartbeatLagSignalActive);
+        writeThrottler
+            .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
+        adaptiveThrottlerSignalService.registerThrottler(writeThrottler);
+        adaptiveThrottlerSignalService.registerThrottler(readThrottler);
+      }
       blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
           .setCustomizedViewFuture(customizedViewFuture)
           .setStorageMetadataService(storageMetadataService)
           .setReadOnlyStoreRepository(metadataRepo)
           .setStorageEngineRepository(storageService.getStorageEngineRepository())
-          .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
+          .setAggBlobTransferStats(aggBlobTransferStats)
           .setBlobTransferSSLFactory(sslFactory)
           .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(veniceConfigLoader))
+          .setAdaptiveBlobTransferWriteTrafficThrottler(writeThrottler)
+          .setAdaptiveBlobTransferReadTrafficThrottler(readThrottler)
+          .setPushStatusNotifierSupplier(
+              () -> helixParticipationService != null ? helixParticipationService.getPushStatusNotifier() : null)
           .build();
     } else {
       aggVersionedBlobTransferStats = null;
@@ -531,6 +576,8 @@ public class VeniceServer {
     // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case
     // that helix is disconnected but consumption service try to send message by helix.
     services.add(kafkaStoreIngestionService);
+    // Add HB monitoring service after Kafka consumer service so that it will be started after Kafka consumer service
+    services.add(heartbeatMonitoringService);
 
     /**
      * Resource cleanup service

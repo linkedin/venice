@@ -55,7 +55,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
         null,
         9L,
         1, // Same as the old value schema ID.
-        1L,
+        P1,
         0,
         0);
     Assert.assertTrue(mergeResult.isUpdateIgnored());
@@ -92,7 +92,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
         newValueBytes,
         11L,
         1, // Same as the old value schema ID.
-        1L,
+        P1,
         0,
         0);
     Assert.assertFalse(mergeResult.isUpdateIgnored());
@@ -139,7 +139,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
         newValueBytes,
         11L,
         1, // Different from the old value schema ID.
-        1L,
+        P1,
         0,
         0);
     Assert.assertFalse(mergeResult.isUpdateIgnored());
@@ -240,7 +240,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
         newValueBytes,
         15L,
         3, // same as the old value schema ID.
-        1L,
+        P1,
         0,
         0);
 
@@ -293,7 +293,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
         newValueBytes,
         15L,
         4, // new value schema ID is different from the old value schema ID.
-        1L,
+        P1,
         0,
         0);
 
@@ -347,7 +347,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
         newValueBytes,
         15L,
         5, // new value schema ID is different from the old value schema ID.
-        1L,
+        P1,
         0,
         0);
 
@@ -401,7 +401,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
         newValueBytes,
         25L,
         4, // new value schema ID is different from the old value schema ID.
-        1L,
+        P1,
         0,
         0);
 

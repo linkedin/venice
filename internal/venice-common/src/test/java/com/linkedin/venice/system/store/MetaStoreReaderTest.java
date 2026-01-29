@@ -37,7 +37,7 @@ public class MetaStoreReaderTest {
     storeClientMock = mock(AvroSpecificStoreClient.class);
   }
 
-  @Test()
+  @Test
   public void testGetHeartbeatFromMetaStore() throws ExecutionException, InterruptedException, TimeoutException {
     StoreMetaKey storeMetaKey =
         MetaStoreDataType.HEARTBEAT.getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
@@ -54,5 +54,12 @@ public class MetaStoreReaderTest {
     Assert.assertEquals(storeReaderSpy.getHeartbeat(storeName), 123L);
     verify(completableFutureMock).get(anyLong(), any());
     verify(storeClientMock).get(storeMetaKey);
+  }
+
+  @Test
+  public void testClientConfig() {
+    MetaStoreReader storeReaderSpy = spy(new MetaStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME));
+    ClientConfig clientConfig = storeReaderSpy.getClientConfig(storeName);
+    Assert.assertFalse(clientConfig.isStatTrackingEnabled());
   }
 }

@@ -10,6 +10,7 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
@@ -35,20 +36,20 @@ public class IsolatedIngestionRequestClient implements Closeable {
   public boolean reportIngestionStatus(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
+    String replicaId = Utils.getReplicaId(topicName, partitionId);
     // Avoid sending binary data in OffsetRecord and pollute logs.
     LOGGER.info(
-        "Sending ingestion report {}, isPositive: {}, message: {} for partition: {} of topic: {} at offset: {}",
+        "Sending ingestion report {}, isPositive: {}, message: {} for replica: {} at offset: {}",
         IngestionReportType.valueOf(report.reportType),
         report.isPositive,
         report.message,
-        partitionId,
-        topicName,
-        report.offset);
+        replicaId,
+        report.pubSubPosition);
     try {
       httpClientTransport.sendRequest(IngestionAction.REPORT, report);
       return true;
     } catch (Exception e) {
-      LOGGER.warn("Failed to send report with exception for topic: {}, partition: {}", topicName, partitionId, e);
+      LOGGER.warn("Failed to send report with exception for replica: {}", replicaId, e);
       return false;
     }
   }

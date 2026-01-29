@@ -19,4 +19,9 @@ public class DoubleGreaterOrEqualsPredicate implements DoublePredicate {
   public boolean evaluate(double value) {
     return (value - threshold) > -epsilon;
   }
+
+  @Override
+  public String toString() {
+    return "DoubleGreaterOrEqualsPredicate{threshold=" + threshold + ", epsilon=" + epsilon + "}";
+  }
 }

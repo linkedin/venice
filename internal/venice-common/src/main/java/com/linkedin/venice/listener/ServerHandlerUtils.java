@@ -56,4 +56,12 @@ public class ServerHandlerUtils {
       throw new VeniceException("Failed to extract client cert from the incoming request");
     }
   }
+
+  public static String extractClientPrincipal(ChannelHandlerContext ctx) {
+    try {
+      return extractClientCert(ctx).getSubjectX500Principal().getName();
+    } catch (Exception e) {
+      return "";
+    }
+  }
 }

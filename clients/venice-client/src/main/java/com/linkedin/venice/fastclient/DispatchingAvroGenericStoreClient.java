@@ -65,7 +65,6 @@ import org.apache.logging.log4j.Logger;
 public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(DispatchingAvroGenericStoreClient.class);
   private static final String URI_SEPARATOR = "/";
-  private static final Executor DESERIALIZATION_EXECUTOR = AbstractAvroStoreClient.getDefaultDeserializationExecutor();
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
   private final String BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE;
@@ -111,12 +110,21 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     this.metadata = metadata;
     this.config = config;
     this.transportClient = transportClient;
-    this.deserializationExecutor =
-        Optional.ofNullable(config.getDeserializationExecutor()).orElse(DESERIALIZATION_EXECUTOR);
+    this.deserializationExecutor = Optional.ofNullable(config.getDeserializationExecutor())
+        .orElseGet(AbstractAvroStoreClient::getDefaultDeserializationExecutor);
     String storeName = metadata.getStoreName();
     BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "BatchGet Transport Exception for " + storeName;
     COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "Compute Transport Exception for " + storeName;
-    this.storeDeserializerCache = new AvroStoreDeserializerCache<>(metadata);
+
+    // Use custom value deserializer factory if provided, otherwise use default Avro deserializer
+    Optional<DeserializerFactory<V>> valueDeserializerFactoryOptional = config.getValueDeserializerFactory();
+    if (valueDeserializerFactoryOptional.isPresent()) {
+      DeserializerFactory<V> factory = valueDeserializerFactoryOptional.get();
+      this.storeDeserializerCache =
+          new AvroStoreDeserializerCache<>(metadata::getValueSchema, factory::createDeserializer);
+    } else {
+      this.storeDeserializerCache = new AvroStoreDeserializerCache<>(metadata);
+    }
   }
 
   protected StoreMetadata getStoreMetadata() {
@@ -744,8 +752,14 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     metadata.start();
   }
 
-  protected RecordSerializer getKeySerializer(Schema keySchema) {
-    return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema);
+  protected RecordSerializer<K> getKeySerializer(Schema keySchema) {
+    // Use custom key serializer factory if provided, otherwise use default Avro serializer
+    Optional<SerializerFactory<K>> keySerializerFactoryOptional = config.getKeySerializerFactory();
+    if (keySerializerFactoryOptional.isPresent()) {
+      return keySerializerFactoryOptional.get().createSerializer(keySchema);
+    } else {
+      return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema);
+    }
   }
 
   @Override

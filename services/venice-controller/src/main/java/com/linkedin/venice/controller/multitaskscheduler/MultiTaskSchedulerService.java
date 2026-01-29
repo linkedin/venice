@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.multitaskscheduler;
 
 import com.linkedin.venice.service.AbstractVeniceService;
+import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -26,10 +27,16 @@ public class MultiTaskSchedulerService extends AbstractVeniceService {
    * Constructor to initialize the TaskSchedulerService with the task manager with pre-configured threadPoolSize and maxRetryAttempts.
    * @param threadPoolSize
    * @param maxRetryAttempts
+   * @param taskIntervalInSecond
+   * @param childFabricList
    */
-  // TODO: change threadPoolSize and maxRetryAttempts configurable
-  public MultiTaskSchedulerService(int threadPoolSize, int maxRetryAttempts) {
-    this.storeMigrationManager = StoreMigrationManager.createStoreMigrationManager(threadPoolSize, maxRetryAttempts);
+  public MultiTaskSchedulerService(
+      int threadPoolSize,
+      int maxRetryAttempts,
+      int taskIntervalInSecond,
+      List<String> childFabricList) {
+    this.storeMigrationManager = StoreMigrationManager
+        .createStoreMigrationManager(threadPoolSize, maxRetryAttempts, taskIntervalInSecond, childFabricList);
   }
 
   @Override
@@ -43,5 +50,9 @@ public class MultiTaskSchedulerService extends AbstractVeniceService {
   public void stopInner() throws Exception {
     LOGGER.info("MultiTaskScheduler service starts shutting down: ");
     storeMigrationManager.shutdown();
+  }
+
+  public StoreMigrationManager getStoreMigrationManager() {
+    return storeMigrationManager;
   }
 }

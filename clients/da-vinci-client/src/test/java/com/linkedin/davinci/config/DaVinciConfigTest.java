@@ -9,6 +9,7 @@ import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
+import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -19,21 +20,30 @@ import org.testng.annotations.Test;
 public class DaVinciConfigTest {
   public class TestRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, Integer> {
     public TestRecordTransformer(
+        String storeName,
         int storeVersion,
         Schema keySchema,
         Schema inputValueSchema,
         Schema outputValueSchema,
         DaVinciRecordTransformerConfig recordTransformerConfig) {
-      super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+      super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
     }
 
     @Override
-    public DaVinciRecordTransformerResult<Integer> transform(Lazy<Integer> key, Lazy<Integer> value, int partitionId) {
+    public DaVinciRecordTransformerResult<Integer> transform(
+        Lazy<Integer> key,
+        Lazy<Integer> value,
+        int partitionId,
+        DaVinciRecordTransformerRecordMetadata recordMetadata) {
       return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, value.get() + 1);
     }
 
     @Override
-    public void processPut(Lazy<Integer> key, Lazy<Integer> value, int partitionId) {
+    public void processPut(
+        Lazy<Integer> key,
+        Lazy<Integer> value,
+        int partitionId,
+        DaVinciRecordTransformerRecordMetadata recordMetadata) {
       return;
     }
 
@@ -52,7 +62,8 @@ public class DaVinciConfigTest {
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestRecordTransformer::new).build();
 
     DaVinciRecordTransformerFunctionalInterface recordTransformerFunction =
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema, config1) -> new TestRecordTransformer(
+        (storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, config1) -> new TestRecordTransformer(
+            storeName,
             storeVersion,
             keySchema,
             inputValueSchema,
@@ -75,7 +86,8 @@ public class DaVinciConfigTest {
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestRecordTransformer::new).build();
 
     DaVinciRecordTransformerFunctionalInterface recordTransformerFunction =
-        (storeVersion, keySchema, inputValueSchema, outputValueSchema, config1) -> new TestRecordTransformer(
+        (storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, config1) -> new TestRecordTransformer(
+            storeName,
             storeVersion,
             keySchema,
             inputValueSchema,

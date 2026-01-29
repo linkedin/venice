@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.io.ZeroCopyByteArrayOutputStream;
 import com.linkedin.venice.memory.ClassSizeEstimator;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubPositionFactory;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import java.io.IOException;
@@ -43,13 +44,13 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
             .readLong());
   }
 
-  public long getOffset() {
+  public long getInternalOffset() {
     return offset;
   }
 
   @Override
   public String toString() {
-    return offset + "";
+    return "ApacheKafkaOffsetPosition{" + offset + '}';
   }
 
   @Override
@@ -114,6 +115,11 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
     } catch (IOException e) {
       throw new VeniceException("Failed to serialize ApacheKafkaOffsetPosition", e);
     }
+  }
+
+  @Override
+  public Class<? extends PubSubPositionFactory> getFactoryClass() {
+    return ApacheKafkaOffsetPositionFactory.class;
   }
 
   @Override

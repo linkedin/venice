@@ -35,7 +35,6 @@ import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFac
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
@@ -248,7 +247,7 @@ public class TestTopicCleanupService {
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
-    doReturn(Pair.create(clusterName, null)).when(admin).discoverCluster(anyString());
+    doReturn(clusterName).when(admin).discoverCluster(anyString());
     doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), any());
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
 
@@ -264,8 +263,7 @@ public class TestTopicCleanupService {
     doReturn(apacheKafkaAdminAdapter).when(apacheKafkaAdminAdapterFactory).create(any(PubSubAdminAdapterContext.class));
 
     topicCleanupService.setSourceOfTruthPubSubAdminAdapter(apacheKafkaAdminAdapter);
-    Pair<String, String> pair = new Pair<>(clusterName, "");
-    doReturn(pair).when(admin).discoverCluster(anyString());
+    doReturn(clusterName).when(admin).discoverCluster(anyString());
     doThrow(new VeniceNoStoreException(storeName5)).when(admin).discoverCluster(storeName5);
 
     Store store2 = mock(Store.class);
@@ -392,7 +390,7 @@ public class TestTopicCleanupService {
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
     doReturn(true).when(admin).isLeaderControllerOfControllerCluster();
-    doReturn(Pair.create("cluster0", null)).when(admin).discoverCluster(any());
+    doReturn("cluster0").when(admin).discoverCluster(any());
     // Resource is still alive
     doReturn(true).when(admin).isResourceStillAlive(storeName2 + "_v2");
 
@@ -453,7 +451,7 @@ public class TestTopicCleanupService {
   public void testRunWhenCurrentControllerChangeFromFollowerToLeader() {
     String storeName1 = Utils.getUniqueString("store1");
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
-    doReturn(new Pair<>("clusterName", "")).when(admin).discoverCluster(anyString());
+    doReturn("clusterName").when(admin).discoverCluster(anyString());
     Map<PubSubTopic, Long> storeTopics1 = new HashMap<>();
     storeTopics1.put(getPubSubTopic(storeName1, "_v1"), 1000L);
     storeTopics1.put(getPubSubTopic(storeName1, "_v2"), 1000L);
@@ -511,7 +509,7 @@ public class TestTopicCleanupService {
     String storeName = Utils.getUniqueString("testStore");
     Map<PubSubTopic, Long> storeTopics = new HashMap<>();
     storeTopics.put(getPubSubTopic(storeName, "_rt"), 1000L);
-    doReturn(Pair.create("cluster0", null)).when(admin).discoverCluster(any());
+    doReturn("cluster0").when(admin).discoverCluster(any());
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
@@ -545,7 +543,7 @@ public class TestTopicCleanupService {
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000L);
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(Long.MAX_VALUE));
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(any(), eq(1000L));
-    doReturn(Pair.create("cluster0", null)).when(admin).discoverCluster(any());
+    doReturn("cluster0").when(admin).discoverCluster(any());
     doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), any());
     when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1).thenReturn(storeTopics2);
     doReturn(storeTopics2).when(remoteTopicManager).getAllTopicRetentions();

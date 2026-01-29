@@ -1,9 +1,6 @@
 package com.linkedin.venice.spark.input.pubsub;
 
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.jetbrains.annotations.NotNull;
 
@@ -32,8 +29,5 @@ public interface PubSubMessageConverter {
    *         9. Replication metadata version ID (int)
    *         See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
    */
-  InternalRow convert(
-      @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage,
-      String region,
-      int partitionNumber);
+  InternalRow convert(@NotNull DefaultPubSubMessage pubSubMessage, String region, int partitionNumber, long offset);
 }

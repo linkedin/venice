@@ -75,4 +75,8 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
   public void recordMisroutedStoreVersionRequest() {
     totalStats.recordMisroutedStoreVersionRequest();
   }
+
+  public void recordKeyNotFoundCount(int count) {
+    totalStats.recordKeyNotFoundCount(count);
+  }
 }

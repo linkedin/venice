@@ -15,4 +15,9 @@ public class AndPredicate<T> extends CompositePredicate<T> {
 
     return true;
   }
+
+  @Override
+  public String toString() {
+    return "AndPredicate{predicates=" + java.util.Arrays.toString(predicates) + "}";
+  }
 }

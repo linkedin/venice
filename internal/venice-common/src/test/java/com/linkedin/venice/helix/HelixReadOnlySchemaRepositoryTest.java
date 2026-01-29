@@ -45,8 +45,7 @@ import org.testng.annotations.Test;
 
 
 public class HelixReadOnlySchemaRepositoryTest {
-  private static final Schema VALUE_SCHEMA =
-      AvroCompatibilityHelper.parse(TestUtils.loadFileAsString("TestWriteComputeBuilder.avsc"));
+  private static final Schema VALUE_SCHEMA = AvroCompatibilityHelper.parse(TestUtils.loadFileAsString("PersonV1.avsc"));
   private static final Schema UPDATE_SCHEMA =
       WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
 

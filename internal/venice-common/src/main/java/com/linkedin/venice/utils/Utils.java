@@ -17,6 +17,7 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -27,6 +28,7 @@ import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -42,6 +44,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.OperatingSystemMXBean;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -91,6 +94,7 @@ public class Utils {
   public static final AtomicBoolean SUPPRESS_SYSTEM_EXIT = new AtomicBoolean();
   public static final String SEPARATE_TOPIC_SUFFIX = "_sep";
   public static final String FATAL_DATA_VALIDATION_ERROR = "fatal data validation problem";
+  public static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
 
   /**
    * Print an error and exit with error code 1
@@ -296,6 +300,21 @@ public class Utils {
     }
   }
 
+  /**
+   * Parses an integer from a string, ensuring that only null or valid integer values are accepted.
+   * Returns defaultValue if the value is null. Throws an exception if the value is invalid.
+   * @param value the string to parse
+   * @param fieldName the name of the field being validated
+   * @param defaultValue the default value to return if the input is null
+   * @return the parsed int value
+   */
+  public static int parseIntOrDefault(String value, String fieldName, int defaultValue) {
+    if (value == null || value.isEmpty()) {
+      return defaultValue;
+    }
+    return parseIntFromString(value, fieldName);
+  }
+
   public static long parseLongFromString(String value, String fieldName) {
     try {
       return Long.parseLong(value);
@@ -372,6 +391,23 @@ public class Utils {
     }
   }
 
+  /**
+   * For Store Lifecycle Hooks value, we expect the command-line interface users to use JSON
+   * format to represent it. This method deserialize it to List<LifecycleHooksRecord>.
+   */
+  public static List<LifecycleHooksRecord> parseStoreLifecycleHooksListFromString(String value, String fieldName) {
+    try {
+      if (value != null) {
+        ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
+        return objectMapper.readValue(value, new TypeReference<List<LifecycleHooksRecord>>() {
+        });
+      }
+    } catch (IOException e) {
+      throw new VeniceException(fieldName + " must be a valid JSON object, but value: " + value);
+    }
+    return Collections.emptyList();
+  }
+
   public static String getHelixNodeIdentifier(String hostname, int port) {
     return hostname + "_" + port;
   }
@@ -406,6 +442,12 @@ public class Utils {
   }
 
   public static Map<Integer, Schema> getAllSchemasFromResources(AvroProtocolDefinition protocolDef) {
+    return getAllSchemasFromResources(protocolDef, protocolDef.getCurrentProtocolVersionSchema());
+  }
+
+  public static Map<Integer, Schema> getAllSchemasFromResources(
+      AvroProtocolDefinition protocolDef,
+      Schema compiledSchema) {
     final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA =
         InternalAvroSpecificSerializer.SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA;
     final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL =
@@ -425,7 +467,6 @@ public class Utils {
     }
 
     byte compiledProtocolVersion = SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA;
-    String className = protocolDef.getClassName();
     Map<Integer, Schema> protocolSchemaMap = new TreeMap<>();
     int initialVersion;
     if (currentProtocolVersion > 0) {
@@ -435,6 +476,7 @@ public class Utils {
     }
     final String sep = "/"; // TODO: Make sure that jar resources are always forward-slash delimited, even on Windows
     int version = initialVersion;
+    String className = protocolDef.getClassName();
     while (true) {
       String versionPath = "avro" + sep;
       if (currentProtocolVersion != SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL) {
@@ -444,7 +486,7 @@ public class Utils {
       try {
         Schema schema = Utils.getSchemaFromResource(versionPath);
         protocolSchemaMap.put(version, schema);
-        if (schema.equals(protocolDef.getCurrentProtocolVersionSchema())) {
+        if (schema.equals(compiledSchema)) {
           compiledProtocolVersion = (byte) version;
           break;
         }
@@ -487,7 +529,7 @@ public class Utils {
     if (intendedCurrentProtocol == null) {
       throw new VeniceException(
           "Failed to get schema for current version: " + currentProtocolVersion + " class: " + className);
-    } else if (!intendedCurrentProtocol.equals(protocolDef.getCurrentProtocolVersionSchema())) {
+    } else if (!intendedCurrentProtocol.equals(compiledSchema)) {
       throw new VeniceException(
           "The intended protocol version (" + currentProtocolVersion
               + ") does not match the compiled protocol version (" + compiledProtocolVersion + ").");
@@ -1115,6 +1157,10 @@ public class Utils {
     return orig.replace('.', '_');
   }
 
+  public static String getReplicaId(String storeName, int version, int partition) {
+    return getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
+  }
+
   /**
    * Standard logging format for TopicPartition
    */
@@ -1172,6 +1218,16 @@ public class Utils {
       return pubSubTopicRepository.getTopic(getRealTimeTopicNameFromSeparateRealTimeTopic(pubSubTopic.getName()));
     }
     return pubSubTopic;
+  }
+
+  public static PubSubTopicPartition createPubSubTopicPartitionFromLeaderTopicPartition(
+      String pubSubAddress,
+      PubSubTopicPartition leaderTopicPartition) {
+    return pubSubAddress.endsWith(Utils.SEPARATE_TOPIC_SUFFIX)
+        ? new PubSubTopicPartitionImpl(
+            new PubSubTopicImpl(leaderTopicPartition.getTopicName() + Utils.SEPARATE_TOPIC_SUFFIX),
+            leaderTopicPartition.getPartitionNumber())
+        : leaderTopicPartition;
   }
 
   /**

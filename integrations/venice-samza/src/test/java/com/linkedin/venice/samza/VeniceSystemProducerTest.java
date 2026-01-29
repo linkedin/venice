@@ -1,6 +1,10 @@
 package com.linkedin.venice.samza;
 
+import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
+import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
+import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -9,6 +13,7 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -18,9 +23,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.LoadingCache;
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -33,6 +36,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
@@ -44,7 +48,9 @@ import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.samza.config.Config;
 import org.apache.samza.system.OutgoingMessageEnvelope;
+import org.apache.samza.system.SystemProducer;
 import org.apache.samza.system.SystemStream;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -157,7 +163,7 @@ public class VeniceSystemProducerTest {
     versionCreationResponse.setPartitions(2);
     versionCreationResponse.setKafkaTopic("test_store_v1");
 
-    VeniceWriter<byte[], byte[], byte[]> resultantVeniceWriter =
+    AbstractVeniceWriter<byte[], byte[], byte[]> resultantVeniceWriter =
         veniceSystemProducerSpy.getVeniceWriter(versionCreationResponse);
 
     Properties capturedProperties = propertiesArgumentCaptor.getValue();
@@ -314,21 +320,101 @@ public class VeniceSystemProducerTest {
   }
 
   @Test
-  public void testSchemaCache() {
-    final LoadingCache<Schema, String> canonicalSchemaStrCache =
-        Caffeine.newBuilder().maximumSize(3).build(AvroCompatibilityHelper::toParsingForm);
+  public void testVeniceSystemProducerWithMixedD2Clients() {
+    // Create mock D2Client instance for primary controller only
+    D2Client mockPrimaryControllerColoD2Client = mock(D2Client.class);
 
-    for (int i = 0; i < 100; ++i) {
-      Schema.Field field1 =
-          AvroCompatibilityHelper.createSchemaField("field1", Schema.create(Schema.Type.STRING), "doc", "default");
-      Schema schema = Schema.createRecord("test_record" + i, "doc", "namespace", false, Arrays.asList(field1));
-      canonicalSchemaStrCache.get(schema);
+    // Create mock VeniceSystemFactory
+    VeniceSystemFactory veniceSystemFactory = new VeniceSystemFactory();
+
+    // Create VeniceSystemProducer with one provided D2Client and one null
+    VeniceSystemProducer producer = veniceSystemFactory.createSystemProducer(
+        null, // Will be created using ZK host
+        mockPrimaryControllerColoD2Client,
+        "primaryServiceName",
+        "testStore",
+        Version.PushType.STREAM,
+        "testJobId",
+        "testFabric",
+        false,
+        mock(Config.class),
+        Optional.empty(),
+        Optional.empty());
+
+    try {
+      producer.start();
+      // Verify that the provided D2Client instance is accessible
+      fail("Should throw IllegalStateException when starting with null D2Client");
+    } catch (IllegalStateException e) {
+      // Expected exception, as one D2Client is null
+      assertTrue(
+          e.getMessage().contains("Cannot create child colo D2Client: no D2Client provided and no ZK host available"));
+    } finally {
+      producer.stop();
     }
+  }
 
-    long cacheSize = canonicalSchemaStrCache.estimatedSize();
-    Assert.assertTrue(
-        canonicalSchemaStrCache.estimatedSize() < 10,
-        "The size of the cache shouldn't go beyond 10 when specifying the maximum size as 3 even with estimation, but got: "
-            + cacheSize);
+  @Test
+  public void testGetProducerWithD2ClientBranches() {
+    VeniceSystemFactory factory = spy(new VeniceSystemFactory());
+    Config config = mock(Config.class);
+    D2Client mockChildD2Client = mock(D2Client.class);
+    D2Client mockPrimaryD2Client = mock(D2Client.class);
+
+    // Setup required configs for non-discovery URL path
+    when(config.get(VeniceSystemFactory.DEPLOYMENT_ID)).thenReturn("test-job-id");
+    when(config.get(VeniceSystemFactory.VENICE_CONTROLLER_DISCOVERY_URL)).thenReturn(null);
+    when(config.get(VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS)).thenReturn("parent-zk:2181");
+    when(config.get(VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS)).thenReturn("child-zk:2181");
+    when(config.get(VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE)).thenReturn("ChildController");
+    when(config.get(VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE)).thenReturn("ParentController");
+    when(config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION)).thenReturn("test-fabric");
+    when(config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true)).thenReturn(true);
+    when(config.getBoolean(SSL_ENABLED, true)).thenReturn(false);
+    when(config.get(VENICE_PARTITIONERS)).thenReturn(null);
+
+    // Test case 1: Both D2 clients are provided (first branch)
+    // Mock the createSystemProducer method to verify which overload is called
+    VeniceSystemProducer mockProducer1 = mock(VeniceSystemProducer.class);
+
+    doReturn(mockProducer1).when(factory)
+        .createSystemProducer(
+            eq(mockChildD2Client),
+            eq(mockPrimaryD2Client),
+            anyString(),
+            anyString(),
+            any(Version.PushType.class),
+            anyString(),
+            anyString(),
+            anyBoolean(),
+            any(Config.class),
+            any(Optional.class),
+            any(Optional.class));
+
+    SystemProducer result1 =
+        factory.getProducer("testSystem", "testStore", false, "STREAM", config, mockChildD2Client, mockPrimaryD2Client);
+
+    assertNotNull(result1);
+    assertEquals(result1, mockProducer1);
+
+    // Test case 2: No D2 clients are provided (second branch)
+    VeniceSystemProducer mockProducer2 = mock(VeniceSystemProducer.class);
+    doReturn(mockProducer2).when(factory)
+        .createSystemProducer(
+            eq("child-zk:2181"),
+            eq("child-zk:2181"), // primaryControllerColoD2ZKHost for non-aggregate
+            eq("ChildController"),
+            eq("testStore"),
+            eq(Version.PushType.STREAM),
+            eq("test-job-id"),
+            eq("test-fabric"),
+            eq(true),
+            any(Optional.class),
+            any(Optional.class));
+
+    SystemProducer result2 = factory.getProducer("testSystem", "testStore", false, "STREAM", config);
+
+    assertNotNull(result2);
+    assertEquals(result2, mockProducer2);
   }
 }

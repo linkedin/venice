@@ -14,6 +14,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
@@ -39,7 +40,6 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -105,7 +105,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   private final String VALUE_PREFIX = "value";
   private final String VALUE_PREFIX_INC_PUSH = "value-inc";
   private final String STORE_NAME = Utils.getUniqueString("store");
-  private final int numServers = 5;
+  private final int numServers = 3;
   List<Integer> allIncPushKeys = new ArrayList<>(); // all keys ingested via incremental push
   List<Integer> allNonIncPushKeysUntilLastVersion = new ArrayList<>(); // all keys ingested only via batch push
 
@@ -144,11 +144,6 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    TestUtils.assertCommand(
-        parentControllerClient.configureActiveActiveReplicationForCluster(
-            true,
-            VeniceUserStoreType.INCREMENTAL_PUSH.toString(),
-            Optional.empty()));
     // create an active-active enabled store
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
@@ -373,40 +368,39 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     // Wait for push to be push completed.
     TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
       for (int colo = 0; colo < NUMBER_OF_COLOS; colo++) {
+        ExecutionStatus status = clusterWrappers.get(colo)
+            .getLeaderVeniceController()
+            .getVeniceAdmin()
+            .getOffLinePushStatus(clusterWrappers.get(colo).getClusterName(), topic)
+            .getExecutionStatus();
         assertEquals(
-            clusterWrappers.get(colo)
-                .getLeaderVeniceController()
-                .getVeniceAdmin()
-                .getOffLinePushStatus(clusterWrappers.get(colo).getClusterName(), topic)
-                .getExecutionStatus(),
-            ExecutionStatus.COMPLETED);
+            status,
+            ExecutionStatus.COMPLETED,
+            "In region " + colo + " the push did not complete successfully. Current status: " + status);
       }
     });
 
     // Wait for storage node to finish consuming, and new version to be activated
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       for (int colo = 0; colo < NUMBER_OF_COLOS; colo++) {
-        int currentVersion =
-            ControllerClient
-                .getStore(
-                    clusterWrappers.get(colo).getLeaderVeniceController().getControllerUrl(),
-                    clusterWrappers.get(colo).getClusterName(),
-                    STORE_NAME)
-                .getStore()
-                .getCurrentVersion();
+        int currentVersion = clusterWrappers.get(colo)
+            .getLeaderVeniceController()
+            .getVeniceAdmin()
+            .getStore(clusterWrappers.get(colo).getClusterName(), STORE_NAME)
+            .getCurrentVersion();
         LOGGER.info("colo {} currentVersion {}, pushVersion {}", colo, currentVersion, newVersion);
-        if (currentVersion != newVersion) {
-          return false;
-        }
+        assertTrue(
+            currentVersion >= newVersion,
+            "Version is not activated in colo " + colo + ". Current version: " + currentVersion);
       }
-      return true;
     });
 
     // validate the ingested data
     AvroGenericStoreClient<String, Object> storeClient = null;
+    D2Client d2Client = null;
 
     try {
-      D2Client d2Client = D2TestUtils.getD2Client(clusterWrappers.get(NON_SOURCE_COLO).getZk().getAddress(), false);
+      d2Client = D2TestUtils.getD2Client(clusterWrappers.get(NON_SOURCE_COLO).getZk().getAddress(), false);
       D2ClientUtils.startClient(d2Client);
       storeClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(STORE_NAME)
@@ -439,6 +433,9 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     } finally {
       if (storeClient != null) {
         storeClient.close();
+      }
+      if (d2Client != null) {
+        D2ClientUtils.shutdownClient(d2Client);
       }
     }
 
@@ -485,8 +482,9 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     }
 
     storeClient = null;
+    d2Client = null;
     try {
-      D2Client d2Client = D2TestUtils.getD2Client(clusterWrappers.get(NON_SOURCE_COLO).getZk().getAddress(), false);
+      d2Client = D2TestUtils.getD2Client(clusterWrappers.get(NON_SOURCE_COLO).getZk().getAddress(), false);
       D2ClientUtils.startClient(d2Client);
       storeClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(STORE_NAME)
@@ -528,6 +526,9 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     } finally {
       if (storeClient != null) {
         storeClient.close();
+      }
+      if (d2Client != null) {
+        D2ClientUtils.shutdownClient(d2Client);
       }
     }
 

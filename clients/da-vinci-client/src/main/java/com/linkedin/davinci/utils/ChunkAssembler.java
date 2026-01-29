@@ -7,6 +7,7 @@ import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -39,7 +40,7 @@ public abstract class ChunkAssembler {
       int schemaId,
       byte[] keyBytes,
       ByteBuffer valueBytes,
-      long recordOffset,
+      PubSubPosition recordOffset,
       VeniceCompressor compressor) {
     ByteBufferValueRecord<ByteBuffer> assembledRecord = null;
     bufferStorageEngine.addStoragePartitionIfAbsent(pubSubTopicPartition.getPartitionNumber());

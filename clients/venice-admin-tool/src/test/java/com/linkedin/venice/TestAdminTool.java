@@ -1,20 +1,28 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.Arg.STORES_TO_REPLICATE;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.linkedin.venice.AdminTool.ConsumerContext;
 import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -22,18 +30,25 @@ import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.ChangeCaptureView;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -41,6 +56,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
@@ -82,9 +98,14 @@ public class TestAdminTool {
   public void testAdminUpdateStoreArg() throws ParseException, IOException {
     final String K1 = "k1", V1 = "v1", K2 = "k2", V2 = "v2", K3 = "k3", V3 = "v3";
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
-        "testStore", "--rmd-chunking-enabled", "true", "--blob-transfer-enabled", "true", "--target-region-swap",
-        "prod", "--target-region-swap-wait-time", "100", "--global-rt-div-enabled", "true", "--partitioner-params",
-        "{\"" + K1 + "\":\"" + V1 + "\",\"" + K2 + "\":\"" + V2 + "\",\"" + K3 + "\":\"" + V3 + "\"}" };
+        "testStore", "--rmd-chunking-enabled", "true", "--blob-transfer-enabled", "true",
+        "--blob-transfer-in-server-enabled", "ENABLED", "--target-region-swap", "prod",
+        "--target-region-swap-wait-time", "100", "--global-rt-div-enabled", "true", "--regular-version-etl-enabled",
+        "true", "--venice-etl-strategy", "EXTERNAL_WITH_VENICE_TRIGGER", "--partitioner-params",
+        "{\"" + K1 + "\":\"" + V1 + "\",\"" + K2 + "\":\"" + V2 + "\",\"" + K3 + "\":\"" + V3 + "\"}",
+        "--store-lifecycle-hooks-list",
+        "[{\"storeLifecycleHooksClassName\":\"com.example.MyHook1\",\"storeLifecycleHooksParams\":{\"paramA\":\"valueA\",\"paramB\":\"valueB\"}},{\"storeLifecycleHooksClassName\":\"com.example.MyHook2\",\"storeLifecycleHooksParams\":{\"foo\":\"bar\"}}]",
+        "--flink-venice-views-enabled", "true" };
 
     CommandLine commandLine = AdminTool.getCommandLine(args);
     UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
@@ -92,18 +113,29 @@ public class TestAdminTool {
     Assert.assertTrue(params.getRmdChunkingEnabled().get());
     Assert.assertTrue(params.getBlobTransferEnabled().isPresent());
     Assert.assertTrue(params.getBlobTransferEnabled().get());
+    Assert.assertTrue(params.getBlobTransferInServerEnabled().isPresent());
+    assertEquals(params.getBlobTransferInServerEnabled().get(), "ENABLED");
     Assert.assertTrue(params.getTargetSwapRegion().isPresent());
-    Assert.assertEquals(params.getTargetSwapRegion().get(), "prod");
+    assertEquals(params.getTargetSwapRegion().get(), "prod");
     Assert.assertTrue(params.getTargetRegionSwapWaitTime().isPresent());
-    Assert.assertEquals(params.getTargetRegionSwapWaitTime(), Optional.of(100));
+    assertEquals(params.getTargetRegionSwapWaitTime(), Optional.of(100));
     Assert.assertTrue(params.isGlobalRtDivEnabled().isPresent());
     Assert.assertTrue(params.isGlobalRtDivEnabled().get());
+    Assert.assertTrue(params.getRegularVersionETLEnabled().isPresent());
+    Assert.assertTrue(params.getRegularVersionETLEnabled().get());
+    Assert.assertTrue(params.getETLStrategy().isPresent());
+    Assert.assertEquals(params.getETLStrategy().get(), VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER);
     Optional<Map<String, String>> partitionerParams = params.getPartitionerParams();
     Assert.assertTrue(partitionerParams.isPresent());
     Map<String, String> partitionerParamsMap = partitionerParams.get();
-    Assert.assertEquals(partitionerParamsMap.get(K1), V1);
-    Assert.assertEquals(partitionerParamsMap.get(K2), V2);
-    Assert.assertEquals(partitionerParamsMap.get(K3), V3);
+    assertEquals(partitionerParamsMap.get(K1), V1);
+    assertEquals(partitionerParamsMap.get(K2), V2);
+    assertEquals(partitionerParamsMap.get(K3), V3);
+    Assert.assertTrue(params.getStoreLifecycleHooks().isPresent());
+    List<LifecycleHooksRecord> lifecycleHooksRecords = params.getStoreLifecycleHooks().get();
+    assertEquals(lifecycleHooksRecords.size(), 2);
+    assertTrue(params.getFlinkVeniceViewsEnabled().isPresent());
+    assertTrue(params.getFlinkVeniceViewsEnabled().get());
   }
 
   @Test
@@ -124,10 +156,26 @@ public class TestAdminTool {
     Assert.assertTrue(
         serverKafkaFetchQuotaRecordsPerSecond.get().containsKey(regionName),
         "Kafka fetch quota does not have info for region");
-    Assert.assertEquals(
+    assertEquals(
         (int) serverKafkaFetchQuotaRecordsPerSecond.get().get(regionName),
         kafkaFetchQuota,
         "Kafka fetch quota has incorrect info for region");
+  }
+
+  @Test
+  public void testAdminUpdateDarkClusterConfigArg() throws ParseException, IOException {
+    String controllerUrl = "controllerUrl";
+    String clusterName = "clusterName";
+    String storeNames = "store1,store2,store3";
+
+    String[] args = { "--update-dark-cluster-config", "--url", controllerUrl, "--cluster", clusterName,
+        "--" + STORES_TO_REPLICATE.getArgName(), storeNames };
+
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+    UpdateDarkClusterConfigQueryParams params = AdminTool.getUpdateDarkClusterConfigQueryParams(commandLine);
+    Optional<List<String>> storesToReplicate = params.getStoresToReplicate();
+    Assert.assertTrue(storesToReplicate.isPresent(), "Stores to replicate not parsed from args");
+    assertEquals(storesToReplicate.get().size(), 3);
   }
 
   @Test
@@ -160,6 +208,71 @@ public class TestAdminTool {
   }
 
   @Test
+  public void testAutoMigrateStore() throws ParseException, IOException {
+    String storeName = "testAutoMigrateStore";
+    String srcCluster = "testCluster1";
+    String dstCluster = "testCluster2";
+    String initialStep = "0";
+    String abortOnFailure = "true";
+
+    String[] argsWithOptionalFlags =
+        { "--auto-migrate-store", "--url", "controllerUrl", "--store", storeName, "--cluster-src", srcCluster,
+            "--cluster-dest", dstCluster, "--initial-step", initialStep, "--abort-on-failure", abortOnFailure };
+    CommandLine fullCmd = AdminTool.getCommandLine(argsWithOptionalFlags);
+    String[] argsMandatoryOnly = { "--auto-migrate-store", "--url", "controllerUrl", "--store", storeName,
+        "--cluster-src", srcCluster, "--cluster-dest", dstCluster };
+    CommandLine BasicCmd = AdminTool.getCommandLine(argsMandatoryOnly);
+
+    try (MockedStatic<ControllerClientFactory> controllerClientFactoryMockedStatic =
+        Mockito.mockStatic(ControllerClientFactory.class)) {
+
+      ControllerClient srcControllerClient = mock(ControllerClient.class);
+      ControllerClient destControllerClient = mock(ControllerClient.class);
+
+      StoreMigrationResponse storeMigrationPreconditionCheckResponse = new StoreMigrationResponse();
+      storeMigrationPreconditionCheckResponse.setStoreMigrationAllowed(true);
+      when(srcControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationPreconditionCheckResponse);
+      when(destControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationPreconditionCheckResponse);
+
+      StoreMigrationResponse storeAutoMigrationResponse = new StoreMigrationResponse();
+      storeAutoMigrationResponse.setSrcClusterName(srcCluster);
+      storeAutoMigrationResponse.setCluster(dstCluster);
+      storeAutoMigrationResponse.setName(storeName);
+      when(srcControllerClient.autoMigrateStore(eq(storeName), eq(dstCluster), any(), any(), any()))
+          .thenReturn(storeAutoMigrationResponse);
+
+      StoreResponse storeResponse = new StoreResponse();
+      StoreInfo srcStoreInfo = createStore(storeName, true);
+      srcStoreInfo.setMigrating(false);
+      storeResponse.setStore(srcStoreInfo);
+      when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
+
+      // Create two different controller clients for the source and destination clusters.
+      controllerClientFactoryMockedStatic
+          .when(() -> ControllerClientFactory.getControllerClient(eq(srcCluster), anyString(), any()))
+          .thenReturn(srcControllerClient);
+      controllerClientFactoryMockedStatic
+          .when(() -> ControllerClientFactory.getControllerClient(eq(dstCluster), anyString(), any()))
+          .thenReturn(destControllerClient);
+
+      AdminTool.autoMigrateStore(fullCmd);
+      Mockito.verify(srcControllerClient)
+          .autoMigrateStore(storeName, dstCluster, Optional.of(0), Optional.empty(), Optional.of(true));
+      AdminTool.autoMigrateStore(BasicCmd);
+      Mockito.verify(srcControllerClient)
+          .autoMigrateStore(storeName, dstCluster, Optional.empty(), Optional.empty(), Optional.empty());
+
+      srcStoreInfo.setMigrating(true);
+      storeResponse.setStore(srcStoreInfo);
+
+      VeniceException ex = expectThrows(VeniceException.class, () -> AdminTool.autoMigrateStore(BasicCmd));
+      String expectedMsg =
+          String.format("Store %s is migrating. Finish the current migration before starting a new one.", storeName);
+      assertEquals(ex.getMessage(), expectedMsg);
+    }
+  }
+
+  @Test
   public void testAbortMigration() {
     String storeName = "testAbortMigrationStore";
     String srcCluster = "testCluster1";
@@ -175,25 +288,25 @@ public class TestAdminTool {
           Mockito.mockStatic(AdminTool.class, Mockito.CALLS_REAL_METHODS)) {
         ControllerClient srcControllerClient = mock(ControllerClient.class);
         ControllerClient destControllerClient = mock(ControllerClient.class);
-        Mockito.when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
+        when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
 
         StoreMigrationResponse storeMigrationResponse = new StoreMigrationResponse();
         storeMigrationResponse.isStoreMigrationAllowed();
-        Mockito.when(srcControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationResponse);
-        Mockito.when(destControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationResponse);
+        when(srcControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationResponse);
+        when(destControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationResponse);
 
         D2ServiceDiscoveryResponse discoveryResponse = new D2ServiceDiscoveryResponse();
         discoveryResponse.setCluster(srcCluster);
-        Mockito.when(srcControllerClient.discoverCluster(storeName)).thenReturn(discoveryResponse);
+        when(srcControllerClient.discoverCluster(storeName)).thenReturn(discoveryResponse);
 
         StoreMigrationResponse abortMigrationResponse = new StoreMigrationResponse();
         abortMigrationResponse.setSrcClusterName(srcCluster);
         abortMigrationResponse.setCluster(srcCluster);
         abortMigrationResponse.setName(storeName);
 
-        Mockito.when(srcControllerClient.abortMigration(storeName, dstCluster)).thenReturn(abortMigrationResponse);
-        Mockito.when(destControllerClient.getStore(storeName)).thenReturn(storeResponse);
-        Mockito.when(destControllerClient.deleteStore(storeName, true)).thenReturn(new TrackableControllerResponse());
+        when(srcControllerClient.abortMigration(storeName, dstCluster)).thenReturn(abortMigrationResponse);
+        when(destControllerClient.getStore(storeName)).thenReturn(storeResponse);
+        when(destControllerClient.deleteStore(storeName, true)).thenReturn(new TrackableControllerResponse());
 
         // Create two different controller clients for the source and destination clusters.
         controllerClientMockedStatic
@@ -213,8 +326,8 @@ public class TestAdminTool {
         Mockito.verify(destControllerClient, times(0)).deleteStore(storeName, true);
         srcStoreInfo.setMigrating(true);
         storeResponse.setStore(srcStoreInfo);
-        Mockito.when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
-        Mockito.when(destControllerClient.getStore(storeName)).thenReturn(storeResponse);
+        when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
+        when(destControllerClient.getStore(storeName)).thenReturn(storeResponse);
 
         String promptAbortMigration = "Next step is to reset store migration flag, storeConfig and cluster "
             + "discovery mapping. Do you want to proceed?";
@@ -306,12 +419,11 @@ public class TestAdminTool {
     String storeName = "test-store1";
     String[] getMetadataArgs = { "--request-based-metadata", "--url", "http://localhost:7036", "--server-url",
         "http://localhost:7036", "--store", storeName };
-    VeniceException requestException =
-        Assert.expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgs));
+    VeniceException requestException = expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgs));
     Assert.assertTrue(requestException.getMessage().contains("Encountered exception while trying to send metadata"));
     String[] getMetadataArgsSSL = { "--request-based-metadata", "--url", "https://localhost:7036", "--server-url",
         "https://localhost:7036", "--store", storeName };
-    VeniceException sslException = Assert.expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgsSSL));
+    VeniceException sslException = expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgsSSL));
     Assert.assertTrue(sslException.getMessage().contains("requires admin tool to be executed with cert"));
 
     TransportClient transportClient = mock(TransportClient.class);
@@ -387,15 +499,15 @@ public class TestAdminTool {
     CommandLine commandLine = AdminTool.getCommandLine(args);
     UpdateStoreQueryParams params = AdminTool.getConfigureStoreViewQueryParams(commandLine);
     Assert.assertTrue(params.getViewName().isPresent());
-    Assert.assertEquals(params.getViewName().get(), "testView");
+    assertEquals(params.getViewName().get(), "testView");
     Assert.assertTrue(params.getViewClassName().isPresent());
-    Assert.assertEquals(params.getViewClassName().get(), ChangeCaptureView.class.getCanonicalName());
+    assertEquals(params.getViewClassName().get(), ChangeCaptureView.class.getCanonicalName());
 
     Optional<Map<String, String>> viewParams = params.getViewClassParams();
     Assert.assertTrue(viewParams.isPresent());
     Map<String, String> viewParamsMap = viewParams.get();
-    Assert.assertEquals(viewParamsMap.get(K1), V1);
-    Assert.assertEquals(viewParamsMap.get(K2), V2);
+    assertEquals(viewParamsMap.get(K1), V1);
+    assertEquals(viewParamsMap.get(K2), V2);
 
     // Case 2: Happy path to disable a view.
     String[] args1 = { "--configure-store-view", "--url", "http://localhost:7036", "--cluster", "test-cluster",
@@ -404,7 +516,7 @@ public class TestAdminTool {
     params = AdminTool.getConfigureStoreViewQueryParams(commandLine);
     Assert.assertTrue(params.getViewName().isPresent());
     Assert.assertTrue(params.getDisableStoreView().isPresent());
-    Assert.assertEquals(params.getViewName().get(), "testView");
+    assertEquals(params.getViewName().get(), "testView");
     Assert.assertFalse(params.getViewClassName().isPresent());
 
     // Case 3: Configure view with missing viewName;
@@ -420,5 +532,54 @@ public class TestAdminTool {
     String[] args = { "--update-admin-operation-protocol-version", "--url", "http://localhost:7036", "--cluster",
         "test-cluster", "--admin-operation-protocol-version", "thisShouldBeLongValue" };
     Assert.assertThrows(VeniceException.class, () -> AdminTool.main(args));
+  }
+
+  @Test
+  public void testConsumerContextAndHelperMethods() {
+    // Test 1: Verify ConsumerContext encapsulates dependencies correctly
+    VeniceProperties veniceProperties = new VeniceProperties(new Properties());
+    PubSubPositionTypeRegistry registry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties);
+    PubSubPositionDeserializer deserializer = new PubSubPositionDeserializer(registry);
+
+    ConsumerContext context = new ConsumerContext(veniceProperties, registry, deserializer);
+
+    // Verify encapsulation works correctly
+    assertEquals(
+        context.getVeniceProperties(),
+        veniceProperties,
+        "ConsumerContext should encapsulate VeniceProperties");
+    assertEquals(
+        context.getPositionTypeRegistry(),
+        registry,
+        "ConsumerContext should encapsulate PubSubPositionTypeRegistry");
+    assertEquals(
+        context.getPositionDeserializer(),
+        deserializer,
+        "ConsumerContext should encapsulate PubSubPositionDeserializer");
+
+    // Test 2: Verify position parsing functionality with offset argument
+    CommandLine offsetCmd = mock(CommandLine.class);
+    when(offsetCmd.hasOption(Arg.STARTING_OFFSET.first())).thenReturn(true);
+    when(offsetCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(false);
+    when(offsetCmd.getOptionValue(Arg.STARTING_OFFSET.first())).thenReturn("100");
+
+    // Test parsePositionFromArgs directly (now package-private with @VisibleForTesting)
+    PubSubPosition position = AdminTool.parsePositionFromArgs(offsetCmd, deserializer, true);
+    assertNotNull(position, "parsePositionFromArgs should return a valid position for offset argument");
+
+    // Test 3: Verify position parsing with position argument (base64 encoded)
+    CommandLine positionCmd = mock(CommandLine.class);
+    when(positionCmd.hasOption(Arg.STARTING_OFFSET.first())).thenReturn(false);
+    when(positionCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(true);
+    when(positionCmd.getOptionValue(Arg.STARTING_POSITION.first())).thenReturn("0:AQIDBA==");
+
+    PubSubPosition positionFromWireFormat = AdminTool.parsePositionFromArgs(positionCmd, deserializer, true);
+    assertNotNull(positionFromWireFormat, "parsePositionFromArgs should return a valid position for position argument");
+
+    // Test 4: Verify error handling when neither argument is provided but required
+    CommandLine emptyCmd = mock(CommandLine.class);
+    when(emptyCmd.hasOption(Arg.STARTING_OFFSET.first())).thenReturn(false);
+    when(emptyCmd.hasOption(Arg.STARTING_POSITION.first())).thenReturn(false);
+    expectThrows(Exception.class, () -> AdminTool.parsePositionFromArgs(emptyCmd, deserializer, true));
   }
 }

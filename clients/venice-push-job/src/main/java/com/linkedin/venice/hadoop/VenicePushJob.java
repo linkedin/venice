@@ -12,6 +12,7 @@ import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENAB
 import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchema;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
@@ -32,6 +33,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_SSL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.HADOOP_TMP_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_ID;
@@ -62,8 +64,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TI
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.SORTED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
@@ -72,14 +74,15 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP_WAIT_TIME_MINUTES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -94,13 +97,17 @@ import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
+import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
+import com.linkedin.venice.hadoop.exceptions.VeniceSchemaMismatchException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
@@ -121,7 +128,9 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -131,11 +140,13 @@ import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -250,6 +261,7 @@ public class VenicePushJob implements AutoCloseable {
   private PushJobHeartbeatSender pushJobHeartbeatSender = null;
   private volatile boolean pushJobStatusUploadDisabledHasBeenLogged = false;
   private final ScheduledExecutorService timeoutExecutor;
+  private static final int VERSION_SWAP_BUFFER_TIME_MINUTES = 20;
 
   /**
    * @param jobId  id of the job
@@ -258,7 +270,8 @@ public class VenicePushJob implements AutoCloseable {
   public VenicePushJob(String jobId, Properties vanillaProps) {
     this.jobId = jobId;
     this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
-    this.timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
+    this.timeoutExecutor = Executors
+        .newSingleThreadScheduledExecutor(new DaemonThreadFactory(this.getClass().getName() + "-VPJTimeoutExecutor"));
     LOGGER.info("Constructing {}: {}", VenicePushJob.class.getSimpleName(), props.toString(true));
     this.sslProperties = Lazy.of(() -> {
       try {
@@ -286,6 +299,8 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.jobStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
     if (pushJobSetting.isSourceKafka) {
       pushId = pushJobSetting.repushTTLEnabled ? Version.generateTTLRePushId(pushId) : Version.generateRePushId(pushId);
+    } else if (pushJobSetting.allowRegularPushWithTTLRepush) {
+      pushId = Version.generateRegularPushWithTTLRePushId(pushId);
     }
     pushJobDetails.pushId = pushId;
   }
@@ -332,7 +347,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.jobServerName = props.getString(JOB_SERVER_NAME, "unknown_job_server");
     pushJobSettingToReturn.veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     pushJobSettingToReturn.enableSSL = props.getBoolean(ENABLE_SSL, DEFAULT_SSL_ENABLED);
-    pushJobSettingToReturn.timestampField = props.getOrDefault(TIMESTAMP_FIELD_PROP, "");
+    pushJobSettingToReturn.rmdField = props.getOrDefault(RMD_FIELD_PROP, "");
     if (pushJobSettingToReturn.enableSSL) {
       VPJSSLUtils.validateSslProperties(props);
     }
@@ -394,6 +409,8 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
+    pushJobSettingToReturn.isBatchWriteOptimizationForHybridStoreEnabled =
+        props.getBoolean(HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED, false);
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
     pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled =
@@ -419,6 +436,9 @@ public class VenicePushJob implements AutoCloseable {
           "Target region push and target region push with deferred version swap cannot be enabled"
               + " at the same time");
     }
+
+    pushJobSettingToReturn.targetRegionPushWithDeferredSwapWaitTime =
+        props.getInt(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP_WAIT_TIME_MINUTES, -1);
 
     if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
       if (pushJobSettingToReturn.isTargetedRegionPushEnabled
@@ -520,6 +540,7 @@ public class VenicePushJob implements AutoCloseable {
       Validate.isAssignableFrom(DataWriterComputeJob.class, objectClass);
       pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
     }
+    pushJobSettingToReturn.allowRegularPushWithTTLRepush = props.getBoolean(ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH, false);
     return pushJobSettingToReturn;
   }
 
@@ -674,13 +695,20 @@ public class VenicePushJob implements AutoCloseable {
         initKIFRepushDetails();
       }
 
+      if (pushJobSetting.targetRegionPushWithDeferredSwapWaitTime > -1) {
+        controllerClient.updateStore(
+            pushJobSetting.storeName,
+            new UpdateStoreQueryParams()
+                .setTargetRegionSwapWaitTime(pushJobSetting.targetRegionPushWithDeferredSwapWaitTime));
+      }
+
       setupJobTimeoutMonitor();
       initPushJobDetails();
       logGreeting();
       sendPushJobDetailsToController();
       HadoopUtils.createDirectoryWithPermission(sharedTmpDir, PERMISSION_777);
       HadoopUtils.createDirectoryWithPermission(jobTmpDir, PERMISSION_700);
-      validateKafkaMessageEnvelopeSchema(pushJobSetting);
+      pushJobSetting.newKmeSchemasFromController = validateAndFetchNewKafkaMessageEnvelopeSchemas(pushJobSetting);
       validateRemoteHybridSettings(pushJobSetting);
       validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(pushJobSetting.storeStorageQuota);
@@ -725,6 +753,9 @@ public class VenicePushJob implements AutoCloseable {
             controllerClient,
             pushJobSetting,
             pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
+        // Retrieve metadata and timestamp schemas, we should do this last as this is pending potentially newly
+        // registered schemas with the push job
+        validateAndSetRmdSchemas(controllerClient, pushJobSetting);
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
@@ -735,6 +766,7 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
         }
       }
+      checkRegularPushWithTTLRepush(controllerClient, pushJobSetting);
       // Create new store version, topic and fetch Kafka url from backend
       createNewStoreVersion(
           pushJobSetting,
@@ -780,7 +812,7 @@ public class VenicePushJob implements AutoCloseable {
         }
         if (pushJobSetting.sendControlMessagesDirectly) {
           getVeniceWriter(pushJobSetting).broadcastStartOfPush(
-              SORTED,
+              pushJobSetting.isSortedIngestionEnabled,
               pushJobSetting.isChunkingEnabled,
               pushJobSetting.topicCompressionStrategy,
               optionalCompressionDictionary,
@@ -825,7 +857,7 @@ public class VenicePushJob implements AutoCloseable {
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
       // Do not mark completed yet as for target region push it will be marked inside postValidationConsumption
-      if (!pushJobSetting.isTargetedRegionPushEnabled && !pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
+      if (!pushJobSetting.isTargetedRegionPushEnabled) {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
       }
       pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
@@ -858,6 +890,8 @@ public class VenicePushJob implements AutoCloseable {
            * data path contains no data as well in the avro flow.
            */
           updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
+        } else if (e instanceof VeniceSchemaFieldNotFoundException || e instanceof VeniceSchemaMismatchException) {
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         }
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
@@ -887,6 +921,9 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.rmdSchemaDir != null) {
         HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
       }
+      LOGGER.info("Started shutdown for timeoutExecutor");
+      timeoutExecutor.shutdownNow();
+      LOGGER.info("Completed shutdown for timeoutExecutor");
     }
   }
 
@@ -922,6 +959,7 @@ public class VenicePushJob implements AutoCloseable {
       return;
     }
 
+    LOGGER.info("Scheduling timeout executor for store: {} with timeout: {}ms", pushJobSetting.storeName, timeoutMs);
     timeoutExecutor.schedule(() -> {
       cancel();
       throw new VeniceTimeoutException(
@@ -1081,11 +1119,12 @@ public class VenicePushJob implements AutoCloseable {
           c -> c.getStore(pushJobSetting.storeName));
       Map<String, ViewConfig> viewConfigMap =
           storeResponse.getStore().getVersion(pushJobSetting.version).get().getViewConfigs();
+      boolean isFlinkVeniceViewsEnabled = storeResponse.getStore().isFlinkVeniceViewsEnabled();
       viewConfigMap = viewConfigMap.entrySet()
           .stream()
           .filter(vc -> Objects.equals(vc.getValue().getViewClassName(), MaterializedView.class.getCanonicalName()))
           .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-      if (!viewConfigMap.isEmpty()) {
+      if (!viewConfigMap.isEmpty() && !isFlinkVeniceViewsEnabled) {
         pushJobSetting.materializedViewConfigFlatMap = ViewUtils.flatViewConfigMapString(viewConfigMap);
       }
     } catch (Exception e) {
@@ -1132,13 +1171,19 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void checkLastModificationTimeAndLog() throws IOException {
-    long lastModificationTime = getInputDataInfoProvider().getInputLastModificationTime(pushJobSetting.inputURI);
-    if (lastModificationTime > inputDataInfo.getInputModificationTime()) {
-      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
-      LOGGER.error(
-          "Dataset changed during the push job. Please investigate if the change caused the failure and "
-              + "rerun the job without changing the dataset while the job is running.");
+  @VisibleForTesting
+  void checkLastModificationTimeAndLog() throws IOException {
+    try {
+      InputDataInfoProvider dataInfoProvider = getInputDataInfoProvider();
+      long lastModificationTime = dataInfoProvider.getInputLastModificationTime(getPushJobSetting().inputURI);
+      if (lastModificationTime > getInputDataInfo().getInputModificationTime()) {
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
+        LOGGER.error(
+            "Dataset changed during the push job. Please investigate if the change caused the failure and "
+                + "rerun the job without changing the dataset while the job is running.");
+      }
+    } catch (VeniceInvalidInputException e) {
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
     }
   }
 
@@ -1235,6 +1280,11 @@ public class VenicePushJob implements AutoCloseable {
     return inputDataInfoProvider;
   }
 
+  @VisibleForTesting
+  InputDataInfoProvider.InputDataInfo getInputDataInfo() {
+    return this.inputDataInfo;
+  }
+
   /**
    * Create a new instance of controller client and set it to the controller client field if the controller client field
    * has null value. If the controller client field is not null, it could mean:
@@ -1302,13 +1352,6 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       RepushInfo repushInfo = pushJobSetting.repushInfoResponse.getRepushInfo();
       pushJobSetting.kafkaInputBrokerUrl = repushInfo.getKafkaBrokerUrl();
-      pushJobSetting.systemSchemaClusterD2ServiceName = repushInfo.getSystemSchemaClusterD2ServiceName();
-      pushJobSetting.systemSchemaClusterD2ZKHost = repushInfo.getSystemSchemaClusterD2ZkHost();
-    }
-    if (pushJobSetting.isSystemSchemaReaderEnabled
-        && (StringUtils.isEmpty(pushJobSetting.systemSchemaClusterD2ServiceName)
-            || StringUtils.isEmpty(pushJobSetting.systemSchemaClusterD2ZKHost))) {
-      throw new VeniceException("D2 service name and zk host must be provided when system schema reader is enabled");
     }
   }
 
@@ -1320,12 +1363,10 @@ public class VenicePushJob implements AutoCloseable {
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
     if (useD2ControllerClient) {
-      return D2ControllerClientFactory.discoverAndConstructControllerClient(
-          storeName,
-          controllerD2ServiceName,
-          d2ZkHosts,
-          sslFactory,
-          retryAttempts);
+      // TODO: we probably need to provide more for constructing d2Client here.
+      D2Client d2Client = D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
+      return D2ControllerClientFactory
+          .discoverAndConstructControllerClient(storeName, controllerD2ServiceName, retryAttempts, d2Client);
     } else {
       return ControllerClientFactory.discoverAndConstructControllerClient(
           storeName,
@@ -1370,6 +1411,7 @@ public class VenicePushJob implements AutoCloseable {
     // Prepare the param builder, which can be used by different scenarios.
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
         .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
+        .setNewKMESchemasFromController(pushJobSetting.newKmeSchemasFromController)
         .setSslProperties(pushJobSetting.enableSSL ? sslProperties.get() : new Properties())
         .setCompressionDictSize(
             props.getInt(
@@ -1497,7 +1539,8 @@ public class VenicePushJob implements AutoCloseable {
         String.valueOf(pushJobSetting.livenessHeartbeatEnabled));
   }
 
-  private void updatePushJobDetailsWithCheckpoint(PushJobCheckpoints checkpoint) {
+  @VisibleForTesting
+  void updatePushJobDetailsWithCheckpoint(PushJobCheckpoints checkpoint) {
     pushJobDetails.pushJobLatestCheckpoint = checkpoint.getValue();
   }
 
@@ -1527,37 +1570,44 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.totalUncompressedRecordTooLargeFailures = taskTracker.getUncompressedRecordTooLargeFailureCount();
       // size of largest uncompressed value
       pushJobDetails.largestUncompressedValueSizeBytes = taskTracker.getLargestUncompressedValueSize();
-      LOGGER.info(
-          "Data writer job summary: " + "\n\tTotal number of records: {}" + "\n\tSize of keys: {}"
-              + "\n\tSize of uncompressed values: {}" + "\n\tConfigured value compression strategy: {}"
-              + "\n\tSize of compressed values: {}" + "\n\tFinal data size stored in Venice: {}"
-              + "\n\tCompression Metrics collection: {}" + "\n\tUncompressed records too large: {}",
-          pushJobDetails.totalNumberOfRecords,
-          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes),
-          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes),
-          pushJobSetting.topicCompressionStrategy,
-          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes),
-          ByteUtils.generateHumanReadableByteCountString(
-              pushJobDetails.totalKeyBytes + pushJobDetails.totalCompressedValueBytes),
-          pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled",
-          pushJobDetails.totalUncompressedRecordTooLargeFailures);
+      List<String> summaryLogLines = new ArrayList<>();
+      summaryLogLines.add("Total number of records: " + pushJobDetails.totalNumberOfRecords);
+      summaryLogLines
+          .add("Size of keys: " + ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes));
+      summaryLogLines.add(
+          "Size of uncompressed values: "
+              + ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes));
+      summaryLogLines.add("Configured value compression strategy: " + pushJobSetting.topicCompressionStrategy);
+      summaryLogLines.add(
+          "Size of compressed values: "
+              + ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes));
+      summaryLogLines.add(
+          "Final data size stored in Venice: " + ByteUtils.generateHumanReadableByteCountString(
+              pushJobDetails.totalKeyBytes + pushJobDetails.totalCompressedValueBytes));
+      summaryLogLines.add(
+          "Compression Metrics collection: "
+              + (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
+      summaryLogLines.add("Uncompressed records too large: " + pushJobDetails.totalUncompressedRecordTooLargeFailures);
+
       if (pushJobDetails.largestUncompressedValueSizeBytes > 0) {
-        LOGGER.info("\t Largest Uncompressed value size: {}", pushJobDetails.largestUncompressedValueSizeBytes);
+        summaryLogLines.add(
+            "Largest Uncompressed value size: "
+                + ByteUtils.generateHumanReadableByteCountString(pushJobDetails.largestUncompressedValueSizeBytes));
       }
       if (pushJobSetting.compressionMetricCollectionEnabled) {
-        LOGGER.info(
-            "\tData size if compressed using Gzip: {}",
-            ByteUtils.generateHumanReadableByteCountString(
+        summaryLogLines.add(
+            "Data size if compressed using Gzip: " + ByteUtils.generateHumanReadableByteCountString(
                 pushJobDetails.totalKeyBytes + pushJobDetails.totalGzipCompressedValueBytes));
         if (pushJobSetting.isZstdDictCreationSuccess) {
-          LOGGER.info(
-              "\tData size if compressed using Zstd with Dictionary: {}",
-              ByteUtils.generateHumanReadableByteCountString(
+          summaryLogLines.add(
+              "Data size if compressed using Zstd with Dictionary: " + ByteUtils.generateHumanReadableByteCountString(
                   pushJobDetails.totalKeyBytes + pushJobDetails.totalZstdWithDictCompressedValueBytes));
         } else {
-          LOGGER.info("\tZstd Dictionary creation Failed");
+          summaryLogLines.add("Zstd Dictionary creation Failed");
         }
       }
+
+      LOGGER.info("Data writer job summary: \n\t{}", StringUtils.join(summaryLogLines, "\n\t"));
     } catch (Exception e) {
       LOGGER.warn(
           "Exception caught while updating push job details with map reduce counters. {}",
@@ -1842,30 +1892,38 @@ public class VenicePushJob implements AutoCloseable {
 
   private void logGreeting() {
     LOGGER.info(
-        "Running VenicePushJob: " + jobId + Utils.NEW_LINE_CHAR + "  _    _           _                   "
-            + Utils.NEW_LINE_CHAR + " | |  | |         | |                  " + Utils.NEW_LINE_CHAR
-            + " | |__| | __ _  __| | ___   ___  _ __  " + Utils.NEW_LINE_CHAR
-            + " |  __  |/ _` |/ _` |/ _ \\ / _ \\| '_ \\ " + Utils.NEW_LINE_CHAR
-            + " | |  | | (_| | (_| | (_) | (_) | |_) |   " + Utils.NEW_LINE_CHAR
-            + " |_|  |_|\\__,_|\\__,_|\\___/ \\___/| .__/" + Utils.NEW_LINE_CHAR
-            + "                _______         | |     " + Utils.NEW_LINE_CHAR
-            + "               |__   __|        |_|     " + Utils.NEW_LINE_CHAR
-            + "                  | | ___               " + Utils.NEW_LINE_CHAR
-            + "                  | |/ _ \\             " + Utils.NEW_LINE_CHAR
-            + "     __      __   | | (_) |             " + Utils.NEW_LINE_CHAR
-            + "     \\ \\    / /   |_|\\___/           " + Utils.NEW_LINE_CHAR
-            + "      \\ \\  / /__ _ __  _  ___ ___     " + Utils.NEW_LINE_CHAR
-            + "       \\ \\/ / _ | '_ \\| |/ __/ _ \\  " + Utils.NEW_LINE_CHAR
-            + "        \\  |  __| | | | | (_|  __/     " + Utils.NEW_LINE_CHAR
-            + "         \\/ \\___|_| |_|_|\\___\\___|  " + Utils.NEW_LINE_CHAR
-            + "      ___        _     _                " + Utils.NEW_LINE_CHAR
-            + "     |  _ \\     (_)   | |              " + Utils.NEW_LINE_CHAR
-            + "     | |_) |_ __ _  __| | __ _  ___     " + Utils.NEW_LINE_CHAR
-            + "     |  _ <| '__| |/ _` |/ _` |/ _ \\   " + Utils.NEW_LINE_CHAR
-            + "     | |_) | |  | | (_| | (_| |  __/    " + Utils.NEW_LINE_CHAR
-            + "     |____/|_|  |_|\\__,_|\\__, |\\___| " + Utils.NEW_LINE_CHAR
-            + "                          __/ |         " + Utils.NEW_LINE_CHAR
-            + "                         |___/          " + Utils.NEW_LINE_CHAR);
+        "Running VenicePushJob: " + jobId + Utils.NEW_LINE_CHAR
+            + "  /$$    /$$                    /$$                     " + Utils.NEW_LINE_CHAR
+            + " | $$   | $$                   |__/                     " + Utils.NEW_LINE_CHAR
+            + " | $$   | $$ /$$$$$$  /$$$$$$$  /$$  /$$$$$$$  /$$$$$$  " + Utils.NEW_LINE_CHAR
+            + " |  $$ / $$//$$__  $$| $$__  $$| $$ /$$_____/ /$$__  $$ " + Utils.NEW_LINE_CHAR
+            + "  \\  $$ $$/| $$$$$$$$| $$  \\ $$| $$| $$      | $$$$$$$$ " + Utils.NEW_LINE_CHAR
+            + "   \\  $$$/ | $$_____/| $$  | $$| $$| $$      | $$_____/ " + Utils.NEW_LINE_CHAR
+            + "    \\  $/  |  $$$$$$$| $$  | $$| $$|  $$$$$$$|  $$$$$$$ " + Utils.NEW_LINE_CHAR
+            + "     \\_/    \\_______/|__/  |__/|__/ \\_______/ \\_______/ " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "        /$$$$$$$                      /$$               " + Utils.NEW_LINE_CHAR
+            + "       | $$__  $$                    | $$               " + Utils.NEW_LINE_CHAR
+            + "       | $$  \\ $$ /$$   /$$  /$$$$$$$| $$$$$$$          " + Utils.NEW_LINE_CHAR
+            + "       | $$$$$$$/| $$  | $$ /$$_____/| $$__  $$         " + Utils.NEW_LINE_CHAR
+            + "       | $$____/ | $$  | $$|  $$$$$$ | $$  \\ $$         " + Utils.NEW_LINE_CHAR
+            + "       | $$      | $$  | $$ \\____  $$| $$  | $$         " + Utils.NEW_LINE_CHAR
+            + "       | $$      |  $$$$$$/ /$$$$$$$/| $$  | $$         " + Utils.NEW_LINE_CHAR
+            + "       |__/       \\______/ |_______/ |__/  |__/         " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR
+            + "                /$$$$$           /$$                    " + Utils.NEW_LINE_CHAR
+            + "               |__  $$          | $$                    " + Utils.NEW_LINE_CHAR
+            + "                  | $$  /$$$$$$ | $$$$$$$               " + Utils.NEW_LINE_CHAR
+            + "                  | $$ /$$__  $$| $$__  $$              " + Utils.NEW_LINE_CHAR
+            + "             /$$  | $$| $$  \\ $$| $$  \\ $$              " + Utils.NEW_LINE_CHAR
+            + "            | $$  | $$| $$  | $$| $$  | $$              " + Utils.NEW_LINE_CHAR
+            + "            |  $$$$$$/|  $$$$$$/| $$$$$$$/              " + Utils.NEW_LINE_CHAR
+            + "             \\______/  \\______/ |_______/               " + Utils.NEW_LINE_CHAR
+            + "                                                        " + Utils.NEW_LINE_CHAR);
   }
 
   /**
@@ -1877,13 +1935,11 @@ public class VenicePushJob implements AutoCloseable {
     String canonicalizedServerSchema = AvroCompatibilityHelper.toParsingForm(serverSchema);
     String canonicalizedClientSchema = AvroCompatibilityHelper.toParsingForm(clientSchema);
     if (!canonicalizedServerSchema.equals(canonicalizedClientSchema)) {
-      String briefErrorMessage = "Key schema mis-match for store " + setting.storeName;
-      LOGGER.error(
-          "{}\n\t\tschema defined in HDFS: \t{}\n\t\tschema defined in Venice: \t{}",
-          briefErrorMessage,
-          pushJobSetting.keySchemaString,
-          serverSchema.toString());
-      throw new VeniceException(briefErrorMessage);
+      String errorMessageFormat = "Key schema mis-match for store %s" + "\n\t\tSchema defined in HDFS: \t%s"
+          + "\n\t\tSchema defined in Venice: \t%s";
+      String errorMessage =
+          String.format(errorMessageFormat, setting.storeName, pushJobSetting.keySchemaString, serverSchema.toString());
+      throw new VeniceSchemaMismatchException(errorMessage);
     }
   }
 
@@ -1898,7 +1954,7 @@ public class VenicePushJob implements AutoCloseable {
       if (!setting.validateRemoteReplayPolicy.equals(hybridStoreConfig.getBufferReplayPolicy())) {
         throw new VeniceException(
             String.format(
-                "Remote rewind policy is {} but push settings require a policy of {}. "
+                "Remote rewind policy is %s but push settings require a policy of %s. "
                     + "Please adjust hybrid settings or push job configuration!",
                 hybridStoreConfig.getBufferReplayPolicy(),
                 setting.validateRemoteReplayPolicy));
@@ -1906,19 +1962,33 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void validateKafkaMessageEnvelopeSchema(PushJobSetting setting) {
-    SchemaResponse response = ControllerClient.retryableRequest(
+  private Map<Integer, String> validateAndFetchNewKafkaMessageEnvelopeSchemas(PushJobSetting setting) {
+    // Obtain the highest schema for KME from controller
+    int localHighestKmeSchemaId = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion();
+
+    Map<Integer, String> newKmeSchemas = new HashMap<>();
+    MultiSchemaResponse multiSchemaResponse = ControllerClient.retryableRequest(
         kmeSchemaSystemStoreControllerClient,
         setting.controllerRetries,
-        c -> c.getValueSchema(
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion()));
+        c -> c.getAllValueSchema(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
+    int highestKmeSchemaIdFromController = -1;
+    for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
+      if (schema.getId() > highestKmeSchemaIdFromController) {
+        highestKmeSchemaIdFromController = schema.getId();
+      }
 
-    if (response.isError()) {
-      throw new VeniceException(
-          "KME protocol is upgraded in the push job but not in the Venice backend; Please contact Venice team. Error : "
-              + response.getError());
+      if (schema.getId() > localHighestKmeSchemaId) {
+        newKmeSchemas.put(schema.getId(), schema.getSchemaStr());
+      }
     }
+
+    if (highestKmeSchemaIdFromController < localHighestKmeSchemaId) {
+      throw new VeniceException(
+          "KME protocol is upgraded in the push job but not in the Venice controller; Please contact Venice team."
+              + "Local KME protocol version: " + localHighestKmeSchemaId
+              + ", highest schema version in Venice controller: " + highestKmeSchemaIdFromController);
+    }
+    return newKmeSchemas;
   }
 
   private Schema getKeySchemaFromController(ControllerClient controllerClient, int retries, String storeName) {
@@ -1969,7 +2039,7 @@ public class VenicePushJob implements AutoCloseable {
           throw new VeniceException("Superset schema not found for store: " + setting.storeName);
         }
         if (!validateSubsetValueSchema(pushJobSetting.valueSchema, supersetSchema.getSchemaStr())) {
-          throw new VeniceException(
+          throw new VeniceSchemaMismatchException(
               "Input value schema is not subset of superset schema. Input value schema: " + pushJobSetting.valueSchema
                   + " , superset schema: " + supersetSchema.getSchemaStr());
         }
@@ -2038,34 +2108,91 @@ public class VenicePushJob implements AutoCloseable {
       // Get value schema ID successfully
       setSchemaIdPropInPushJobSetting(pushJobSetting, getValueSchemaIdResponse, setting.enableWriteCompute);
     }
-
-    // Retrieve metadata and timestamp schemas, we should do this last as this is pending potentially newly registered
-    // schemas
-    // with the push job
-    MultiSchemaResponse replicationSchemasResponse = ControllerClient.retryableRequest(
-        controllerClient,
-        setting.controllerRetries,
-        c -> c.getAllReplicationMetadataSchemas(setting.storeName));
-    if (replicationSchemasResponse.isError()) {
-      LOGGER.error("Failed to fetch replication metadata schemas!" + replicationSchemasResponse.getError());
-    } else {
-      // We only need a single valid schema, so getting the first one is good enough.
-      if (replicationSchemasResponse.getSchemas() != null && replicationSchemasResponse.getSchemas().length > 0) {
-        pushJobSetting.replicationMetadataSchemaString = replicationSchemasResponse.getSchemas()[0].getSchemaStr();
-        LOGGER.info(
-            "Retrieved and using schema with id: {}, and string: {}",
-            replicationSchemasResponse.getSchemas()[0].getId(),
-            pushJobSetting.replicationMetadataSchemaString);
-      } else {
-        LOGGER.info("No replication schemas associated with the store!");
-      }
-    }
-
     LOGGER.info(
         "Got schema id: {} for value schema: {} of store: {}",
         pushJobSetting.valueSchemaId,
         pushJobSetting.valueSchemaString,
         setting.storeName);
+  }
+
+  /**
+   * Fetch RMD schemas if the push job contains RMD on top of key and value. Additionally, perform validations to ensure
+   * RMD schemas are fetched and disallow RMD pushes if the RMD schemas have evolved for the given value schema.
+   */
+  @VisibleForTesting
+  void validateAndSetRmdSchemas(ControllerClient controllerClient, PushJobSetting pushJobSetting) {
+    // No need to fetch RMD schema if the push does not include RMD or timestamp
+    if (!RmdPushUtils.rmdFieldPresent(pushJobSetting)) {
+      return;
+    }
+
+    MultiSchemaResponse replicationSchemasResponse = ControllerClient.retryableRequest(
+        controllerClient,
+        pushJobSetting.controllerRetries,
+        c -> c.getAllReplicationMetadataSchemas(pushJobSetting.storeName));
+    if (replicationSchemasResponse.isError()) {
+      LOGGER.error("Failed to fetch replication metadata schemas!" + replicationSchemasResponse.getError());
+    } else {
+      if (replicationSchemasResponse.getSchemas() != null && replicationSchemasResponse.getSchemas().length > 0) {
+        for (MultiSchemaResponse.Schema schema: replicationSchemasResponse.getSchemas()) {
+          if (schema.getRmdValueSchemaId() == pushJobSetting.valueSchemaId
+              && schema.getId() > pushJobSetting.rmdSchemaId) {
+            pushJobSetting.rmdSchemaId = schema.getId();
+            pushJobSetting.replicationMetadataSchemaString = schema.getSchemaStr();
+          }
+        }
+
+        if (pushJobSetting.rmdSchemaId > 0) {
+          LOGGER.info(
+              "Retrieved and using schema with id: {}, and string: {}",
+              pushJobSetting.rmdSchemaId,
+              pushJobSetting.replicationMetadataSchemaString);
+        } else {
+          LOGGER.info(
+              "No replication schema found for value schema id: {} in store: {}",
+              pushJobSetting.valueSchemaId,
+              pushJobSetting.storeName);
+        }
+      } else {
+        LOGGER.info("No replication schemas associated with the store!");
+      }
+    }
+
+    if (pushJobSetting.rmdSchemaId == -1) {
+      throw new VeniceException(
+          "Failed to find replication metadata schema for value schema id: " + pushJobSetting.valueSchemaId
+              + " in store: " + pushJobSetting.storeName + ". Cannot proceed with push to include RMD.");
+    } else if (pushJobSetting.rmdSchemaId > 1) {
+      throw new VeniceException(
+          "Cannot continue with push with RMD since the RMD schema for the value: " + pushJobSetting.valueSchemaId
+              + " has evolved to " + pushJobSetting.rmdSchemaId + ". RMD schema evolution is not supported yet.");
+
+    }
+  }
+
+  // Visible for unit testing
+  void checkRegularPushWithTTLRepush(ControllerClient controllerClient, PushJobSetting setting) {
+    if (setting.allowRegularPushWithTTLRepush) {
+      return;
+    }
+    // Validation only required for regular batch pushes with records since user could be scheduling an empty push to
+    // wipe all data
+    if (setting.isIncrementalPush || setting.isSourceKafka || !setting.inputHasRecords) {
+      return;
+    }
+    // Also allow batch push that will provide the row level timestamp field (compatible with TTL re-push)
+    if (setting.rmdField != null && !setting.rmdField.isEmpty()) {
+      return;
+    }
+    StoreResponse storeResponse = ControllerClient
+        .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
+    if (storeResponse.isError()) {
+      throw new VeniceException("Unable to fetch store to validate if regular push is allowed with TTL re-push");
+    }
+    if (storeResponse.getStore().isTTLRepushEnabled()) {
+      String errorMessage = "Store: %s is TTL re-push enabled and regular batch push is not allowed with TTL re-push";
+      throw new VeniceException(String.format(errorMessage, storeResponse.getName()));
+    }
   }
 
   // Visible for testing
@@ -2128,6 +2255,10 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
+
+    jobSetting.isSortedIngestionEnabled =
+        hybridStoreConfig == null || !pushJobSetting.isBatchWriteOptimizationForHybridStoreEnabled;
+
     if (jobSetting.repushTTLEnabled) {
       if (hybridStoreConfig == null) {
         throw new VeniceException("Repush TTL is only supported for real-time only store.");
@@ -2240,7 +2371,7 @@ public class VenicePushJob implements AutoCloseable {
             pushType,
             pushId,
             askControllerToSendControlMessage,
-            SORTED,
+            setting.isSortedIngestionEnabled,
             finalWriteComputeEnabled,
             Optional.of(partitioners),
             dictionary,
@@ -2250,12 +2381,10 @@ public class VenicePushJob implements AutoCloseable {
             setting.deferVersionSwap,
             setting.targetedRegions,
             pushJobSetting.repushSourceVersion,
-            setting.pushToSeparateRealtimeTopicEnabled));
+            setting.pushToSeparateRealtimeTopicEnabled,
+            props.getInt(REPUSH_TTL_SECONDS, -1)));
     if (versionCreationResponse.isError()) {
-      if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
-        LOGGER.error("Unable to run this job since another batch push is running. See the error message for details.");
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.CONCURRENT_BATCH_PUSH);
-      }
+      handleVersionCreationError(versionCreationResponse);
       throw new VeniceException(
           "Failed to create new store version with urls: " + setting.veniceControllerUrl + ", error: "
               + versionCreationResponse.getError());
@@ -2318,6 +2447,24 @@ public class VenicePushJob implements AutoCloseable {
                 + " is using RMD ID: " + sourceVersion.getRmdVersionId() + ", new version: " + newVersion.getNumber()
                 + " is using RMD ID: " + newVersion.getRmdVersionId());
       }
+    }
+  }
+
+  /**
+   * We handle errors during creation flow prior to propagating the exception to make sure the errors are
+   * categorized. The checkpoints as part of categorization is used to differentiate between user errors and platform
+   * errors.
+   */
+  @VisibleForTesting
+  void handleVersionCreationError(VersionCreationResponse versionCreationResponse) {
+    if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
+      LOGGER.error("Unable to run this job since another batch push is running. See the error message for details.");
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.CONCURRENT_BATCH_PUSH);
+    } else if (ErrorType.ACL_ERROR.equals(versionCreationResponse.getErrorType())) {
+      // Reusing WRITE_ACL_FAILED checkpoint for all types of ACL errors. Ideally rename this to READ_WRITE_ACL_FAILED
+      // or more generic one
+      LOGGER.error("Push job failed due to : {}", versionCreationResponse.getError());
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.WRITE_ACL_FAILED);
     }
   }
 
@@ -2434,11 +2581,19 @@ public class VenicePushJob implements AutoCloseable {
      */
     long unknownStateStartTimeMs = 0;
 
+    /**
+     * The start time for when a push reaches terminal state.
+     * If 0, it seems that the push has not reached terminal state yet.
+     * This will be used to calculate how long the push is stalled for version swap and it is allowed to stay
+     * in this state from terminal state time + store wait time + {@link DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS}
+     */
+    long versionSwapStartTimeMs = 0;
+
     String topicToMonitor = getTopicToMonitor(pushJobSetting);
 
     List<ExecutionStatus> successfulStatuses =
         Arrays.asList(ExecutionStatus.COMPLETED, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
-
+    int fetchParentVersionRetryCount = 0;
     for (;;) {
       long currentTime = System.currentTimeMillis();
       if (currentTime < nextPollingTime) {
@@ -2494,13 +2649,77 @@ public class VenicePushJob implements AutoCloseable {
           throw new VeniceException(errorMsg.toString());
         }
 
-        // Every known datacenter have successfully reported a completed status at least once.
-        if (isTargetedRegionPush) {
+        // For target region push with deferred swap, stall push completion until version swap is complete
+        // Version swap is complete when the parent version is online, partially online, or error
+        if (isTargetRegionPushWithDeferredSwap) {
+          if (versionSwapStartTimeMs == 0) {
+            LOGGER.info("Starting to monitor version swap status for {}", pushJobSetting.topic);
+            versionSwapStartTimeMs = System.currentTimeMillis();
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VERSION_SWAP);
+          }
+          StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
+
+          StoreInfo parentStoreInfo = parentStoreResponse.getStore();
+          Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(pushJobSetting.version);
+          if (!parentVersionFromStore.isPresent()) {
+            LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
+            fetchParentVersionRetryCount++;
+            if (fetchParentVersionRetryCount > 5) {
+              throw new VeniceException(
+                  "Failed to get parent version from parent store after 5 attempts "
+                      + "and cannot infer version swap status after ingestion completed. Check nuage if the latest"
+                      + "version is being served");
+            }
+
+            continue;
+          }
+
+          fetchParentVersionRetryCount = 0; // Reset retry counter if we are able to get parent version
+          Version parentVersion = parentVersionFromStore.get();
+          VersionStatus parentVersionStatus = parentVersion.getStatus();
+          if (VersionStatus.ERROR.equals(parentVersionStatus)
+              && ExecutionStatus.COMPLETED.equals(overallStatus.getRootStatus())) {
+            throw new VeniceException(
+                "Version " + pushJobSetting.topic
+                    + " was rolled back after ingestion completed due to validation failure");
+          } else if (VersionStatus.KILLED.equals(parentVersionStatus)) {
+            throw new VeniceException("Version " + pushJobSetting.topic + " was killed and cannot be served.");
+          } else if (VersionStatus.PARTIALLY_ONLINE.equals(parentVersionStatus)) {
+            throw new VeniceException(
+                "Version " + pushJobSetting.topic + " is only partially online in some regions. "
+                    + "Check nuage to see which regions are not serving the latest version. It is possible that there"
+                    + " was a failure in rolling forward on the controller side or ingestion failed in some regions.");
+          } else if (VersionStatus.ONLINE.equals(parentVersionStatus)) {
+            LOGGER.info(
+                "Successfully pushed {} and it is being served in all regions. The version status is {}.",
+                pushJobSetting.topic,
+                parentVersionStatus);
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.COMPLETE_VERSION_SWAP);
+            sendPushJobDetailsToController();
+            return;
+          }
+
+          long timeoutTimeMs =
+              versionSwapStartTimeMs + TimeUnit.MINUTES.toMillis(parentStoreInfo.getTargetRegionSwapWaitTime())
+                  + TimeUnit.MINUTES.toMillis(VERSION_SWAP_BUFFER_TIME_MINUTES);
+          if (versionSwapStartTimeMs > 0
+              && LatencyUtils.getElapsedTimeFromMsToMs(versionSwapStartTimeMs) > timeoutTimeMs) {
+            throw new VeniceException(
+                "After waiting for " + timeoutTimeMs / Time.MS_PER_MINUTE
+                    + " minutes, version swap is still not complete.");
+          }
+
+          LOGGER.info(
+              "Version status is {} for {} and version swap is not complete yet",
+              parentVersion.getStatus(),
+              pushJobSetting.version);
+        } else if (isTargetedRegionPush) {
           LOGGER.info("Successfully pushed {} to targeted region {}", pushJobSetting.topic, targetedRegions);
+          return;
         } else {
           LOGGER.info("Successfully pushed {} to all the regions", pushJobSetting.topic);
+          return;
         }
-        return;
       }
       if (!overallStatus.equals(ExecutionStatus.UNKNOWN)) {
         unknownStateStartTimeMs = 0;
@@ -2782,7 +3001,6 @@ public class VenicePushJob implements AutoCloseable {
 
   @Override
   public void close() {
-    timeoutExecutor.shutdownNow();
     closeVeniceWriter();
     Utils.closeQuietlyWithErrorLogged(dataWriterComputeJob);
     Utils.closeQuietlyWithErrorLogged(controllerClient);

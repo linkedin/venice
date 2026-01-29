@@ -31,7 +31,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -41,6 +41,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -181,22 +182,23 @@ public class KafkaConsumptionTest {
     doReturn(clusterUrlToIdMap).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
 
     StaleTopicChecker staleTopicChecker = mock(StaleTopicChecker.class);
-    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
-        localPubSubBroker.getPubSubClientsFactory().getConsumerAdapterFactory();
     PubSubMessageDeserializer pubSubDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
+    PubSubContext pubSubContext = new PubSubContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
+        .setPubSubClientsFactory(localPubSubBroker.getPubSubClientsFactory())
+        .setPubSubMessageDeserializer(pubSubDeserializer)
+        .build();
 
     AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(
-        pubSubConsumerAdapterFactory,
         k -> new VeniceProperties(pubSubClientProperties),
         veniceServerConfig,
         mockIngestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         staleTopicChecker,
-        pubSubDeserializer,
         (ignored) -> {},
         (ignored) -> false,
-        mock(ReadOnlyStoreRepository.class));
+        mock(ReadOnlyStoreRepository.class),
+        pubSubContext);
 
     versionTopic = getTopic();
     int partition = 0;
@@ -211,10 +213,15 @@ public class KafkaConsumptionTest {
     PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
         versionTopic,
         pubSubTopicPartition,
-        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
-    StorePartitionDataReceiver localDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
-        .subscribeConsumerFor(localKafkaUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
+    StorePartitionDataReceiver localDataReceiver =
+        (StorePartitionDataReceiver) aggKafkaConsumerService.subscribeConsumerFor(
+            localKafkaUrl,
+            storeIngestionTask,
+            partitionReplicaIngestionContext,
+            PubSubSymbolicPosition.EARLIEST,
+            false);
     Assert
         .assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(localKafkaUrl, versionTopic, pubSubTopicPartition));
 
@@ -222,8 +229,13 @@ public class KafkaConsumptionTest {
     consumerProperties = new Properties();
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaUrl);
     aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
-    StorePartitionDataReceiver remoteDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
-        .subscribeConsumerFor(remoteKafkaUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
+    StorePartitionDataReceiver remoteDataReceiver =
+        (StorePartitionDataReceiver) aggKafkaConsumerService.subscribeConsumerFor(
+            remoteKafkaUrl,
+            storeIngestionTask,
+            partitionReplicaIngestionContext,
+            PubSubSymbolicPosition.EARLIEST,
+            false);
     Assert
         .assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(remoteKafkaUrl, versionTopic, pubSubTopicPartition));
 
@@ -301,7 +313,7 @@ public class KafkaConsumptionTest {
     recordValue.producerMetadata.producerGUID = new GUID();
     recordValue.producerMetadata.messageTimestamp = producerTimestamp;
     recordValue.leaderMetadataFooter = new LeaderMetadata();
-    recordValue.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.getWireFormatBytes();
+    recordValue.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     recordValue.leaderMetadataFooter.hostName = "localhost";
 
     if (isDataRecord) {

@@ -11,4 +11,9 @@ public class IntGreaterThanPredicate implements IntPredicate {
   public boolean evaluate(int value) {
     return value > threshold;
   }
+
+  @Override
+  public String toString() {
+    return "IntGreaterThanPredicate{threshold=" + threshold + "}";
+  }
 }

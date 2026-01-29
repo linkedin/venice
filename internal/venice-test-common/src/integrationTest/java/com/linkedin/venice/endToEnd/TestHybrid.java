@@ -7,6 +7,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
@@ -16,7 +17,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
-import static com.linkedin.venice.ConfigKeys.TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
@@ -85,6 +85,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.VeniceProducer;
 import com.linkedin.venice.producer.online.OnlineProducerFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.samza.SamzaExitMode;
@@ -578,7 +579,9 @@ public class TestHybrid {
         /**
          * Use the same VeniceWriter to write END_OF_PUSH message, which will guarantee the message order in topic
          */
-        ((VeniceSystemProducer) veniceBatchProducer).getInternalProducer().broadcastEndOfPush(new HashMap<>());
+        VeniceWriter<byte[], byte[], byte[]> writer =
+            (VeniceWriter<byte[], byte[], byte[]>) ((VeniceSystemProducer) veniceBatchProducer).getInternalWriter();
+        writer.broadcastEndOfPush(new HashMap<>());
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
@@ -1089,7 +1092,7 @@ public class TestHybrid {
 
     StoreInfo compactionReadyStore = sharedVenice.getControllerClient().getStore(storeName).getStore();
     Assert.assertNotNull(compactionReadyStore.getHybridStoreConfig());
-    Assert.assertTrue(admin.getCompactionManager().isCompactionReady(compactionReadyStore));
+    Assert.assertTrue(admin.getCompactionManager().filterStore(compactionReadyStore, sharedVenice.getClusterName()));
 
     // Wait for the latch to count down
     try {
@@ -1183,6 +1186,7 @@ public class TestHybrid {
         AvroGenericDeserializer<String> stringDeserializer =
             new AvroGenericDeserializer<>(STRING_SCHEMA, STRING_SCHEMA);
         StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+        ByteBuffer upstreamPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
 
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
             .getVeniceWriterFactory(
@@ -1198,7 +1202,7 @@ public class TestHybrid {
               realTimeTopicWriter.getProducerGUID(),
               100,
               1,
-              -1);
+              upstreamPosition);
           realTimeTopicWriter.put(
               record.getFirst(),
               record.getSecond(),
@@ -1214,7 +1218,7 @@ public class TestHybrid {
               realTimeTopicWriter.getProducerGUID(),
               100,
               2,
-              -1);
+              upstreamPosition);
           realTimeTopicWriter.put(
               record.getFirst(),
               record.getSecond(),
@@ -1230,7 +1234,7 @@ public class TestHybrid {
               realTimeTopicWriter.getProducerGUID(),
               100,
               1,
-              -1);
+              upstreamPosition);
           realTimeTopicWriter.put(
               record.getFirst(),
               record.getSecond(),
@@ -1246,7 +1250,7 @@ public class TestHybrid {
               realTimeTopicWriter.getProducerGUID(),
               100,
               3,
-              -1);
+              upstreamPosition);
           realTimeTopicWriter.put(
               record.getFirst(),
               record.getSecond(),
@@ -1385,6 +1389,7 @@ public class TestHybrid {
 
       // Now mark the deferred version as current and verify it has all the records.
       controllerClient.overrideSetActiveVersion(storeName, 2);
+      assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2);
 
       // Check both leader and follower hosts
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
@@ -1667,7 +1672,7 @@ public class TestHybrid {
       GUID producerGUID,
       int segmentNumber,
       int sequenceNumber,
-      long upstreamOffset) {
+      ByteBuffer upstreamPosition) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap(valueBytes);
@@ -1686,7 +1691,7 @@ public class TestHybrid {
     producerMetadata.messageTimestamp = System.currentTimeMillis();
     kafkaValue.producerMetadata = producerMetadata;
     kafkaValue.leaderMetadataFooter = new LeaderMetadata();
-    kafkaValue.leaderMetadataFooter.upstreamOffset = upstreamOffset;
+    kafkaValue.leaderMetadataFooter.upstreamPubSubPosition = upstreamPosition;
     return Pair.create(kafkaKey, kafkaValue);
   }
 
@@ -1699,9 +1704,8 @@ public class TestHybrid {
     extraProperties.setProperty(LOG_COMPACTION_ENABLED, "true");
     extraProperties.setProperty(LOG_COMPACTION_SCHEDULING_ENABLED, "true");
     extraProperties.setProperty(LOG_COMPACTION_INTERVAL_MS, String.valueOf(TEST_LOG_COMPACTION_INTERVAL_MS));
-    extraProperties.setProperty(
-        TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS,
-        String.valueOf(TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS));
+    extraProperties
+        .setProperty(LOG_COMPACTION_THRESHOLD_MS, String.valueOf(TEST_TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS));
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(0)
         .numberOfRouters(0)

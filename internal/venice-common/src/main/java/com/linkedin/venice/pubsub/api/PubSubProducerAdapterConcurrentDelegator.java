@@ -8,6 +8,7 @@ import com.linkedin.venice.memory.InstanceSizeEstimator;
 import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
@@ -199,9 +200,8 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
                 });
           } catch (Exception ex) {
             LOGGER.error(
-                "Got exception when producing record to topic: {}, partition: {} in drainer: {}",
-                node.topic,
-                node.partition,
+                "Got exception when producing record to replica: {} in drainer: {}",
+                Utils.getReplicaId(node.topic, node.partition),
                 drainerIndex,
                 ex);
             // TODO: do we need to add retry here?

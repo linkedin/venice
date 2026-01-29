@@ -11,4 +11,9 @@ public class LongGreaterOrEqualsPredicate implements LongPredicate {
   public boolean evaluate(long value) {
     return value >= threshold;
   }
+
+  @Override
+  public String toString() {
+    return "LongGreaterOrEqualsPredicate{threshold=" + threshold + "}";
+  }
 }

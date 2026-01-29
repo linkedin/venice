@@ -1,19 +1,25 @@
 package com.linkedin.davinci.consumer;
 
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.util.Objects;
+import org.apache.avro.generic.GenericRecord;
 
 
 public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<K, V, VeniceChangeCoordinate> {
   private final K key;
   private final V value;
   private final PubSubTopicPartition topicPartition;
-  private final VeniceChangeCoordinate offset;
+  private final VeniceChangeCoordinate changeCoordinate;
   private final long timestamp;
   private final int payloadSize;
   private final boolean isEndOfBootstrap;
+  private final int writerSchemaId;
+  private final java.nio.ByteBuffer replicationMetadataPayload;
+  private final ControlMessage controlMessage;
+  private final GenericRecord deserializedReplicationMetadata;
 
   public ImmutableChangeCapturePubSubMessage(
       K key,
@@ -22,17 +28,77 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
       PubSubPosition pubSubPosition,
       long timestamp,
       int payloadSize,
-      boolean isEndOfBootstrap) {
+      boolean isEndOfBootstrap,
+      long consumerSequenceId) {
+    this(
+        key,
+        value,
+        topicPartition,
+        pubSubPosition,
+        timestamp,
+        payloadSize,
+        isEndOfBootstrap,
+        consumerSequenceId,
+        -1,
+        null,
+        null,
+        null);
+  }
+
+  public ImmutableChangeCapturePubSubMessage(
+      K key,
+      V value,
+      PubSubTopicPartition topicPartition,
+      PubSubPosition pubSubPosition,
+      long timestamp,
+      int payloadSize,
+      boolean isEndOfBootstrap,
+      long consumerSequenceId,
+      int writerSchemaId,
+      java.nio.ByteBuffer replicationMetadataPayload) {
+    this(
+        key,
+        value,
+        topicPartition,
+        pubSubPosition,
+        timestamp,
+        payloadSize,
+        isEndOfBootstrap,
+        consumerSequenceId,
+        writerSchemaId,
+        replicationMetadataPayload,
+        null,
+        null);
+  }
+
+  public ImmutableChangeCapturePubSubMessage(
+      K key,
+      V value,
+      PubSubTopicPartition topicPartition,
+      PubSubPosition pubSubPosition,
+      long timestamp,
+      int payloadSize,
+      boolean isEndOfBootstrap,
+      long consumerSequenceId,
+      int writerSchemaId,
+      java.nio.ByteBuffer replicationMetadataPayload,
+      ControlMessage controlMessage,
+      GenericRecord deserializedReplicationMetadata) {
     this.key = key;
     this.value = value;
     this.topicPartition = Objects.requireNonNull(topicPartition);
     this.timestamp = timestamp;
     this.payloadSize = payloadSize;
-    this.offset = new VeniceChangeCoordinate(
+    this.changeCoordinate = new VeniceChangeCoordinate(
         this.topicPartition.getPubSubTopic().getName(),
         pubSubPosition,
-        this.topicPartition.getPartitionNumber());
+        this.topicPartition.getPartitionNumber(),
+        consumerSequenceId);
     this.isEndOfBootstrap = isEndOfBootstrap;
+    this.writerSchemaId = writerSchemaId;
+    this.replicationMetadataPayload = replicationMetadataPayload;
+    this.controlMessage = controlMessage;
+    this.deserializedReplicationMetadata = deserializedReplicationMetadata;
   }
 
   @Override
@@ -51,8 +117,8 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
   }
 
   @Override
-  public VeniceChangeCoordinate getOffset() {
-    return offset;
+  public VeniceChangeCoordinate getPosition() {
+    return changeCoordinate;
   }
 
   @Override
@@ -70,10 +136,26 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
     return isEndOfBootstrap;
   }
 
+  public int getWriterSchemaId() {
+    return writerSchemaId;
+  }
+
+  public java.nio.ByteBuffer getReplicationMetadataPayload() {
+    return replicationMetadataPayload;
+  }
+
+  public GenericRecord getDeserializedReplicationMetadata() {
+    return deserializedReplicationMetadata;
+  }
+
+  public ControlMessage getControlMessage() {
+    return controlMessage;
+  }
+
   @Override
   public String toString() {
-    return "PubSubMessage{" + topicPartition + ", offset=" + offset + ", timestamp=" + timestamp + ", isEndOfBootstrap="
-        + isEndOfBootstrap + '}';
+    return "PubSubMessage{" + topicPartition + ", changeCoordinate=" + changeCoordinate + ", timestamp=" + timestamp
+        + ", isEndOfBootstrap=" + isEndOfBootstrap + '}';
   }
 
   @Override

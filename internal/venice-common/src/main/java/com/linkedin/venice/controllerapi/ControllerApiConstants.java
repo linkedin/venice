@@ -9,6 +9,10 @@ public class ControllerApiConstants {
 
   public static final String IS_ABORT_MIGRATION_CLEANUP = "is_abort_migration_cleanup";
   public static final String STORE_NAME = "store_name";
+
+  public static final String AUTO_STORE_MIGRATION_CURRENT_STEP = "auto_store_migration_current_step";
+  public static final String AUTO_STORE_MIGRATION_ABORT_ON_FAILURE = "auto_store_migration_abort_on_failure";
+  public static final String AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP = "auto_store_migration_pause_after_step";
   /**
    * @deprecated Use {@link #STORE_NAME} instead.
    */
@@ -43,7 +47,7 @@ public class ControllerApiConstants {
   public static final String SCHEMA_COMPAT_TYPE = "schema_compat_type";
   public static final String DERIVED_SCHEMA_ID = "derived_schema_id";
   public static final String TOPIC = "topic";
-  public static final String OFFSET = "offset";
+  public static final String POSITION = "position";
   public static final String OPERATION = "operation";
   public static final String READ_OPERATION = "read";
   public static final String WRITE_OPERATION = "write";
@@ -89,6 +93,7 @@ public class ControllerApiConstants {
   public static final String PUSH_STRATEGY = "push_strategy";
 
   public static final String ACCESS_CONTROLLED = "access_controlled";
+
   /**
    * @deprecated Use {@link #ENABLE_STORE_MIGRATION} instead. This constant is kept for backward compatibility
    * and will be removed in a future release.
@@ -111,12 +116,14 @@ public class ControllerApiConstants {
   public static final String BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS = "bootstrap_to_online_timeout_in_hours";
 
   public static final String INCLUDE_SYSTEM_STORES = "include_system_stores";
+  public static final String LOOK_BACK_MS = "look_back_ms";
 
   public static final String STORE_VIEW = "store_view";
   public static final String STORE_VIEW_NAME = "store_view_name";
   public static final String STORE_VIEW_CLASS = "store_view_class";
   public static final String STORE_VIEW_PARAMS = "store_view_params";
   public static final String DISABLE_STORE_VIEW = "disable_store_view";
+  public static final String FLINK_VENICE_VIEWS_ENABLED = "flink_venice_views_enabled";
 
   public static final String NATIVE_REPLICATION_ENABLED = "native_replication_enabled";
   public static final String PUSH_STREAM_SOURCE_ADDRESS = "push_stream_source_address";
@@ -130,6 +137,8 @@ public class ControllerApiConstants {
   public static final String FUTURE_VERSION_ETL_ENABLED = "future_version_etl_enabled";
 
   public static final String ETLED_PROXY_USER_ACCOUNT = "etled_proxy_user_account";
+
+  public static final String ETL_STRATEGY = "etl_strategy";
 
   public static final String SKIP_DIV = "skip_div";
 
@@ -168,6 +177,8 @@ public class ControllerApiConstants {
   public static final String REPLICATION_METADATA_VERSION_ID = "replication_metadata_version_id";
 
   public static final String PARTITION_DETAIL_ENABLED = "partition_detail_enabled";
+
+  public static final String REPUSH_TTL_SECONDS = "repush_ttl_seconds";
 
   /**
    * How many records that one server could consume from Kafka at most in one second from the specified regions.
@@ -225,7 +236,7 @@ public class ControllerApiConstants {
   public static final String KAFKA_TOPIC_LOG_COMPACTION_ENABLED = "kafka.topic.log.compaction.enabled";
   public static final String KAFKA_TOPIC_RETENTION_IN_MS = "kafka.topic.retention.in.ms";
   public static final String KAFKA_TOPIC_MIN_IN_SYNC_REPLICA = "kafka.topic.min.in.sync.replica";
-  public static final String UPSTREAM_OFFSET = "upstream_offset";
+  public static final String UPSTREAM_POSITION = "upstream_position";
   public static final String ADMIN_OPERATION_PROTOCOL_VERSION = "admin_operation_protocol_version";
 
   public static final String PERSONA_NAME = "persona_name";
@@ -245,8 +256,9 @@ public class ControllerApiConstants {
 
   public static final String STORAGE_NODE_READ_QUOTA_ENABLED = "storage_node_read_quota_enabled";
 
+  public static final String COMPACTION_ENABLED = "compaction_enabled";
+  public static final String COMPACTION_THRESHOLD_MILLISECONDS = "compaction_threshold_milliseconds";
   public static final String MIN_COMPACTION_LAG_SECONDS = "min_compaction_lag_seconds";
-
   public static final String MAX_COMPACTION_LAG_SECONDS = "max_compaction_lag_seconds";
 
   public static final String MAX_RECORD_SIZE_BYTES = "max_record_size_bytes";
@@ -255,6 +267,7 @@ public class ControllerApiConstants {
   public static final String UNUSED_SCHEMA_DELETION_ENABLED = "unused_schema_deletion_enabled";
 
   public static final String BLOB_TRANSFER_ENABLED = "blob_transfer_enabled";
+  public static final String BLOB_TRANSFER_IN_SERVER_ENABLED = "blob_transfer_in_server_enabled";
 
   public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
 
@@ -264,9 +277,19 @@ public class ControllerApiConstants {
   public static final String TARGET_SWAP_REGION_WAIT_TIME = "target_swap_region_wait_time";
   public static final String IS_DAVINCI_HEARTBEAT_REPORTED = "is_davinci_heartbeat_reported";
   public static final String GLOBAL_RT_DIV_ENABLED = "global_rt_div_enabled";
+  public static final String ENUM_SCHEMA_EVOLUTION_ALLOWED = "enum_schema_evolution_allowed";
+  public static final String STORE_LIFECYCLE_HOOKS_LIST = "store_lifecycle_hooks_list";
+  public static final String KEY_URN_COMPRESSION_ENABLED = "key_urn_compression_enabled";
+  public static final String KEY_URN_FIELDS = "key_urn_fields";
 
   /**
    * Params for repush job
    */
   public static final String SOURCE_REGION = "source_region";
+  public static final String TTL_REPUSH_ENABLED = "ttl_repush_enabled";
+
+  /**
+   * Params for dark cluster
+   */
+  public static final String STORES_TO_REPLICATE = "stores_to_replicate";
 }

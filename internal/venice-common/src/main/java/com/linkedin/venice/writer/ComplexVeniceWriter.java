@@ -15,7 +15,6 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.VeniceView;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.avro.generic.GenericRecord;
@@ -191,7 +190,7 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
   }
 
   @Override
-  public Future<PubSubProduceResult> update(
+  public CompletableFuture<PubSubProduceResult> update(
       K key,
       U update,
       int valueSchemaId,
@@ -240,7 +239,7 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
         putMetadata,
         null,
         null,
-        true);
+        false);
   }
 
   public String getViewName() {

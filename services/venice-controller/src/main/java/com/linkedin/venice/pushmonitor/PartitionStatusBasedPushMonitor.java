@@ -40,7 +40,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       VeniceControllerClusterConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
       DisabledPartitionStats disabledPartitionStats,
-      VeniceWriterFactory veniceWriterFactory) {
+      VeniceWriterFactory veniceWriterFactory,
+      CurrentVersionChangeNotifier currentVersionChangeNotifier) {
     super(
         clusterName,
         offlinePushAccessor,
@@ -56,7 +57,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
         controllerConfig,
         pushStatusStoreReader,
         disabledPartitionStats,
-        veniceWriterFactory);
+        veniceWriterFactory,
+        currentVersionChangeNotifier);
   }
 
   @Override

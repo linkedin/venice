@@ -27,7 +27,9 @@ public class CompletableFutureCallback implements PubSubProducerCallback, Measur
 
   @Override
   public void onCompletion(PubSubProduceResult produceResult, Exception e) {
-    callback.onCompletion(produceResult, e);
+    if (callback != null) {
+      callback.onCompletion(produceResult, e);
+    }
     if (e == null) {
       completableFuture.complete(null);
     } else {
@@ -39,8 +41,13 @@ public class CompletableFutureCallback implements PubSubProducerCallback, Measur
     return callback;
   }
 
-  public void setCallback(PubSubProducerCallback callback) {
+  @Override
+  public void setInternalCallback(PubSubProducerCallback callback) {
     this.callback = callback;
+  }
+
+  public CompletableFuture<Void> getCompletableFuture() {
+    return completableFuture;
   }
 
   @Override

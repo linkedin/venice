@@ -65,7 +65,7 @@ import org.testng.Assert;
 @Warmup(iterations = 5)
 @Measurement(iterations = 5)
 public class IngestionBenchmarkWithTwoProcesses {
-  @Param({ "TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY", "PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY" })
+  @Param({ "PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY" })
   private static String sharedConsumerAssignmentStrategy;
 
   @Param({ "1", "2", "4" })

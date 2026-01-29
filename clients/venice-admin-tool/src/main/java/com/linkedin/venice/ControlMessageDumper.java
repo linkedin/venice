@@ -11,6 +11,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
@@ -31,14 +32,14 @@ public class ControlMessageDumper {
       PubSubConsumerAdapter consumer,
       String topic,
       int partitionNumber,
-      int startingOffset,
+      PubSubPosition startingPosition,
       int messageCount) {
     this.consumer = consumer;
     this.messageCount = messageCount;
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubTopicPartition partition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionNumber);
-    consumer.subscribe(partition, startingOffset - 1);
+    consumer.subscribe(partition, startingPosition, true);
   }
 
   /**

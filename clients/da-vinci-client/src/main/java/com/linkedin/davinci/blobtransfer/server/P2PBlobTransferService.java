@@ -2,6 +2,7 @@ package com.linkedin.davinci.blobtransfer.server;
 
 import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferAclHandler;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import io.netty.bootstrap.ServerBootstrap;
@@ -40,6 +41,7 @@ public class P2PBlobTransferService extends AbstractVeniceService {
       int blobTransferMaxTimeoutInMin,
       BlobSnapshotManager blobSnapshotManager,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
+      AggBlobTransferStats aggBlobTransferStats,
       Optional<SSLFactory> sslFactory,
       Optional<BlobTransferAclHandler> aclHandler,
       int maxAllowedConcurrentSnapshotUsers) {
@@ -51,11 +53,11 @@ public class P2PBlobTransferService extends AbstractVeniceService {
 
     if (Epoll.isAvailable()) {
       bossGroup = new EpollEventLoopGroup(1);
-      workerGroup = new EpollEventLoopGroup(6);
+      workerGroup = new EpollEventLoopGroup(32);
       socketChannelClass = EpollServerSocketChannel.class;
     } else {
       bossGroup = new NioEventLoopGroup(1);
-      workerGroup = new NioEventLoopGroup(6);
+      workerGroup = new NioEventLoopGroup(32);
     }
 
     serverBootstrap.group(bossGroup, workerGroup)
@@ -66,6 +68,7 @@ public class P2PBlobTransferService extends AbstractVeniceService {
                 blobTransferMaxTimeoutInMin,
                 blobSnapshotManager,
                 globalChannelTrafficShapingHandler,
+                aggBlobTransferStats,
                 sslFactory,
                 aclHandler,
                 maxAllowedConcurrentSnapshotUsers))

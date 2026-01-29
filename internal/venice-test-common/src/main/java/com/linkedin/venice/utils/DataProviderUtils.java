@@ -72,7 +72,7 @@ public class DataProviderUtils {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
   }
 
-  @DataProvider(name = "Six-True-and-False")
+  @DataProvider(name = "Six-True-and-False", parallel = true)
   public static Object[][] sixBoolean() {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
   }
@@ -100,7 +100,8 @@ public class DataProviderUtils {
 
   @DataProvider(name = "Isolated-Ingestion")
   public static Object[][] isolatedIngestion() {
-    return new Object[][] { { IngestionMode.BUILT_IN }, { IngestionMode.ISOLATED } };
+    return new Object[][] { { IngestionMode.BUILT_IN, true }, { IngestionMode.ISOLATED, false },
+        { IngestionMode.ISOLATED, true } };
   }
 
   @DataProvider(name = "Chunking-And-Partition-Counts")

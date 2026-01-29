@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
@@ -13,13 +14,20 @@ import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ExceptionCaptorNotifier;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
@@ -52,15 +60,26 @@ public class PushTimeoutTest {
     AggHostLevelIngestionStats mockAggStoreIngestionStats = mock(AggHostLevelIngestionStats.class);
     HostLevelIngestionStats mockStoreIngestionStats = mock(HostLevelIngestionStats.class);
     doReturn(mockStoreIngestionStats).when(mockAggStoreIngestionStats).getStoreStats(anyString());
+    ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
+    doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(anyString());
+
+    TopicManagerRepository mockTopicManagerRepository = mock(TopicManagerRepository.class);
+    TopicManager mockTopicManager = mock(TopicManager.class);
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager(anyString());
 
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setLeaderFollowerNotifiersQueue(notifiers)
         .setServerConfig(mockVeniceServerConfig)
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
-        .setPubSubTopicRepository(pubSubTopicRepository);
+        .setSchemaRepository(mockSchemaRepository)
+        .setPubSubContext(
+            new PubSubContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
+                .setTopicManagerRepository(mockTopicManagerRepository)
+                .build());
 
     StorageService storageService = mock(StorageService.class);
-    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(storageService)
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(storageService)
         .getRefCountedStorageEngine(anyString());
 
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
@@ -87,8 +106,9 @@ public class PushTimeoutTest {
         null,
         null);
 
-    leaderFollowerStoreIngestionTask
-        .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0));
+    leaderFollowerStoreIngestionTask.subscribePartition(
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0),
+        Optional.empty());
     leaderFollowerStoreIngestionTask.run();
 
     // Verify that push timeout happens
@@ -118,16 +138,19 @@ public class PushTimeoutTest {
     AggHostLevelIngestionStats mockAggStoreIngestionStats = mock(AggHostLevelIngestionStats.class);
     HostLevelIngestionStats mockStoreIngestionStats = mock(HostLevelIngestionStats.class);
     doReturn(mockStoreIngestionStats).when(mockAggStoreIngestionStats).getStoreStats(anyString());
+    ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
+    doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(anyString());
 
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setLeaderFollowerNotifiersQueue(notifiers)
         .setStorageMetadataService(mockStorageMetadataService)
         .setServerConfig(mockVeniceServerConfig)
+        .setSchemaRepository(mockSchemaRepository)
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
-        .setPubSubTopicRepository(pubSubTopicRepository);
+        .setPubSubContext(new PubSubContext.Builder().setPubSubTopicRepository(pubSubTopicRepository).build());
 
     StorageService storageService = mock(StorageService.class);
-    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(storageService)
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(storageService)
         .getRefCountedStorageEngine(anyString());
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber);
@@ -151,8 +174,9 @@ public class PushTimeoutTest {
      * Return 0 as the max offset for VT and 1 as the overall consume progress, so reportIfCatchUpVersionTopicOffset()
      * will determine that base topic is caught up.
      */
-    doReturn(1L).when(mockOffsetRecord).getLocalVersionTopicOffset();
-    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0));
+    PubSubPosition p1 = ApacheKafkaOffsetPosition.of(1L);
+    doReturn(p1).when(mockOffsetRecord).getCheckpointedLocalVtPosition();
+    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0), any());
 
     LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = new LeaderFollowerStoreIngestionTask(
         storageService,
@@ -168,8 +192,9 @@ public class PushTimeoutTest {
         null,
         null);
 
-    leaderFollowerStoreIngestionTask
-        .subscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0));
+    leaderFollowerStoreIngestionTask.subscribePartition(
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0),
+        Optional.empty());
     /**
      * Since the mock consumer would show 0 subscription, the ingestion task will close after a few iteration.
      */

@@ -16,6 +16,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -82,34 +83,34 @@ public class TopicMessageFinder {
     }
     LOGGER.info("Got partition count: {}", partitionCount);
 
-    long startOffset;
-    long endOffset;
+    PubSubPosition startPosition;
+    PubSubPosition endPosition;
 
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubTopicPartition assignedPubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
 
     // fetch start and end offset
-    startOffset = consumer.offsetForTime(assignedPubSubTopicPartition, startTimestampEpochMs);
+    startPosition = consumer.getPositionByTimestamp(assignedPubSubTopicPartition, startTimestampEpochMs);
     if (endTimestampEpochMs == Long.MAX_VALUE || endTimestampEpochMs > System.currentTimeMillis()) {
-      endOffset = consumer.endOffset(assignedPubSubTopicPartition);
+      endPosition = consumer.endPosition(assignedPubSubTopicPartition);
     } else {
-      endOffset = consumer.offsetForTime(assignedPubSubTopicPartition, endTimestampEpochMs);
+      endPosition = consumer.getPositionByTimestamp(assignedPubSubTopicPartition, endTimestampEpochMs);
     }
-    LOGGER.info("Got start offset: {} and end offset: {} for the specified time range", startOffset, endOffset);
-    return consume(consumer, assignedPubSubTopicPartition, startOffset, endOffset, progressInterval, serializedKey);
+    LOGGER.info("Got start position: {} and end position: {} for the specified time range", startPosition, endPosition);
+    return consume(consumer, assignedPubSubTopicPartition, startPosition, endPosition, progressInterval, serializedKey);
   }
 
   static long consume(
       PubSubConsumerAdapter consumer,
       PubSubTopicPartition assignedPubSubTopicPartition,
-      long startOffset,
-      long endOffset,
+      PubSubPosition startPosition,
+      PubSubPosition endPosition,
       long progressInterval,
       byte[] serializedKey) {
     long recordCnt = 0;
     long lastReportRecordCnt = 0;
-    consumer.subscribe(assignedPubSubTopicPartition, startOffset);
+    consumer.subscribe(assignedPubSubTopicPartition, startPosition, true);
     boolean done = false;
     while (!done) {
       Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = consumer.poll(10000);
@@ -118,14 +119,14 @@ public class TopicMessageFinder {
       }
       long lastRecordTimestamp = 0;
       for (DefaultPubSubMessage record: messages.get(assignedPubSubTopicPartition)) {
-        if (record.getPosition().getNumericOffset() >= endOffset) {
+        if (consumer.positionDifference(assignedPubSubTopicPartition, record.getPosition(), endPosition) >= 0) {
           done = true;
           break;
         }
         KafkaKey kafkaKey = record.getKey();
         if (Arrays.equals(kafkaKey.getKey(), serializedKey)) {
           KafkaMessageEnvelope value = record.getValue();
-          LOGGER.info("Offset: {}, Value: {}", record.getPosition(), value.toString());
+          LOGGER.info("Position: {}, Value: {}", record.getPosition(), value.toString());
         }
         lastRecordTimestamp = record.getPubSubMessageTime();
         recordCnt++;

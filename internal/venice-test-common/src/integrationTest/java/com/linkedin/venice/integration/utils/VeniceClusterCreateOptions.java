@@ -12,9 +12,11 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
@@ -47,6 +49,8 @@ public class VeniceClusterCreateOptions {
   private final PubSubBrokerWrapper pubSubBrokerWrapper;
   private final DynamicAccessController accessController;
 
+  private final Map<String, D2Client> d2Clients;
+
   private VeniceClusterCreateOptions(Builder builder) {
     this.clusterName = builder.clusterName;
     this.regionName = builder.regionName;
@@ -74,6 +78,7 @@ public class VeniceClusterCreateOptions {
     this.veniceZkBasePath = builder.veniceZkBasePath;
     this.pubSubBrokerWrapper = builder.pubSubBrokerWrapper;
     this.accessController = builder.accessController;
+    this.d2Clients = builder.d2Clients;
   }
 
   public String getClusterName() {
@@ -180,6 +185,10 @@ public class VeniceClusterCreateOptions {
     return accessController;
   }
 
+  public Map<String, D2Client> getD2Clients() {
+    return d2Clients;
+  }
+
   @Override
   public String toString() {
     return new StringBuilder().append("VeniceClusterCreateOptions - ")
@@ -257,6 +266,8 @@ public class VeniceClusterCreateOptions {
         .append(", ")
         .append("kafkaClusterMap:")
         .append(kafkaClusterMap)
+        .append("d2Clients:")
+        .append(d2Clients)
         .toString();
   }
 
@@ -287,6 +298,7 @@ public class VeniceClusterCreateOptions {
     private String veniceZkBasePath = "/";
     private PubSubBrokerWrapper pubSubBrokerWrapper;
     private DynamicAccessController accessController;
+    private Map<String, D2Client> d2Clients;
 
     public Builder clusterName(String clusterName) {
       this.clusterName = clusterName;
@@ -422,6 +434,11 @@ public class VeniceClusterCreateOptions {
       return this;
     }
 
+    public Builder d2Clients(Map<String, D2Client> d2Clients) {
+      this.d2Clients = d2Clients;
+      return this;
+    }
+
     private void verifyAndAddDefaults() {
       if (clusterName == null) {
         clusterName = Utils.getUniqueString("venice-cluster");
@@ -434,6 +451,9 @@ public class VeniceClusterCreateOptions {
       }
       if (kafkaClusterMap == null) {
         kafkaClusterMap = Collections.emptyMap();
+      }
+      if (d2Clients == null) {
+        d2Clients = new HashMap<>();
       }
     }
 

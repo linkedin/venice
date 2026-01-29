@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.LogContext;
@@ -16,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.helix.model.CloudConfig;
+import org.apache.helix.model.ClusterConfig;
 
 
 public class VeniceControllerMultiClusterConfig {
@@ -30,7 +34,7 @@ public class VeniceControllerMultiClusterConfig {
     }
   }
 
-  // This contructor is used for testing.
+  // This constructor is used for testing.
   public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerClusterConfig> clusterToControllerConfigMap) {
     this.clusterToControllerConfigMap = new HashMap<>(clusterToControllerConfigMap);
   }
@@ -97,10 +101,6 @@ public class VeniceControllerMultiClusterConfig {
 
   public String getControllerHAASSuperClusterName() {
     return getCommonConfig().getControllerHAASSuperClusterName();
-  }
-
-  public int getControllerClusterReplica() {
-    return getCommonConfig().getControllerClusterReplica();
   }
 
   public String getKafkaBootstrapServers() {
@@ -215,6 +215,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getPushJobStatusStoreClusterName();
   }
 
+  public String getParentControllerMetadataStoreClusterName() {
+    return getCommonConfig().getParentControllerMetadataStoreClusterName();
+  }
+
   public String getSystemSchemaClusterName() {
     return getCommonConfig().getSystemSchemaClusterName();
   }
@@ -303,6 +307,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getPubSubPositionTypeRegistry();
   }
 
+  public PubSubPositionDeserializer getPubSubPositionDeserializer() {
+    return getCommonConfig().getPubSubPositionDeserializer();
+  }
+
   public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
     return getCommonConfig().getSourceOfTruthAdminAdapterFactory();
   }
@@ -327,8 +335,32 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getControllerInstanceTagList();
   }
 
+  public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {
+    return getCommonConfig().getHelixGlobalRebalancePreference();
+  }
+
+  public HelixCapacityConfig getHelixCapacityConfig() {
+    return getCommonConfig().getHelixCapacityConfig();
+  }
+
+  public boolean isControllerClusterHelixCloudEnabled() {
+    return getCommonConfig().isControllerClusterHelixCloudEnabled();
+  }
+
+  public CloudConfig getHelixCloudConfig() {
+    return getCommonConfig().getHelixCloudConfig();
+  }
+
+  public long getControllerHelixParticipantDeregistrationTimeoutMs() {
+    return getCommonConfig().getControllerHelixParticipantDeregistrationTimeoutMs();
+  }
+
   public String getRepushOrchestratorClassName() {
     return getCommonConfig().getRepushOrchestratorClassName();
+  }
+
+  public Set<String> getRepushCandidateFilterClassNames() {
+    return getCommonConfig().getRepushCandidateFilterClassNames();
   }
 
   public VeniceProperties getRepushOrchestratorConfigs() {
@@ -351,8 +383,8 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getLogCompactionIntervalMS();
   }
 
-  public long getTimeSinceLastLogCompactionThresholdMS() {
-    return getCommonConfig().getTimeSinceLastLogCompactionThresholdMS();
+  public long getLogCompactionThresholdMS() {
+    return getCommonConfig().getLogCompactionVersionStalenessThresholdMS();
   }
 
   public boolean isRealTimeTopicVersioningEnabled() {
@@ -365,5 +397,9 @@ public class VeniceControllerMultiClusterConfig {
 
   public PubSubTopicRepository getPubSubTopicRepository() {
     return pubSubTopicRepository;
+  }
+
+  public int getStoreChangeNotifierThreadPoolSize() {
+    return getCommonConfig().getStoreChangeNotifierThreadPoolSize();
   }
 }

@@ -8,25 +8,19 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.Instance;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang.StringUtils;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.cloud.constants.CloudProvider;
-import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.CustomizedStateConfig;
-import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
-import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.MaintenanceSignal;
-import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.zookeeper.zkclient.DataUpdater;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -45,13 +39,6 @@ public final class HelixUtils {
    * Retry 9 times for each helix operation in case of getting the error by default.
    */
   public static final int DEFAULT_HELIX_OP_RETRY_COUNT = 9;
-
-  /**
-   * The constraint that helix would apply on CRUSH alg. Based on this constraint, Helix would NOT allocate replicas in
-   * same partition to same instance. If we need rack aware ability in the future, we could add rack constraint as
-   * well.
-   */
-  public static final String TOPOLOGY_CONSTRAINT = "instance";
 
   public static String getHelixClusterZkPath(String clusterName) {
     return "/" + clusterName;
@@ -338,32 +325,6 @@ public final class HelixUtils {
         } else {
           throw new VeniceException("Cluster has not been initialized by controller after attempted: " + attempt);
         }
-      }
-    }
-  }
-
-  public static void setupInstanceConfig(String clusterName, String instanceId, String zkAddress) {
-    HelixConfigScope instanceScope =
-        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.PARTICIPANT).forCluster(clusterName)
-            .forParticipant(instanceId)
-            .build();
-    HelixAdmin admin = null;
-    try {
-      admin = new ZKHelixAdmin(zkAddress);
-
-      String instanceDomainKey = InstanceConfig.InstanceConfigProperty.DOMAIN.name();
-
-      Map<String, String> currentDomainValue =
-          admin.getConfig(instanceScope, Collections.singletonList(instanceDomainKey));
-      if (currentDomainValue == null || !currentDomainValue.containsKey(instanceDomainKey)) {
-        Map<String, String> instanceProperties = new HashMap<>();
-        instanceProperties.put(instanceDomainKey, TOPOLOGY_CONSTRAINT + "=" + instanceId);
-        admin.setConfig(instanceScope, instanceProperties);
-
-      }
-    } finally {
-      if (admin != null) {
-        admin.close();
       }
     }
   }

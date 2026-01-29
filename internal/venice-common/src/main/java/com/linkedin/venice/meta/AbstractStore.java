@@ -163,6 +163,7 @@ public abstract class AbstractStore implements Store {
       version.setSeparateRealTimeTopicEnabled(isSeparateRealTimeTopicEnabled());
 
       version.setBlobTransferEnabled(isBlobTransferEnabled());
+      version.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
 
       version.setUseVersionLevelIncrementalPushEnabled(true);
 
@@ -186,6 +187,9 @@ public abstract class AbstractStore implements Store {
 
       version.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
       version.setViewConfigs(getViewConfigs());
+
+      version.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
+      version.setKeyUrnFields(getKeyUrnFields());
     }
 
     storeVersionsSupplier.getForUpdate().add(index, version.dataModel());
@@ -306,12 +310,21 @@ public abstract class AbstractStore implements Store {
      *     c) STARTED versions if its not the last one and the store is not migrating.
      *     d) KILLED versions by {@link org.apache.kafka.clients.admin.Admin#killOfflinePush} api.
      */
+    // current version need not be the largest version, preseve it before finding other versions > current version
+    for (int i = lastElementIndex; i >= 0; i--) {
+      Version version = versions.get(i);
+      if (version.getNumber() == getCurrentVersion()) { // currentVersion is always preserved
+        curNumVersionsToPreserve--;
+      }
+    }
+
     for (int i = lastElementIndex; i >= 0; i--) {
       Version version = versions.get(i);
 
       if (version.getNumber() == getCurrentVersion()) { // currentVersion is always preserved
-        curNumVersionsToPreserve--;
-      } else if (VersionStatus.canDelete(version.getStatus())) { // ERROR and KILLED versions are always deleted
+        continue;
+      }
+      if (VersionStatus.canDelete(version.getStatus())) { // ERROR and KILLED versions are always deleted
         versionsToDelete.add(version);
       } else if (VersionStatus.ONLINE.equals(version.getStatus())) {
         if (curNumVersionsToPreserve > 0) { // keep the minimum number of version to preserve

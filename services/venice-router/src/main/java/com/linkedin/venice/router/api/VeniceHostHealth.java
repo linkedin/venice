@@ -123,7 +123,6 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
 
   private boolean isPendingRequestQueueUnhealthy(String nodeId) {
     long pendingRequestCount = routeHttpRequestStats.getPendingRequestCount(nodeId);
-    aggHostHealthStats.recordPendingRequestCount(nodeId, pendingRequestCount);
     if (!statefulRouterHealthCheckEnabled) {
       return false;
     }

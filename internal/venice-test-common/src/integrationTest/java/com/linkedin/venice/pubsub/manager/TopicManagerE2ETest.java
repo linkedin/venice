@@ -6,10 +6,8 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
@@ -23,11 +21,12 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
-import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.PubSubHelper;
 import com.linkedin.venice.utils.PubSubHelper.MutableDefaultPubSubMessage;
 import com.linkedin.venice.utils.Time;
@@ -195,52 +194,51 @@ public class TopicManagerE2ETest {
     Runnable t6 = () -> assertFalse(topicManager.containsTopicCached(nonExistentTopic));
 
     // get latest offset with retries for an existing topic
-    Runnable t7 = () -> assertEquals(topicManager.getLatestOffsetWithRetries(topicPartition, 1), numMessages);
+    Runnable t7 = () -> {
+      PubSubPosition endPosition = topicManager.getEndPositionsForTopicWithRetries(testTopic).get(topicPartition);
+      long delta = topicManager.diffPosition(topicPartition, endPosition, PubSubSymbolicPosition.EARLIEST);
+      assertEquals(delta, numMessages, "End position should be " + numMessages + " positions away from EARLIEST");
+    };
 
     // get latest offset with retries for a non-existent topic
     Runnable t8 = () -> assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getLatestOffsetWithRetries(nonExistentTopicPartition, 1));
+        () -> topicManager.getLatestPositionWithRetries(nonExistentTopicPartition, 1));
 
     // get latest offset cached for an existing topic
-    Runnable t9 = () -> assertEquals(topicManager.getLatestOffsetCached(testTopic, 0), numMessages);
+    Runnable t9 = () -> {
+      PubSubPosition endPosition = topicManager.getEndPositionsForTopicWithRetries(testTopic).get(topicPartition);
+      long delta = topicManager.diffPosition(topicPartition, endPosition, PubSubSymbolicPosition.EARLIEST);
+      assertEquals(delta, numMessages, "End position should be " + numMessages + " positions away from EARLIEST");
+    };
 
     // get latest offset cached for a non-existent topic
     Runnable t10 = () -> assertEquals(
-        topicManager.getLatestOffsetCached(nonExistentTopic, 0),
-        StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
-
-    // get producer timestamp of last data message with retries for an existing topic
-    Runnable t11 = () -> assertEquals(
-        topicManager.getProducerTimestampOfLastDataMessageWithRetries(topicPartition, 1),
-        tsOfLastDataMessage);
-
-    // get producer timestamp of last data message with retries for a non-existent topic
-    Runnable t12 = () -> assertThrows(
-        PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(nonExistentTopicPartition, 1));
-
-    // get producer timestamp of last data message cached for an existing topic
-    Runnable t13 = () -> assertEquals(
-        topicManager.getProducerTimestampOfLastDataMessageCached(topicPartition),
-        tsOfLastDataMessage);
-
-    // get producer timestamp of last data message cached for a non-existent topic
-    Runnable t14 = () -> assertEquals(
-        topicManager.getProducerTimestampOfLastDataMessageCached(nonExistentTopicPartition),
-        StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
+        topicManager.getLatestPositionCached(nonExistentTopicPartition),
+        PubSubSymbolicPosition.LATEST);
 
     // get offset by time for an existing topic
-    Runnable t15 =
-        () -> assertEquals(topicManager.getOffsetByTime(topicPartition, System.currentTimeMillis()), numMessages);
+    Runnable t15 = () -> assertEquals(
+        topicManager.diffPosition(
+            topicPartition,
+            topicManager.getPositionByTime(topicPartition, System.currentTimeMillis()),
+            PubSubSymbolicPosition.LATEST),
+        0,
+        "Position by current timestamp should be at the end (LATEST) since no new messages were produced after given timestamp");
 
     // get offset by time for a non-existent topic
     Runnable t16 = () -> assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getOffsetByTime(nonExistentTopicPartition, tsOfLastDataMessage));
+        () -> topicManager.getPositionByTime(nonExistentTopicPartition, tsOfLastDataMessage));
 
     // get offset by time for an existing topic: first message
-    Runnable t17 = () -> assertEquals(topicManager.getOffsetByTime(topicPartition, timeBeforeProduce), 0);
+    Runnable t17 = () -> assertEquals(
+        topicManager.diffPosition(
+            topicPartition,
+            topicManager.getPositionByTime(topicPartition, timeBeforeProduce),
+            PubSubSymbolicPosition.EARLIEST),
+        0,
+        "Position by timestamp before produce should be at the beginning (EARLIEST) since no messages existed before given timestamp");
 
     // invalidate cache for an existing topic
     Runnable t18 = () -> topicManager.invalidateCache(testTopic);
@@ -248,8 +246,7 @@ public class TopicManagerE2ETest {
     // invalidate cache for a non-existent topic
     Runnable t19 = () -> topicManager.invalidateCache(nonExistentTopic);
 
-    List<Runnable> tasks =
-        Arrays.asList(t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19);
+    List<Runnable> tasks = Arrays.asList(t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t15, t16, t17, t18, t19);
 
     final AtomicInteger successfulRequests = new AtomicInteger(0);
     ExecutorService executorService = Executors.newFixedThreadPool(8);
@@ -270,25 +267,21 @@ public class TopicManagerE2ETest {
     PubSubTopic nonExistentTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("nonExistentTopic"));
     assertFalse(topicManager.containsTopicCached(nonExistentTopic));
     assertFalse(topicManager.containsTopic(nonExistentTopic));
-    Map<Integer, Long> nonExistentTopicLatestOffsets = topicManager.getTopicLatestOffsets(nonExistentTopic);
+    Map<PubSubTopicPartition, PubSubPosition> nonExistentTopicLatestOffsets =
+        topicManager.getEndPositionsForTopicWithRetries(nonExistentTopic);
     assertNotNull(nonExistentTopicLatestOffsets);
     assertEquals(nonExistentTopicLatestOffsets.size(), 0);
     assertThrows(PubSubTopicDoesNotExistException.class, () -> topicManager.getPartitionCount(nonExistentTopic));
-    PubSubTopicPartitionImpl nonExistentTopicPartition = new PubSubTopicPartitionImpl(nonExistentTopic, 0);
+    PubSubTopicPartitionImpl nonExistentTopicPartition0 = new PubSubTopicPartitionImpl(nonExistentTopic, 0);
+    PubSubTopicPartitionImpl nonExistentTopicPartition1 = new PubSubTopicPartitionImpl(nonExistentTopic, 1);
     assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getOffsetByTime(nonExistentTopicPartition, System.currentTimeMillis()));
-    assertThrows(
-        PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(nonExistentTopicPartition, 1));
-    assertEquals(
-        topicManager.getProducerTimestampOfLastDataMessageCached(nonExistentTopicPartition),
-        StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
+        () -> topicManager.getPositionByTime(nonExistentTopicPartition0, System.currentTimeMillis()));
     topicManager.invalidateCache(nonExistentTopic).get(1, TimeUnit.MINUTES); // should not throw an exception
     assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getLatestOffsetWithRetries(new PubSubTopicPartitionImpl(nonExistentTopic, 0), 1));
-    assertEquals(topicManager.getLatestOffsetCached(nonExistentTopic, 1), StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
+        () -> topicManager.getLatestPositionWithRetries(nonExistentTopicPartition0, 1));
+    assertEquals(topicManager.getLatestPositionCached(nonExistentTopicPartition1), PubSubSymbolicPosition.LATEST);
   }
 
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
@@ -312,18 +305,44 @@ public class TopicManagerE2ETest {
     });
 
     // when there are no messages, the latest offset should be 0
-    Map<Integer, Long> latestOffsets = topicManager.getTopicLatestOffsets(existingTopic);
-    assertNotNull(latestOffsets);
-    assertEquals(latestOffsets.size(), numPartitions);
-    for (int i = 0; i < numPartitions; i++) {
-      assertEquals((long) latestOffsets.get(i), 0L);
+    Map<PubSubTopicPartition, PubSubPosition> endOffsets =
+        topicManager.getEndPositionsForTopicWithRetries(existingTopic);
+    Map<PubSubTopicPartition, PubSubPosition> startOffsets =
+        topicManager.getStartPositionsForTopicWithRetries(existingTopic);
+    assertNotNull(endOffsets, "End offsets should not be null");
+    assertEquals(
+        endOffsets.size(),
+        numPartitions,
+        "End offsets size should match number of partitions. Size: " + endOffsets.size() + ", Partitions: "
+            + numPartitions);
+    assertNotNull(startOffsets, "Start offsets should not be null");
+    assertEquals(
+        startOffsets.size(),
+        numPartitions,
+        "Start offsets size should match number of partitions. Size: " + startOffsets.size() + ", Partitions: "
+            + numPartitions);
+    for (Map.Entry<PubSubTopicPartition, PubSubPosition> entry: endOffsets.entrySet()) {
+      PubSubPosition startOffset = startOffsets.get(entry.getKey());
+      PubSubPosition endOffset = entry.getValue();
+      PubSubTopicPartition partition = entry.getKey();
+      long diff = topicManager.diffPosition(partition, startOffset, endOffset);
+      assertEquals(
+          diff,
+          0L,
+          "Start and end offsets should be equal for a new topic partition: " + partition + ". Start: " + startOffset
+              + ", End: " + endOffset);
+      long compare = topicManager.comparePosition(partition, startOffset, endOffset);
+      assertEquals(
+          compare,
+          0L,
+          "Start and end offsets should be equal for a new topic partition: " + partition + ". Start: " + startOffset
+              + ", End: " + endOffset);
     }
     assertEquals(topicManager.getPartitionCount(existingTopic), numPartitions);
 
     PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(existingTopic, 0);
     PubSubTopicPartition p1 = new PubSubTopicPartitionImpl(existingTopic, 1);
     PubSubTopicPartition p2 = new PubSubTopicPartitionImpl(existingTopic, 2);
-    PubSubTopicPartition p3 = new PubSubTopicPartitionImpl(existingTopic, 3);
 
     // produce messages to the topic-partitions: p0, p1, p2
     PubSubProducerAdapter pubSubProducerAdapter = pubSubProducerAdapterLazy.get();
@@ -335,70 +354,122 @@ public class TopicManagerE2ETest {
         PubSubHelper.produceMessages(pubSubProducerAdapter, p2, 19, 10, false);
 
     // get the latest offsets
-    latestOffsets = topicManager.getTopicLatestOffsets(existingTopic);
-    assertNotNull(latestOffsets);
-    assertEquals(latestOffsets.size(), numPartitions);
-    assertEquals((long) latestOffsets.get(0), p0Messages.size());
-    assertEquals(topicManager.getLatestOffsetWithRetries(p0, 5), p0Messages.size());
-    assertEquals(topicManager.getLatestOffsetCached(p0.getPubSubTopic(), 0), p0Messages.size());
+    endOffsets = topicManager.getEndPositionsForTopicWithRetries(existingTopic);
+    assertNotNull(endOffsets);
+    assertEquals(endOffsets.size(), numPartitions);
+    long numRecordsInP0 = topicManager.getNumRecordsInPartition(p0);
+    assertEquals(
+        numRecordsInP0,
+        p0Messages.size(),
+        "Number of records in partition p0 should match produced messages size. " + "Expected: " + p0Messages.size()
+            + ", Actual: " + numRecordsInP0);
+    PubSubPosition p0EndPosition = topicManager.getLatestPositionWithRetries(p0, 5);
+    long delta = topicManager.diffPosition(p0, p0EndPosition, PubSubSymbolicPosition.EARLIEST);
+    assertEquals(
+        delta,
+        p0Messages.size(),
+        "End position should be " + p0Messages.size() + " positions away from EARLIEST");
 
-    assertEquals((long) latestOffsets.get(1), p1Messages.size());
-    assertEquals(topicManager.getLatestOffsetWithRetries(p1, 5), p1Messages.size());
-    assertEquals(topicManager.getLatestOffsetCached(p1.getPubSubTopic(), 1), p1Messages.size());
+    PubSubPosition p0EndPositionCached = topicManager.getLatestPositionCached(p0);
+    long deltaCached = topicManager.diffPosition(p0, p0EndPositionCached, PubSubSymbolicPosition.EARLIEST);
+    assertEquals(
+        deltaCached,
+        p0Messages.size(),
+        "End position from cache should be " + p0Messages.size() + " positions away from EARLIEST");
 
-    assertEquals((long) latestOffsets.get(2), p2Messages.size());
-    assertEquals(topicManager.getLatestOffsetWithRetries(p2, 5), p2Messages.size());
-    assertEquals(topicManager.getLatestOffsetCached(p2.getPubSubTopic(), 2), p2Messages.size());
+    long numRecordsInP1 = topicManager.getNumRecordsInPartition(p1);
+    assertEquals(
+        numRecordsInP1,
+        p1Messages.size(),
+        "Number of records in partition p1 should match produced messages size. " + "Expected: " + p1Messages.size()
+            + ", Actual: " + numRecordsInP1);
+
+    PubSubPosition p1EndPosition = topicManager.getLatestPositionWithRetries(p1, 5);
+    long delta1 = topicManager.diffPosition(p1, p1EndPosition, PubSubSymbolicPosition.EARLIEST);
+    assertEquals(
+        delta1,
+        p1Messages.size(),
+        "End position should be " + p1Messages.size() + " positions away from EARLIEST");
+
+    PubSubPosition p1EndPositionCached = topicManager.getLatestPositionCached(p1);
+    long delta1Cached = topicManager.diffPosition(p1, p1EndPositionCached, PubSubSymbolicPosition.EARLIEST);
+    assertEquals(
+        delta1Cached,
+        p1Messages.size(),
+        "End position from cache should be " + p1Messages.size() + " positions away from EARLIEST");
+
+    long numRecordsInP2 = topicManager.getNumRecordsInPartition(p2);
+    assertEquals(
+        numRecordsInP2,
+        p2Messages.size(),
+        "Number of records in partition p2 should match produced messages size. " + "Expected: " + p2Messages.size()
+            + ", Actual: " + numRecordsInP2);
+
+    PubSubPosition p2EndPosition = topicManager.getLatestPositionWithRetries(p2, 5);
+    long delta2 = topicManager.diffPosition(p2, p2EndPosition, PubSubSymbolicPosition.EARLIEST);
+    assertEquals(
+        delta2,
+        p2Messages.size(),
+        "End position should be " + p2Messages.size() + " positions away from EARLIEST");
+    PubSubPosition p2EndPositionCached = topicManager.getLatestPositionCached(p2);
+    long delta2Cached = topicManager.diffPosition(p2, p2EndPositionCached, PubSubSymbolicPosition.EARLIEST);
+    assertEquals(
+        delta2Cached,
+        p2Messages.size(),
+        "End position from cache should be " + p2Messages.size() + " positions away from EARLIEST");
 
     // except for the first 3 partitions, the latest offset should be 0
     for (int i = 3; i < numPartitions; i++) {
-      assertEquals((long) latestOffsets.get(i), 0L);
-      assertEquals(topicManager.getLatestOffsetWithRetries(new PubSubTopicPartitionImpl(existingTopic, i), 5), 0L);
-      assertEquals(topicManager.getLatestOffsetCached(existingTopic, i), 0L);
+      PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingTopic, i);
+      long numRecordsInPartition = topicManager.getNumRecordsInPartition(partition);
+      assertEquals(
+          numRecordsInPartition,
+          0L,
+          "Number of records in partition " + partition + " should be 0. Actual: " + numRecordsInPartition);
+      PubSubPosition endPosition =
+          topicManager.getLatestPositionWithRetries(new PubSubTopicPartitionImpl(existingTopic, i), 5);
+      long diff = topicManager.diffPosition(partition, PubSubSymbolicPosition.EARLIEST, endPosition);
+      assertEquals(
+          diff,
+          0L,
+          "End position for partition " + partition + " should be equal to EARLIEST. Actual: " + endPosition);
+      // the cached latest position should also
+      PubSubPosition cachedEndPosition =
+          topicManager.getLatestPositionCached(new PubSubTopicPartitionImpl(existingTopic, i));
+      long cachedDiff = topicManager.diffPosition(partition, PubSubSymbolicPosition.EARLIEST, cachedEndPosition);
+      assertEquals(
+          cachedDiff,
+          0L,
+          "Cached end position for partition " + partition + " should be equal to EARLIEST. Actual: "
+              + cachedEndPosition);
     }
 
     // if timestamp is greater than the latest message timestamp, the offset returned should be the latest offset
     long timestamp = System.currentTimeMillis();
-    assertEquals(topicManager.getOffsetByTime(p0, timestamp), p0Messages.size());
+    assertEquals(
+        topicManager.diffPosition(p0, topicManager.getPositionByTime(p0, timestamp), PubSubSymbolicPosition.LATEST),
+        0,
+        "Position by future timestamp should be at the end (LATEST) since no messages exist after the timestamp");
 
     // If the provided timestamp is less than or equal to the timestamp of a message,
     // the offset returned should correspond to that message.
     long tsAfterM4ButBeforeM5 = p0Messages.get(4).getTimestampAfterProduce() + 1;
     assertTrue(tsAfterM4ButBeforeM5 > p0Messages.get(4).getTimestampAfterProduce());
     assertTrue(tsAfterM4ButBeforeM5 < p0Messages.get(5).getTimestampBeforeProduce());
-    assertEquals(topicManager.getOffsetByTime(p0, tsAfterM4ButBeforeM5), 5);
+    assertEquals(
+        topicManager.diffPosition(
+            p0,
+            topicManager.getPositionByTime(p0, tsAfterM4ButBeforeM5),
+            PubSubSymbolicPosition.EARLIEST),
+        5,
+        "Position by timestamp after message 4 but before message 5 should be 5 positions from the beginning");
 
     long p0TsBeforeM0 = p0Messages.get(0).getTimestampBeforeProduce();
-    assertEquals(topicManager.getOffsetByTime(p0, p0TsBeforeM0), 0);
-
-    // test getProducerTimestampOfLastDataMessage
-    long p0LastDataMessageTs =
-        p0Messages.get(p0Messages.size() - 1).getValue().getProducerMetadata().getMessageTimestamp();
-    long p1LastDataMessageTs =
-        p1Messages.get(p1Messages.size() - 1).getValue().getProducerMetadata().getMessageTimestamp();
-    long p2LastDataMessageTs =
-        p2Messages.get(p2Messages.size() - 1).getValue().getProducerMetadata().getMessageTimestamp();
-    long p3LastDataMessageTs = PubSubConstants.PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION;
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p0, 5), p0LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p1, 5), p1LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p2, 5), p2LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p3, 5), p3LastDataMessageTs);
-    PubSubHelper.produceMessages(pubSubProducerAdapter, p0, 5, 1, true);
-    PubSubHelper.produceMessages(pubSubProducerAdapter, p1, 13, 1, true);
-    PubSubHelper.produceMessages(pubSubProducerAdapter, p2, 21, 1, true);
-    PubSubHelper.produceMessages(pubSubProducerAdapter, p3, 25, 1, true);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p0, 5), p0LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageCached(p0), p0LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p1, 5), p1LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageCached(p1), p1LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p2, 5), p2LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageCached(p2), p2LastDataMessageTs);
-    Throwable exception =
-        expectThrows(VeniceException.class, () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(p3, 5));
-    assertTrue(exception.getMessage().contains("No data message found in topic-partition: "));
-    Throwable exception2 =
-        expectThrows(VeniceException.class, () -> topicManager.getProducerTimestampOfLastDataMessageCached(p3));
-    assertTrue(exception2.getMessage().contains("No data message found in topic-partition: "));
+    assertEquals(
+        topicManager
+            .diffPosition(p0, topicManager.getPositionByTime(p0, p0TsBeforeM0), PubSubSymbolicPosition.EARLIEST),
+        0,
+        "Position by timestamp before first message should be at the beginning (EARLIEST)");
   }
 
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
@@ -408,10 +479,10 @@ public class TopicManagerE2ETest {
     CountDownLatch latch = new CountDownLatch(1);
     Runnable[] tasks = { () -> {
       latch.countDown();
-      topicManager.getLatestOffsetCached(nonExistentTopic, 1);
+      topicManager.getLatestPositionCached(new PubSubTopicPartitionImpl(nonExistentTopic, 1));
     }, () -> {
       latch.countDown();
-      topicManager.getLatestOffsetWithRetries(new PubSubTopicPartitionImpl(nonExistentTopic, 0), 1);
+      topicManager.getLatestPositionWithRetries(new PubSubTopicPartitionImpl(nonExistentTopic, 0), 1);
     } };
 
     ExecutorService executorService = Executors.newFixedThreadPool(5);

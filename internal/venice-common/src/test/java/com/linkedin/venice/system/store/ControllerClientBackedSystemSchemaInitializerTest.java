@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -30,6 +31,41 @@ import org.testng.annotations.Test;
 public class ControllerClientBackedSystemSchemaInitializerTest {
   @Test
   public void testCreateSystemStoreAndRegisterSchema() throws IOException {
+    Optional<D2Client> d2Client = Optional.of(mock(D2Client.class));
+    try (ControllerClientBackedSystemSchemaInitializer initializer = new ControllerClientBackedSystemSchemaInitializer(
+        AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+        "testCluster",
+        null,
+        null,
+        true,
+        Optional.empty(),
+        "",
+        "a",
+        d2Client,
+        "",
+        false)) {
+      initializer.execute();
+    } catch (VeniceException e) {
+      Assert.fail("Exception should be thrown when neither controller url nor d2 config is provided");
+    }
+
+    try (ControllerClientBackedSystemSchemaInitializer initializer = new ControllerClientBackedSystemSchemaInitializer(
+        AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+        "testCluster",
+        null,
+        null,
+        true,
+        Optional.empty(),
+        "",
+        "a",
+        Optional.empty(),
+        "",
+        false)) {
+      initializer.execute();
+      Assert.fail("Exception should be thrown when neither controller url nor d2 config is provided");
+    } catch (VeniceException e) {
+      // expected
+    }
 
     try (ControllerClientBackedSystemSchemaInitializer initializer = new ControllerClientBackedSystemSchemaInitializer(
         AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
@@ -40,6 +76,7 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
         Optional.empty(),
         "",
         "",
+        d2Client,
         "",
         false)) {
       initializer.execute();
@@ -58,6 +95,7 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
         Optional.empty(),
         "",
         "d2Service",
+        d2Client,
         "d2ZkHost",
         false)) {
       doReturn("leaderControllerUrl").when(controllerClient).getLeaderControllerUrl();
@@ -116,6 +154,7 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
               Optional.empty(),
               "",
               "",
+              Optional.empty(),
               "",
               false)) {
         if (protocol == AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE) {

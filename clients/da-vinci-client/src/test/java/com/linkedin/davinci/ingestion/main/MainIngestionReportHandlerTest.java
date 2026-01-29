@@ -1,8 +1,9 @@
 package com.linkedin.davinci.ingestion.main;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -14,6 +15,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -65,11 +69,14 @@ public class MainIngestionReportHandlerTest {
     MainIngestionMonitorService ingestionMonitorService = mock(MainIngestionMonitorService.class);
     MainIngestionReportHandler ingestionReportHandler = new MainIngestionReportHandler(ingestionMonitorService);
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    PubSubPosition testPosition = ApacheKafkaOffsetPosition.of(0L);
 
     VeniceNotifier ingestionNotifier = mock(VeniceNotifier.class);
     VeniceNotifier pushStatusNotifier = mock(VeniceNotifier.class);
     when(ingestionMonitorService.getIngestionNotifier()).thenReturn(Collections.singletonList(ingestionNotifier));
     when(ingestionMonitorService.getPushStatusNotifierList()).thenReturn(Collections.singletonList(pushStatusNotifier));
+    when(ingestionMonitorService.getPubSubPositionDeserializer())
+        .thenReturn(PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
 
     IngestionTaskReport ingestionTaskReport = new IngestionTaskReport();
     ingestionTaskReport.reportType = IngestionReportType.COMPLETED.getValue();
@@ -77,6 +84,7 @@ public class MainIngestionReportHandlerTest {
     ingestionTaskReport.topicName = "topic";
     ingestionTaskReport.partitionId = 0;
     ingestionTaskReport.message = "";
+    ingestionTaskReport.pubSubPosition = testPosition.toWireFormatBuffer();
 
     FullHttpRequest msg = new DefaultFullHttpRequest(
         HttpVersion.HTTP_1_1,
@@ -85,8 +93,12 @@ public class MainIngestionReportHandlerTest {
         Unpooled.wrappedBuffer(
             AvroProtocolDefinition.INGESTION_TASK_REPORT.getSerializer().serialize(null, ingestionTaskReport)));
     ingestionReportHandler.channelRead0(ctx, msg);
-    verify(ingestionNotifier, times(1)).completed(anyString(), anyInt(), anyLong(), anyString());
-    verify(pushStatusNotifier, times(1)).completed(anyString(), anyInt(), anyLong(), anyString());
+    verify(ingestionNotifier, times(1)).completed(anyString(), anyInt(), any(PubSubPosition.class), anyString());
+    verify(pushStatusNotifier, times(1)).completed(anyString(), anyInt(), any(PubSubPosition.class), anyString());
+    verify(ingestionNotifier, times(1))
+        .completed(anyString(), anyInt(), argThat(position -> position.equals(testPosition)), anyString());
+    verify(pushStatusNotifier, times(1))
+        .completed(anyString(), anyInt(), argThat(position -> position.equals(testPosition)), anyString());
   }
 
   @Test

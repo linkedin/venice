@@ -39,6 +39,8 @@ public enum Arg {
   STORAGE_NODE("storage-node", "n", true, "Helix instance ID for a storage node, eg. lva1-app1234_1690"),
   KEY("key", "k", true, "Plain-text key for identifying a record in a store"),
   OFFSET("offset", "of", true, "Kafka offset number"),
+  POSITION("position", "po", true, "<typeId:base64EncodedPositionWfBytes>"),
+  EXECUTION_ID("execution-id", "eid", true, "Execution ID of admin operation"),
   EXECUTION("execution", "e", true, "Execution ID of async admin command"),
   PARTITION_COUNT("partition-count", "pn", true, "number of partitions a store has"),
   PARTITIONER_CLASS("partitioner-class", "pc", true, "Name of chosen partitioner class"),
@@ -118,6 +120,10 @@ public enum Arg {
   ),
   VENICE_CLIENT_SSL_CONFIG_FILE(
       "venice-client-ssl-config-file", "vcsc", true, "Configuration file for querying key in Venice client through SSL."
+  ),
+  STARTING_POSITION(
+      "starting_position", "sp", true,
+      "Starting <typeId:base64EncodedPositionWfBytes> when dumping admin messages, inclusive"
   ), STARTING_OFFSET("starting_offset", "so", true, "Starting offset when dumping admin messages, inclusive"),
   MESSAGE_COUNT("message_count", "mc", true, "Max message count when dumping admin messages"),
   PARENT_DIRECTORY(
@@ -153,6 +159,10 @@ public enum Arg {
       "etled-proxy-user-account", "epu", true,
       "if enabled ETL, the proxy user account for HDFS file directory where the ETLed snapshots will go."
   ),
+  VENICE_ETL_STRATEGY(
+      "venice-etl-strategy", "ves", true,
+      "ETL strategy for this store. Supported strategies are: EXTERNAL_SERVICE, EXTERNAL_WITH_VENICE_TRIGGER. Default is EXTERNAL_SERVICE."
+  ),
   BACKUP_VERSION_RETENTION_DAY(
       "backup-version-retention-day", "bvrd", true,
       "Backup version retention time in day after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy"
@@ -161,6 +171,7 @@ public enum Arg {
   FLAT_JSON("flat-json", "flj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
   HELP("help", "h", false, "Show usage"), FORCE("force", "f", false, "Force execute this operation"),
   INCLUDE_SYSTEM_STORES("include-system-stores", "iss", true, "Include internal stores maintained by the system."),
+  LOOK_BACK_MS("look-back-ms", "lbms", true, "Look back time in milliseconds for dead store detection"),
   SSL_CONFIG_PATH("ssl-config-path", "scp", true, "SSl config file path"),
   STORE_TYPE(
       "store-type", "st", true,
@@ -244,6 +255,7 @@ public enum Arg {
   ), VIEW_NAME("view-name", "vn", true, "Name of a store view"),
   VIEW_CLASS("view-class", "vc", true, "Name of a store view class"),
   VIEW_PARAMS("view-params", "vp", true, "Additional parameter map of a store view class"),
+  FLINK_VENICE_VIEWS_ENABLED("flink-venice-views-enabled", "fvve", true, "Enable flink-based views"),
   REMOVE_VIEW("remove-view", "rv", false, "Optional config to specify to disable certain store view"),
   PARTITION_DETAIL_ENABLED(
       "partition-detail-enabled", "pde", true, "A flag to indicate whether to retrieve partition details"
@@ -258,6 +270,10 @@ public enum Arg {
   EXTRA_COMMAND_ARGS("extra-command-args", "eca", true, "extra command arguments"),
   ENABLE_DISABLED_REPLICA("enable-disabled-replicas", "edr", true, "Reenable disabled replicas"),
   NON_INTERACTIVE("non-interactive", "nita", false, "non-interactive mode"),
+  ENABLE_COMPACTION("enable-compaction", "ec", true, "Enable compaction"),
+  COMPACTION_THRESHOLD_MILLISECONDS(
+      "compaction-threshold-milliseconds", "ctms", true, "Set compaction threshold in milliseconds"
+  ),
   MIN_COMPACTION_LAG_SECONDS(
       "min-compaction-lag-seconds", "mcls", true, "Min compaction lag seconds for version topic of hybrid stores"
   ),
@@ -287,6 +303,10 @@ public enum Arg {
   BACKUP_FOLDER("backup-folder", "bf", true, "Backup folder path"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery"),
   BLOB_TRANSFER_ENABLED("blob-transfer-enabled", "bt", true, "Flag to indicate if the blob transfer is allowed or not"),
+  BLOB_TRANSFER_IN_SERVER_ENABLED(
+      "blob-transfer-in-server-enabled", "bts", true,
+      "Flag to indicate if the blob transfer is allowed or not in server. Values can be 'NOT_SPECIFIED' as default, 'ENABLED', or 'DISABLED'."
+  ),
   NEARLINE_PRODUCER_COMPRESSION_ENABLED(
       "nearline-producer-compression-enabled", "npce", true,
       "Flag to control whether KafkaProducer will use compression or not for nearline workload"
@@ -307,7 +327,20 @@ public enum Arg {
   ), ENABLE_STORE_MIGRATION("enable-store-migration", "esm", true, "Toggle store migration store config"),
   ADMIN_OPERATION_PROTOCOL_VERSION(
       "admin-operation-protocol-version", "aopv", true, "Admin operation protocol version"
-  ), GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store");
+  ),
+  STORES_TO_REPLICATE(
+      "stores-to-replicate", "str", true,
+      "Comma separated list of stores to be replicated to dark cluster, eg. store1,store2,..."
+  ), GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store"),
+  ENUM_SCHEMA_EVOLUTION_ALLOWED(
+      "enum-schema-evolution-allowed", "esea", true, "Allow enum schema evolution for a store"
+  ), INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
+  ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),
+  PAUSE_AFTER_STEP("pause-after-step", "pas", true, "Pause the auto store migration after this step"),
+  STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks"),
+  KEY_URN_COMPRESSION_EANBLED(
+      "key-urn-compression-enabled", "kuce", true, "Enable/Disable key urn compression for a store."
+  ), KEY_URN_FIELDS("key-urn-fields", "kuf", true, "Comma separated list of key urn fields.");
 
   private final String argName;
   private final String first;

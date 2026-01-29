@@ -1,15 +1,26 @@
 package com.linkedin.venice.fastclient.stats;
 
-import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_CALL_COUNT;
+import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.METADATA_STALENESS_DURATION;
+import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.REQUEST_FANOUT_COUNT;
+import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.RETRY_REQUEST_WIN_COUNT;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.LONG_TAIL_RETRY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 
+import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.dimensions.RejectionReason;
+import com.linkedin.venice.stats.dimensions.RequestFanoutType;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
+import io.opentelemetry.api.common.Attributes;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -21,14 +32,16 @@ import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 
-public class FastClientStats extends com.linkedin.venice.client.stats.ClientStats {
+public class FastClientStats extends ClientStats {
   private final String storeName;
 
-  private final Sensor noAvailableReplicaRequestCountSensor;
+  private final MetricEntityStateOneEnum<RejectionReason> noAvailableReplicaRequestCount;
+  private final MetricEntityStateOneEnum<RejectionReason> rejectedRequestCountByLoadController;
   private final Sensor dualReadFastClientSlowerRequestCountSensor;
   private final Sensor dualReadFastClientSlowerRequestRatioSensor;
   private final Sensor dualReadFastClientErrorThinClientSucceedRequestCountSensor;
@@ -36,17 +49,15 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   private final Sensor dualReadThinClientFastClientLatencyDeltaSensor;
 
   private final Sensor leakedRequestCountSensor;
-  private final Sensor rejectedRequestCountByLoadControllerSensor;
-  private final Sensor rejectionRatioSensor;
-
-  private final Sensor retryRequestWinSensor;
-  private final Sensor metadataStalenessSensor;
-  private final Sensor fanoutSizeSensor;
-  private final Sensor retryFanoutSizeSensor;
+  private final MetricEntityStateOneEnum<RejectionReason> rejectionRatio;
 
   // OTel metrics
   private final MetricEntityStateOneEnum<RequestRetryType> longTailRetry;
   private final MetricEntityStateOneEnum<RequestRetryType> errorRetry;
+  private final MetricEntityStateBase retryRequestWin;
+  private final AsyncMetricEntityStateBase metadataStalenessHighWatermark;
+  private final MetricEntityStateOneEnum<RequestFanoutType> retryFanoutSize;
+  private final MetricEntityStateOneEnum<RequestFanoutType> originalFanoutSize;
   private long cacheTimeStampInMs = 0;
 
   public static FastClientStats getClientStats(
@@ -62,8 +73,23 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
     super(metricsRepository, storeName, requestType, FAST_CLIENT);
 
     this.storeName = storeName;
-    this.noAvailableReplicaRequestCountSensor =
-        registerSensor("no_available_replica_request_count", new OccurrenceRate());
+    this.noAvailableReplicaRequestCount = MetricEntityStateOneEnum.create(
+        FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.NO_AVAILABLE_REPLICA_REQUEST_COUNT,
+        Collections.singletonList(new OccurrenceRate()),
+        baseDimensionsMap,
+        RejectionReason.class);
+
+    this.rejectedRequestCountByLoadController = MetricEntityStateOneEnum.create(
+        FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER,
+        Collections.singletonList(new OccurrenceRate()),
+        baseDimensionsMap,
+        RejectionReason.class);
 
     Rate requestRate = getRequestRate();
     Rate fastClientSlowerRequestRate = new OccurrenceRate();
@@ -86,23 +112,18 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
     this.dualReadThinClientFastClientLatencyDeltaSensor =
         registerSensorWithDetailedPercentiles("dual_read_thinclient_fastclient_latency_delta", new Max(), new Avg());
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
-    this.retryRequestWinSensor = registerSensor("retry_request_win", new OccurrenceRate());
 
-    this.metadataStalenessSensor = registerSensor(new AsyncGauge((ignored, ignored2) -> {
-      if (this.cacheTimeStampInMs == 0) {
-        return Double.NaN;
-      } else {
-        return System.currentTimeMillis() - this.cacheTimeStampInMs;
-      }
-    }, "metadata_staleness_high_watermark_ms"));
-    this.fanoutSizeSensor = registerSensor("fanout_size", new Avg(), new Max());
-    this.retryFanoutSizeSensor = registerSensor("retry_fanout_size", new Avg(), new Max());
-    this.rejectedRequestCountByLoadControllerSensor =
-        registerSensor("rejected_request_count_by_load_controller", new OccurrenceRate());
-    this.rejectionRatioSensor = registerSensor("rejection_ratio", new Avg(), new Max());
+    this.rejectionRatio = MetricEntityStateOneEnum.create(
+        FastClientMetricEntity.REQUEST_REJECTION_RATIO.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.REJECTION_RATIO,
+        Arrays.asList(new Avg(), new Max()),
+        baseDimensionsMap,
+        RejectionReason.class);
 
     this.longTailRetry = MetricEntityStateOneEnum.create(
-        RETRY_COUNT.getMetricEntity(),
+        RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         FastClientTehutiMetricName.LONG_TAIL_RETRY_REQUEST,
@@ -110,17 +131,70 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
         baseDimensionsMap,
         RequestRetryType.class);
     this.errorRetry = MetricEntityStateOneEnum.create(
-        RETRY_COUNT.getMetricEntity(),
+        RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         FastClientTehutiMetricName.ERROR_RETRY_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
         RequestRetryType.class);
+
+    this.retryRequestWin = MetricEntityStateBase.create(
+        RETRY_REQUEST_WIN_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.RETRY_REQUEST_WIN,
+        Collections.singletonList(new OccurrenceRate()),
+        baseDimensionsMap,
+        getBaseAttributes());
+
+    // METADATA_STALENESS_DURATION only requires VENICE_STORE_NAME dimension
+    Map<VeniceMetricsDimensions, String> metadataStalenessBaseDimensionsMap = null;
+    Attributes metadataStalenessBaseAttributes = null;
+    if (emitOpenTelemetryMetrics()) {
+      metadataStalenessBaseDimensionsMap = Collections.singletonMap(VENICE_STORE_NAME, storeName);
+      metadataStalenessBaseAttributes =
+          Attributes.builder().put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName).build();
+    }
+
+    this.metadataStalenessHighWatermark = AsyncMetricEntityStateBase.create(
+        METADATA_STALENESS_DURATION.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS,
+        Collections.singletonList(
+            new AsyncGauge(
+                (ignored1, ignored2) -> this.cacheTimeStampInMs == 0
+                    ? Double.NaN
+                    : System.currentTimeMillis() - this.cacheTimeStampInMs,
+                FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS.getMetricName())),
+        metadataStalenessBaseDimensionsMap,
+        metadataStalenessBaseAttributes,
+        () -> this.cacheTimeStampInMs == 0 ? 0 : (System.currentTimeMillis() - this.cacheTimeStampInMs));
+
+    // OTel: fanout_size (MIN_MAX_COUNT_SUM_AGGREGATIONS) with dimensions: venice.store.name, venice.request.method,
+    // venice.request.fanout_type
+    this.retryFanoutSize = MetricEntityStateOneEnum.create(
+        REQUEST_FANOUT_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.RETRY_FANOUT_SIZE,
+        Arrays.asList(new Avg(), new Max()),
+        baseDimensionsMap,
+        RequestFanoutType.class);
+
+    this.originalFanoutSize = MetricEntityStateOneEnum.create(
+        REQUEST_FANOUT_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.FANOUT_SIZE,
+        Arrays.asList(new Avg(), new Max()),
+        baseDimensionsMap,
+        RequestFanoutType.class);
   }
 
   public void recordNoAvailableReplicaRequest() {
-    noAvailableReplicaRequestCountSensor.record();
+    noAvailableReplicaRequestCount.record(1, RejectionReason.NO_REPLICAS_AVAILABLE);
   }
 
   public void recordFastClientSlowerRequest() {
@@ -145,27 +219,27 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   }
 
   public void recordRetryRequestWin() {
-    retryRequestWinSensor.record();
+    retryRequestWin.record(1);
   }
 
   public void updateCacheTimestamp(long cacheTimeStampInMs) {
     this.cacheTimeStampInMs = cacheTimeStampInMs;
   }
 
-  public void recordFanoutSize(int fanoutSize) {
-    fanoutSizeSensor.record(fanoutSize);
+  public void recordFanoutSize(int size) {
+    originalFanoutSize.record(size, RequestFanoutType.ORIGINAL);
   }
 
-  public void recordRetryFanoutSize(int retryFanoutSize) {
-    retryFanoutSizeSensor.record(retryFanoutSize);
+  public void recordRetryFanoutSize(int size) {
+    retryFanoutSize.record(size, RequestFanoutType.RETRY);
   }
 
   public void recordRejectedRequestByLoadController() {
-    rejectedRequestCountByLoadControllerSensor.record();
+    rejectedRequestCountByLoadController.record(1, RejectionReason.THROTTLED_BY_LOAD_CONTROLLER);
   }
 
   public void recordRejectionRatio(double rejectionRatio) {
-    rejectionRatioSensor.record(rejectionRatio);
+    this.rejectionRatio.record(rejectionRatio, RejectionReason.THROTTLED_BY_LOAD_CONTROLLER);
   }
 
   /**
@@ -205,7 +279,8 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
    * Metric names for tehuti metrics used in this class.
    */
   public enum FastClientTehutiMetricName implements TehutiMetricNameEnum {
-    LONG_TAIL_RETRY_REQUEST, ERROR_RETRY_REQUEST;
+    LONG_TAIL_RETRY_REQUEST, ERROR_RETRY_REQUEST, RETRY_REQUEST_WIN, METADATA_STALENESS_HIGH_WATERMARK_MS, FANOUT_SIZE,
+    RETRY_FANOUT_SIZE, NO_AVAILABLE_REPLICA_REQUEST_COUNT, REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER, REJECTION_RATIO;
 
     private final String metricName;
 

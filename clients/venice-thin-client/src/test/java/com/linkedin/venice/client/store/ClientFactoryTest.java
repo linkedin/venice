@@ -8,6 +8,7 @@ import com.linkedin.venice.client.store.transport.HttpsTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.DataProviderUtils;
 import java.util.function.Function;
 import javax.net.ssl.SSLContext;
 import org.testng.Assert;
@@ -62,6 +63,25 @@ public class ClientFactoryTest {
     Assert.assertEquals(httpTransport.isRequireHTTP2(), httpClient5Http2Enabled);
 
     transport.close();
+  }
+
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testStatTrackingConfig(boolean statTrackingEnabled, boolean retriableEnabled) {
+    ClientConfig config = ClientConfig.defaultGenericClientConfig("store");
+    TransportClient transportClient = mock(TransportClient.class);
+    ClientFactory.setUnitTestMode();
+
+    ClientFactory.setTransportClientProvider((clientConfig) -> transportClient);
+
+    config.setStatTrackingEnabled(statTrackingEnabled);
+    config.setRetryOnRouterError(retriableEnabled);
+    AvroGenericStoreClient client = ClientFactory.getGenericAvroClient(config);
+    Assert.assertEquals(client instanceof RetriableStoreClient, retriableEnabled);
+    if (statTrackingEnabled && retriableEnabled) {
+      Assert.assertTrue(((RetriableStoreClient) client).getInnerStoreClient() instanceof StatTrackingStoreClient);
+    } else {
+      Assert.assertEquals(client instanceof StatTrackingStoreClient, statTrackingEnabled);
+    }
   }
 
   @Test

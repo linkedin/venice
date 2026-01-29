@@ -1,24 +1,28 @@
 package com.linkedin.venice.client.stats;
 
+import static com.linkedin.venice.client.stats.BasicClientStats.BasicClientMetricEntity.REQUEST_KEY_COUNT;
+import static com.linkedin.venice.client.stats.BasicClientStats.BasicClientMetricEntity.RESPONSE_KEY_COUNT;
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_CALL_COUNT;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_REQUEST_KEY_COUNT;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_RESPONSE_KEY_COUNT;
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
-import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
-import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
-import static com.linkedin.venice.stats.dimensions.MessageType.*;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_MESSAGE_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_REJECTION_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
-import static org.apache.http.HttpStatus.SC_OK;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -26,7 +30,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.stats.dimensions.MessageType;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
@@ -34,9 +38,9 @@ import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
@@ -87,7 +91,13 @@ public class BasicClientStatsTest {
     stats.emitHealthyRequestMetrics(90.0, 2);
 
     validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", true, 90.0);
-    validateOtelMetrics(inMemoryMetricReader, "test_store", SC_OK, SUCCESS, 90.0, THIN_CLIENT.getMetricsPrefix());
+    validateOtelMetrics(
+        inMemoryMetricReader,
+        "test_store",
+        HttpResponseStatusEnum.OK,
+        SUCCESS,
+        90.0,
+        THIN_CLIENT.getMetricsPrefix());
   }
 
   @Test
@@ -119,7 +129,7 @@ public class BasicClientStatsTest {
     validateOtelMetrics(
         inMemoryMetricReader,
         "test_store",
-        HttpStatus.SC_INTERNAL_SERVER_ERROR,
+        HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
         VeniceResponseStatusCategory.FAIL,
         90.0,
         THIN_CLIENT.getMetricsPrefix());
@@ -177,15 +187,20 @@ public class BasicClientStatsTest {
       }
 
       // Check OpenTelemetry metrics
-      Attributes expectedAttr = getAttributes(storeName, isRequest ? REQUEST : RESPONSE);
+      Attributes expectedAttributes =
+          new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+              .setRequestType(SINGLE_GET)
+              .build();
       validateExponentialHistogramPointData(
           inMemoryMetricReader,
           keyCount,
           keyCount,
           1,
           keyCount,
-          expectedAttr,
-          "key_count",
+          expectedAttributes,
+          isRequest
+              ? REQUEST_KEY_COUNT.getMetricEntity().getMetricName()
+              : RESPONSE_KEY_COUNT.getMetricEntity().getMetricName(),
           client.getMetricsPrefix());
     }
   }
@@ -203,8 +218,61 @@ public class BasicClientStatsTest {
         RequestRetryType.ERROR_RETRY,
         THIN_CLIENT.getMetricsPrefix(),
         1,
-        "retry_count",
+        RETRY_CALL_COUNT.getMetricEntity().getMetricName(),
         1);
+  }
+
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testRetryKeyCountMetrics(boolean isRequest) {
+    for (ClientType client: ClientType.values()) {
+      // verify that the following works for all client types.
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      ClientStats stats = createClientStats(inMemoryMetricReader, client);
+
+      int keyCount = 10;
+
+      if (isRequest) {
+        stats.recordRetryRequestKeyCount(keyCount);
+      } else {
+        stats.recordRetryRequestSuccessKeyCount(keyCount);
+      }
+
+      // Check Tehuti metrics
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      if (isRequest) {
+        Assert.assertEquals(
+            (int) metrics.get(String.format(".%s--retry_request_key_count.Max", storeName)).value(),
+            keyCount);
+        Assert.assertEquals(
+            (int) metrics.get(String.format(".%s--retry_request_key_count.Avg", storeName)).value(),
+            keyCount);
+      } else {
+        Assert.assertEquals(
+            (int) metrics.get(String.format(".%s--retry_request_success_key_count.Max", storeName)).value(),
+            keyCount);
+        Assert.assertEquals(
+            (int) metrics.get(String.format(".%s--retry_request_success_key_count.Avg", storeName)).value(),
+            keyCount);
+      }
+
+      // Check OpenTelemetry metrics
+      Attributes expectedAttributes =
+          new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+              .setRequestType(SINGLE_GET)
+              .build();
+      validateHistogramPointData(
+          inMemoryMetricReader,
+          keyCount,
+          keyCount,
+          1,
+          keyCount,
+          expectedAttributes,
+          isRequest
+              ? RETRY_REQUEST_KEY_COUNT.getMetricEntity().getMetricName()
+              : RETRY_RESPONSE_KEY_COUNT.getMetricEntity().getMetricName(),
+          client.getMetricsPrefix());
+    }
   }
 
   private BasicClientStats createStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
@@ -239,15 +307,20 @@ public class BasicClientStatsTest {
   private void validateOtelMetrics(
       InMemoryMetricReader inMemoryMetricReader,
       String storeName,
-      int httpStatus,
+      HttpResponseStatusEnum httpStatus,
       VeniceResponseStatusCategory category,
       double latency,
       String otelPrefix) {
-    Attributes expectedAttributes = getExpectedAttributes(storeName, httpStatus, category);
+    Attributes expectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setHttpStatus(httpStatus)
+            .setVeniceStatusCategory(category)
+            .setRequestType(SINGLE_GET)
+            .build();
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     assertEquals(metricsData.size(), 2, "There should be two metrics recorded: call_time and call_count");
 
-    validateLongPointData(inMemoryMetricReader, 1, expectedAttributes, "call_count", otelPrefix);
+    validateLongPointDataFromCounter(inMemoryMetricReader, 1, expectedAttributes, "call_count", otelPrefix);
 
     validateExponentialHistogramPointData(
         inMemoryMetricReader,
@@ -267,7 +340,7 @@ public class BasicClientStatsTest {
       double latency,
       String otelPrefix) {
     // Overload for Davinci client where httpStatus is not applicable
-    validateOtelMetrics(inMemoryMetricReader, storeName, -1, category, latency, otelPrefix);
+    validateOtelMetrics(inMemoryMetricReader, storeName, null, category, latency, otelPrefix);
   }
 
   private void validateOtelMetrics(
@@ -278,14 +351,23 @@ public class BasicClientStatsTest {
       int expectedDataSize,
       String expectedMetricName,
       long expectedValue) {
-    Attributes expectedAttributes = getExpectedAttributes(storeName, retryType);
+    Attributes expectedAttributes =
+        new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
+            .setRequestType(SINGLE_GET)
+            .setRetryType(retryType)
+            .build();
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     assertEquals(
         metricsData.size(),
         expectedDataSize,
         String.format("There should be %d metrics recorded", expectedDataSize));
 
-    validateLongPointData(inMemoryMetricReader, expectedValue, expectedAttributes, expectedMetricName, otelPrefix);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        expectedValue,
+        expectedAttributes,
+        expectedMetricName,
+        otelPrefix);
   }
 
   @Test
@@ -334,21 +416,172 @@ public class BasicClientStatsTest {
             "Latency for all DaVinci Client responses",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     expectedMetrics.put(
-        BasicClientStats.BasicClientMetricEntity.KEY_COUNT,
+        REQUEST_KEY_COUNT,
         new MetricEntity(
-            "key_count",
+            "request.key_count",
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
-            "Count of keys for venice client request and response",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)));
+            "Count of keys for venice client request",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
-        ClientMetricEntity.RETRY_COUNT,
+        BasicClientStats.BasicClientMetricEntity.RESPONSE_KEY_COUNT,
         new MetricEntity(
-            "retry_count",
+            "response.key_count",
+            MetricType.HISTOGRAM,
+            MetricUnit.NUMBER,
+            "Count of keys for venice client response",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        RETRY_CALL_COUNT,
+        new MetricEntity(
+            "retry.call_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of all retry requests for client",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)));
+    expectedMetrics.put(
+        RETRY_REQUEST_KEY_COUNT,
+        new MetricEntity(
+            "retry.request.key_count",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "Key count of retry requests for client",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.RETRY_RESPONSE_KEY_COUNT,
+        new MetricEntity(
+            "retry.response.key_count",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "Key count of retry responses for client",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.REQUEST_SERIALIZATION_TIME,
+        new MetricEntity(
+            "request.serialization_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Time to serialize the request payload in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.RESPONSE_DECOMPRESSION_TIME,
+        new MetricEntity(
+            "response.decompression_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Time to decompress the response payload in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.RESPONSE_DESERIALIZATION_TIME,
+        new MetricEntity(
+            "response.deserialization_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Time to deserialize the response payload in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.CALL_SUBMISSION_TO_HANDLING_TIME,
+        new MetricEntity(
+            "call_submission_to_handling_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Time between submitting the request and starting to handle the response, in milliseconds",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME,
+        new MetricEntity(
+            "response.batch_stream_progress_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Batch streaming progress time in milliseconds",
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_REQUEST_METHOD,
+                com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STREAM_PROGRESS)));
+
+    expectedMetrics.put(
+        ClientMetricEntity.REQUEST_DUPLICATE_KEY_COUNT,
+        new MetricEntity(
+            "request.duplicate_key_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Duplicate key count of requests for client",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    expectedMetrics.put(
+        ClientMetricEntity.REQUEST_TIMEOUT_REQUESTED_DURATION,
+        new MetricEntity(
+            "request.timeout.requested_duration",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.MILLISECOND,
+            "The timeout duration (in milliseconds) that was configured for client Future",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.REQUEST_TIMEOUT_PARTIAL_RESPONSE_RATIO,
+        new MetricEntity(
+            "request.timeout.partial_response_ratio",
+            MetricType.HISTOGRAM,
+            MetricUnit.NUMBER,
+            "Ratio of keys that were successfully retrieved to the total number of keys requested before timeout",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.REQUEST_TIMEOUT_COUNT,
+        new MetricEntity(
+            "request.timeout.count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of requests that timed out on the client side",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)));
+    expectedMetrics.put(
+        ClientMetricEntity.ROUTE_CALL_COUNT,
+        new MetricEntity(
+            "route.call_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of all requests routed to different instances in a cluster",
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_ROUTE_NAME,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+                HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+                HTTP_RESPONSE_STATUS_CODE)));
+    expectedMetrics.put(
+        ClientMetricEntity.ROUTE_CALL_TIME,
+        new MetricEntity(
+            "route.call_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Time taken for requests routed to different instances in a cluster",
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_ROUTE_NAME,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+                HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+                HTTP_RESPONSE_STATUS_CODE)));
+    expectedMetrics.put(
+        ClientMetricEntity.ROUTE_REQUEST_PENDING_COUNT,
+        new MetricEntity(
+            "route.request.pending_count",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "Pending request count for requests routed to different instances in a cluster",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_ROUTE_NAME)));
+    expectedMetrics.put(
+        ClientMetricEntity.ROUTE_REQUEST_REJECTION_RATIO,
+        new MetricEntity(
+            "route.request.rejection_ratio",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "Request rejection ratio for requests routed to different instances in a cluster",
+            Utils.setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_ROUTE_NAME,
+                VENICE_REQUEST_METHOD,
+                VENICE_REQUEST_REJECTION_REASON)));
 
     Set<String> uniqueMetricEntitiesNames = new HashSet<>();
 
@@ -407,52 +640,5 @@ public class BasicClientStatsTest {
         && actual.getMetricType() == expected.getMetricType() && actual.getUnit() == expected.getUnit()
         && Objects.equals(actual.getDescription(), expected.getDescription())
         && Objects.equals(actual.getDimensionsList(), expected.getDimensionsList());
-  }
-
-  private Attributes getExpectedAttributes(
-      String storeName,
-      int httpStatus,
-      VeniceResponseStatusCategory veniceStatusCategory) {
-    return getExpectedAttributes(storeName, httpStatus, veniceStatusCategory, null);
-  }
-
-  private Attributes getExpectedAttributes(String storeName, RequestRetryType retryType) {
-    return getExpectedAttributes(storeName, -1, null, retryType);
-  }
-
-  private Attributes getExpectedAttributes(
-      String storeName,
-      int httpStatus,
-      VeniceResponseStatusCategory veniceStatusCategory,
-      RequestRetryType retryType) {
-    AttributesBuilder builder = Attributes.builder()
-        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue());
-    if (veniceStatusCategory != null) {
-      builder.put(
-          VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
-          veniceStatusCategory.getDimensionValue());
-    }
-    if (httpStatus > -1) {
-      builder
-          .put(
-              HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(),
-              transformIntToHttpResponseStatusEnum(httpStatus).getDimensionValue())
-          .put(
-              HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
-              getVeniceHttpResponseStatusCodeCategory(httpStatus).getDimensionValue());
-    }
-    if (retryType != null) {
-      builder.put(VENICE_REQUEST_RETRY_TYPE.getDimensionNameInDefaultFormat(), retryType.getDimensionValue());
-    }
-    return builder.build();
-  }
-
-  private Attributes getAttributes(String storeName, MessageType type) {
-    AttributesBuilder builder = Attributes.builder()
-        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
-        .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), type.getDimensionValue());
-    return builder.build();
   }
 }

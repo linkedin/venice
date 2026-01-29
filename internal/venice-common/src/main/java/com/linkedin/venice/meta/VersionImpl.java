@@ -9,6 +9,8 @@ import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import com.linkedin.venice.utils.AvroRecordUtils;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -289,6 +291,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public String getBlobTransferInServerEnabled() {
+    return this.storeVersion.blobTransferInServerEnabled.toString();
+  }
+
+  @Override
+  public void setBlobTransferInServerEnabled(String blobTransferServerEnable) {
+    this.storeVersion.blobTransferInServerEnabled = blobTransferServerEnable;
+  }
+
+  @Override
   public boolean isUseVersionLevelIncrementalPushEnabled() {
     return this.storeVersion.useVersionLevelIncrementalPushEnabled;
   }
@@ -386,6 +398,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public void setRepushTtlSeconds(int ttlSeconds) {
+    this.storeVersion.repushTtlSeconds = ttlSeconds;
+  }
+
+  @Override
+  public int getRepushTtlSeconds() {
+    return this.storeVersion.repushTtlSeconds;
+  }
+
+  @Override
   public int getRmdVersionId() {
     return this.storeVersion.timestampMetadataVersionId;
   }
@@ -433,6 +455,29 @@ public class VersionImpl implements Version {
   @Override
   public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
     this.storeVersion.globalRtDivEnabled = globalRtDivEnabled;
+  }
+
+  @Override
+  public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+    this.storeVersion.keyUrnCompressionEnabled = keyUrnCompressionEnabled;
+  }
+
+  @Override
+  public boolean isKeyUrnCompressionEnabled() {
+    return this.storeVersion.keyUrnCompressionEnabled;
+  }
+
+  @Override
+  public void setKeyUrnFields(List<String> keyUrnFields) {
+    this.storeVersion.keyUrnFields = keyUrnFields.stream().map(Objects::toString).collect(Collectors.toList());
+  }
+
+  @Override
+  public List<String> getKeyUrnFields() {
+    if (this.storeVersion.keyUrnFields == null) {
+      return Collections.emptyList();
+    }
+    return this.storeVersion.keyUrnFields.stream().map(Objects::toString).collect(Collectors.toList());
   }
 
   @Override
@@ -515,10 +560,14 @@ public class VersionImpl implements Version {
     clonedVersion.setRepushSourceVersion(getRepushSourceVersion());
     clonedVersion.setViewConfigs(getViewConfigs());
     clonedVersion.setBlobTransferEnabled(isBlobTransferEnabled());
+    clonedVersion.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
     clonedVersion.setTargetSwapRegion(getTargetSwapRegion());
     clonedVersion.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
     clonedVersion.setIsDavinciHeartbeatReported(getIsDavinciHeartbeatReported());
     clonedVersion.setGlobalRtDivEnabled(isGlobalRtDivEnabled());
+    clonedVersion.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
+    clonedVersion.setKeyUrnFields(getKeyUrnFields());
+    clonedVersion.setRepushTtlSeconds(getRepushTtlSeconds());
     return clonedVersion;
   }
 

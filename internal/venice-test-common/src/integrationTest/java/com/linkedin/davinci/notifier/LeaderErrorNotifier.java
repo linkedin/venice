@@ -7,6 +7,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 
@@ -37,12 +38,12 @@ public class LeaderErrorNotifier extends PushStatusNotifier {
   }
 
   @Override
-  public void completed(String topic, int partitionId, long offset, String message) {
+  public void completed(String topic, int partitionId, PubSubPosition position, String message) {
     if (doOne && message.contains("LEADER") && !isSystemStore(topic)) {
       accessor.updateReplicaStatus(topic, partitionId, instanceId, ERROR, "");
       doOne = false;
     } else {
-      accessor.updateReplicaStatus(topic, partitionId, instanceId, COMPLETED, offset, "");
+      accessor.updateReplicaStatus(topic, partitionId, instanceId, COMPLETED, "");
     }
   }
 

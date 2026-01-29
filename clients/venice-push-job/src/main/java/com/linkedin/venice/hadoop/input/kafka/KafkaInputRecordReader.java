@@ -1,8 +1,12 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.utils.Utils.EMPTY_BYTE_BUFFER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformerImpl;
 import com.linkedin.venice.chunking.RawKeyBytesAndChunkedKeySuffix;
@@ -24,16 +28,13 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
+import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator;
+import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator.PubSubInputRecord;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
@@ -43,55 +44,24 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * We borrowed some idea from the open-sourced attic-crunch lib:
- * https://github.com/apache/attic-crunch/blob/master/crunch-kafka/src/main/java/org/apache/crunch/kafka/record/KafkaRecordReader.java
- *
- * This class is used to read data off a Kafka topic partition.
- * It will return the key bytes as unchanged, and extract the following fields and wrap them
- * up as {@link KafkaInputMapperValue} as the value:
- * 1. Value bytes.
- * 2. Schema Id.
- * 3. Offset.
- * 4. Value type, which could be 'PUT' or 'DELETE'.
+ * Reads data from a Kafka-backed PubSub topic partition and converts each message
+ * into {@link KafkaInputMapperKey}/{@link KafkaInputMapperValue}. All generic iteration,
+ * polling, end-bound checks, and progress tracking are delegated to {@link PubSubSplitIterator}.
  */
 public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey, KafkaInputMapperValue>, AutoCloseable {
-  public static final String KIF_RECORD_READER_KAFKA_CONFIG_PREFIX = "kif.record.reader.kafka.";
-
-  private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
   private static final Logger LOGGER = LogManager.getLogger(KafkaInputRecordReader.class);
-  private static final Long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
-  private static final long LOG_RECORD_INTERVAL = 100000; // 100K
-  /**
-   * Retry when the poll is returning empty result.
-   */
-  private static final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 12;
-  private static final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(5);
-
+  private static final long LOG_RECORD_INTERVAL = 100_000L;
   private static final PubSubTopicRepository PUBSUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
-
-  private final PubSubConsumerAdapter consumer;
   private final PubSubTopicPartition topicPartition;
-  private final long maxNumberOfRecords;
-  private final long startingOffset;
-  private long currentOffset;
-  private final long endingOffset;
+  private final PubSubSplitIterator pubSubSplitIterator;
   private final boolean isSourceVersionChunkingEnabled;
   private final Schema keySchema;
   private ChunkKeyValueTransformer chunkKeyValueTransformer;
-  /**
-   * Iterator pointing to the current messages fetched from the Kafka topic partition.
-   */
-  private Iterator<DefaultPubSubMessage> recordIterator;
-
   private final DataWriterTaskTracker taskTracker;
-  /**
-   * Whether the consumer being used in this class is owned or not, and this is used to decide
-   * whether the consumer should be closed when closing {@link KafkaInputRecordReader}.
-   */
   private boolean ownedConsumer = true;
 
   public KafkaInputRecordReader(InputSplit split, JobConf job, DataWriterTaskTracker taskTracker) {
-    this(split, job, taskTracker, createConsumer(job), PUBSUB_TOPIC_REPOSITORY);
+    this(split, job, taskTracker, createConsumer(job));
   }
 
   private static PubSubConsumerAdapter createConsumer(JobConf job) {
@@ -115,146 +85,118 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
       JobConf job,
       DataWriterTaskTracker taskTracker,
       PubSubConsumerAdapter consumer) {
-    this(split, job, taskTracker, consumer, PUBSUB_TOPIC_REPOSITORY);
-    this.ownedConsumer = false;
-  }
 
-  /** For unit tests */
-  KafkaInputRecordReader(
-      InputSplit split,
-      JobConf job,
-      DataWriterTaskTracker taskTracker,
-      PubSubConsumerAdapter consumer,
-      PubSubTopicRepository pubSubTopicRepository) {
     if (!(split instanceof KafkaInputSplit)) {
       throw new VeniceException("InputSplit for RecordReader is not valid split type.");
     }
     KafkaInputSplit inputSplit = (KafkaInputSplit) split;
-    this.consumer = consumer;
-    this.topicPartition = inputSplit.getTopicPartition();
-    this.startingOffset = inputSplit.getStartingOffset();
-    this.currentOffset = inputSplit.getStartingOffset() - 1;
-    this.endingOffset = inputSplit.getEndingOffset();
+
     this.isSourceVersionChunkingEnabled = job.getBoolean(KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, false);
     String keySchemaString = job.get(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
     if (keySchemaString == null) {
       throw new VeniceException("Expect a value for the config property: " + KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
     }
     this.keySchema = Schema.parse(keySchemaString);
-    /**
-     * Not accurate since the topic partition could be log compacted.
-     */
-    this.maxNumberOfRecords = endingOffset - startingOffset;
-    // In case the Kafka Consumer is passed by the caller, we will unsubscribe all the existing subscriptions first
-    if (!ownedConsumer) {
-      this.consumer.batchUnsubscribe(this.consumer.getAssignment());
-    }
-    this.consumer.subscribe(topicPartition, currentOffset);
     this.taskTracker = taskTracker;
+    // Consumer ownership: if caller provides consumer, we don't own it
+    this.ownedConsumer = (consumer == null);
+    consumer = (consumer != null) ? consumer : createConsumer(job);
+    PubSubPartitionSplit pubSubSplit = inputSplit.getSplit();
+    this.topicPartition = pubSubSplit.getPubSubTopicPartition();
+    boolean useLogicalIndexOffset = job.getBoolean(
+        PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX,
+        DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX);
+
+    // Build iterator directly from the split
+    this.pubSubSplitIterator = new PubSubSplitIterator(consumer, pubSubSplit, useLogicalIndexOffset);
+
     LOGGER.info(
-        "KafkaInputRecordReader started for TopicPartition: {} starting offset: {} ending offset: {}",
+        "KafkaInputRecordReader started for split index: {} topicPartition: {} start: {} end(exclusive): {} "
+            + "total records: {} useLogicalIndexOffset: {}",
+        pubSubSplit.getSplitIndex(),
         this.topicPartition,
-        this.startingOffset,
-        this.endingOffset);
+        pubSubSplit.getStartPubSubPosition(),
+        pubSubSplit.getEndPubSubPosition(),
+        pubSubSplit.getNumberOfRecords(),
+        useLogicalIndexOffset);
   }
 
-  /**
-   * This function will skip all the Control Messages right now.
-   */
   @Override
-  public boolean next(KafkaInputMapperKey key, KafkaInputMapperValue value) throws IOException {
-    DefaultPubSubMessage pubSubMessage;
-    while (hasPendingData()) {
-      try {
-        loadRecords();
-      } catch (InterruptedException e) {
-        throw new IOException(
-            "Got interrupted while loading records from topic partition: " + topicPartition + " with current offset: "
-                + currentOffset);
+  public boolean next(KafkaInputMapperKey mapperKey, KafkaInputMapperValue mapperValue) throws IOException {
+    // Pull the next decoded unit from the iterator. Null => no more data.
+    PubSubInputRecord rec = pubSubSplitIterator.next();
+    if (rec == null) {
+      return false;
+    }
+
+    DefaultPubSubMessage pubSubMessage = rec.getPubSubMessage();
+    long offset = rec.getOffset();
+
+    KafkaKey pubSubMessageKey = pubSubMessage.getKey();
+    KafkaMessageEnvelope pubSubMessageValue = pubSubMessage.getValue();
+
+    // Set offsets on output key/value
+    mapperKey.setOffset(offset);
+    mapperValue.setOffset(offset);
+
+    MessageType messageType = MessageType.valueOf(pubSubMessageValue);
+
+    // Key handling (chunked or raw)
+    if (isSourceVersionChunkingEnabled) {
+      RawKeyBytesAndChunkedKeySuffix parts =
+          splitCompositeKey(pubSubMessageKey.getKey(), messageType, getSchemaIdFromValue(pubSubMessageValue));
+      mapperKey.key = parts.getRawKeyBytes();
+      mapperValue.chunkedKeySuffix = parts.getChunkedKeySuffixBytes();
+    } else {
+      mapperKey.key = ByteBuffer.wrap(pubSubMessageKey.getKey(), 0, pubSubMessageKey.getKeyLength());
+    }
+
+    // Value handling
+    switch (messageType) {
+      case PUT: {
+        Put put = (Put) pubSubMessageValue.payloadUnion;
+        mapperValue.valueType = MapperValueType.PUT;
+        mapperValue.value = put.putValue;
+        mapperValue.schemaId = put.schemaId;
+        mapperValue.replicationMetadataPayload = put.replicationMetadataPayload;
+        mapperValue.replicationMetadataVersionId = put.replicationMetadataVersionId;
+        break;
       }
-      pubSubMessage = recordIterator.hasNext() ? recordIterator.next() : null;
-      if (pubSubMessage != null) {
-        currentOffset = pubSubMessage.getPosition().getNumericOffset();
-
-        KafkaKey kafkaKey = pubSubMessage.getKey();
-        KafkaMessageEnvelope kafkaMessageEnvelope = pubSubMessage.getValue();
-
-        if (kafkaKey.isControlMessage()) {
-          // Skip all the control messages
-          continue;
-        }
-
-        MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
-
-        key.offset = pubSubMessage.getPosition().getNumericOffset();
-        if (isSourceVersionChunkingEnabled) {
-          RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
-              splitCompositeKey(kafkaKey.getKey(), messageType, getSchemaIdFromValue(kafkaMessageEnvelope));
-          key.key = rawKeyAndChunkedKeySuffix.getRawKeyBytes();
-
-          value.chunkedKeySuffix = rawKeyAndChunkedKeySuffix.getChunkedKeySuffixBytes();
-        } else {
-          key.key = ByteBuffer.wrap(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
-        }
-        value.offset = pubSubMessage.getPosition().getNumericOffset();
-        switch (messageType) {
-          case PUT:
-            Put put = (Put) kafkaMessageEnvelope.payloadUnion;
-            value.valueType = MapperValueType.PUT;
-            value.value = put.putValue;
-            value.schemaId = put.schemaId;
-            value.replicationMetadataPayload = put.replicationMetadataPayload;
-            value.replicationMetadataVersionId = put.replicationMetadataVersionId;
-            break;
-          case DELETE:
-            Delete delete = (Delete) kafkaMessageEnvelope.payloadUnion;
-            value.valueType = MapperValueType.DELETE;
-            value.value = EMPTY_BYTE_BUFFER;
-            value.replicationMetadataPayload = delete.replicationMetadataPayload;
-            value.replicationMetadataVersionId = delete.replicationMetadataVersionId;
-            value.schemaId = delete.schemaId;
-            break;
-          default:
-            throw new IOException(
-                "Unexpected '" + messageType + "' message from Kafka topic partition: " + topicPartition
-                    + " with offset: " + pubSubMessage.getPosition());
-        }
-        if (taskTracker != null) {
-          taskTracker.trackPutOrDeleteRecord();
-          long recordCount = taskTracker.getTotalPutOrDeleteRecordsCount();
-          if (recordCount > 0 && recordCount % LOG_RECORD_INTERVAL == 0) {
-            LOGGER.info(
-                "KafkaInputRecordReader for TopicPartition: {} has processed {} records",
-                this.topicPartition,
-                recordCount);
-          }
-        }
-        return true;
-      } else {
-        // We have pending data, but we are unable to fetch any records so throw an exception and stop the job
+      case DELETE: {
+        Delete delete = (Delete) pubSubMessageValue.payloadUnion;
+        mapperValue.valueType = MapperValueType.DELETE;
+        mapperValue.value = EMPTY_BYTE_BUFFER;
+        mapperValue.replicationMetadataPayload = delete.replicationMetadataPayload;
+        mapperValue.replicationMetadataVersionId = delete.replicationMetadataVersionId;
+        mapperValue.schemaId = delete.schemaId;
+        break;
+      }
+      default:
         throw new IOException(
-            "Unable to read additional data from Kafka. See logs for details. Partition " + topicPartition
-                + " Current Offset: " + currentOffset + " End Offset: " + endingOffset);
+            "Unexpected message type: " + messageType + " in " + topicPartition + " at " + pubSubMessage.getPosition());
+    }
+
+    // Optional task-level tracking/logging
+    if (taskTracker != null) {
+      taskTracker.trackPutOrDeleteRecord();
+      long count = taskTracker.getTotalPutOrDeleteRecordsCount();
+      if (count > 0 && count % LOG_RECORD_INTERVAL == 0) {
+        LOGGER.info("Processed {} records in {}", count, topicPartition);
       }
     }
-    return false;
+
+    return true;
   }
 
   private int getSchemaIdFromValue(KafkaMessageEnvelope kafkaMessageEnvelope) throws IOException {
     MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
     switch (messageType) {
       case PUT:
-        Put put = (Put) kafkaMessageEnvelope.payloadUnion;
-        return put.schemaId;
+        return ((Put) kafkaMessageEnvelope.payloadUnion).schemaId;
       case DELETE:
-        /**
-         * The chunk cleanup message will use schema id: {@link com.linkedin.venice.serialization.avro.AvroProtocolDefinition#CHUNK},
-         * so we will extract the schema id from the payload, instead of -1.
-         */
-        Delete delete = (Delete) kafkaMessageEnvelope.payloadUnion;
-        return delete.schemaId;
+        return ((Delete) kafkaMessageEnvelope.payloadUnion).schemaId;
       default:
-        throw new IOException("Unexpected '" + messageType + "' message from Kafka topic partition: " + topicPartition);
+        throw new IOException("Unexpected '" + messageType + "' message from topic partition: " + topicPartition);
     }
   }
 
@@ -281,57 +223,27 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
   @Override
   public long getPos() {
-    return currentOffset;
+    // Return the last-read logical position
+    return pubSubSplitIterator.recordsRead() - 1;
   }
 
   @Override
   public void close() {
-    if (ownedConsumer) {
-      this.consumer.close();
+    // Close only if we own the consumer; otherwise the caller manages its lifecycle.
+    if (ownedConsumer && pubSubSplitIterator != null) {
+      pubSubSplitIterator.close();
     }
   }
 
   @Override
   public float getProgress() {
-    // not most accurate but gives reasonable estimate
-    return ((float) (currentOffset - startingOffset + 1)) / maxNumberOfRecords;
+    // Delegated progress + throttled logging occurs inside iterator
+    return pubSubSplitIterator.getProgress();
   }
 
-  private boolean hasPendingData() {
-    /**
-     * Offset range is exclusive at the end which means the ending offset is one higher
-     * than the actual physical last offset
-     */
-    return currentOffset < endingOffset - 1;
-  }
-
-  /**
-   * Loads new records into the record iterator
-   */
-  private void loadRecords() throws InterruptedException {
-    if ((recordIterator == null) || !recordIterator.hasNext()) {
-      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = new HashMap<>();
-      int retry = 0;
-      while (retry++ < CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES) {
-        messages = consumer.poll(CONSUMER_POLL_TIMEOUT);
-        if (!messages.isEmpty()) {
-          break;
-        }
-        Thread.sleep(EMPTY_POLL_SLEEP_TIME_MS);
-      }
-      if (messages.isEmpty()) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Consumer#poll still returns empty result after retrying ")
-            .append(CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES)
-            .append(" times, ")
-            .append("topic partition: ")
-            .append(topicPartition)
-            .append(" and current offset: ")
-            .append(currentOffset);
-        throw new VeniceException(sb.toString());
-      }
-
-      recordIterator = Utils.iterateOnMapOfLists(messages);
-    }
+  @VisibleForTesting
+  boolean hasPendingData() {
+    // Check if the iterator has more data to read
+    return pubSubSplitIterator.hasNext();
   }
 }

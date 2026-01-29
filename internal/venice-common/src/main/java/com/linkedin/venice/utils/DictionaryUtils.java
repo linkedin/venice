@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.nio.ByteBuffer;
@@ -38,13 +39,20 @@ public class DictionaryUtils {
   }
 
   public static ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
+    return readDictionaryFromKafka(topicName, props, PubSubMessageDeserializer.createDefaultDeserializer());
+  }
+
+  public static ByteBuffer readDictionaryFromKafka(
+      String topicName,
+      VeniceProperties props,
+      PubSubMessageDeserializer pubSubMessageDeserializer) {
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = PubSubClientsFactory.createConsumerFactory(props);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     VeniceProperties pubSubProperties = getKafkaConsumerProps(props);
     PubSubConsumerAdapterContext context =
         new PubSubConsumerAdapterContext.Builder().setVeniceProperties(pubSubProperties)
             .setPubSubTopicRepository(pubSubTopicRepository)
-            .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+            .setPubSubMessageDeserializer(pubSubMessageDeserializer)
             .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties))
             .setConsumerName("DictionaryUtilsConsumer")
             .build();
@@ -66,7 +74,7 @@ public class DictionaryUtils {
     LOGGER.info("Consuming from topic: {} till StartOfPush", topicName);
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
-    pubSubConsumer.subscribe(pubSubTopicPartition, 0);
+    pubSubConsumer.subscribe(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST);
     try {
       boolean startOfPushReceived = false;
       ByteBuffer compressionDictionary = null;

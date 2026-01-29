@@ -172,6 +172,10 @@ public class TestVersion {
   public void testPushId() {
     String pushId = VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX + System.currentTimeMillis();
     assertTrue(Version.isPushIdTTLRePush(pushId));
+    String regularPushWithRePushId =
+        Version.generateRegularPushWithTTLRePushId(Long.toString(System.currentTimeMillis()));
+    assertTrue(Version.isPushIdRegularPushWithTTLRePush(regularPushWithRePushId));
+    assertFalse(Version.isPushIdRegularPushWithTTLRePush(pushId));
   }
 
   @Test

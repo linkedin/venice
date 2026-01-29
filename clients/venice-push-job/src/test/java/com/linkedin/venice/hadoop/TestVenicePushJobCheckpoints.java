@@ -50,6 +50,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Time;
@@ -542,6 +543,16 @@ public class TestVenicePushJobCheckpoints {
     configureControllerClientMock(controllerClient, props, executionStatus);
     configureClusterDiscoverControllerClient(controllerClient);
     Mockito.when(controllerClient.getAllReplicationMetadataSchemas(anyString())).thenReturn(new MultiSchemaResponse());
+
+    MultiSchemaResponse multiSchemaResponse = mock(MultiSchemaResponse.class);
+    MultiSchemaResponse.Schema valueSchema = mock(MultiSchemaResponse.Schema.class);
+    when(valueSchema.getId()).thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion());
+    when(valueSchema.getSchemaStr())
+        .thenReturn(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersionSchema().toString());
+    when(multiSchemaResponse.getSchemas())
+        .thenReturn(Collections.singletonList(valueSchema).toArray(new MultiSchemaResponse.Schema[0]));
+    doReturn(multiSchemaResponse).when(controllerClient).getAllValueSchema(anyString());
+
     try (VenicePushJob venicePushJob = new VenicePushJob("job-id", props)) {
       venicePushJob.setControllerClient(controllerClient);
       venicePushJob.setKmeSchemaSystemStoreControllerClient(controllerClient);
@@ -722,7 +733,8 @@ public class TestVenicePushJobCheckpoints {
             anyBoolean(),
             any(),
             anyInt(),
-            anyBoolean())).thenReturn(versionCreationResponse);
+            anyBoolean(),
+            anyInt())).thenReturn(versionCreationResponse);
     JobStatusQueryResponse jobStatusQueryResponse = createJobStatusQueryResponseMock(executionStatus);
     when(controllerClient.queryOverallJobStatus(anyString(), any(), any(), anyBoolean()))
         .thenReturn(jobStatusQueryResponse);

@@ -1,6 +1,7 @@
 package com.linkedin.venice.producer.online;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_THREAD_NUM;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsStringQuietlyWithErrorLogged;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
@@ -779,6 +780,84 @@ public class OnlineVeniceProducerTest {
           Assert.fail();
         }
       });
+    }
+  }
+
+  @Test
+  public void testWriteOperationsExecuteInOrder() throws IOException, ExecutionException, InterruptedException {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
+
+    MetricsRepository metricsRepository = new MetricsRepository();
+    Properties backendConfigs = new Properties();
+    // Use multiple threads for preprocessing to ensure concurrent preprocessing
+    backendConfigs.put(CLIENT_PRODUCER_THREAD_NUM, 4);
+
+    try (TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
+      // Track the order of write operations by comparing serialized keys
+      List<String> writeOrder = Collections.synchronizedList(new java.util.ArrayList<>());
+
+      // Pre-compute expected serialized keys
+      byte[] key1Bytes = keySerializer.serialize("KEY1");
+      byte[] key2Bytes = keySerializer.serialize("KEY2");
+      byte[] key3Bytes = keySerializer.serialize("KEY3");
+      byte[] key4Bytes = keySerializer.serialize("KEY4");
+      byte[] key5Bytes = keySerializer.serialize("KEY5");
+
+      // Configure mock to record the order of writes
+      doAnswer(invocation -> {
+        Object[] args = invocation.getArguments();
+        byte[] keyBytes = (byte[]) args[0];
+        // Match against expected keys to determine which operation this is
+        if (Arrays.equals(keyBytes, key1Bytes)) {
+          writeOrder.add("PUT:KEY1");
+        } else if (Arrays.equals(keyBytes, key2Bytes)) {
+          writeOrder.add("PUT:KEY2");
+        } else if (Arrays.equals(keyBytes, key4Bytes)) {
+          writeOrder.add("PUT:KEY4");
+        }
+        // Simulate some write latency
+        Utils.sleep(10);
+        ((PubSubProducerCallback) args[4]).onCompletion(null, null);
+        return null;
+      }).when(producer.mockVeniceWriter).put(any(), any(), anyInt(), anyLong(), any());
+
+      doAnswer(invocation -> {
+        Object[] args = invocation.getArguments();
+        byte[] keyBytes = (byte[]) args[0];
+        // Match against expected keys to determine which operation this is
+        if (Arrays.equals(keyBytes, key3Bytes)) {
+          writeOrder.add("DELETE:KEY3");
+        } else if (Arrays.equals(keyBytes, key5Bytes)) {
+          writeOrder.add("DELETE:KEY5");
+        }
+        Utils.sleep(10);
+        ((PubSubProducerCallback) args[2]).onCompletion(null, null);
+        return null;
+      }).when(producer.mockVeniceWriter).delete(any(), anyLong(), any());
+
+      // Submit multiple operations rapidly
+      // These will be preprocessed concurrently but should write in submission order
+      CompletableFuture<DurableWrite> future1 = producer.asyncPut("KEY1", mockValue1);
+      CompletableFuture<DurableWrite> future2 = producer.asyncPut("KEY2", mockValue2);
+      CompletableFuture<DurableWrite> future3 = producer.asyncDelete(100, "KEY3");
+      CompletableFuture<DurableWrite> future4 = producer.asyncPut("KEY4", mockValue1);
+      CompletableFuture<DurableWrite> future5 = producer.asyncDelete(200, "KEY5");
+
+      // Wait for all operations to complete
+      future1.get();
+      future2.get();
+      future3.get();
+      future4.get();
+      future5.get();
+
+      // Verify operations were executed in submission order
+      assertEquals(5, writeOrder.size());
+      assertEquals("PUT:KEY1", writeOrder.get(0));
+      assertEquals("PUT:KEY2", writeOrder.get(1));
+      assertEquals("DELETE:KEY3", writeOrder.get(2));
+      assertEquals("PUT:KEY4", writeOrder.get(3));
+      assertEquals("DELETE:KEY5", writeOrder.get(4));
     }
   }
 

@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -18,15 +17,24 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.stream.Collectors;
+import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.RecordReader;
 import org.testng.annotations.Test;
@@ -44,6 +52,9 @@ public class TestKafkaInputDictTrainer {
   }
 
   private KafkaInputDictTrainer.Param getParam(int sampleSize, CompressionStrategy sourceVersionCompressionStrategy) {
+    Map<Integer, Schema> allSchemas = Utils.getAllSchemasFromResources(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE);
+    Map<Integer, String> allSchemaStr =
+        allSchemas.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString()));
     return new KafkaInputDictTrainer.ParamBuilder().setKafkaInputBroker("test_url")
         .setTopicName("test_topic")
         .setKeySchema("\"string\"")
@@ -51,6 +62,7 @@ public class TestKafkaInputDictTrainer {
         .setDictSampleSize(sampleSize)
         .setSslProperties(new Properties())
         .setSourceVersionCompressionStrategy(sourceVersionCompressionStrategy)
+        .setNewKMESchemasFromController(allSchemaStr)
         .build();
   }
 
@@ -59,8 +71,10 @@ public class TestKafkaInputDictTrainer {
     KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
-    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 0) };
-    doReturn(splits).when(mockFormat).getSplitsByRecordsPerSplit(any(), anyLong());
+    PubSubPosition position0 = ApacheKafkaOffsetPosition.of(0);
+    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit(
+        new PubSubPartitionSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, position0, position0, 0L, 0, 0L)) };
+    doReturn(splits).when(mockFormat).getSplits(any(VeniceProperties.class));
     RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> mockRecordReader = mock(RecordReader.class);
     doReturn(false).when(mockRecordReader).next(any(), any());
     doReturn(mockRecordReader).when(mockFormat).getRecordReader(any(), any(), any(), any());
@@ -152,9 +166,21 @@ public class TestKafkaInputDictTrainer {
     KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
-    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 2),
-        new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 2) };
-    doReturn(splits).when(mockFormat).getSplitsByRecordsPerSplit(any(), anyLong());
+    PubSubPosition startPosition = ApacheKafkaOffsetPosition.of(0);
+    PubSubPosition endPosition = ApacheKafkaOffsetPosition.of(2);
+    InputSplit[] splits = new KafkaInputSplit[] {
+        new KafkaInputSplit(
+            new PubSubPartitionSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, startPosition, endPosition, 2L, 0, 0L)),
+        new KafkaInputSplit(
+            new PubSubPartitionSplit(
+                PUB_SUB_TOPIC_REPOSITORY,
+                topicPartition,
+                startPosition,
+                endPosition,
+                2L,
+                1,
+                2L)) };
+    doReturn(splits).when(mockFormat).getSplits(any(VeniceProperties.class));
 
     // Return 3 records
     ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> readerForP0 =
@@ -205,9 +231,21 @@ public class TestKafkaInputDictTrainer {
     KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
-    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 2),
-        new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 2) };
-    doReturn(splits).when(mockFormat).getSplitsByRecordsPerSplit(any(), anyLong());
+    PubSubPosition startPosition = ApacheKafkaOffsetPosition.of(0);
+    PubSubPosition endPosition = ApacheKafkaOffsetPosition.of(2);
+    InputSplit[] splits = new KafkaInputSplit[] {
+        new KafkaInputSplit(
+            new PubSubPartitionSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, startPosition, endPosition, 2L, 0, 0L)),
+        new KafkaInputSplit(
+            new PubSubPartitionSplit(
+                PUB_SUB_TOPIC_REPOSITORY,
+                topicPartition,
+                startPosition,
+                endPosition,
+                2L,
+                1,
+                2L)) };
+    doReturn(splits).when(mockFormat).getSplits(any(VeniceProperties.class));
 
     // Return 3 records
     ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> readerForP0 =
@@ -257,9 +295,21 @@ public class TestKafkaInputDictTrainer {
     KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
-    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 2),
-        new KafkaInputSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, 0, 2) };
-    doReturn(splits).when(mockFormat).getSplitsByRecordsPerSplit(any(), anyLong());
+    PubSubPosition startPosition = ApacheKafkaOffsetPosition.of(0);
+    PubSubPosition endPosition = ApacheKafkaOffsetPosition.of(2);
+    InputSplit[] splits = new KafkaInputSplit[] {
+        new KafkaInputSplit(
+            new PubSubPartitionSplit(PUB_SUB_TOPIC_REPOSITORY, topicPartition, startPosition, endPosition, 2L, 0, 0L)),
+        new KafkaInputSplit(
+            new PubSubPartitionSplit(
+                PUB_SUB_TOPIC_REPOSITORY,
+                topicPartition,
+                startPosition,
+                endPosition,
+                2L,
+                1,
+                2L)) };
+    doReturn(splits).when(mockFormat).getSplits(any(VeniceProperties.class));
 
     // Return 3 records
     ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> readerForP0 = mockReaderForValueSchemaPairs(

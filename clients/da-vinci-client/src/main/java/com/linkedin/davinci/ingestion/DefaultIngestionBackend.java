@@ -9,19 +9,28 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
+import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.ConfigCommonUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.File;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -55,7 +64,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   @Override
-  public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+  public void startConsumption(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      Optional<PubSubPosition> pubSubPosition) {
     String storeVersion = storeConfig.getStoreVersionName();
     LOGGER.info("Retrieving storage engine for store {} partition {}", storeVersion, partition);
     StoreVersionInfo storeAndVersion =
@@ -75,18 +87,18 @@ public class DefaultIngestionBackend implements IngestionBackend {
           "Retrieved storage engine for store {} partition {}. Starting consumption in ingestion service",
           storeVersion,
           partition);
-      getStoreIngestionService().startConsumption(storeConfig, partition);
+      getStoreIngestionService().startConsumption(storeConfig, partition, pubSubPosition);
       LOGGER.info(
           "Completed starting consumption in ingestion service for store {} partition {}",
           storeVersion,
           partition);
     };
-    if (!storeAndVersion.getStore().isBlobTransferEnabled() || blobTransferManager == null) {
+
+    boolean blobTransferActiveInReceiver = shouldEnableBlobTransfer(storeAndVersion.getStore());
+
+    if (!blobTransferActiveInReceiver || blobTransferManager == null) {
       runnable.run();
     } else {
-      // Open store for lag check and later metadata update for offset/StoreVersionState
-      storageService.openStore(storeConfig, svsSupplier);
-
       BlobTransferTableFormat requestTableFormat =
           serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
               ? BlobTransferTableFormat.PLAIN_TABLE
@@ -97,7 +109,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeAndVersion.getVersion().getNumber(),
           partition,
           requestTableFormat,
-          serverConfig.getBlobTransferDisabledOffsetLagThreshold());
+          serverConfig.getBlobTransferDisabledOffsetLagThreshold(),
+          serverConfig.getBlobTransferDisabledTimeLagThresholdInMinutes(),
+          storeConfig,
+          svsSupplier);
 
       bootstrapFuture.whenComplete((result, throwable) -> {
         runnable.run();
@@ -106,31 +121,55 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   /**
-   * Bootstrap from the blobs from another source (like another peer). If it fails (due to the 30-minute timeout or
+   * Bootstrap from the blobs from another source (like another peer). If it fails (due to the timeout or
    * any exceptions), it deletes the partially downloaded blobs, and eventually falls back to bootstrapping from Kafka.
    * Blob transfer should be enabled to boostrap from blobs.
+   *
+   * If the blob transfer fails during transferring:
+   * The folder will be cleaned up in NettyP2PBlobTransferManager#handlePeerFetchException.
+   * When falling back to Kafka ingestion, it will bootstrap from the beginning.
+   *
+   * If the blob transfer succeeds:
+   * When falling back to Kafka ingestion, it will resume from the last offset instead of starting from the beginning.
+   *
+   * Regardless of whether the blob transfer succeeds or fails,
+   * this method always returns a completed future, All exceptions are handled either by cleaning up the folder or dropping the partition.
    */
   CompletionStage<Void> bootstrapFromBlobs(
       Store store,
       int versionNumber,
       int partitionId,
       BlobTransferTableFormat tableFormat,
-      long blobTransferDisabledOffsetLagThreshold) {
-    if (!store.isBlobTransferEnabled() || blobTransferManager == null) {
-      return CompletableFuture.completedFuture(null);
-    }
+      long blobTransferDisabledOffsetLagThreshold,
+      int blobTransferDisabledTimeLagThresholdInMinutes,
+      VeniceStoreVersionConfig storeConfig,
+      Supplier<StoreVersionState> svsSupplier) {
+    String storeName = store.getName();
+    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
 
+    // Open store for lag check and later metadata update for offset/StoreVersionState
     // If the offset lag is below the blobTransferDisabledOffsetLagThreshold, it indicates there is not lagging and
     // can bootstrap from Kafka.
-    if (!isOffsetLagged(store.getName(), versionNumber, partitionId, blobTransferDisabledOffsetLagThreshold)) {
+    storageService.openStore(storeConfig, svsSupplier);
+    if (!isReplicaLaggedAndNeedBlobTransfer(
+        store.getName(),
+        versionNumber,
+        partitionId,
+        blobTransferDisabledOffsetLagThreshold,
+        blobTransferDisabledTimeLagThresholdInMinutes,
+        store.isHybrid())) {
+      LOGGER.info(
+          "Replica: {} is not lagged, will consume from PubSub directly",
+          Utils.getReplicaId(Version.composeKafkaTopic(storeName, versionNumber), partitionId));
       return CompletableFuture.completedFuture(null);
+    } else {
+      LOGGER.info(
+          "Replica: {} is lagged, will try to bootstrap via blob transfer",
+          Utils.getReplicaId(Version.composeKafkaTopic(storeName, versionNumber), partitionId));
     }
-
-    String storeName = store.getName();
 
     // After decide to bootstrap from blobs transfer, close the partition, clean up the offset and partition folder,
     // but the metadata partition is not removed.
-    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
     StorageEngine storageEngine = storageService.getStorageEngine(kafkaTopic);
     if (storageEngine != null && storageEngine.containsPartition(partitionId)) {
       storageEngine.dropPartition(partitionId, false);
@@ -140,21 +179,13 @@ public class DefaultIngestionBackend implements IngestionBackend {
           partitionId);
     }
 
-    // double check that the partition folder is not existed before bootstrapping from blobs transfer,
-    // as the partition should not exist due to previous dropPartition call.
-    String partitionFolder = RocksDBUtils.composePartitionDbDir(serverConfig.getRocksDBPath(), kafkaTopic, partitionId);
-    File partitionFolderDir = new File(partitionFolder);
-    if (partitionFolderDir.exists()) {
-      LOGGER.error(
-          "Partition folder {} for {} is existed with files {}.",
-          partitionFolder,
-          Utils.getReplicaId(kafkaTopic, partitionId),
-          Arrays.toString(partitionFolderDir.list()));
-    }
+    // Pre-transfer validation and cleanup
+    validateDirectoriesBeforeBlobTransfer(storeName, versionNumber, partitionId);
+    addStoragePartitionWhenBlobTransferStart(partitionId, storeConfig, svsSupplier);
 
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {
-          updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);
+          updateBlobTransferResponseStats(throwable, storeName, versionNumber);
           if (throwable != null) {
             LOGGER.error(
                 "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}, falling back to kafka ingestion.",
@@ -166,65 +197,214 @@ public class DefaultIngestionBackend implements IngestionBackend {
                 "Successfully bootstrapped partition {} from blobs transfer for store {}",
                 partitionId,
                 storeName);
-
-            if (partitionFolderDir.exists()) {
-              LOGGER.info(
-                  "Successfully bootstrapped from blob transfer {} with files: {}",
-                  Utils.getReplicaId(kafkaTopic, partitionId),
-                  Arrays.toString(partitionFolderDir.list()));
-            }
           }
+
+          // Post-transfer validation and cleanup
+          validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partitionId, throwable == null);
+          adjustStoragePartitionWhenBlobTransferComplete(storageService.getStorageEngine(kafkaTopic), partitionId);
           return null;
         });
   }
 
   /**
-   * A helper method to check if the offset lag is within the allowed threshold.
-   * If the offset lag is smaller than the `blobTransferDisabledOffsetLagThreshold`,
-   * bootstrapping from Kafka firstly, even if blob transfer is enabled.
+   * Add a partition to the storage engine when blob transfer starts
+   * with disabled read, disabled write, and rocksDB not open, but have blob transfer in-progress flag.
+   *
+   */
+  private void addStoragePartitionWhenBlobTransferStart(
+      int partitionId,
+      VeniceStoreVersionConfig storeConfig,
+      Supplier<StoreVersionState> svsSupplier) {
+    // Prepare configs with blob transfer in-progress flag.
+    StoragePartitionConfig storagePartitionConfig =
+        new StoragePartitionConfig(storeConfig.getStoreVersionName(), partitionId, true);
+    storagePartitionConfig.setReadOnly(true);
+
+    // due to we use storage service to open the store and partition here,
+    // it can prevent the race condition between dropping entire store (SE) and receiving transfer file for new
+    // partition.
+    storageService.openStoreForNewPartition(storeConfig, partitionId, svsSupplier, storagePartitionConfig);
+    LOGGER.info(
+        "Storage partition is added with {} for replica {} for blob transfer with config {}",
+        StoragePartitionAdjustmentTrigger.BEGIN_BLOB_TRANSFER,
+        Utils.getReplicaId(storeConfig.getStoreVersionName(), partitionId),
+        storagePartitionConfig);
+  }
+
+  /**
+   * Before bootstrapping from blobs transfer, validate the partition directory and temp partition directory.
+   * If either of them exists, delete them to ensure a clean state for blob transfer.
+   */
+  private void validateDirectoriesBeforeBlobTransfer(String storeName, int versionNumber, int partitionId) {
+    RocksDBUtils.cleanupBothPartitionDirAndTempTransferredDir(
+        storeName,
+        versionNumber,
+        partitionId,
+        serverConfig.getRocksDBPath());
+  }
+
+  /**
+   * After bootstrapping from blobs transfer, validate the partition directory and temp partition directory.
+   */
+  private void validateDirectoriesAfterBlobTransfer(
+      String storeName,
+      int versionNumber,
+      int partitionId,
+      boolean transferSuccessful) {
+    String rocksDBPath = serverConfig.getRocksDBPath();
+    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
+    String replicaId = Utils.getReplicaId(kafkaTopic, partitionId);
+
+    String tempPartitionDir = RocksDBUtils.composeTempPartitionDir(rocksDBPath, kafkaTopic, partitionId);
+    String partitionDir = RocksDBUtils.composePartitionDbDir(rocksDBPath, kafkaTopic, partitionId);
+
+    File tempPartitionDirFile = new File(tempPartitionDir);
+    File partitionDirFile = new File(partitionDir);
+
+    // After successful transfer, temp directory should not exist due to rename and partition directory should exist
+    if (transferSuccessful) {
+      if (tempPartitionDirFile.exists()) {
+        LOGGER
+            .error("Temp directory {} still exists after successful blob transfer for {}", tempPartitionDir, replicaId);
+        try {
+          RocksDBUtils.deleteDirectory(tempPartitionDir);
+        } catch (Exception e) {
+          LOGGER.error("Failed to clean up remaining temp directory: {}", tempPartitionDir, e);
+        }
+      }
+
+      if (!partitionDirFile.exists()) {
+        LOGGER.error(
+            "Partition directory {} does not exist after successful blob transfer for {}",
+            partitionDir,
+            replicaId);
+      } else {
+        LOGGER.info(
+            "Successfully bootstrapped from blob transfer {} with files: {}",
+            Utils.getReplicaId(kafkaTopic, partitionId),
+            Arrays.toString(partitionDirFile.list()));
+      }
+    } else {
+      // After failed transfer, both directories should be cleaned up
+      RocksDBUtils.cleanupBothPartitionDirAndTempTransferredDir(storeName, versionNumber, partitionId, rocksDBPath);
+    }
+  }
+
+  /**
+   * Adjust the storage partition when blob transfer is complete
+   * Adjust storage partition will drop the old partition without rocksDB and create a new one with default options and running rocksDB.
+   */
+  private void adjustStoragePartitionWhenBlobTransferComplete(StorageEngine storageEngine, int partitionId) {
+    try {
+      // Prepare storage partition with default options, and remove blob transfer in-progress flag.
+      StoragePartitionConfig defaultStoragePartitionConfig =
+          new StoragePartitionConfig(storageEngine.getStoreVersionName(), partitionId);
+
+      // Adjust the storage partition will create a new partition with rocksDB
+      storageEngine.adjustStoragePartition(
+          partitionId,
+          StoragePartitionAdjustmentTrigger.END_BLOB_TRANSFER,
+          defaultStoragePartitionConfig);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to adjust storage partition for replica {} after blob transfer completed: {}, dropping the partition.",
+          Utils.getReplicaId(storageEngine.getStoreVersionName(), partitionId),
+          e.getMessage(),
+          e);
+      storageEngine.dropPartition(partitionId, false);
+    }
+  }
+
+  /**
+   * A helper method to help decide if skip blob transfer and use PubSub ingestion directly by comparing ingestion
+   * state and lag threshold.
+   * 1. If `blobTransferDisabledOffsetLagThreshold` is negative, the offset lag check is skipped, and blob transfer
+   * always runs. (This is because retained data may not be cleaned up unless a new host is added, making it difficult
+   * to validate this feature. This is legacy field and will be retired once `blobTransferDisabledTimeLagThresholdInMinutes`
+   * is fully enabled).
+   * 1. If the store is a batch store, check if the end of push is received
+   * 2. If the store is a hybrid store, check the offset lag within the allowed threshold:
+   *   - (1) If `blobTransferDisabledTimeLagThresholdInMinutes` is positive, check time lag against the persisted timestamp.
+   *   - (2) Otherwise, fall back to check persisted offset lag with `blobTransferDisabledTimeLagThresholdInMinutes`.
    *
    * @param store the store name
    * @param versionNumber the version number
    * @param partition the partition number
    * @param blobTransferDisabledOffsetLagThreshold the maximum allowed offset lag threshold.
+   *        This value is controlled by config BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, and default is 100000L.
    *        If the offset lag is within this threshold, bootstrapping from Kafka is allowed, even if blob transfer is enabled.
    *        If the lag exceeds this threshold, bootstrapping should happen from blobs transfer firstly.
-   *
-   * @return true if the offset lag exceeds the threshold or if the lag is 0, indicating bootstrapping should happen from blobs transfer.
-   *         false otherwise
+   * @param blobTransferDisabledTimeLagThresholdInMinutes the maximum allowed time lag threshold.
+   * @param hybridStore whether the store is a hybrid store or not.
+   *                    If it is a hybrid store, then check via the offset.
+   *                    If it is a batch store, check if the batch push is done or not.
+   * @return true if the store is lagged and needs to bootstrap from blob transfer, else false then bootstrap from Kafka.
    */
-  public boolean isOffsetLagged(
+  public boolean isReplicaLaggedAndNeedBlobTransfer(
       String store,
       int versionNumber,
       int partition,
-      long blobTransferDisabledOffsetLagThreshold) {
+      long blobTransferDisabledOffsetLagThreshold,
+      int blobTransferDisabledTimeLagThresholdInMinutes,
+      boolean hybridStore) {
     String topicName = Version.composeKafkaTopic(store, versionNumber);
-    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partition);
-
-    if (offsetRecord == null || (offsetRecord.getOffsetLag() == 0 && offsetRecord.getLocalVersionTopicOffset() == -1)) {
+    OffsetRecord offsetRecord =
+        getStorageMetadataService().getLastOffset(topicName, partition, getStoreIngestionService().getPubSubContext());
+    if (offsetRecord == null) {
+      LOGGER.warn("Offset record not found for: {}", Utils.getReplicaId(topicName, partition));
+      return true;
+    }
+    /**
+     * Legacy way of using offset threshold to determine if a replica is lagged and need blob transfer.
+     * We should remove this once the time-lag based threshold check is fully rolled out.
+     */
+    if (blobTransferDisabledOffsetLagThreshold < 0) {
+      return true;
+    }
+    if (!hybridStore) {
+      if (offsetRecord.isEndOfPushReceived()) {
+        LOGGER.info(
+            "End of push received for batch store replica {}, might due to restore. Bootstrapping from Kafka.",
+            Utils.getReplicaId(topicName, partition));
+        return false;
+      }
+      return true;
+    }
+    /**
+     * If the time-lag threshold is active, it will refer to the number to make decision. Otherwise fallback to offset
+     * base lag check.
+     */
+    if (blobTransferDisabledTimeLagThresholdInMinutes > 0) {
       LOGGER.info(
-          "Offset record is null or offset lag is 0 and topic offset is -1 for store {} partition {}.",
-          store,
-          partition);
+          "Checking time lag for hybrid store replica {} with heartbeat timestamp lag {} ms and offset HB timestamp {}.",
+          Utils.getReplicaId(topicName, partition),
+          LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp()),
+          offsetRecord.getHeartbeatTimestamp());
+      return LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp()) > TimeUnit.MINUTES
+          .toMillis(blobTransferDisabledTimeLagThresholdInMinutes);
+    }
+
+    if (offsetRecord.getOffsetLag() == 0
+        && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
+      LOGGER.info(
+          "Offset lag is 0 and topic offset is EARLIEST for replica {}.",
+          Utils.getReplicaId(topicName, partition));
       return true;
     }
 
     if (offsetRecord.getOffsetLag() < blobTransferDisabledOffsetLagThreshold) {
       LOGGER.info(
-          "Offset lag {} for store {} partition {} is within the allowed lag threshold {}. Bootstrapping from Kafka.",
+          "Offset lag {} for hybrid store replica {} is within the allowed lag threshold {}. Bootstrapping from Kafka.",
           offsetRecord.getOffsetLag(),
-          store,
-          partition,
+          Utils.getReplicaId(topicName, partition),
           blobTransferDisabledOffsetLagThreshold);
       return false;
     }
 
     LOGGER.info(
-        "Store {} partition {} topic offset is {}, offset lag is {}",
-        store,
-        partition,
-        offsetRecord.getLocalVersionTopicOffset(),
-        offsetRecord.getOffsetLag());
+        "Lag check before blob transfer: Replica {} offset is {}. Bootstrapping from blob transfer.",
+        Utils.getReplicaId(topicName, partition),
+        offsetRecord);
     return true;
   }
 
@@ -290,6 +470,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
     // Do nothing here, since this is only a wrapper class.
   }
 
+  StorageMetadataService getStorageMetadataService() {
+    return storageMetadataService;
+  }
+
   /**
    * This method is used to sync the store version config with on the store metadata obtained from ZK.
    * VeniceStoreVersionConfig was introduced to allow store-version level configs be configurable via a config file.
@@ -306,9 +490,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
   /**
    * Update the blob transfer response stats based on the blob transfer success.
-   * @param isBlobTransferSuccess true if the blob transfer is successful, false otherwise.
+   * Skip counting if the exception is VenicePeersNotFoundException due to no actual transfer happened.
    */
-  private void updateBlobTransferResponseStats(boolean isBlobTransferSuccess, String storeName, int version) {
+  private void updateBlobTransferResponseStats(Object throwable, String storeName, int version) {
     if (blobTransferManager.getAggVersionedBlobTransferStats() == null) {
       LOGGER.error(
           "Blob transfer stats is not initialized. Skip updating blob transfer response stats for store {} version {}",
@@ -317,14 +501,73 @@ public class DefaultIngestionBackend implements IngestionBackend {
       return;
     }
 
+    if (throwable != null && throwable instanceof VenicePeersNotFoundException) {
+      return;
+    }
+
     try {
       // Record the blob transfer request count.
       blobTransferManager.getAggVersionedBlobTransferStats().recordBlobTransferResponsesCount(storeName, version);
       // Record the blob transfer response based on the blob transfer status.
       blobTransferManager.getAggVersionedBlobTransferStats()
-          .recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, version, isBlobTransferSuccess);
+          .recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, version, throwable == null);
     } catch (Exception e) {
       LOGGER.error("Failed to update blob transfer response stats for store {} version {}", storeName, version, e);
     }
+  }
+
+  /**
+   * Determines whether blob transfer should be enabled based on the combined logic of
+   * store-level and server-level configurations.
+   *
+   * For the DaVinci client:
+   *  it uses the store's blob transfer enabled flag (BLOB_TRANSFER_ENABLED) directly.
+   *
+   * For the server:
+   *  it uses the combination of store-level (BLOB_TRANSFER_IN_SERVER_ENABLED) and server-level (BLOB_TRANSFER_RECEIVER_SERVER_POLICY) config:
+   *
+   * - Default (Disabled): If both configurations are NOT_SPECIFIED, feature is disabled
+   * - Scope-Specific Enablement: If one is NOT_SPECIFIED and other is ENABLED, feature is enabled
+   * - Scope-Specific Disablement: If either configuration is DISABLED, feature is disabled
+   * - Enabled in Both Scopes: If both are ENABLED, feature is enabled
+   *
+   * @param store The store metadata containing store-level blob transfer configuration
+   * @return true if blob transfer should be enabled, false otherwise
+   */
+  private boolean shouldEnableBlobTransfer(Store store) {
+    boolean isDaVinciClient = storeIngestionService.isDaVinciClient();
+
+    // For DaVinci clients, use the store's blob transfer enabled flag
+    if (isDaVinciClient) {
+      boolean blobTransferEnabledForDVC = store.isBlobTransferEnabled();
+      LOGGER.info("DaVinci client detected. Blob transfer enabled {}", blobTransferEnabledForDVC);
+      return blobTransferEnabledForDVC;
+    }
+
+    // For server mode, apply the combined logic
+    String blobTransferInServerPolicyForStoreLevel = store.getBlobTransferInServerEnabled(); // Store-level
+    ConfigCommonUtils.ActivationState blobTransferInServerPolicyForNodeLevel =
+        serverConfig.getBlobTransferReceiverServerPolicy(); // Server-level
+
+    LOGGER.info(
+        "Evaluating blob transfer enablement for store {}. Store-level: {}, Server-level: {} in Server.",
+        store.getName(),
+        blobTransferInServerPolicyForStoreLevel,
+        blobTransferInServerPolicyForNodeLevel);
+
+    // case 1: If either configuration explicitly disables, feature is disabled
+    if (ConfigCommonUtils.ActivationState.DISABLED.name().equals(blobTransferInServerPolicyForStoreLevel)
+        || ConfigCommonUtils.ActivationState.DISABLED.equals(blobTransferInServerPolicyForNodeLevel)) {
+      return false;
+    }
+
+    // case 2: If either configuration enables (and the other is not disabled), feature is enabled
+    if (ConfigCommonUtils.ActivationState.ENABLED.name().equals(blobTransferInServerPolicyForStoreLevel)
+        || ConfigCommonUtils.ActivationState.ENABLED.equals(blobTransferInServerPolicyForNodeLevel)) {
+      return true;
+    }
+
+    // case 3: Default case, both are NOT_SPECIFIED or null, feature is disabled
+    return false;
   }
 }

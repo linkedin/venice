@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
@@ -10,6 +11,7 @@ import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -24,9 +26,9 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -178,6 +180,14 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void abortMigration(String srcClusterName, String destClusterName, String storeName);
 
+  void autoMigrateStore(
+      String srcClusterName,
+      String destClusterName,
+      String storeName,
+      Optional<Integer> currStep,
+      Optional<Integer> pauseAfterStep,
+      Optional<Boolean> abortOnFailure);
+
   /**
   * Delete the entire store including both metadata and real user's data. Before deleting a store, we should disable
   * the store manually to ensure there is no reading/writing request hitting this tore.
@@ -203,7 +213,8 @@ public interface Admin extends AutoCloseable, Closeable {
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
-      int repushSourceVersion);
+      int repushSourceVersion,
+      int repushTtlSeconds);
 
   default boolean hasWritePermissionToBatchJobHeartbeatStore(
       X509Certificate requesterCert,
@@ -240,6 +251,7 @@ public interface Admin extends AutoCloseable, Closeable {
         Optional.empty(),
         false,
         null,
+        -1,
         -1);
   }
 
@@ -275,7 +287,8 @@ public interface Admin extends AutoCloseable, Closeable {
         emergencySourceRegion,
         versionSwapDeferred,
         null,
-        repushSourceVersion);
+        repushSourceVersion,
+        -1);
   }
 
   Version incrementVersionIdempotent(
@@ -294,7 +307,8 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion);
+      int repushSourceVersion,
+      int repushTtlSeconds);
 
   Version getIncrementalPushVersion(String clusterName, String storeName, String pushJobId);
 
@@ -465,6 +479,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams params);
 
+  void updateDarkClusterConfig(String clusterName, UpdateDarkClusterConfigQueryParams params);
+
   double getStorageEngineOverheadRatio(String clusterName);
 
   List<String> getStorageNodes(String clusterName);
@@ -512,7 +528,7 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   String getRegionName();
 
-  String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric);
+  String getPubSubBootstrapServersForRegion(String sourceFabric);
 
   String getNativeReplicationSourceFabric(
       String clusterName,
@@ -559,6 +575,10 @@ public interface Admin extends AutoCloseable, Closeable {
   default int getDatacenterCount(String clusterName) {
     return 1;
   }
+
+  boolean isDeferredVersionSwapForEmptyPushEnabled(String store);
+
+  String getDeferredVersionSwapRegionRollforwardOrder(String store);
 
   List<Replica> getReplicas(String clusterName, String kafkaTopic);
 
@@ -615,15 +635,17 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void setAdminConsumerService(String clusterName, AdminConsumerService service);
 
+  AdminConsumerService getAdminConsumerService(String clusterName);
+
   /**
    * The admin consumption task tries to deal with failures to process an admin message by retrying.  If there is a
    * message that cannot be processed for some reason, we will need to forcibly skip that message in order to unblock
    * the task from consuming subsequent messages.
    * @param clusterName
-   * @param offset
+   * @param typeIdAndBase64PositionBytes
    * @param skipDIV tries to skip only the DIV check for the blocking message.
    */
-  void skipAdminMessage(String clusterName, long offset, boolean skipDIV);
+  void skipAdminMessage(String clusterName, String typeIdAndBase64PositionBytes, boolean skipDIV, long executionId);
 
   /**
    * Get the id of the last succeed execution in this controller.
@@ -660,7 +682,12 @@ public interface Admin extends AutoCloseable, Closeable {
    *
    * @throws com.linkedin.venice.exceptions.VeniceException if not cluster is found.
    */
-  Pair<String, String> discoverCluster(String storeName);
+  String discoverCluster(String storeName);
+
+  /**
+   * Find the router d2 service associated with a given cluster name.
+   */
+  String getRouterD2Service(String clusterName);
 
   /**
    * Find the server d2 service associated with a given cluster name.
@@ -732,7 +759,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush);
 
-  boolean whetherEnableBatchPushFromAdmin(String storeName);
+  boolean whetherEnableBatchPushFromAdmin(String clusterName, String storeName);
 
   /**
    * Provision a new set of ACL for a venice store and its associated kafka topic.
@@ -807,17 +834,6 @@ public interface Admin extends AutoCloseable, Closeable {
    * @return a list of clusters this controller is a leader of.
    */
   List<String> getClustersLeaderOf();
-
-  /**
-   * Enable/disable active active replications for certain stores (batch only, hybrid only, incremental push, hybrid or incremental push,
-   * all) in a cluster. If storeName is not empty, only the specified store might be updated.
-   */
-  void configureActiveActiveReplication(
-      String cluster,
-      VeniceUserStoreType storeType,
-      Optional<String> storeName,
-      boolean enableActiveActiveReplicationForCluster,
-      Optional<String> regionsFilter);
 
   /**
    * Check whether there are any resource left for the store creation in cluster: {@param clusterName}
@@ -963,8 +979,12 @@ public interface Admin extends AutoCloseable, Closeable {
   /**
    * @return list of stores infos that are considered dead. A store is considered dead if it exists but has no
    * user traffic in it's read or write path.
+   * @param params Parameters for dead store detection including:
+   *               - "includeSystemStores": boolean (default: false)
+   *               - "lookBackMS": long (optional)
+   *               - Future extension points
    */
-  List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores);
+  List<StoreInfo> getDeadStores(String clusterName, String storeName, Map<String, String> params);
 
   Map<String, RegionPushDetails> listStorePushInfo(
       String clusterName,
@@ -973,14 +993,14 @@ public interface Admin extends AutoCloseable, Closeable {
 
   RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailEnabled);
 
-  Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName);
+  AdminMetadata getAdminTopicMetadata(String clusterName, Optional<String> storeName);
 
   void updateAdminTopicMetadata(
       String clusterName,
       long executionId,
       Optional<String> storeName,
-      Optional<Long> offset,
-      Optional<Long> upstreamOffset);
+      Optional<PubSubPositionGrpcWireFormat> position,
+      Optional<PubSubPositionGrpcWireFormat> upstreamPosition);
 
   void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion);
 
@@ -1050,4 +1070,15 @@ public interface Admin extends AutoCloseable, Closeable {
   VeniceControllerClusterConfig getControllerConfig(String clusterName);
 
   String getControllerName();
+
+  /**
+   * Validates that a store has been completely deleted from the Venice cluster.
+   * This method performs comprehensive checks across multiple subsystems to ensure
+   * no lingering resources remain that would prevent safe store recreation.
+   *
+   * @param clusterName the name of the cluster to check
+   * @param storeName the name of the store to validate deletion for
+   * @return StoreDeletedValidation indicating whether the store is fully deleted or what resources remain
+   */
+  StoreDeletedValidation validateStoreDeleted(String clusterName, String storeName);
 }

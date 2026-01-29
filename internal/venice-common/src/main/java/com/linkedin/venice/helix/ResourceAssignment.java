@@ -127,5 +127,11 @@ public class ResourceAssignment {
     public Set<String> getNewResources() {
       return newResources;
     }
+
+    @Override
+    public String toString() {
+      return ResourceAssignmentChanges.class.getSimpleName() + " { " + deletedResources.size() + " deleted, "
+          + updatedResources.size() + " updated, " + newResources.size() + " created }";
+    }
   }
 }

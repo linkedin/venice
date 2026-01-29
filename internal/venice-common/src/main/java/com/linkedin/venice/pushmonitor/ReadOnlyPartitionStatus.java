@@ -17,16 +17,17 @@ public class ReadOnlyPartitionStatus extends PartitionStatus {
 
   @Override
   public void updateReplicaStatus(String instanceId, ExecutionStatus newStatus, boolean enableStatusHistory) {
-    throw new VeniceException("Unsupported operation in ReadonlyPartition status: updateProgress.");
+    throw new VeniceException("Unsupported operation in ReadonlyPartition status: updateReplicaStatus.");
   }
 
   @Override
-  public void updateReplicaStatus(
-      String instanceId,
-      ExecutionStatus newStatus,
-      String incrementalPushVersion,
-      long progress) {
-    throw new VeniceException("Unsupported operation in ReadonlyPartition status: updateProgress.");
+  public void updateReplicaStatus(String instanceId, ExecutionStatus newStatus, String incrementalPushVersion) {
+    throw new VeniceException("Unsupported operation in ReadonlyPartition status: updateReplicaStatus.");
+  }
+
+  @Override
+  public void batchUpdateReplicaIncPushStatus(String instanceId, java.util.List<String> incPushVersionList) {
+    throw new VeniceException("Unsupported operation in ReadonlyPartition status: batchUpdateReplicaIncPushStatus.");
   }
 
   public static ReadOnlyPartitionStatus fromPartitionStatus(PartitionStatus partitionStatus) {

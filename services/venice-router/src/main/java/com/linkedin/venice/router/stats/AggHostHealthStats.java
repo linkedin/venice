@@ -33,11 +33,6 @@ public class AggHostHealthStats extends AbstractVeniceAggStats<HostHealthStats> 
     getHostStats(hostName).recordUnhealthyHostHeartBeatFailure();
   }
 
-  public void recordPendingRequestCount(String hostName, long cnt) {
-    totalStats.recordPendingRequestCount(cnt);
-    getHostStats(hostName).recordPendingRequestCount(cnt);
-  }
-
   public void recordLeakedPendingRequestCount(String hostName) {
     totalStats.recordLeakedPendingRequestCount();
     getHostStats(hostName).recordLeakedPendingRequestCount();

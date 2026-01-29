@@ -24,7 +24,7 @@ public class ApacheKafkaOffsetPositionFactoryTest {
   }
 
   @Test
-  public void testCreateFromWireFormatSuccess() {
+  public void testCreateFromPositionRawBytesSuccess() {
     ApacheKafkaOffsetPosition position = ApacheKafkaOffsetPosition.of(12345L);
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     // Use a custom type ID for testing, but reuse the position's encoded bytes to avoid manually creating Avro-encoded
@@ -32,19 +32,19 @@ public class ApacheKafkaOffsetPositionFactoryTest {
     wireFormat.setType(TYPE_ID);
     wireFormat.setRawBytes(position.getPositionWireFormat().getRawBytes());
 
-    PubSubPosition deserialized = factory.createFromWireFormat(wireFormat);
+    PubSubPosition deserialized = factory.fromWireFormat(wireFormat);
     assertTrue(deserialized instanceof ApacheKafkaOffsetPosition);
-    assertEquals(((ApacheKafkaOffsetPosition) deserialized).getOffset(), 12345L);
+    assertEquals(((ApacheKafkaOffsetPosition) deserialized).getInternalOffset(), 12345L);
   }
 
   @Test
-  public void testCreateFromByteBufferSuccess() {
+  public void testFromPositionRawBytesSuccess() {
     ApacheKafkaOffsetPosition position = ApacheKafkaOffsetPosition.of(67890L);
     ByteBuffer buffer = position.getPositionWireFormat().getRawBytes();
 
-    PubSubPosition deserialized = factory.createFromByteBuffer(buffer);
+    PubSubPosition deserialized = factory.fromPositionRawBytes(buffer);
     assertTrue(deserialized instanceof ApacheKafkaOffsetPosition);
-    assertEquals(((ApacheKafkaOffsetPosition) deserialized).getOffset(), 67890L);
+    assertEquals(((ApacheKafkaOffsetPosition) deserialized).getInternalOffset(), 67890L);
   }
 
   @Test
@@ -58,38 +58,38 @@ public class ApacheKafkaOffsetPositionFactoryTest {
   }
 
   @Test
-  public void testCreateFromWireFormatThrowsOnInvalidBuffer() {
+  public void testCreateFromPositionRawBytesThrowsOnInvalidBuffer() {
     ByteBuffer badBuffer = ByteBuffer.allocate(0);
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.setType(TYPE_ID);
     wireFormat.setRawBytes(badBuffer);
 
-    VeniceException exception = expectThrows(VeniceException.class, () -> factory.createFromWireFormat(wireFormat));
+    VeniceException exception = expectThrows(VeniceException.class, () -> factory.fromWireFormat(wireFormat));
     assertTrue(exception.getMessage().contains("Failed to deserialize Apache Kafka offset position"));
   }
 
   @Test
-  public void testCreateFromByteBufferThrowsOnCorruptedBuffer() {
+  public void testFromPositionRawBytes() {
     ByteBuffer corruptedBuffer = ByteBuffer.wrap(new byte[0]); // too short to hold a long
 
     ApacheKafkaOffsetPositionFactory factory =
         new ApacheKafkaOffsetPositionFactory(APACHE_KAFKA_OFFSET_POSITION_TYPE_ID);
 
-    VeniceException ex = expectThrows(VeniceException.class, () -> factory.createFromByteBuffer(corruptedBuffer));
+    VeniceException ex = expectThrows(VeniceException.class, () -> factory.fromPositionRawBytes(corruptedBuffer));
     assertTrue(
         ex.getMessage().contains("Failed to deserialize Apache Kafka offset position"),
         "Got: " + ex.getMessage());
   }
 
   @Test
-  public void testCreateFromWireFormatThrowsOnTypeIdMismatch() {
+  public void testCreateFromPositionRawBytesThrowsOnTypeIdMismatch() {
     ApacheKafkaOffsetPositionFactory factory = new ApacheKafkaOffsetPositionFactory(TYPE_ID);
 
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.setType(Integer.MAX_VALUE);
     wireFormat.setRawBytes(ByteBuffer.wrap(new byte[] { 0 }));
 
-    VeniceException exception = expectThrows(VeniceException.class, () -> factory.createFromWireFormat(wireFormat));
+    VeniceException exception = expectThrows(VeniceException.class, () -> factory.fromWireFormat(wireFormat));
 
     assertTrue(exception.getMessage().contains("Position type ID mismatch"), "Got: " + exception.getMessage());
   }

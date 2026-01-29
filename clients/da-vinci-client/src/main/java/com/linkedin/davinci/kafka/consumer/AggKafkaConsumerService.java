@@ -10,9 +10,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -68,14 +69,16 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
-  private final PubSubMessageDeserializer pubSubDeserializer;
   private final Function<String, String> kafkaClusterUrlResolver;
   private final PubSubPropertiesSupplier pubSubPropertiesSupplier;
+  private final PubSubContext pubSubContext;
 
   private final Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new VeniceConcurrentHashMap<>();
   private ScheduledExecutorService stuckConsumerRepairExecutorService;
   private final Function<String, Boolean> isAAOrWCEnabledFunc;
   private final ReadOnlyStoreRepository metadataRepository;
+
+  private final StuckConsumerRepairStats stuckConsumerStats;
 
   private final static String STUCK_CONSUMER_MSG =
       "Didn't find any suspicious ingestion task, and please contact developers to investigate it further";
@@ -87,19 +90,18 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       });
 
   public AggKafkaConsumerService(
-      final PubSubConsumerAdapterFactory consumerFactory,
       final PubSubPropertiesSupplier pubSubPropertiesSupplier,
       final VeniceServerConfig serverConfig,
       final IngestionThrottler ingestionThrottler,
       KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
       StaleTopicChecker staleTopicChecker,
-      final PubSubMessageDeserializer pubSubDeserializer,
       Consumer<String> killIngestionTaskRunnable,
       Function<String, Boolean> isAAOrWCEnabledFunc,
-      ReadOnlyStoreRepository metadataRepository) {
+      ReadOnlyStoreRepository metadataRepository,
+      PubSubContext pubSubContext) {
     this.serverConfig = serverConfig;
-    this.consumerFactory = consumerFactory;
+    this.consumerFactory = pubSubContext.getPubSubClientsFactory().getConsumerAdapterFactory();
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
     this.sharedConsumerNonExistingTopicCleanupDelayMS = serverConfig.getSharedConsumerNonExistingTopicCleanupDelayMS();
     this.ingestionThrottler = ingestionThrottler;
@@ -111,12 +113,12 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.isKafkaConsumerOffsetCollectionEnabled = serverConfig.isKafkaConsumerOffsetCollectionEnabled();
-    this.pubSubDeserializer = pubSubDeserializer;
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     this.metadataRepository = metadataRepository;
     if (serverConfig.isStuckConsumerRepairEnabled()) {
+      this.stuckConsumerStats = new StuckConsumerRepairStats(metricsRepository);
       this.stuckConsumerRepairExecutorService = Executors.newSingleThreadScheduledExecutor(
-          new DaemonThreadFactory(this.getClass().getName() + "-StuckConsumerRepair", serverConfig.getRegionName()));
+          new DaemonThreadFactory(this.getClass().getName() + "-StuckConsumerRepair", serverConfig.getLogContext()));
       int intervalInSeconds = serverConfig.getStuckConsumerRepairIntervalSecond();
       this.stuckConsumerRepairExecutorService.scheduleAtFixedRate(
           getStuckConsumerDetectionAndRepairRunnable(
@@ -128,15 +130,19 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
               TimeUnit.SECONDS.toMillis(serverConfig.getNonExistingTopicIngestionTaskKillThresholdSecond()),
               TimeUnit.SECONDS.toMillis(serverConfig.getNonExistingTopicCheckRetryIntervalSecond()),
               TimeUnit.SECONDS.toMillis(serverConfig.getConsumerPollTrackerStaleThresholdSeconds()),
-              new StuckConsumerRepairStats(metricsRepository),
+              stuckConsumerStats,
               killIngestionTaskRunnable),
           intervalInSeconds,
           intervalInSeconds,
           TimeUnit.SECONDS);
       LOGGER.info("Started stuck consumer repair service with checking interval: {} seconds", intervalInSeconds);
+    } else {
+      this.stuckConsumerStats = null;
+      LOGGER.info("Stuck consumer repair service is disabled");
     }
     this.isAAOrWCEnabledFunc = isAAOrWCEnabledFunc;
     this.pubSubPropertiesSupplier = pubSubPropertiesSupplier;
+    this.pubSubContext = pubSubContext;
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -335,7 +341,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
             serverConfig,
             (poolSize, poolType) -> sharedConsumerAssignmentStrategy.constructor.construct(
                 poolType,
-                consumerFactory,
                 consumerProperties,
                 readCycleDelayMs,
                 poolSize,
@@ -346,13 +351,13 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 sharedConsumerNonExistingTopicCleanupDelayMS,
                 staleTopicChecker,
                 liveConfigBasedKafkaThrottlingEnabled,
-                pubSubDeserializer,
                 SystemTime.INSTANCE,
                 null,
                 isKafkaConsumerOffsetCollectionEnabled,
                 metadataRepository,
                 serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
-                serverConfig),
+                serverConfig,
+                pubSubContext),
             isAAOrWCEnabledFunc));
 
     if (!consumerService.isRunning()) {
@@ -425,7 +430,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final String kafkaURL,
       StoreIngestionTask storeIngestionTask,
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
-      long lastOffset) {
+      PubSubPosition lastOffset,
+      boolean inclusive) {
     PubSubTopic versionTopic = storeIngestionTask.getVersionTopic();
     PubSubTopicPartition pubSubTopicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
     AbstractKafkaConsumerService consumerService =
@@ -442,7 +448,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         kafkaClusterUrlToIdMap.getOrDefault(kafkaURL, -1)); // same pubsub url but different id for sep topic
 
     versionTopicStoreIngestionTaskMapping.put(storeIngestionTask.getVersionTopic().getName(), storeIngestionTask);
-    consumerService.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastOffset, dataReceiver);
+    consumerService
+        .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastOffset, dataReceiver, inclusive);
     TopicManager topicManager = storeIngestionTask.getTopicManager(kafkaURL);
 
     /*
@@ -454,16 +461,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       topicManager.prefetchAndCacheLatestOffset(pubSubTopicPartition);
     }
     return dataReceiver;
-  }
-
-  public long getOffsetLagBasedOnMetrics(
-      final String kafkaURL,
-      PubSubTopic versionTopic,
-      PubSubTopicPartition pubSubTopicPartition) {
-    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
-    return consumerService == null
-        ? -1
-        : consumerService.getOffsetLagBasedOnMetrics(versionTopic, pubSubTopicPartition);
   }
 
   public long getLatestOffsetBasedOnMetrics(
@@ -523,7 +520,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     for (String kafkaUrl: kafkaServerToConsumerServiceMap.keySet()) {
       AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
       Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-          consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition);
+          consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition, false);
       for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
           .entrySet()) {
         PubSubTopicPartition topicPartition = entry.getKey();
@@ -534,4 +531,49 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
     return topicPartitionIngestionContextJsonSerializer.serialize(topicPartitionIngestionContext, "");
   }
+
+  public String getIngestionInfoFor(
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition,
+      String regionName) {
+    String kafkaUrl = getKafkaUrlFromRegionName(regionName);
+    if (kafkaUrl == null) {
+      return "kafkaUrl is not found for region: " + regionName;
+    }
+    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
+    if (consumerService == null) {
+      return "Kafka consumer service is not found for kafkaUrl: " + kafkaUrl + ", region: " + regionName;
+    }
+    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
+        consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition, true);
+    return KafkaConsumerService.convertTopicPartitionIngestionInfoMapToStr(topicPartitionIngestionInfoMap);
+  }
+
+  private String getKafkaUrlFromRegionName(String regionName) {
+    for (Map.Entry<String, String> entry: kafkaClusterUrlToAliasMap.entrySet()) {
+      if (entry.getValue().equals(regionName)) {
+        return entry.getKey();
+      }
+    }
+    return null;
+  }
+
+  public static int getKeyLevelLockMaxPoolSizeBasedOnServerConfig(VeniceServerConfig serverConfig, int partitionCount) {
+    int consumerPoolSizeForLeaderConsumption = 0;
+    if (serverConfig.getConsumerPoolStrategyType()
+        .equals(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION)) {
+      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()
+          + serverConfig.getConsumerPoolSizeForCurrentVersionSepRTLeader()
+          + serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader();
+    } else {
+      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizePerKafkaCluster();
+    }
+    int multiplier = 1;
+    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+      multiplier = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
+    }
+    return Math.min(partitionCount, consumerPoolSizeForLeaderConsumption)
+        * serverConfig.getKafkaClusterIdToUrlMap().size() * multiplier + 1;
+  }
+
 }

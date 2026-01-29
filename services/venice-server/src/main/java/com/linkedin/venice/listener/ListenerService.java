@@ -125,7 +125,8 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig,
         routerAccessController,
         storeAccessController,
-        requestHandler);
+        requestHandler,
+        storageEngineRepository);
 
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
     boolean epollEnabled = serverConfig.isRestServiceEpollEnabled();
@@ -220,7 +221,7 @@ public class ListenerService extends AbstractVeniceService {
     return ThreadPoolFactory.createThreadPool(
         threadCount,
         threadNamePrefix,
-        serverConfig.getRegionName(),
+        serverConfig.getLogContext(),
         capacity,
         serverConfig.getBlockingQueueType());
   }

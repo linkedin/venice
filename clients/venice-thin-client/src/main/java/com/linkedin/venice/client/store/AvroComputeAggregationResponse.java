@@ -1,24 +1,32 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.venice.client.store.predicate.Predicate;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.Map;
-import org.apache.avro.util.Utf8;
 
 
 /**
- * Implementation of {@link ComputeAggregationResponse} that handles the results of count-by-value aggregations.
+ * Implementation of {@link ComputeAggregationResponse} that handles the results of count-by-value and count-by-bucket aggregations.
  */
 public class AvroComputeAggregationResponse<K> implements ComputeAggregationResponse {
   private final Map<K, ComputeGenericRecord> computeResults;
   private final Map<String, Integer> fieldTopKMap;
+  private final Map<String, Map<String, Predicate>> fieldBucketMap;
 
   public AvroComputeAggregationResponse(
       Map<K, ComputeGenericRecord> computeResults,
       Map<String, Integer> fieldTopKMap) {
+    this(computeResults, fieldTopKMap, new HashMap<>());
+  }
+
+  public AvroComputeAggregationResponse(
+      Map<K, ComputeGenericRecord> computeResults,
+      Map<String, Integer> fieldTopKMap,
+      Map<String, Map<String, Predicate>> fieldBucketMap) {
     this.computeResults = computeResults;
     this.fieldTopKMap = fieldTopKMap;
+    this.fieldBucketMap = fieldBucketMap;
   }
 
   @Override
@@ -28,31 +36,21 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
       return Collections.emptyMap();
     }
 
-    Map<T, Integer> valueToCount = new HashMap<>();
-
-    for (ComputeGenericRecord record: computeResults.values()) {
-      Object value = record.get(field);
-      if (value instanceof Utf8) {
-        value = value.toString();
-      }
-
-      @SuppressWarnings("unchecked")
-      T key = (T) value;
-      valueToCount.merge(key, 1, Integer::sum);
-    }
-
-    // Sort by count in descending order
-    Map<T, Integer> sortedMap = valueToCount.entrySet()
-        .stream()
-        .sorted(Map.Entry.<T, Integer>comparingByValue().reversed())
-        .limit(fieldTopKMap.get(field))
-        .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), Map::putAll);
-
-    return sortedMap;
+    // Use utility method - original logic moved to FacetCountingUtils
+    int topK = fieldTopKMap.get(field);
+    return FacetCountingUtils.getValueToCount(computeResults.values(), field, topK);
   }
 
   @Override
   public Map<String, Integer> getBucketNameToCount(String fieldName) {
-    throw new UnsupportedOperationException("getBucketNameToCount is not implemented");
+    // Quick check: if field doesn't exist in fieldBucketMap, throw exception
+    Map<String, Predicate> buckets = fieldBucketMap.get(fieldName);
+    if (buckets == null || buckets.isEmpty()) {
+      throw new IllegalArgumentException("No count-by-bucket aggregation was requested for field: " + fieldName);
+    }
+
+    // Use utility method - original logic moved to FacetCountingUtils
+    return FacetCountingUtils.getBucketNameToCount(computeResults.values(), fieldName, buckets);
   }
+
 }

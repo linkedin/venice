@@ -20,7 +20,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -30,6 +29,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.vpj.VenicePushJobConstants;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.FileInputStream;
@@ -129,7 +129,7 @@ public class TestProduceWithSSL {
     props.setProperty(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, keyStorePwdPropertyName);
     props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, keyPwdPropertyName);
     props.setProperty(
-        KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + "send.buffer.bytes",
+        VenicePushJobConstants.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + "send.buffer.bytes",
         Integer.toString(4 * 1024 * 1024));
 
     // put cert into hadoop user credentials.

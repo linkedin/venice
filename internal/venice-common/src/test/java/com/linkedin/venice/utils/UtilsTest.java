@@ -23,8 +23,11 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pubsub.PubSubTopicImpl;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -441,6 +444,24 @@ public class UtilsTest {
         realTimeTopic);
   }
 
+  @Test
+  public void testGetSeparateRtPartitionFromLeaderTopic() {
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    String pubSubAddress = "pubsub_address";
+    String pubSubAddressSeparateRt = pubSubAddress + Utils.SEPARATE_TOPIC_SUFFIX;
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic("store"));
+    PubSubTopicPartition leaderTopicPartition = new PubSubTopicPartitionImpl(realTimeTopic, 0);
+    PubSubTopicPartition separateRtTopicPartition = new PubSubTopicPartitionImpl(
+        new PubSubTopicImpl(realTimeTopic.getName() + Utils.SEPARATE_TOPIC_SUFFIX),
+        leaderTopicPartition.getPartitionNumber());
+    Assert.assertEquals(
+        Utils.createPubSubTopicPartitionFromLeaderTopicPartition(pubSubAddress, leaderTopicPartition),
+        leaderTopicPartition);
+    Assert.assertEquals(
+        Utils.createPubSubTopicPartitionFromLeaderTopicPartition(pubSubAddressSeparateRt, leaderTopicPartition),
+        separateRtTopicPartition);
+  }
+
   @DataProvider(name = "booleanParsingData")
   public Object[][] booleanParsingData() {
     return new Object[][] {
@@ -508,6 +529,36 @@ public class UtilsTest {
     assertEquals(e.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST, "Invalid status code.");
     assertEquals(e.getMessage(), "Http Status 400 - testField must be a boolean, but value: " + value + " is invalid.");
     assertEquals(e.getErrorType(), ErrorType.BAD_REQUEST);
+  }
+
+  @DataProvider(name = "integerParsingData")
+  public Object[][] integerParsingData() {
+    return new Object[][] { { null, 10, 10, false }, // null -> default
+        { "", 20, 20, false }, // empty -> default
+        { "42", 0, 42, false }, // normal integer
+        { "-7", 1, -7, false }, // negative integer
+        { "notAnInt", 5, 0, true } // invalid -> exception
+    };
+  }
+
+  @Test(dataProvider = "integerParsingData")
+  public void testParseIntOrDefault(String value, int defaultValue, int expected, boolean expectException) {
+    final String fieldName = "testField";
+
+    if (expectException) {
+      try {
+        Utils.parseIntOrDefault(value, fieldName, defaultValue);
+        fail("VeniceHttpException expected for value: " + value);
+      } catch (VeniceHttpException ex) {
+        assertEquals(ex.getErrorType(), ErrorType.BAD_REQUEST);
+        assertEquals(ex.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST, "Invalid status code.");
+        assertTrue(ex.getMessage().contains(fieldName));
+        assertTrue(ex.getMessage().contains(value));
+      }
+    } else {
+      int actual = Utils.parseIntOrDefault(value, fieldName, defaultValue);
+      assertEquals(actual, expected, "Returned value did not match expectation for input '" + value + '\'');
+    }
   }
 
   @Test

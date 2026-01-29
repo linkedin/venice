@@ -12,13 +12,13 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -32,6 +32,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space in the background
+        run: |
+          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Avro Compatibility Tests
         run: ./gradlew -DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue
       - name: Package Build Artifacts
@@ -44,7 +47,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -56,13 +59,13 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -76,6 +79,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space in the background
+        run: |
+          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run DuckDB Integration Tests
         run: ./gradlew -DforkEvery=1 -DmaxParallelForks=1 :integrations:venice-duckdb:integrationTest --continue
       - name: Package Build Artifacts
@@ -88,7 +94,7 @@ jobs:
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
@@ -100,13 +106,13 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'temurin'
@@ -120,6 +126,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space in the background
+        run: |
+          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Build with gradle
         run: ./gradlew assemble --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1
 
@@ -152,7 +161,7 @@ jobs:
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
@@ -165,7 +174,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     needs: [AvroCompatibilityTests, DuckVinciIntegrationTests, PulsarVeniceIntegrationTests]
-    timeout-minutes: 120
+    timeout-minutes: 30
     if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}
     steps:
       - name: NoGood

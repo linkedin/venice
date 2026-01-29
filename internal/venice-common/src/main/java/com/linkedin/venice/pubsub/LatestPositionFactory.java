@@ -16,7 +16,7 @@ public class LatestPositionFactory extends PubSubPositionFactory {
   }
 
   @Override
-  public PubSubPosition createFromByteBuffer(ByteBuffer buffer) {
+  public PubSubPosition fromPositionRawBytes(ByteBuffer buffer) {
     return PubSubSymbolicPosition.LATEST;
   }
 

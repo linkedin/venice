@@ -4,8 +4,10 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -70,31 +72,18 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     this.isAAWCStoreFunc = vt -> storeVersionAAWCFlagMap.computeIfAbsent(vt, ignored -> isAAWCStoreFunc.apply(vt));
     ConsumerPoolStrategyType consumerPoolStrategyType = serverConfig.getConsumerPoolStrategyType();
 
-    // For backward compatibility, if the dedicated consumer pool for AA/WC leader is enabled, we will use it.
-    // TODO: Remove this boolean check after new pooling strategy is verified in production environment.
-    if (serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()) {
-      this.consumerPoolStrategy = new AAOrWCLeaderConsumerPoolStrategy();
-      LOGGER.info(
-          "Initializing Consumer Service Delegator with Consumer pool strategy: "
-              + ConsumerPoolStrategyType.AA_OR_WC_LEADER_DEDICATED);
-    } else {
-      switch (consumerPoolStrategyType) {
-        case AA_OR_WC_LEADER_DEDICATED:
-          consumerPoolStrategy = new AAOrWCLeaderConsumerPoolStrategy();
-          break;
-        case CURRENT_VERSION_PRIORITIZATION:
-          if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled()) {
-            consumerPoolStrategy = new CurrentVersionConsumerPoolStrategy();
-          } else {
-            throw new VeniceException(
-                "Resubscription should be enabled with consumer pool strategy: " + consumerPoolStrategyType);
-          }
-          break;
-        default:
-          consumerPoolStrategy = new DefaultConsumerPoolStrategy();
+    if (consumerPoolStrategyType == ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION) {
+      if (serverConfig.isResubscriptionTriggeredByVersionIngestionContextChangeEnabled()) {
+        consumerPoolStrategy = new CurrentVersionConsumerPoolStrategy();
+      } else {
+        throw new VeniceException(
+            "Resubscription should be enabled with consumer pool strategy: " + consumerPoolStrategyType);
       }
-      LOGGER.info("Initializing Consumer Service Delegator with Consumer pool strategy: " + consumerPoolStrategyType);
+    } else {
+      consumerPoolStrategy = new DefaultConsumerPoolStrategy();
     }
+    LOGGER.info("Initializing Consumer Service Delegator with Consumer pool strategy: " + consumerPoolStrategyType);
+
     this.consumerServices = consumerPoolStrategy.getConsumerServices();
   }
 
@@ -195,20 +184,14 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   @Override
   public void startConsumptionIntoDataReceiver(
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
-      long lastReadOffset,
-      ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver) {
-    assignKafkaConsumerServiceFor(partitionReplicaIngestionContext)
-        .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastReadOffset, consumedDataReceiver);
-  }
-
-  @Override
-  public long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    KafkaConsumerService kafkaConsumerService = getKafkaConsumerService(versionTopic, pubSubTopicPartition);
-    if (kafkaConsumerService != null) {
-      return kafkaConsumerService.getOffsetLagBasedOnMetrics(versionTopic, pubSubTopicPartition);
-    } else {
-      return -1;
-    }
+      PubSubPosition lastReadPosition,
+      ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver,
+      boolean inclusive) {
+    assignKafkaConsumerServiceFor(partitionReplicaIngestionContext).startConsumptionIntoDataReceiver(
+        partitionReplicaIngestionContext,
+        lastReadPosition,
+        consumedDataReceiver,
+        inclusive);
   }
 
   @Override
@@ -224,10 +207,12 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   @Override
   public Map<PubSubTopicPartition, TopicPartitionIngestionInfo> getIngestionInfoFor(
       PubSubTopic versionTopic,
-      PubSubTopicPartition pubSubTopicPartition) {
+      PubSubTopicPartition pubSubTopicPartition,
+      boolean respectRedundantLoggingFilter) {
     KafkaConsumerService kafkaConsumerService = getKafkaConsumerService(versionTopic, pubSubTopicPartition);
     if (kafkaConsumerService != null) {
-      return kafkaConsumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition);
+      return kafkaConsumerService
+          .getIngestionInfoFor(versionTopic, pubSubTopicPartition, respectRedundantLoggingFilter);
     } else {
       LOGGER.warn(
           "No consumer service found for version topic {} and partition {} when fetching ingestion info"
@@ -304,36 +289,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     }
   }
 
-  public class AAOrWCLeaderConsumerPoolStrategy extends DefaultConsumerPoolStrategy {
-    private final KafkaConsumerService dedicatedConsumerServiceForAAWCLeader;
-    private final KafkaConsumerService dedicatedConsumerServiceForSepRT;
-
-    public AAOrWCLeaderConsumerPoolStrategy() {
-      super();
-      dedicatedConsumerServiceForAAWCLeader = consumerServiceConstructor
-          .apply(serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader(), ConsumerPoolType.AA_WC_LEADER_POOL);
-      dedicatedConsumerServiceForSepRT = consumerServiceConstructor
-          .apply(serverConfig.getDedicatedConsumerPoolSizeForSepRTLeader(), ConsumerPoolType.SEP_RT_LEADER_POOL);
-      consumerServices.add(dedicatedConsumerServiceForAAWCLeader);
-      consumerServices.add(dedicatedConsumerServiceForSepRT);
-    }
-
-    @Override
-    public KafkaConsumerService delegateKafkaConsumerServiceFor(
-        PartitionReplicaIngestionContext topicPartitionReplicaRole) {
-      PubSubTopicPartition topicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
-      PubSubTopic versionTopic = topicPartitionReplicaRole.getVersionTopic();
-      if (isAAWCStoreFunc.apply(versionTopic.getName()) && topicPartition.getPubSubTopic().isRealTime()) {
-        if (topicPartition.getPubSubTopic().isSeparateRealTimeTopic()) {
-          return dedicatedConsumerServiceForSepRT;
-        } else {
-          return dedicatedConsumerServiceForAAWCLeader;
-        }
-      }
-      return defaultConsumerService;
-    }
-  }
-
   public class CurrentVersionConsumerPoolStrategy extends ConsumerPoolStrategy {
     private final KafkaConsumerService consumerServiceForCurrentVersionAAWCLeader;
     private final KafkaConsumerService consumerServiceForCurrentVersionSepRTLeader;
@@ -367,16 +322,17 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
     @Override
     public KafkaConsumerService delegateKafkaConsumerServiceFor(
         PartitionReplicaIngestionContext topicPartitionReplicaRole) {
-      PartitionReplicaIngestionContext.VersionRole versionRole = topicPartitionReplicaRole.getVersionRole();
+      VersionRole versionRole = topicPartitionReplicaRole.getVersionRole();
       PartitionReplicaIngestionContext.WorkloadType workloadType = topicPartitionReplicaRole.getWorkloadType();
       PubSubTopicPartition pubSubTopicPartition = topicPartitionReplicaRole.getPubSubTopicPartition();
       PubSubTopic pubSubTopic = pubSubTopicPartition.getPubSubTopic();
       /**
-       * The logic to assign consumer service is with these 2 dimensions:
+       * The logic to assign consumer service is with these 3 dimensions:
        * 1. If the version role is current.
        * 2. If the workload type is active-active leader and write-computer leader.
+       * 3. If the replica is ready to serve.
        */
-      if (versionRole.equals(PartitionReplicaIngestionContext.VersionRole.CURRENT)) {
+      if (versionRole.equals(VersionRole.CURRENT) && topicPartitionReplicaRole.isReadyToServe()) {
         if (workloadType.equals(PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE)
             && pubSubTopic.isRealTime()) {
           return pubSubTopic.isSeparateRealTimeTopic()
@@ -402,6 +358,6 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   }
 
   public enum ConsumerPoolStrategyType {
-    DEFAULT, AA_OR_WC_LEADER_DEDICATED, CURRENT_VERSION_PRIORITIZATION
+    DEFAULT, CURRENT_VERSION_PRIORITIZATION
   }
 }

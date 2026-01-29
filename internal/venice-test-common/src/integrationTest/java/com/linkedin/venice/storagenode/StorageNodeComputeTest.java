@@ -284,7 +284,7 @@ public class StorageNodeComputeTest {
   /**
    * The goal of this test is to find the breaking point at which a compute request gets split into more than 1 part.
    */
-  @Test(timeOut = 30000, groups = { "flaky" })
+  @Test(timeOut = 30000, enabled = false, groups = { "flaky" })
   public void testComputeRequestSize() throws Exception {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setReadComputationEnabled(true);

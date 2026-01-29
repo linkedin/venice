@@ -7,8 +7,11 @@ import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.LIST_OPS;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.MAP_OPS;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.PUT_NEW_FIELD;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.getFieldOperationType;
 
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +56,40 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     return updatedValue;
   }
 
+  @Override
+  public GenericRecord mergeUpdateRecord(
+      Schema valueSchema,
+      GenericRecord currUpdateRecord,
+      GenericRecord newUpdateRecord) {
+    if (currUpdateRecord == null) {
+      return newUpdateRecord;
+    }
+    if (!WriteComputeOperation.isPartialUpdateOp(currUpdateRecord)) {
+      throw new IllegalStateException("Got unexpected update record: " + currUpdateRecord);
+    }
+
+    if (!WriteComputeOperation.isPartialUpdateOp(newUpdateRecord)) {
+      throw new IllegalStateException("Got unexpected update record: " + currUpdateRecord);
+    }
+    for (Schema.Field valueField: currUpdateRecord.getSchema().getFields()) {
+      final String valueFieldName = valueField.name();
+      Object currentFieldValue = currUpdateRecord.get(valueFieldName);
+      Object newFieldValue = newUpdateRecord.get(valueFieldName);
+
+      if (isNoOpField(currentFieldValue)) {
+        currUpdateRecord.put(valueField.pos(), newFieldValue);
+        continue;
+      }
+      if (isNoOpField(newFieldValue)) {
+        continue;
+      }
+      Object updatedFieldObject =
+          mergeFieldUpdate(valueSchema.getField(valueFieldName).schema(), currentFieldValue, newFieldValue);
+      currUpdateRecord.put(valueField.pos(), updatedFieldObject);
+    }
+    return currUpdateRecord;
+  }
+
   private boolean isNoOpField(Object writeComputeFieldValue) {
     return (writeComputeFieldValue instanceof IndexedRecord)
         && ((IndexedRecord) writeComputeFieldValue).getSchema().getName().equals(NO_OP_ON_FIELD.name);
@@ -78,6 +115,19 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
         return updateUnion(valueFieldSchema, originalFieldValue, writeComputeFieldValue);
       default:
         return writeComputeFieldValue;
+    }
+  }
+
+  private Object mergeFieldUpdate(Schema valueFieldSchema, Object currFieldUpdate, Object newFieldUpdate) {
+    switch (valueFieldSchema.getType()) {
+      case ARRAY:
+        return mergeArray(valueFieldSchema, currFieldUpdate, newFieldUpdate);
+      case MAP:
+        return mergeMap(currFieldUpdate, newFieldUpdate);
+      case UNION:
+        return mergeUnion(valueFieldSchema, currFieldUpdate, newFieldUpdate);
+      default:
+        return newFieldUpdate;
     }
   }
 
@@ -112,6 +162,55 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     return originalArray;
   }
 
+  Object mergeArray(Schema arraySchema, Object currArrayUpdate, Object newArrayUpdate) {
+    if (getFieldOperationType(newArrayUpdate).equals(PUT_NEW_FIELD)) {
+      return newArrayUpdate; // Partial update on a list field
+    }
+    /**
+     * If old array update is {@link LIST_OPS}, merge it into the new collection merge OP's {@link SET_UNION} field.
+     * If old array update is NULL, a new empty array is created to take in the new collection merge.
+     * Otherwise, they are both {@link LIST_OPS}, just merge both {@link SET_UNION} field and {@link SET_DIFF} field.
+     */
+    List newSetUnion = (List) ((GenericRecord) newArrayUpdate).get(SET_UNION);
+    List newSetDiff = (List) ((GenericRecord) newArrayUpdate).get(SET_DIFF);
+    if (getFieldOperationType(currArrayUpdate).equals(LIST_OPS)) {
+      List currSetUnion = (List) ((GenericRecord) currArrayUpdate).get(SET_UNION);
+      List currSetDiff = (List) ((GenericRecord) currArrayUpdate).get(SET_DIFF);
+      // Creating a new updated list to avoid the case that old list is unmodifiable.
+      List updatedSetUnion = new GenericData.Array(arraySchema, newSetUnion);
+      List updatedSetDiff = new GenericData.Array(arraySchema, newSetDiff);
+      for (Object element: currSetUnion) {
+        if (!updatedSetUnion.contains(element)) {
+          updatedSetUnion.add(element);
+        }
+      }
+      for (Object elementToRemove: currSetDiff) {
+        if (!updatedSetDiff.contains(elementToRemove) && !updatedSetUnion.contains(elementToRemove)) {
+          updatedSetDiff.add(elementToRemove);
+        }
+      }
+      ((GenericRecord) newArrayUpdate).put(SET_UNION, updatedSetUnion);
+      ((GenericRecord) newArrayUpdate).put(SET_DIFF, updatedSetDiff);
+
+      return newArrayUpdate;
+    } else {
+      List updatedArray = new ArrayList<>();
+      if (currArrayUpdate != null) {
+        for (Object element: (List) currArrayUpdate) {
+          if (!newSetDiff.contains(element)) {
+            updatedArray.add(element);
+          }
+        }
+      }
+      for (Object element: newSetUnion) {
+        if (!updatedArray.contains(element) && !newSetDiff.contains(element)) {
+          updatedArray.add(element);
+        }
+      }
+      return updatedArray;
+    }
+  }
+
   // Visible for testing
   Object updateMap(Map originalMap, Object writeComputeMap) {
     if (writeComputeMap instanceof Map) {
@@ -135,6 +234,52 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     return originalMap;
   }
 
+  Object mergeMap(Object currMapUpdate, Object newMapUpdate) {
+    if (getFieldOperationType(newMapUpdate).equals(PUT_NEW_FIELD)) {
+      return newMapUpdate; // Partial update on a map field
+    }
+    /**
+     * If old map update is {@link MAP_OPS}, merge it into the new collection merge OP's {@link MAP_UNION} field.
+     * If old map update is NULL, a new empty map is created to take in the new collection merge.
+     * Otherwise, they are both {@link MAP_OPS}, just merge both {@link MAP_UNION} field and {@link MAP_DIFF} field.
+     */
+    Map newMapUnion = ((Map) ((GenericRecord) newMapUpdate).get(MAP_UNION));
+    List newMapDiff = ((List) ((GenericRecord) newMapUpdate).get(MAP_DIFF));
+    if (getFieldOperationType(currMapUpdate).equals(MAP_OPS)) {
+      Map currMapUnion = ((Map) ((GenericRecord) currMapUpdate).get(MAP_UNION));
+      List currMapDiff = ((List) ((GenericRecord) currMapUpdate).get(MAP_DIFF));
+      List<Object> updatedMapDiff = new ArrayList<>();
+      for (Object elementToRemove: currMapDiff) {
+        if (!newMapDiff.contains(elementToRemove) && !newMapUnion.containsKey(elementToRemove)) {
+          updatedMapDiff.add(elementToRemove);
+        }
+      }
+      for (Object elementToRemove: newMapDiff) {
+        if (!updatedMapDiff.contains(elementToRemove)) {
+          updatedMapDiff.add(elementToRemove);
+        }
+      }
+      for (Object entry: currMapUnion.entrySet()) {
+        Object key = ((Map.Entry) entry).getKey();
+        Object value = ((Map.Entry) entry).getValue();
+        newMapUnion.putIfAbsent(key, value);
+      }
+      ((GenericRecord) newMapUpdate).put(MAP_DIFF, updatedMapDiff);
+      return newMapUpdate;
+    } else {
+      Map updatedMap = currMapUpdate == null ? new HashMap<>() : (Map) currMapUpdate;
+      for (Object entry: newMapUnion.entrySet()) {
+        Object key = ((Map.Entry) entry).getKey();
+        Object value = ((Map.Entry) entry).getValue();
+        updatedMap.put(key, value);
+      }
+      for (Object diffKey: newMapDiff) {
+        updatedMap.remove(diffKey);
+      }
+      return updatedMap;
+    }
+  }
+
   // Visible for testing
   Object updateUnion(Schema originalSchema, Object originalObject, Object writeComputeObject) {
     for (Schema subSchema: originalSchema.getTypes()) {
@@ -155,5 +300,25 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     // If the above situation happens, the field value becomes writeComputeObject which represents collection merging
     // operation instead of a real field value.
     return writeComputeObject;
+  }
+
+  /**
+   * If original field is a union field, it will try to locate the collection field and perform collection merge.
+   * If there is no collection field, or the new update on the collection field is a set field, it will directly return
+   * the new update.
+   */
+  Object mergeUnion(Schema fieldValueSchema, Object currUpdateObject, Object newUpdateObject) {
+    for (Schema subSchema: fieldValueSchema.getTypes()) {
+      if (subSchema.getType() == Schema.Type.ARRAY && newUpdateObject instanceof IndexedRecord
+          && ((IndexedRecord) newUpdateObject).getSchema().getName().endsWith(LIST_OPS.name)) {
+        return mergeArray(subSchema, currUpdateObject, newUpdateObject);
+      }
+
+      if (subSchema.getType() == Schema.Type.MAP && newUpdateObject instanceof IndexedRecord
+          && ((IndexedRecord) newUpdateObject).getSchema().getName().endsWith(MAP_OPS.name)) {
+        return mergeMap(currUpdateObject, newUpdateObject);
+      }
+    }
+    return newUpdateObject;
   }
 }

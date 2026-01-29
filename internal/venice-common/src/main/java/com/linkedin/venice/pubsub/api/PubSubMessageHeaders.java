@@ -15,6 +15,7 @@ import java.util.List;
  * In case of headers with the same key, only the most recently added headers value will be kept.
  */
 public class PubSubMessageHeaders implements Measurable, Iterable<PubSubMessageHeader> {
+  public static final String EXECUTION_ID_KEY = "EXECUTION_ID";
   private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(PubSubMessageHeaders.class);
   /**
    * N.B.: Kafka allows duplicate keys in the headers but some pubsub systems may not

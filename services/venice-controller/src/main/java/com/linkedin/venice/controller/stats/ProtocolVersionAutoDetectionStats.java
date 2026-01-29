@@ -4,8 +4,7 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
-import io.tehuti.metrics.stats.Count;
-import io.tehuti.metrics.stats.Max;
+import io.tehuti.metrics.stats.Gauge;
 
 
 public class ProtocolVersionAutoDetectionStats extends AbstractVeniceStats {
@@ -17,13 +16,13 @@ public class ProtocolVersionAutoDetectionStats extends AbstractVeniceStats {
   public ProtocolVersionAutoDetectionStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
     protocolVersionAutoDetectionErrorSensor =
-        registerSensorIfAbsent(PROTOCOL_VERSION_AUTO_DETECTION_ERROR, new Count());
+        registerSensorIfAbsent(PROTOCOL_VERSION_AUTO_DETECTION_ERROR, new Gauge());
     protocolVersionAutoDetectionLatencySensor =
-        registerSensorIfAbsent(PROTOCOL_VERSION_AUTO_DETECTION_LATENCY, new Avg(), new Max());
+        registerSensorIfAbsent(PROTOCOL_VERSION_AUTO_DETECTION_LATENCY, new Avg());
   }
 
-  public void recordProtocolVersionAutoDetectionErrorSensor() {
-    protocolVersionAutoDetectionErrorSensor.record();
+  public void recordProtocolVersionAutoDetectionErrorSensor(int count) {
+    protocolVersionAutoDetectionErrorSensor.record(count);
   }
 
   public void recordProtocolVersionAutoDetectionLatencySensor(double latencyInMs) {

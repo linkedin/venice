@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -22,6 +23,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.nio.ByteBuffer;
@@ -44,9 +46,7 @@ public class DictionaryUtilsTest {
     byte[] dictionaryToSend = "TEST_DICT".getBytes();
 
     PubSubConsumerAdapter pubSubConsumer = mock(PubSubConsumerAdapter.class);
-    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, 0);
-    doReturn(topic).when(pubSubTopicRepository).getTopic(topic.getName());
 
     KafkaKey controlMessageKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     StartOfPush startOfPush = new StartOfPush();
@@ -72,7 +72,7 @@ public class DictionaryUtilsTest {
     ByteBuffer dictionaryFromKafka =
         DictionaryUtils.readDictionaryFromKafka(topic.getName(), pubSubConsumer, pubSubTopicRepository);
     Assert.assertEquals(dictionaryFromKafka.array(), dictionaryToSend);
-    verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), anyLong());
+    verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), any(PubSubPosition.class));
     verify(pubSubConsumer, times(1)).unSubscribe(topicPartition);
     verify(pubSubConsumer, times(1)).poll(anyLong());
   }
@@ -82,9 +82,7 @@ public class DictionaryUtilsTest {
     PubSubTopic topic = getTopic();
 
     PubSubConsumerAdapter pubSubConsumer = mock(PubSubConsumerAdapter.class);
-    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, 0);
-    doReturn(topic).when(pubSubTopicRepository).getTopic(topic.getName());
 
     KafkaKey controlMessageKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     StartOfPush startOfPush = new StartOfPush();
@@ -108,7 +106,7 @@ public class DictionaryUtilsTest {
     ByteBuffer dictionaryFromKafka =
         DictionaryUtils.readDictionaryFromKafka(topic.getName(), pubSubConsumer, pubSubTopicRepository);
     Assert.assertNull(dictionaryFromKafka);
-    verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), anyLong());
+    verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), any(PubSubPosition.class));
     verify(pubSubConsumer, times(1)).unSubscribe(topicPartition);
     verify(pubSubConsumer, times(1)).poll(anyLong());
   }
@@ -118,9 +116,7 @@ public class DictionaryUtilsTest {
     PubSubTopic topic = getTopic();
 
     PubSubConsumerAdapter pubSubConsumer = mock(PubSubConsumerAdapter.class);
-    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, 0);
-    doReturn(topic).when(pubSubTopicRepository).getTopic(topic.getName());
 
     KafkaKey dataMessageKey = new KafkaKey(MessageType.PUT, "blah".getBytes());
 
@@ -142,7 +138,7 @@ public class DictionaryUtilsTest {
     ByteBuffer dictionaryFromKafka =
         DictionaryUtils.readDictionaryFromKafka(topic.getName(), pubSubConsumer, pubSubTopicRepository);
     Assert.assertNull(dictionaryFromKafka);
-    verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), anyLong());
+    verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), any(PubSubPosition.class));
     verify(pubSubConsumer, times(1)).unSubscribe(topicPartition);
     verify(pubSubConsumer, times(1)).poll(anyLong());
   }
@@ -153,9 +149,7 @@ public class DictionaryUtilsTest {
     byte[] dictionaryToSend = "TEST_DICT".getBytes();
 
     PubSubConsumerAdapter pubSubConsumer = mock(PubSubConsumerAdapter.class);
-    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, 0);
-    doReturn(topic).when(pubSubTopicRepository).getTopic(topic.getName());
 
     KafkaKey controlMessageKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0]);
     StartOfPush startOfPush = new StartOfPush();
@@ -181,8 +175,9 @@ public class DictionaryUtilsTest {
 
     ByteBuffer dictionaryFromKafka =
         DictionaryUtils.readDictionaryFromKafka(topic.getName(), pubSubConsumer, pubSubTopicRepository);
+    Assert.assertNotNull(dictionaryFromKafka);
     Assert.assertEquals(dictionaryFromKafka.array(), dictionaryToSend);
-    verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), anyLong());
+    verify(pubSubConsumer, times(1)).subscribe(eq(topicPartition), any(PubSubPosition.class));
     verify(pubSubConsumer, times(1)).unSubscribe(topicPartition);
     verify(pubSubConsumer, times(2)).poll(anyLong());
   }

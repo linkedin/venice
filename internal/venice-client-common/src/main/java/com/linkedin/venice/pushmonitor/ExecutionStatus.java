@@ -94,7 +94,7 @@ public enum ExecutionStatus implements VeniceEnumValue {
   /** DaVinci client fails ingestion due to disk reaching the threshold in the host */
   DVC_INGESTION_ERROR_DISK_FULL(true, false, true, true, ERROR, 18),
 
-  /** DaVinci client fails ingestion due to reaching the configured memory limit in the host */
+  /** DaVinci client fails ingestion due to reaching the configured memory limit in the host, deprecated */
   DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED(true, false, true, true, ERROR, 19),
 
   /** There are too many dead DaVinci instances leading to failed push job */

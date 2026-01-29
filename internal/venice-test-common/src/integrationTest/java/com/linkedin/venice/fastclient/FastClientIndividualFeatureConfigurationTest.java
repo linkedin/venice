@@ -3,7 +3,6 @@ package com.linkedin.venice.fastclient;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -328,13 +327,17 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     veniceCluster.useControllerClient(controllerClient -> {
       TestUtils.waitForNonDeterministicPushCompletion(storeVersion, controllerClient, 30, TimeUnit.SECONDS);
     });
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       final Map<String, GenericRecord> result = genericFastClient.batchGet(keys).get();
       assertEquals(result.size(), recordCnt);
       for (int i = 0; i < recordCnt; ++i) {
         String key = keyPrefix + i;
         assertEquals((int) result.get(key).get(VALUE_FIELD_NAME), i);
-        assertEquals(result.get(key).get(SECOND_VALUE_FIELD_NAME), i);
+        try {
+          assertEquals(result.get(key).get(SECOND_VALUE_FIELD_NAME), i);
+        } catch (AvroRuntimeException e) {
+          fail("The FC didn't notice the new store-version yet...");
+        }
       }
     });
   }
@@ -420,13 +423,15 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
      */
     String multiGetRequestKeyCountMetric =
         ".total--" + RequestType.MULTI_GET.getMetricPrefix() + "request_key_count.Rate";
-    boolean nonZeroRequestedKeyCount = false;
-    for (MetricsRepository serverMetric: serverMetrics) {
-      if (serverMetric.getMetric(multiGetRequestKeyCountMetric).value() > 0) {
-        nonZeroRequestedKeyCount = true;
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      boolean nonZeroRequestedKeyCount = false;
+      for (MetricsRepository serverMetric: serverMetrics) {
+        if (serverMetric.getMetric(multiGetRequestKeyCountMetric).value() > 0) {
+          nonZeroRequestedKeyCount = true;
+        }
       }
-    }
-    assertTrue(nonZeroRequestedKeyCount);
+      assertTrue(nonZeroRequestedKeyCount);
+    });
   }
 
   @Test(timeOut = TIME_OUT)
@@ -470,10 +475,10 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     assertEquals(
         clientMetric.getMetric(multiKeyLongTailRetryManagerStatsPrefix + "rejected_retry.OccurrenceRate").value(),
         0d);
-    // single get long tail retry manager metrics shouldn't be initialized because it's not enabled
-    assertNull(clientMetric.getMetric(singleKeyLongTailRetryManagerStatsPrefix + "retry_limit_per_seconds.Gauge"));
-    assertNull(clientMetric.getMetric(singleKeyLongTailRetryManagerStatsPrefix + "retries_remaining.Gauge"));
-    assertNull(clientMetric.getMetric(singleKeyLongTailRetryManagerStatsPrefix + "rejected_retry.OccurrenceRate"));
+    // single get long tail retry manager metrics should be initialized since retry is enabled by default
+    assertNotNull(clientMetric.getMetric(singleKeyLongTailRetryManagerStatsPrefix + "retry_limit_per_seconds.Gauge"));
+    assertNotNull(clientMetric.getMetric(singleKeyLongTailRetryManagerStatsPrefix + "retries_remaining.Gauge"));
+    assertNotNull(clientMetric.getMetric(singleKeyLongTailRetryManagerStatsPrefix + "rejected_retry.OccurrenceRate"));
   }
 
   @Test(timeOut = TIME_OUT)
@@ -506,6 +511,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setLongTailRetryEnabledForBatchGet(true)
+            .setLongTailRetryThresholdForBatchGetInMicroSeconds(10000)
             .setInstanceHealthMonitor(
                 new InstanceHealthMonitor(
                     InstanceHealthMonitorConfig.builder()
@@ -514,7 +520,6 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
                         .build()));
     MetricsRepository clientMetric = new MetricsRepository();
     String metricPrefix = ClientTestUtils.getMetricPrefix(storeName, RequestType.MULTI_GET_STREAMING);
-    ;
     String fanoutSizeAverageMetricName = metricPrefix + "fanout_size.Avg";
     String fanoutSizeMaxMetricName = metricPrefix + "fanout_size.Max";
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =

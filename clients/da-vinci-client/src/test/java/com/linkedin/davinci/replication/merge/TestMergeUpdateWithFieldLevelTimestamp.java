@@ -88,7 +88,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
-        1,
+        P1,
         1,
         1,
         null);
@@ -146,7 +146,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
-        1,
+        P1,
         1,
         1,
         null);
@@ -210,7 +210,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         1,
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update should be applied.
-        1,
+        P1,
         1,
         1,
         null);
@@ -278,7 +278,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 1,
-        1,
+        P1,
         1,
         1,
         null);
@@ -296,7 +296,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 2,
-        2,
+        P2,
         0,
         0,
         null);
@@ -402,7 +402,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
-        1,
+        P1,
         1,
         newColoID,
         null);

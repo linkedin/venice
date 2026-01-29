@@ -76,8 +76,8 @@ public class VeniceControllerRequestHandlerTest {
   public void testDiscoverCluster() {
     String storeName = "testStore";
     DiscoverClusterGrpcRequest request = DiscoverClusterGrpcRequest.newBuilder().setStoreName(storeName).build();
-    Pair<String, String> clusterToD2Pair = Pair.create("testCluster", "testD2Service");
-    when(admin.discoverCluster(storeName)).thenReturn(clusterToD2Pair);
+    when(admin.discoverCluster(storeName)).thenReturn("testCluster");
+    when(admin.getRouterD2Service("testCluster")).thenReturn("testD2Service");
     when(admin.getServerD2Service("testCluster")).thenReturn("testServerD2Service");
 
     DiscoverClusterGrpcResponse response = requestHandler.discoverCluster(request);

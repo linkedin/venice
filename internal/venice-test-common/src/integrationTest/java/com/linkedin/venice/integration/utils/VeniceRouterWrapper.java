@@ -12,6 +12,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.ROUTER_LATENCY_BASED_ROUTING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
@@ -30,6 +31,7 @@ import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_M
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_ENABLED;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
@@ -40,11 +42,13 @@ import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MetricsAware;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
@@ -63,7 +67,7 @@ import org.apache.logging.log4j.Logger;
  * A wrapper for the {@link RouterServer}.
  */
 public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware {
-  public static final String SERVICE_NAME = "VeniceRouter";
+  public static final String SERVICE_NAME = VeniceComponent.ROUTER.getName();
   public static final String CLUSTER_DISCOVERY_D2_SERVICE_NAME =
       ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME + "_test";
   private static final String ROUTER_SERVICE_NAME = "venice-router";
@@ -159,6 +163,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(MAX_READ_CAPACITY, DEFAULT_PER_ROUTER_READ_QUOTA)
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())
+          .put(ROUTER_LATENCY_BASED_ROUTING_ENABLED, true)
           // OpenTelemetry configs
           .put(OTEL_VENICE_METRICS_ENABLED, Boolean.TRUE.toString())
           .put(OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, "http/protobuf")
@@ -185,16 +190,20 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           D2TestUtils.setupD2Config(zkAddress, https, CLUSTER_DISCOVERY_D2_SERVICE_NAME);
       d2Servers.addAll(D2TestUtils.getD2Servers(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
 
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      VeniceMetricsRepository veniceMetricsRepository = VeniceMetricsRepository.getVeniceMetricsRepository(
+          ROUTER_SERVICE_NAME,
+          ROUTER_SERVICE_METRIC_PREFIX,
+          ROUTER_SERVICE_METRIC_ENTITIES,
+          routerProperties.getAsMap());
+      veniceMetricsRepository.getVeniceMetricsConfig().setOtelAdditionalMetricsReader(inMemoryMetricReader);
+
       RouterServer router = new RouterServer(
           routerProperties,
           d2Servers,
           Optional.empty(),
           Optional.of(SslUtils.getVeniceLocalSslFactory()),
-          VeniceMetricsRepository.getVeniceMetricsRepository(
-              ROUTER_SERVICE_NAME,
-              ROUTER_SERVICE_METRIC_PREFIX,
-              ROUTER_SERVICE_METRIC_ENTITIES,
-              routerProperties.getAsMap()),
+          veniceMetricsRepository,
           D2TestUtils.getAndStartD2Client(zkAddress),
           CLUSTER_DISCOVERY_D2_SERVICE_NAME);
       return new VeniceRouterWrapper(
@@ -267,8 +276,12 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   }
 
   @Override
-  public String getComponentTagForLogging() {
-    return new StringBuilder(getComponentTagPrefix(regionName)).append(super.getComponentTagForLogging()).toString();
+  public LogContext getComponentTagForLogging() {
+    return LogContext.newBuilder()
+        .setRegionName(regionName)
+        .setComponentName(VeniceComponent.ROUTER.name())
+        .setInstanceName(Utils.getHelixNodeIdentifier(getHost(), getPort()))
+        .build();
   }
 
   public HelixBaseRoutingRepository getRoutingDataRepository() {

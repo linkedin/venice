@@ -21,9 +21,10 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
-import com.linkedin.venice.pubsub.adapter.PubSubProducerCallbackSimpleImpl;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.mock.adapter.PubSubProducerCallbackSimpleImpl;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
@@ -237,7 +238,7 @@ public class ApacheKafkaProducerAdapterITest {
         try {
           PubSubProduceResult produceResult = future.get();
           assertNotNull(produceResult);
-          assertNotEquals(produceResult.getOffset(), -1);
+          assertNotEquals(produceResult.getPubSubPosition(), PubSubSymbolicPosition.EARLIEST);
           assertNull(cb.getException());
         } catch (Exception notExpected) {
           fail("When flush is enabled all messages should be sent to Kafka successfully");

@@ -42,6 +42,14 @@ various downstream for different business logics. The diagram below describes th
 
 ![Server Ingestion Report Diagram](../assets/images/server_ingestion_report.svg)
 
+### Quantities
+
+When working on the codebase, I find it helpful to keep track of the quantities of different components in the system.
+Below, you'll find some visualizations of data structures and other things that are per-store, per-version, and per-partition.
+([Link to diagram source](https://whimsical.com/venice-docs-diagrams-SvH4RAc9mED9JdAycS5w2v))
+
+![Write Path Quantities Diagram](https://github.com/user-attachments/assets/cc2dee5d-1513-4f9a-be3b-1a51a53bc7bb)
+
 ### Venice Large Record Value Chunking
 
 Due to the ~1MB Kafka size limit, records larger than ~1MB will need to be chunked into multiple Kafka messages by
@@ -58,6 +66,13 @@ Using these components, the `Consumer` can reconstruct the large record, apply t
 divide it into a new set of chunks and a new manifest. The new chunks are written to `RocksDB`, the stored manifest
 is updated with the new keys, and the old chunks are deleted.
 
-The diagram below illustrates the aforementioned chunking system. ([Link to diagram source](https://whimsical.com/venice-chunking-KMT4sVwV67iZ4zjVzTH9uC))
+The diagram below illustrates the aforementioned chunking system. ([Link to diagram source](https://whimsical.com/venice-docs-diagrams-SvH4RAc9mED9JdAycS5w2v))
 
 ![Large Record Value Chunking Diagram](https://github.com/user-attachments/assets/f0ed6eb2-7558-4300-a75c-5fc842bb2fb5)
+
+### Push Job
+
+[More details about push jobs](../user_guide/write_api/push_job)
+
+![Venice Push Job Diagram](https://github.com/user-attachments/assets/bdcefd28-a550-4ab8-9e84-5654efdcb0c0)
+

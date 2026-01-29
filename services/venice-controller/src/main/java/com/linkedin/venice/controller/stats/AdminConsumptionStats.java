@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.stats;
 
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -43,7 +44,11 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
    */
   final private Sensor adminMessageTotalLatencySensor;
 
-  private long adminConsumptionFailedOffset;
+  /**
+   * The number of admin messages with future protocol version that deserialized with future schema from system store.
+   */
+  final private Sensor adminMessagesWithFutureProtocolVersionCountSensor;
+  private PubSubPosition adminConsumptionFailedPosition;
   /**
    * A gauge reporting the total number of pending admin messages remaining in the internal queue at the end of each
    * consumption cycle. Pending messages could be caused by blocked admin operations or insufficient resources.
@@ -53,12 +58,6 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
    * A gauge reporting the number of stores with pending messages at the end of each consumption cycle.
    */
   private double storesWithPendingAdminMessagesCountGauge;
-
-  /**
-   * A gauge that represents the consumption offset checkpointed into ZK. If remote consumption is enabled, this is the
-   * checkpoint upstream offset; otherwise, it's the checkpoint local consumption offset.
-   */
-  private long adminConsumptionCheckpointOffset;
 
   /**
    * adminConsumptionOffsetLag = End offset of the admin topic in the source Kafka cluster - the latest consumed offset
@@ -79,7 +78,12 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminConsumeFailCountSensor = registerSensor("failed_admin_messages", new Count());
     adminConsumeFailRetriableMessageCountSensor = registerSensor("failed_retriable_admin_messages", new Count());
     adminTopicDIVErrorReportCountSensor = registerSensor("admin_message_div_error_report_count", new Count());
-    registerSensor(new AsyncGauge((ignored, ignored2) -> adminConsumptionFailedOffset, "failed_admin_message_offset"));
+    registerSensor(
+        new AsyncGauge(
+            (ignored, ignored2) -> adminConsumptionFailedPosition == null
+                ? 0L
+                : adminConsumptionFailedPosition.getNumericOffset(),
+            "failed_admin_message_offset"));
     adminConsumptionCycleDurationMsSensor =
         registerSensor("admin_consumption_cycle_duration_ms", new Avg(), new Min(), new Max());
     registerSensor(
@@ -96,6 +100,9 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminMessageAddVersionProcessLatencySensor =
         registerSensor("admin_message_add_version_process_latency_ms", new Avg(), new Max());
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
+    adminMessagesWithFutureProtocolVersionCountSensor =
+        registerSensor("admin_messages_with_future_protocol_version_count", new Count());
+
     registerSensor(
         new AsyncGauge((ignored, ignored2) -> this.adminConsumptionOffsetLag, "admin_consumption_offset_lag"));
     registerSensor(
@@ -131,8 +138,8 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     this.storesWithPendingAdminMessagesCountGauge = value;
   }
 
-  public void setAdminConsumptionFailedOffset(long adminConsumptionFailedOffset) {
-    this.adminConsumptionFailedOffset = adminConsumptionFailedOffset;
+  public void setAdminConsumptionFailedPosition(PubSubPosition adminConsumptionFailedPosition) {
+    this.adminConsumptionFailedPosition = adminConsumptionFailedPosition;
   }
 
   public void recordAdminMessageMMLatency(double value) {
@@ -159,21 +166,6 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminMessageTotalLatencySensor.record(value);
   }
 
-  public void setAdminConsumptionCheckpointOffset(long adminConsumptionCheckpointOffset) {
-    this.adminConsumptionCheckpointOffset = adminConsumptionCheckpointOffset;
-  }
-
-  /**
-   * Lazily register the checkpoint offset metric after knowing the latest checkpoint offset, so that restarting the
-   * controller node will not result in the metric value dipping to 0.
-   */
-  public void registerAdminConsumptionCheckpointOffset() {
-    registerSensorIfAbsent(
-        new AsyncGauge(
-            (ignored, ignored2) -> this.adminConsumptionCheckpointOffset,
-            "admin_consumption_checkpoint_offset"));
-  }
-
   public void setAdminConsumptionOffsetLag(long adminConsumptionOffsetLag) {
     this.adminConsumptionOffsetLag = adminConsumptionOffsetLag;
   }
@@ -181,4 +173,9 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
   public void setMaxAdminConsumptionOffsetLag(long maxAdminConsumptionOffsetLag) {
     this.maxAdminConsumptionOffsetLag = maxAdminConsumptionOffsetLag;
   }
+
+  public void recordAdminMessagesWithFutureProtocolVersionCount() {
+    adminMessagesWithFutureProtocolVersionCountSensor.record();
+  }
+
 }

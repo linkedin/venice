@@ -9,9 +9,5 @@ public interface StorageEngineStats {
 
   long getCachedRMDSizeInBytes();
 
-  boolean hasMemorySpaceLeft();
-
-  long getDuplicateKeyCountEstimate();
-
   long getKeyCountEstimate();
 }

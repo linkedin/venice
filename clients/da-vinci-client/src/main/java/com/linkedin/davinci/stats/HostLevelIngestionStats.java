@@ -46,6 +46,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   // The aggregated records ingested rate for the entire host
   private final LongAdderRateGauge totalRecordsConsumedRate;
 
+  // The aggregated blob transfer sent byte rate for the entire host
+  private final LongAdderRateGauge totalBlobTransferBytesSentRate;
+  // The aggregated blob transfer received byte rate for the entire host
+  private final LongAdderRateGauge totalBlobTransferBytesReceivedRate;
+
   /*
    * Bytes read from Kafka by store ingestion task as a total. This metric includes bytes read for all store versions
    * allocated in a storage node reported with its uncompressed data size.
@@ -168,8 +173,20 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
     this.totalBytesConsumedRate =
         registerOnlyTotalRate("bytes_consumed", totalStats, () -> totalStats.totalBytesConsumedRate, time);
+
     this.totalRecordsConsumedRate =
         registerOnlyTotalRate("records_consumed", totalStats, () -> totalStats.totalRecordsConsumedRate, time);
+
+    this.totalBlobTransferBytesSentRate = registerOnlyTotalRate(
+        "blob_transfer_bytes_sent",
+        totalStats,
+        () -> totalStats.totalBlobTransferBytesSentRate,
+        time);
+    this.totalBlobTransferBytesReceivedRate = registerOnlyTotalRate(
+        "blob_transfer_bytes_received",
+        totalStats,
+        () -> totalStats.totalBlobTransferBytesReceivedRate,
+        time);
 
     this.totalBytesReadFromKafkaAsUncompressedSizeRate = registerOnlyTotalRate(
         "bytes_read_from_kafka_as_uncompressed_size",
@@ -266,10 +283,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
                 t -> t.getStorageEngine().getStats().getCachedRMDSizeInBytes(),
                 t -> t.getStorageEngine().getStats().getRMDSizeInBytes()),
             "rmd_disk_usage_in_bytes"));
-    registerSensor(
-        new AsyncGauge(
-            measurable(ingestionTaskMap, storeName, t -> t.isStuckByMemoryConstraint() ? 1 : 0),
-            "ingestion_stuck_by_memory_constraint"));
     // Register a metric that records the size of ingestion tasks count
     if (isTotalStats) {
       registerSensor(new AsyncGauge((ignored, ignored2) -> ingestionTaskMap.size(), "ingestion_task_count"));
@@ -490,11 +503,19 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     if (isTotalStats()) {
       return (i1, i2) -> sitMap.values().stream().mapToLong(total).sum();
     }
-    return (i1, i2) -> individual.applyAsLong(sitMap.get(storeName));
-  }
 
-  private Measurable measurable(Map<String, StoreIngestionTask> m, String s, ToLongFunction<StoreIngestionTask> f) {
-    return measurable(m, s, f, f);
+    return (i1, i2) -> {
+      StoreIngestionTask sit = sitMap.get(storeName);
+      if (sit == null) {
+        /**
+         * N.B.: For the metrics we currently support, 0 is a sensible fallback in cases where the SIT is not found,
+         *       but if new cases emerge where that would not be desirable, we could make this configurable so that
+         *       the caller can specify some {@link StatsErrorCode} instead...
+         */
+        return 0;
+      }
+      return individual.applyAsLong(sit);
+    };
   }
 
   /** Record a host-level byte consumption rate across all store versions */
@@ -505,6 +526,26 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   /** Record a host-level record consumption rate across all store versions */
   public void recordTotalRecordsConsumed() {
     totalRecordsConsumedRate.record();
+  }
+
+  /**
+   * Records the total number of bytes sent during blob transfer operations at the host level.
+   * This metric aggregates blob transfer send operations across all store versions on the host.
+   *
+   * @param bytes the number of bytes sent
+   */
+  public void recordTotalBlobTransferBytesSend(long bytes) {
+    totalBlobTransferBytesSentRate.record(bytes);
+  }
+
+  /**
+   * Records the total number of bytes received during blob transfer operations at the host level.
+   * This metric aggregates blob transfer receive operations across all store versions on the host.
+   *
+   * @param bytes the number of bytes received
+   */
+  public void recordTotalBlobTransferBytesReceived(long bytes) {
+    totalBlobTransferBytesReceivedRate.record(bytes);
   }
 
   public void recordTotalBytesReadFromKafkaAsUncompressedSize(long bytes) {

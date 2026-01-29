@@ -3,6 +3,7 @@ package com.linkedin.venice;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -29,11 +30,15 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
@@ -65,8 +70,8 @@ public class TestAdminToolConsumption {
     messagesMap.put(pubSubTopicPartition, pubSubMessageList);
     ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
-    List<DumpAdminMessages.AdminOperationInfo> adminOperationInfos =
-        DumpAdminMessages.dumpAdminMessages(apacheKafkaConsumer, "cluster1", 0, dumpedMessageNum);
+    List<DumpAdminMessages.AdminOperationInfo> adminOperationInfos = DumpAdminMessages
+        .dumpAdminMessages(apacheKafkaConsumer, "cluster1", ApacheKafkaOffsetPosition.of(0L), dumpedMessageNum);
     Assert.assertEquals(adminOperationInfos.size(), dumpedMessageNum);
   }
 
@@ -138,8 +143,8 @@ public class TestAdminToolConsumption {
     String topic = storeInfo.getHybridStoreConfig().getRealTimeTopicName();
 
     int assignedPartition = 0;
-    long startOffset = 0;
-    long endOffset = 1;
+    ApacheKafkaOffsetPosition startPosition = ApacheKafkaOffsetPosition.of(0L);
+    ApacheKafkaOffsetPosition endPosition = ApacheKafkaOffsetPosition.of(1L);
     long progressInterval = 1;
     String keyString = "test";
     byte[] serializedKey = TopicMessageFinder.serializeKey(keyString, SCHEMA_STRING);
@@ -211,14 +216,21 @@ public class TestAdminToolConsumption {
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
     long startTimestamp = 10;
     long endTimestamp = 20;
-    when(apacheKafkaConsumer.offsetForTime(pubSubTopicPartition, startTimestamp)).thenReturn(startOffset);
-    when(apacheKafkaConsumer.offsetForTime(pubSubTopicPartition, endTimestamp)).thenReturn(endOffset);
+    when(apacheKafkaConsumer.getPositionByTimestamp(pubSubTopicPartition, startTimestamp)).thenReturn(startPosition);
+    when(apacheKafkaConsumer.getPositionByTimestamp(pubSubTopicPartition, endTimestamp)).thenReturn(endPosition);
+    doAnswer(invocation -> {
+      PubSubTopicPartition partition = invocation.getArgument(0);
+      PubSubPosition position1 = invocation.getArgument(1);
+      PubSubPosition position2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(partition, position1, position2, apacheKafkaConsumer);
+    }).when(apacheKafkaConsumer).positionDifference(pubSubTopicPartition, startPosition, endPosition);
+
     long messageCount = TopicMessageFinder
         .find(controllerClient, apacheKafkaConsumer, topic, keyString, startTimestamp, endTimestamp, progressInterval);
-    Assert.assertEquals(messageCount, endOffset - startOffset);
+    Assert.assertEquals(messageCount, endPosition.getInternalOffset() - startPosition.getInternalOffset());
 
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
-    when(apacheKafkaConsumer.endOffset(pubSubTopicPartition)).thenReturn(endOffset);
+    when(apacheKafkaConsumer.endPosition(pubSubTopicPartition)).thenReturn(endPosition);
     long messageCountNoEndOffset = TopicMessageFinder.find(
         controllerClient,
         apacheKafkaConsumer,
@@ -227,11 +239,15 @@ public class TestAdminToolConsumption {
         startTimestamp,
         Long.MAX_VALUE,
         progressInterval);
-    Assert.assertEquals(messageCountNoEndOffset, endOffset - startOffset);
+    Assert.assertEquals(messageCountNoEndOffset, endPosition.getInternalOffset() - startPosition.getInternalOffset());
 
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
-    ControlMessageDumper controlMessageDumper =
-        new ControlMessageDumper(apacheKafkaConsumer, topic, 0, 0, pubSubMessageList.size());
+    ControlMessageDumper controlMessageDumper = new ControlMessageDumper(
+        apacheKafkaConsumer,
+        topic,
+        0,
+        PubSubSymbolicPosition.EARLIEST,
+        pubSubMessageList.size());
     Assert.assertEquals(controlMessageDumper.fetch().display(), 1);
 
     when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
@@ -245,7 +261,10 @@ public class TestAdminToolConsumption {
         true,
         false,
         false,
-        false);
-    Assert.assertEquals(kafkaTopicDumper.fetchAndProcess(0, 1, 2), consumedMessageCount);
+        false,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER);
+    ApacheKafkaOffsetPosition p0 = ApacheKafkaOffsetPosition.of(0);
+    ApacheKafkaOffsetPosition p1 = ApacheKafkaOffsetPosition.of(1);
+    Assert.assertEquals(kafkaTopicDumper.fetchAndProcess(p0, p1, 2), consumedMessageCount - 1);
   }
 }

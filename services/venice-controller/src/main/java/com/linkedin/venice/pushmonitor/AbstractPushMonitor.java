@@ -32,6 +32,7 @@ import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -57,6 +58,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -77,6 +79,7 @@ public abstract class AbstractPushMonitor
   public static final int MAX_PUSH_TO_KEEP = 5;
 
   private static final Logger LOGGER = LogManager.getLogger(AbstractPushMonitor.class);
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER = new RedundantExceptionFilter();
 
   private final OfflinePushAccessor offlinePushAccessor;
   private final String clusterName;
@@ -101,6 +104,12 @@ public abstract class AbstractPushMonitor
   private final DisabledPartitionStats disabledPartitionStats;
   private final String regionName;
   private final VeniceWriterFactory veniceWriterFactory;
+  private String sequentialRollForwardFirstRegion = null;
+  private final CurrentVersionChangeNotifier currentVersionChangeNotifier;
+
+  public interface CurrentVersionChangeNotifier {
+    void onCurrentVersionChange(Store store, String clusterName, int currentVersion, int previousVersion);
+  }
 
   public AbstractPushMonitor(
       String clusterName,
@@ -117,7 +126,8 @@ public abstract class AbstractPushMonitor
       VeniceControllerClusterConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader,
       DisabledPartitionStats disabledPartitionStats,
-      VeniceWriterFactory veniceWriterFactory) {
+      VeniceWriterFactory veniceWriterFactory,
+      CurrentVersionChangeNotifier currentVersionChangeNotifier) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -151,6 +161,12 @@ public abstract class AbstractPushMonitor
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
     this.regionName = controllerConfig.getRegionName();
     this.veniceWriterFactory = veniceWriterFactory;
+    if (StringUtils.isNotEmpty(controllerConfig.getDeferredVersionSwapRegionRollforwardOrder())) {
+      List<String> rolloutOrderList =
+          RegionUtils.parseRegionRolloutOrderList(controllerConfig.getDeferredVersionSwapRegionRollforwardOrder());
+      this.sequentialRollForwardFirstRegion = rolloutOrderList.get(0);
+    }
+    this.currentVersionChangeNotifier = currentVersionChangeNotifier;
     pushStatusCollector.start();
   }
 
@@ -824,11 +840,8 @@ public abstract class AbstractPushMonitor
 
       @Override
       public void disableReplica(String instance, int partitionId) {
-        LOGGER.warn(
-            "Disabling errored out leader replica of {} partition: {} on host {}",
-            kafkaTopic,
-            partitionId,
-            instance);
+        String replicaId = Utils.getReplicaId(kafkaTopic, partitionId);
+        LOGGER.warn("Disabling errored out leader replica: {} on host {}", replicaId, instance);
         helixAdminClient.enablePartition(
             false,
             clusterName,
@@ -869,21 +882,25 @@ public abstract class AbstractPushMonitor
           LOGGER.warn("Skip updating push status: {} since it is already in: {}", kafkaTopic, previousStatus);
           return;
         }
-
-        ExecutionStatusWithDetails statusWithDetails =
-            checkPushStatus(pushStatus, partitionAssignment, getDisableReplicaCallback(kafkaTopic));
-        if (!statusWithDetails.getStatus().equals(pushStatus.getCurrentStatus())) {
-          if (statusWithDetails.getStatus().isTerminal()) {
-            LOGGER.info(
-                "Offline push status will be changed to {} for topic: {} from status: {}",
-                statusWithDetails.getStatus(),
-                kafkaTopic,
-                pushStatus.getCurrentStatus());
-            handleTerminalOfflinePushUpdate(pushStatus, statusWithDetails);
-          } else if (statusWithDetails.getStatus().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
-            // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer replay.
-            checkWhetherToStartEOPProcedures(pushStatus);
+        try {
+          ExecutionStatusWithDetails statusWithDetails =
+              checkPushStatus(pushStatus, partitionAssignment, getDisableReplicaCallback(kafkaTopic));
+          if (!statusWithDetails.getStatus().equals(pushStatus.getCurrentStatus())) {
+            if (statusWithDetails.getStatus().isTerminal()) {
+              LOGGER.info(
+                  "Offline push status will be changed to {} for topic: {} from status: {}",
+                  statusWithDetails.getStatus(),
+                  kafkaTopic,
+                  pushStatus.getCurrentStatus());
+              handleTerminalOfflinePushUpdate(pushStatus, statusWithDetails);
+            } else if (statusWithDetails.getStatus().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
+              // For all partitions, at least one replica has received the EOP. Check if it's time to start buffer
+              // replay.
+              checkWhetherToStartEOPProcedures(pushStatus);
+            }
           }
+        } catch (Exception e) {
+          LOGGER.error("Failed to process external view change for topic: {}", partitionAssignment.getTopic(), e);
         }
       } else {
         LOGGER.info(
@@ -953,17 +970,21 @@ public abstract class AbstractPushMonitor
               activeActiveRealTimeSourceKafkaURLs);
           newStatusDetails.append("kicked off buffer replay");
         } else if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
-          LOGGER.info(
-              "{} is not ready to start buffer replay. Current state: {}",
-              offlinePushStatus.getKafkaTopic(),
-              offlinePushStatus.getCurrentStatus().toString());
+          if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(offlinePushStatus.getKafkaTopic())) {
+            LOGGER.info(
+                "{} is not ready to start buffer replay. Current state: {}",
+                offlinePushStatus.getKafkaTopic(),
+                offlinePushStatus.getCurrentStatus().toString());
+          }
         }
       }
 
       if (isEOPReceivedInAllPartitions) {
         // Check whether to send EOP for materialized view topic(s)
+        boolean isFlinkVeniceViewsEnabled = store.isFlinkVeniceViewsEnabled();
         for (ViewConfig rawView: viewConfigMap.values()) {
-          if (MaterializedView.class.getCanonicalName().equals(rawView.getViewClassName())) {
+          if (MaterializedView.class.getCanonicalName().equals(rawView.getViewClassName())
+              && !isFlinkVeniceViewsEnabled) {
             VeniceView veniceView = ViewUtils.getVeniceView(
                 rawView.getViewClassName(),
                 new Properties(),
@@ -1175,8 +1196,6 @@ public abstract class AbstractPushMonitor
         }
       }
 
-      store.updateVersionStatus(versionNumber, newStatus);
-      LOGGER.info("Updated store: {} version: {} to status: {}", store.getName(), versionNumber, newStatus.toString());
       if (newStatus.equals(VersionStatus.ONLINE)) {
         if (versionNumber > store.getCurrentVersion()) {
           // Here we'll check if version swap is deferred. If so, we don't perform the setCurrentVersion. We'll continue
@@ -1193,8 +1212,9 @@ public abstract class AbstractPushMonitor
 
           /**
            * Switch to the new version if:
-           * 1.deferred version swap is not enabled and it is not a target region push w/ deferred version swap
-           * 2.target region push w/ deferred swap is enabled and the current region matches the target region
+           * 1.sequential roll forward is enabled
+           * 2.deferred version swap is not enabled and it is not a target region push w/ deferred version swap
+           * 3.target region push w/ deferred swap is enabled and the current region matches the target region
            *
            * Do not switch to the new version now if:
            * 1.deferred version swap is enabled (it will be manually swapped at a later date)
@@ -1202,11 +1222,28 @@ public abstract class AbstractPushMonitor
            *  after targetSwapRegionWaitTime passes)
            */
           Set<String> targetRegions = RegionUtils.parseRegionsFilterList(version.getTargetSwapRegion());
+          // For sequential roll forward, it is necessary to check for deferred version swap and target regions configs
+          // during ramp
+          // because those two configs will be used to control the percentage of stores using the feature, and it can be
+          // removed after
+          boolean isSequentialRollForward = StringUtils.isNotEmpty(sequentialRollForwardFirstRegion)
+              && sequentialRollForwardFirstRegion.equals(regionName) && version.isVersionSwapDeferred()
+              && StringUtils.isNotEmpty(version.getTargetSwapRegion());
           boolean isTargetRegionPushWithDeferredSwap =
               version.isVersionSwapDeferred() && targetRegions.contains(regionName);
           boolean isNormalPush = !version.isVersionSwapDeferred();
           boolean isDeferredSwap = version.isVersionSwapDeferred() && targetRegions.isEmpty();
-          if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
+          if (isSequentialRollForward) {
+            LOGGER.info(
+                "Swapping to version {} for store {} in region {} during sequential roll forward",
+                versionNumber,
+                storeName,
+                regionName);
+            int previousVersion = store.getCurrentVersion();
+            store.setCurrentVersion(versionNumber);
+            currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
+            realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+          } else if (isTargetRegionPushWithDeferredSwap || isNormalPush) {
             LOGGER.info(
                 "Swapping to version {} for store {} in region {} during "
                     + (isNormalPush ? "normal push" : "target region push with deferred version swap"),
@@ -1217,6 +1254,7 @@ public abstract class AbstractPushMonitor
                 isNormalPush);
             int previousVersion = store.getCurrentVersion();
             store.setCurrentVersion(versionNumber);
+            currentVersionChangeNotifier.onCurrentVersionChange(store, clusterName, versionNumber, previousVersion);
             realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
           } else {
             LOGGER.info(
@@ -1231,12 +1269,13 @@ public abstract class AbstractPushMonitor
             boolean isVersionSwapDeferredInNonTargetRegion =
                 !targetRegions.isEmpty() && !targetRegions.contains(regionName) && version.isVersionSwapDeferred();
             if (isVersionSwapDeferredInNonTargetRegion) {
+              newStatus = VersionStatus.PUSHED;
               LOGGER.info(
-                  "Marking version status as PUSHED for version: {} in store: {} during a target region push w/ deferred swap"
+                  "Marking version status as {} for version: {} in store: {} during a target region push w/ deferred swap"
                       + "because it is a non target region",
+                  newStatus,
                   versionNumber,
                   storeName);
-              store.updateVersionStatus(versionNumber, VersionStatus.PUSHED);
             }
           }
         } else {
@@ -1248,7 +1287,9 @@ public abstract class AbstractPushMonitor
               versionNumber);
         }
       }
+      store.updateVersionStatus(versionNumber, newStatus);
       metadataRepository.updateStore(store);
+      LOGGER.info("Updated store: {} version: {} to status: {}", store.getName(), versionNumber, newStatus.toString());
     }
   }
 

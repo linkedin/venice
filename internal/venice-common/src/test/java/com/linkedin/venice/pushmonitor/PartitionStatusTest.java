@@ -37,7 +37,7 @@ public class PartitionStatusTest {
         () -> readonlyPartitionStatus.updateReplicaStatus(instanceId, ExecutionStatus.COMPLETED, false));
     assertThrows(
         VeniceException.class,
-        () -> readonlyPartitionStatus.updateReplicaStatus(instanceId, ExecutionStatus.COMPLETED, "inc push", 1));
+        () -> readonlyPartitionStatus.updateReplicaStatus(instanceId, ExecutionStatus.COMPLETED, "inc push"));
   }
 
   @Test
@@ -51,11 +51,11 @@ public class PartitionStatusTest {
     partitionStatus.updateReplicaStatus("testInstance2", ExecutionStatus.ERROR);
     Assert.assertFalse(partitionStatus.hasFatalDataValidationError());
 
-    partitionStatus.updateReplicaStatus("testInstance3", ExecutionStatus.ERROR, null, 10);
+    partitionStatus.updateReplicaStatus("testInstance3", ExecutionStatus.ERROR, null);
     Assert.assertFalse(partitionStatus.hasFatalDataValidationError());
 
     partitionStatus
-        .updateReplicaStatus("testInstance4", ExecutionStatus.ERROR, FATAL_DATA_VALIDATION_ERROR + " for replica", 10);
+        .updateReplicaStatus("testInstance4", ExecutionStatus.ERROR, FATAL_DATA_VALIDATION_ERROR + " for replica");
     Assert.assertTrue(partitionStatus.hasFatalDataValidationError());
   }
 
@@ -64,11 +64,12 @@ public class PartitionStatusTest {
     PartitionStatus partitionStatus = new PartitionStatus(PARTITION_ID);
     Assert.assertFalse(partitionStatus.hasFatalDataValidationError());
 
-    partitionStatus.batchUpdateReplicaIncPushStatus("testInstance1", Arrays.asList("a", "b", "c"), 100L);
+    partitionStatus.batchUpdateReplicaIncPushStatus("testInstance1", Arrays.asList("a", "b", "c"));
     Assert.assertFalse(partitionStatus.hasFatalDataValidationError());
     Assert.assertEquals(partitionStatus.getReplicaStatus("testInstance1"), ExecutionStatus.STARTED);
     ReplicaStatus replicaStatus = partitionStatus.getReplicaStatuses().iterator().next();
-    Assert.assertEquals(replicaStatus.getCurrentProgress(), 100L);
+    Assert.assertEquals(replicaStatus.getCurrentProgress(), 0L); // getCurrentProgress() is deprecated and always
+                                                                 // returns 0
     Assert.assertEquals(replicaStatus.getStatusHistory().get(0).getIncrementalPushVersion(), "a");
     Assert.assertEquals(
         replicaStatus.getStatusHistory().get(0).getStatus(),

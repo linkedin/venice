@@ -1,9 +1,9 @@
 package com.linkedin.alpini.router.api;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Objects;
+import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 
 
@@ -16,21 +16,28 @@ import javax.annotation.Nonnull;
  */
 public class Scatter<H, P extends ResourcePath<K>, K> {
   /** Requests for servers that are available. */
-  private final Collection<ScatterGatherRequest<H, K>> _onlineRequests = new ArrayList<>();
-  private final Collection<ScatterGatherRequest<H, K>> _unmodifiableOnlineRequests =
-      Collections.unmodifiableCollection(_onlineRequests);
+  private final Collection<ScatterGatherRequest<H, K>> _onlineRequests;
+  private final Collection<ScatterGatherRequest<H, K>> _unmodifiableOnlineRequests;
   /** Requests for servers that are offline. */
-  private final Collection<ScatterGatherRequest<H, K>> _offlineRequests = new ArrayList<>();
-  private final Collection<ScatterGatherRequest<H, K>> _unmodifiableOfflineRequests =
-      Collections.unmodifiableCollection(_offlineRequests);
+  private final Collection<ScatterGatherRequest<H, K>> _offlineRequests;
+  private final Collection<ScatterGatherRequest<H, K>> _unmodifiableOfflineRequests;
   private final P _path;
   private final Object _role;
   private final ResourcePathParser<P, K> _pathParser;
 
-  public Scatter(@Nonnull P path, @Nonnull ResourcePathParser<P, K> pathParser, @Nonnull Object role) {
+  public Scatter(
+      @Nonnull P path,
+      @Nonnull ResourcePathParser<P, K> pathParser,
+      @Nonnull Object role,
+      Supplier<Collection> requestCollectionSupplier) {
     _path = Objects.requireNonNull(path, "path");
     _pathParser = Objects.requireNonNull(pathParser, "pathParser");
     _role = Objects.requireNonNull(role, "role");
+
+    _onlineRequests = requestCollectionSupplier.get();
+    _unmodifiableOnlineRequests = Collections.unmodifiableCollection(_onlineRequests);
+    _offlineRequests = requestCollectionSupplier.get();
+    _unmodifiableOfflineRequests = Collections.unmodifiableCollection(_offlineRequests);
   }
 
   public void addOfflineRequest(@Nonnull ScatterGatherRequest<H, K> request) {

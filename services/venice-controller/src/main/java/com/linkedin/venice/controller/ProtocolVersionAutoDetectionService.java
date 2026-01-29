@@ -32,29 +32,37 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(ProtocolVersionAutoDetectionService.class);
   // This constant is used for logging purposes only.
   private static final String PARENT_REGION_NAME = "parentRegion";
+  private final String serviceName;
+  private final String taskName;
   private final AtomicBoolean stop = new AtomicBoolean(false);
   private final ScheduledExecutorService executor;
   private final ProtocolVersionAutoDetectionStats stats;
   private final VeniceHelixAdmin admin;
   private final String clusterName;
   private final long sleepIntervalInMs;
+  private int failureCount;
 
   public ProtocolVersionAutoDetectionService(
       String clusterName,
       VeniceHelixAdmin admin,
       ProtocolVersionAutoDetectionStats stats,
       long sleepIntervalInMs) {
+    this.serviceName = "ProtocolVersionAutoDetectionService-" + clusterName;
+    this.taskName = "ProtocolVersionDetectionTask-" + clusterName;
     this.admin = admin;
     this.stats = stats;
     this.clusterName = clusterName;
     this.sleepIntervalInMs = sleepIntervalInMs;
-    this.executor = Executors.newSingleThreadScheduledExecutor(
-        new DaemonThreadFactory("ProtocolVersionAutoDetectionService", admin.getLogContext()));
+    this.executor =
+        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory(serviceName, admin.getLogContext()));
+    this.failureCount = 0;
   }
 
   @Override
   public boolean startInner() throws Exception {
-    LOGGER.info("Starting {}", getClass().getSimpleName());
+    LOGGER.info("Starting {}", serviceName);
+    // Report initial state to avoid gap in alerts.
+    stats.recordProtocolVersionAutoDetectionErrorSensor(resetFailureCount());
     executor.scheduleAtFixedRate(getRunnableTask(), sleepIntervalInMs, sleepIntervalInMs, TimeUnit.MILLISECONDS);
     return true;
   }
@@ -63,7 +71,7 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
   public void stopInner() throws Exception {
     stop.set(true);
     executor.shutdownNow();
-    LOGGER.info("Stopped {}", getClass().getSimpleName());
+    LOGGER.info("Stopped {}", serviceName);
   }
 
   /**
@@ -111,7 +119,7 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
 
   private Runnable getRunnableTask() {
     return () -> {
-      LOGGER.info("Started running task for {}.", getClass().getSimpleName());
+      LOGGER.info("Started running task {}", taskName);
       if (stop.get()) {
         return;
       }
@@ -137,11 +145,21 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
         }
         long elapsedTimeInMs = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
         stats.recordProtocolVersionAutoDetectionLatencySensor(elapsedTimeInMs);
+        stats.recordProtocolVersionAutoDetectionErrorSensor(resetFailureCount());
       } catch (Exception e) {
-        LOGGER.error("Received an exception while running ProtocolVersionDetectionTask", e);
-        stats.recordProtocolVersionAutoDetectionErrorSensor();
+        LOGGER.error("Received an exception while running {}", taskName, e);
+        stats.recordProtocolVersionAutoDetectionErrorSensor(increaseFailureCount());
       }
-      LOGGER.info("Finished running task for {}", getClass().getSimpleName());
+      LOGGER.info("Finished running task {}", taskName);
     };
+  }
+
+  private int resetFailureCount() {
+    failureCount = 0;
+    return failureCount;
+  }
+
+  private int increaseFailureCount() {
+    return ++failureCount;
   }
 }

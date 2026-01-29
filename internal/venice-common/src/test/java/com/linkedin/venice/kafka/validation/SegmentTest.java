@@ -202,4 +202,10 @@ public class SegmentTest {
     assertEquals(pps.getMessageTimestamp(), segment.getLastRecordProducerTimestamp());
     assertEquals(pps.getIsRegistered(), segment.isRegistered());
   }
+
+  @Test
+  public void testToProducerPartitionState_NoCheckSum() {
+    Segment segment = new Segment(1, 1, 1, CheckSumType.NONE, new HashMap<>(), new HashMap<>());
+    segment.toProducerPartitionState(); // assert that a NullPointerException is not thrown with checksumtype NONE
+  }
 }

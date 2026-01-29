@@ -7,15 +7,27 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
+import com.linkedin.venice.controllerapi.PubSubPositionJsonWireFormat;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.nio.ByteBuffer;
+import java.util.Base64;
 import java.util.Properties;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public final class PubSubUtil {
+  private static final Logger LOGGER = LogManager.getLogger(PubSubUtil.class);
+
   public static String getPubSubBrokerAddress(Properties properties) {
     String brokerAddress = properties.getProperty(PUBSUB_BROKER_ADDRESS);
     if (brokerAddress == null) {
@@ -181,74 +193,206 @@ public final class PubSubUtil {
     }
   }
 
-  /**
-   * Computes the difference in numeric offsets between two {@link PubSubPosition} instances.
-   *
-   * <p>If both positions are {@code EARLIEST} or both are {@code LATEST}, returns {@code 0}.</p>
-   * <p>If one of the positions is {@code EARLIEST} and the other is {@code LATEST},
-   * it returns {@code Long.MIN_VALUE} or {@code Long.MAX_VALUE} to represent symbolic extremes.</p>
-   *
-   * @param position1 The first position.
-   * @param position2 The second position.
-   * @return The numeric difference: (position1 - position2).
-   * @throws IllegalArgumentException if either position is {@code null}.
-   */
-  public static long diffPubSubPositions(PubSubPosition position1, PubSubPosition position2) {
+  public static <T extends PubSubPosition> long computeOffsetDelta(
+      PubSubTopicPartition partition,
+      PubSubPosition position1,
+      PubSubPosition position2,
+      PubSubConsumerAdapter consumerAdapter) {
+
     if (position1 == null || position2 == null) {
       throw new IllegalArgumentException("Positions cannot be null");
     }
 
-    if ((position1 == PubSubSymbolicPosition.EARLIEST && position2 == PubSubSymbolicPosition.EARLIEST)
-        || (position1 == PubSubSymbolicPosition.LATEST && position2 == PubSubSymbolicPosition.LATEST)) {
-      return 0;
+    PubSubPosition resolved1 = resolveSymbolicPosition(partition, position1, consumerAdapter);
+    PubSubPosition resolved2 = resolveSymbolicPosition(partition, position2, consumerAdapter);
+
+    // Case 1: Both resolved to non-symbolic positions
+    if (!resolved1.isSymbolic() && !resolved2.isSymbolic()) {
+      long offset1 = resolved1.getNumericOffset();
+      long offset2 = resolved2.getNumericOffset();
+      return offset1 - offset2;
     }
 
-    if (position1 == PubSubSymbolicPosition.EARLIEST && position2 == PubSubSymbolicPosition.LATEST) {
-      return Long.MIN_VALUE;
+    // Case 2: Equal symbolic positions
+    if (resolved1 == resolved2
+        && (PubSubSymbolicPosition.EARLIEST.equals(resolved1) || PubSubSymbolicPosition.LATEST.equals(resolved1))) {
+      return 0L;
     }
 
-    if (position1 == PubSubSymbolicPosition.LATEST && position2 == PubSubSymbolicPosition.EARLIEST) {
-      return Long.MAX_VALUE;
+    // Case 3: One is EARLIEST, one is non-symbolic
+    if (PubSubSymbolicPosition.EARLIEST.equals(resolved1) && !resolved2.isSymbolic()) {
+      long offset2 = resolved2.getNumericOffset();
+      return -offset2;
+    }
+    if (PubSubSymbolicPosition.EARLIEST.equals(resolved2) && !resolved1.isSymbolic()) {
+      return resolved1.getNumericOffset();
     }
 
-    return position1.getNumericOffset() - position2.getNumericOffset();
+    // Case 4: One is LATEST, one is non-symbolic
+    if (PubSubSymbolicPosition.LATEST.equals(resolved1) && !resolved2.isSymbolic()) {
+      return Long.MAX_VALUE - resolved2.getNumericOffset();
+    }
+    if (PubSubSymbolicPosition.LATEST.equals(resolved2) && !resolved1.isSymbolic()) {
+      return resolved1.getNumericOffset() - Long.MAX_VALUE;
+    }
+
+    throw new IllegalArgumentException(
+        "Unsupported position types: " + resolved1.getClass().getName() + " vs " + resolved2.getClass().getName());
+  }
+
+  private static PubSubPosition resolveSymbolicPosition(
+      PubSubTopicPartition partition,
+      PubSubPosition position,
+      PubSubConsumerAdapter consumerAdapter) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(position)) {
+      return consumerAdapter.beginningPosition(partition);
+    } else if (PubSubSymbolicPosition.LATEST.equals(position)) {
+      return consumerAdapter.endPosition(partition);
+    }
+    return position;
   }
 
   /**
-   * Compares two {@link PubSubPosition} instances by their symbolic or numeric ordering.
+   * Calculates the seek offset based on the base offset and inclusiveness flag.
    *
-   * <p>This method defines the following ordering:
-   * EARLIEST &lt; numeric offsets &lt; LATEST</p>
-   *
-   * @param position1 The first position.
-   * @param position2 The second position.
-   * @return A negative integer, zero, or a positive integer if position1 is less than,
-   *         equal to, or greater than position2, respectively.
-   * @throws IllegalArgumentException if either position is {@code null}.
+   * @param baseOffset the base offset to calculate from
+   * @param isInclusive if true, returns the base offset; if false, returns base offset + 1
+   * @return the calculated seek offset
    */
-  public static int comparePubSubPositions(PubSubPosition position1, PubSubPosition position2) {
-    if (position1 == null || position2 == null) {
-      throw new IllegalArgumentException("Positions cannot be null");
+  public static long calculateSeekOffset(long baseOffset, boolean isInclusive) {
+    return isInclusive ? baseOffset : baseOffset + 1;
+  }
+
+  public static PubSubPosition fromKafkaOffset(long offset) {
+    if (offset == -1) {
+      return PubSubSymbolicPosition.EARLIEST; // -1 is start offset
+    }
+    return ApacheKafkaOffsetPosition.of(offset);
+  }
+
+  public static String getBase64EncodedString(byte[] byteBuffer) {
+    return byteBuffer != null ? Base64.getEncoder().encodeToString(byteBuffer) : "";
+  }
+
+  public static byte[] getBase64DecodedBytes(String bytesString) {
+    return Base64.getDecoder().decode(bytesString);
+  }
+
+  /**
+   * Parses a position wire format string and converts it to a PubSubPosition.
+   * The input string should be in the format "typeId:base64EncodedWfBytes".
+   *
+   * @param positionWireFormatString the position wire format string to parse
+   * @param pubSubPositionDeserializer the deserializer to convert wire format to position
+   * @return the parsed PubSubPosition
+   * @throws IllegalArgumentException if the input string format is invalid
+   */
+  public static PubSubPosition parsePositionWireFormat(
+      String positionWireFormatString,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
+    String[] typeIdAndBase64WfBytes = getTypeIdAndBase64WfBytes(positionWireFormatString);
+
+    try {
+      PubSubPositionWireFormat positionWireFormat = new PubSubPositionWireFormat();
+      positionWireFormat.setType(Integer.parseInt(typeIdAndBase64WfBytes[0]));
+      positionWireFormat.setRawBytes(ByteBuffer.wrap(getBase64DecodedBytes(typeIdAndBase64WfBytes[1])));
+      return pubSubPositionDeserializer.toPosition(positionWireFormat);
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException(
+          "Invalid type ID in position wire format string: " + typeIdAndBase64WfBytes[0],
+          e);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid base64 encoded bytes in position wire format string", e);
+    }
+  }
+
+  public static PubSubPositionGrpcWireFormat parsePositionParam(String positionWireFormatString) {
+    String[] typeIdAndBase64WfBytes = getTypeIdAndBase64WfBytes(positionWireFormatString);
+    return PubSubPositionGrpcWireFormat.newBuilder()
+        .setTypeId(Integer.parseInt(typeIdAndBase64WfBytes[0]))
+        .setBase64PositionBytes(typeIdAndBase64WfBytes[1])
+        .build();
+  }
+
+  public static PubSubPositionWireFormat getPubSubPositionWireFormat(PubSubPositionGrpcWireFormat position) {
+    return new PubSubPositionWireFormat(
+        position.getTypeId(),
+        ByteBuffer.wrap(PubSubUtil.getBase64DecodedBytes(position.getBase64PositionBytes())));
+  }
+
+  private static String[] getTypeIdAndBase64WfBytes(String positionWireFormatString) {
+    if (positionWireFormatString == null || positionWireFormatString.isEmpty()) {
+      throw new IllegalArgumentException("Position wire format string cannot be null or empty");
     }
 
-    if ((position1 == PubSubSymbolicPosition.EARLIEST && position2 == PubSubSymbolicPosition.EARLIEST)
-        || (position1 == PubSubSymbolicPosition.LATEST && position2 == PubSubSymbolicPosition.LATEST)) {
-      return 0;
+    String[] typeIdAndBase64WfBytes = positionWireFormatString.split(":");
+    if (typeIdAndBase64WfBytes.length != 2) {
+      throw new IllegalArgumentException(
+          "Invalid position wire format string. Expected format: 'typeId:base64EncodedWfBytes'");
     }
 
-    if (position1 == PubSubSymbolicPosition.EARLIEST) {
-      return -1;
-    }
-    if (position1 == PubSubSymbolicPosition.LATEST) {
-      return 1;
-    }
-    if (position2 == PubSubSymbolicPosition.EARLIEST) {
-      return 1;
-    }
-    if (position2 == PubSubSymbolicPosition.LATEST) {
-      return -1;
+    return typeIdAndBase64WfBytes;
+  }
+
+  public static PubSubPositionGrpcWireFormat getPubSubPositionGrpcWireFormat(PubSubPosition position) {
+    PubSubPositionJsonWireFormat positionJsonWireFormat = position.toJsonWireFormat();
+    return PubSubPositionGrpcWireFormat.newBuilder()
+        .setTypeId(positionJsonWireFormat.getTypeId())
+        .setBase64PositionBytes(positionJsonWireFormat.getBase64PositionBytes())
+        .build();
+  }
+
+  /**
+   * Deserializes a PubSubPosition from wire format bytes with fallback to offset-based position.
+   *
+   * <p>This method attempts to deserialize a position from the provided wire format bytes.
+   * If deserialization fails or the buffer is empty, it falls back to creating an offset-based
+   * position using the provided offset value. This provides resilience against deserialization
+   * errors while ensuring a valid position is always returned.
+   *
+   * <p>Special handling:
+   * <ul>
+   *   <li>Symbolic positions (EARLIEST, LATEST) are always returned as-is</li>
+   *   <li>If the deserialized position is behind the provided offset, uses offset-based position</li>
+   *   <li>Empty or null buffers result in offset-based position</li>
+   *   <li>Deserialization errors result in offset-based position with warning logged</li>
+   * </ul>
+   *
+   * @param wireFormatBytes the serialized position bytes (can be null or empty)
+   * @param offset the fallback offset to use if deserialization fails or buffer is empty
+   * @param pubSubPositionDeserializer the deserializer to convert wire format to position
+   * @return a valid PubSubPosition, either deserialized or offset-based
+   */
+  public static PubSubPosition deserializePositionWithOffsetFallback(
+      ByteBuffer wireFormatBytes,
+      long offset,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
+    // Fast path: nothing to deserialize
+    if (wireFormatBytes == null || !wireFormatBytes.hasRemaining()) {
+      return fromKafkaOffset(offset);
     }
 
-    return Long.compare(position1.getNumericOffset(), position2.getNumericOffset());
+    try {
+      PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
+      // Guard against regressions: honor the caller-provided minimum offset.
+      // This applies to both symbolic and concrete positions.
+      if (position == PubSubSymbolicPosition.EARLIEST || position == PubSubSymbolicPosition.LATEST
+          || position.getNumericOffset() >= offset) {
+        // If position is ahead of or equal to offset, return it as-is (including symbolic positions like LATEST)
+        return position;
+      }
+      LOGGER.info(
+          "Deserialized position: {} is behind the provided offset: {}. Using offset-based position.",
+          position.getNumericOffset(),
+          offset);
+    } catch (RuntimeException e) {
+      LOGGER.warn(
+          "Failed to deserialize PubSubPosition. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",
+          offset,
+          wireFormatBytes.remaining(),
+          wireFormatBytes.capacity(),
+          e);
+    }
+    return fromKafkaOffset(offset);
   }
 }

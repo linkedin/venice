@@ -150,7 +150,7 @@ public class BlobTransferUtils {
     engine.setUseClientMode(true);
 
     SslHandler sslHandler = new SslHandler(engine);
-    sslHandler.setHandshakeTimeoutMillis(10000); // 10 seconds for handshake timeout
+    sslHandler.setHandshakeTimeoutMillis(20000); // 20 seconds for handshake timeout
 
     return sslHandler;
   }

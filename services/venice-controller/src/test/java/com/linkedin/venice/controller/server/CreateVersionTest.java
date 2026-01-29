@@ -53,6 +53,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.NoOpDynamicAccessController;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controllerapi.RequestTopicForPushRequest;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -159,7 +160,8 @@ public class CreateVersionTest {
      * Create version should fail if user doesn't have "Write" method access to the topic
      */
     doReturn(false).when(accessClient).hasAccessToTopic(certificate, STORE_NAME, "Write");
-    createVersionRoute.handle(request, response);
+    String responseBody = createVersionRoute.handle(request, response).toString();
+    assertTrue(responseBody.contains("Missing [write] ACLs"));
 
     /**
      * Response should be 403 if user doesn't have "Write" method access
@@ -173,7 +175,8 @@ public class CreateVersionTest {
        */
       doReturn(true).when(accessClient).hasAccessToTopic(certificate, STORE_NAME, "Write");
       doReturn(false).when(accessClient).hasAccessToTopic(certificate, STORE_NAME, "Read");
-      createVersionRoute.handle(request, response);
+      responseBody = createVersionRoute.handle(request, response).toString();
+      assertTrue(responseBody.contains("Missing [read] ACLs"));
       verify(response).status(org.apache.http.HttpStatus.SC_FORBIDDEN);
     }
   }
@@ -182,7 +185,7 @@ public class CreateVersionTest {
   public void testRequestTopicForHybridIncPushEnabled(
       boolean isSeparateTopicEnabled,
       boolean pushToSeparateTopicEnabled) throws Exception {
-    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
 
@@ -209,7 +212,8 @@ public class CreateVersionTest {
             Optional.empty(),
             false,
             null,
-            0);
+            0,
+            -1);
 
     assertTrue(store.isHybrid());
     assertTrue(store.isIncrementalPushEnabled());
@@ -234,7 +238,7 @@ public class CreateVersionTest {
   // if it happens an ERROR should be returned on requestTopicForPushing with inc-push job type.
   @Test(description = "requestTopicForPushing should an ERROR when store is not in hybrid but inc-push is enabled")
   public void testRequestTopicForIncPushReturnsErrorWhenStoreIsNotHybridAndIncPushIsEnabled() throws Exception {
-    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
 
@@ -268,6 +272,7 @@ public class CreateVersionTest {
             Optional.empty(),
             false,
             null,
+            -1,
             -1);
 
     Assert.assertFalse(store.isHybrid());
@@ -296,7 +301,7 @@ public class CreateVersionTest {
     Optional<String> emergencySrcRegion = Optional.of("dc-1");
 
     doReturn("dc-0").when(admin).getRegionName();
-    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME);
     doReturn(true).when(admin).isParent();
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(any(), any(), anyBoolean());
     doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
@@ -304,7 +309,7 @@ public class CreateVersionTest {
     doReturn(emergencySrcRegion).when(admin).getEmergencySourceRegion(CLUSTER_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
-    doReturn("dc-1.region.io").when(admin).getNativeReplicationKafkaBootstrapServerAddress(emergencySrcRegion.get());
+    doReturn("dc-1.region.io").when(admin).getPubSubBootstrapServersForRegion(emergencySrcRegion.get());
     doReturn(version).when(admin)
         .incrementVersionIdempotent(
             CLUSTER_NAME,
@@ -322,7 +327,8 @@ public class CreateVersionTest {
             emergencySrcRegion,
             false,
             null,
-            0);
+            0,
+            -1);
 
     assertTrue(store.isHybrid());
     assertTrue(store.isIncrementalPushEnabled());
@@ -433,7 +439,7 @@ public class CreateVersionTest {
     // AA-all-region and NR are enabled AND emergencySourceRegion is not set but pushJobSourceGridFabric is provided
     creationResponse = new VersionCreationResponse();
     creationResponse.setKafkaBootstrapServers("default.src.region.com");
-    doReturn("vpj.src.region.com").when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc-vpj");
+    doReturn("vpj.src.region.com").when(admin).getPubSubBootstrapServersForRegion("dc-vpj");
     overrideSourceRegionAddressForIncrementalPushJob(
         admin,
         creationResponse,
@@ -448,7 +454,7 @@ public class CreateVersionTest {
     // AA-all-region and NR are enabled AND emergencySourceRegion is set and pushJobSourceGridFabric is provided
     creationResponse = new VersionCreationResponse();
     creationResponse.setKafkaBootstrapServers("emergency.src.region.com");
-    doReturn("emergency.src.region.com").when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc-e");
+    doReturn("emergency.src.region.com").when(admin).getPubSubBootstrapServersForRegion("dc-e");
     overrideSourceRegionAddressForIncrementalPushJob(
         admin,
         creationResponse,
@@ -463,7 +469,7 @@ public class CreateVersionTest {
     // AA-all-region and NR are enabled AND emergencySourceRegion is set and pushJobSourceGridFabric is not provided
     creationResponse = new VersionCreationResponse();
     creationResponse.setKafkaBootstrapServers("emergency.src.region.com");
-    doReturn("emergency.src.region.com").when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc-e");
+    doReturn("emergency.src.region.com").when(admin).getPubSubBootstrapServersForRegion("dc-e");
     overrideSourceRegionAddressForIncrementalPushJob(
         admin,
         creationResponse,
@@ -480,7 +486,7 @@ public class CreateVersionTest {
   public void testOverrideSourceRegionAddressForIncrementalPushJobWhenOverrideRegionAddressIsNotFound() {
     VersionCreationResponse creationResponse = new VersionCreationResponse();
     creationResponse.setKafkaBootstrapServers("default.src.region.com");
-    doReturn(null).when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc1");
+    doReturn(null).when(admin).getPubSubBootstrapServersForRegion("dc1");
     overrideSourceRegionAddressForIncrementalPushJob(
         admin,
         creationResponse,
@@ -808,8 +814,7 @@ public class CreateVersionTest {
     when(mockRequest3.getSourceGridFabric()).thenReturn("gridFabric");
     when(mockLazy3.get()).thenReturn(true);
 
-    when(mockAdmin3.getNativeReplicationKafkaBootstrapServerAddress("emergencyRegion"))
-        .thenReturn("emergencyRegionAddress");
+    when(mockAdmin3.getPubSubBootstrapServersForRegion("emergencyRegion")).thenReturn("emergencyRegionAddress");
 
     createVersion.configureSourceFabric(mockAdmin3, mockVersion3, mockLazy3, mockRequest3, mockResponse3);
 
@@ -865,6 +870,133 @@ public class CreateVersionTest {
     assertEquals(response.getPartitions(), 42);
     assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
     assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
+    assertNull(
+        response.getKafkaBootstrapServers(),
+        "Bootstrap servers should not be set when source grid fabric is null");
+  }
+
+  @Test
+  public void testHandleStreamPushTypeWithSourceGridFabric() {
+    Admin admin = mock(Admin.class);
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn(STORE_NAME);
+    String clusterName = "CLUSTER_NAME";
+    String sourceGridFabric = "dc-source";
+    String sourceBootstrapServers = "source.kafka.bootstrap.com:9092";
+
+    RequestTopicForPushRequest request = new RequestTopicForPushRequest(clusterName, STORE_NAME, STREAM, "JOB_ID");
+    request.setSourceGridFabric(sourceGridFabric);
+
+    VersionCreationResponse response = new VersionCreationResponse();
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
+
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.isActiveActiveReplicationEnabled()).thenReturn(true);
+    when(mockVersion.getStoreName()).thenReturn(STORE_NAME);
+    when(mockVersion.getPartitionCount()).thenReturn(42);
+    when(admin.isParent()).thenReturn(false);
+    when(admin.getReferenceVersionForStreamingWrites(clusterName, STORE_NAME, "JOB_ID")).thenReturn(mockVersion);
+
+    // Mock controller config to enable the feature
+    VeniceControllerClusterConfig mockConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockConfig.isEnableStreamPushSourceGridFabricOverride()).thenReturn(true);
+    when(admin.getControllerConfig(clusterName)).thenReturn(mockConfig);
+    when(admin.getPubSubBootstrapServersForRegion(sourceGridFabric)).thenReturn(sourceBootstrapServers);
+
+    // Execute
+    createVersion.handleStreamPushType(admin, store, request, response);
+
+    // Verify
+    assertEquals(response.getPartitions(), 42);
+    assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
+    assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
+    assertEquals(
+        response.getKafkaBootstrapServers(),
+        sourceBootstrapServers,
+        "Bootstrap servers should be overridden when source grid fabric is set and feature is enabled");
+    verify(admin).getPubSubBootstrapServersForRegion(sourceGridFabric);
+  }
+
+  @Test
+  public void testHandleStreamPushTypeWithSourceGridFabricNotFound() {
+    Admin admin = mock(Admin.class);
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn(STORE_NAME);
+    String clusterName = "CLUSTER_NAME";
+    String sourceGridFabric = "dc-unknown";
+
+    RequestTopicForPushRequest request = new RequestTopicForPushRequest(clusterName, STORE_NAME, STREAM, "JOB_ID");
+    request.setSourceGridFabric(sourceGridFabric);
+
+    VersionCreationResponse response = new VersionCreationResponse();
+    response.setKafkaBootstrapServers("default.bootstrap.servers:9092");
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
+
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getStoreName()).thenReturn(STORE_NAME);
+    when(mockVersion.getPartitionCount()).thenReturn(42);
+    when(admin.isParent()).thenReturn(false);
+    when(admin.getReferenceVersionForStreamingWrites(clusterName, STORE_NAME, "JOB_ID")).thenReturn(mockVersion);
+
+    // Mock controller config to enable the feature
+    VeniceControllerClusterConfig mockConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockConfig.isEnableStreamPushSourceGridFabricOverride()).thenReturn(true);
+    when(admin.getControllerConfig(clusterName)).thenReturn(mockConfig);
+    when(admin.getPubSubBootstrapServersForRegion(sourceGridFabric)).thenReturn(null);
+
+    // Execute - should not throw exception, just log error and use default bootstrap servers
+    createVersion.handleStreamPushType(admin, store, request, response);
+
+    // Verify that bootstrap servers were not overridden when source region address is not found
+    assertEquals(
+        response.getKafkaBootstrapServers(),
+        "default.bootstrap.servers:9092",
+        "Bootstrap servers should not be overridden when source grid fabric address is not found");
+    assertEquals(response.getPartitions(), 42);
+    assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
+    assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
+  }
+
+  @Test
+  public void testHandleStreamPushTypeWithSourceGridFabricFeatureDisabled() {
+    Admin admin = mock(Admin.class);
+    Store store = mock(Store.class);
+    when(store.getName()).thenReturn(STORE_NAME);
+    String clusterName = "CLUSTER_NAME";
+    String sourceGridFabric = "dc-source";
+
+    RequestTopicForPushRequest request = new RequestTopicForPushRequest(clusterName, STORE_NAME, STREAM, "JOB_ID");
+    request.setSourceGridFabric(sourceGridFabric);
+
+    VersionCreationResponse response = new VersionCreationResponse();
+    response.setKafkaBootstrapServers("default.bootstrap.servers:9092");
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
+
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getStoreName()).thenReturn(STORE_NAME);
+    when(mockVersion.getPartitionCount()).thenReturn(42);
+    when(admin.isParent()).thenReturn(false);
+    when(admin.getReferenceVersionForStreamingWrites(clusterName, STORE_NAME, "JOB_ID")).thenReturn(mockVersion);
+
+    // Mock controller config with feature disabled
+    VeniceControllerClusterConfig mockConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockConfig.isEnableStreamPushSourceGridFabricOverride()).thenReturn(false);
+    when(admin.getControllerConfig(clusterName)).thenReturn(mockConfig);
+
+    // Execute
+    createVersion.handleStreamPushType(admin, store, request, response);
+
+    // Verify that bootstrap servers were not overridden when feature is disabled
+    assertEquals(
+        response.getKafkaBootstrapServers(),
+        "default.bootstrap.servers:9092",
+        "Bootstrap servers should not be overridden when feature is disabled");
+    assertEquals(response.getPartitions(), 42);
+    assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
+    assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
+
+    // Verify getPubSubBootstrapServersForRegion was never called
+    verify(admin, never()).getPubSubBootstrapServersForRegion(anyString());
   }
 
   @Test
@@ -934,7 +1066,7 @@ public class CreateVersionTest {
     Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegions = Lazy.of(() -> true);
 
     // Mock admin methods
-    when(admin.whetherEnableBatchPushFromAdmin(storeName)).thenReturn(true);
+    when(admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)).thenReturn(true);
     when(admin.calculateNumberOfPartitions(clusterName, storeName)).thenReturn(computedPartitionCount);
 
     Version version = mock(Version.class);
@@ -959,7 +1091,8 @@ public class CreateVersionTest {
             Optional.ofNullable(request.getEmergencySourceRegion()),
             request.isDeferVersionSwap(),
             request.getTargetedRegions(),
-            request.getRepushSourceVersion())).thenReturn(version);
+            request.getRepushSourceVersion(),
+            request.getRepushTtlSeconds())).thenReturn(version);
 
     when(createVersion.getCompressionStrategy(version, "testStore_v1")).thenReturn(CompressionStrategy.NO_OP);
 
@@ -975,7 +1108,7 @@ public class CreateVersionTest {
         "Expected compression strategy to be NO_OP.");
 
     // Case 2: Batch push is not enabled
-    when(admin.whetherEnableBatchPushFromAdmin(storeName)).thenReturn(false);
+    when(admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)).thenReturn(false);
     VeniceUnsupportedOperationException ex1 = expectThrows(
         VeniceUnsupportedOperationException.class,
         () -> createVersion
@@ -1000,9 +1133,10 @@ public class CreateVersionTest {
             Optional.ofNullable(request.getEmergencySourceRegion()),
             request.isDeferVersionSwap(),
             request.getTargetedRegions(),
-            request.getRepushSourceVersion());
+            request.getRepushSourceVersion(),
+            request.getRepushTtlSeconds());
 
-    when(admin.whetherEnableBatchPushFromAdmin(storeName)).thenReturn(true);
+    when(admin.whetherEnableBatchPushFromAdmin(clusterName, storeName)).thenReturn(true);
     VeniceException ex2 = expectThrows(
         VeniceException.class,
         () -> createVersion
@@ -1018,7 +1152,7 @@ public class CreateVersionTest {
     when(request.queryParams(NAME)).thenReturn(STORE_NAME);
     when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
     when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
-    when(admin.whetherEnableBatchPushFromAdmin(STORE_NAME)).thenReturn(true);
+    when(admin.whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME)).thenReturn(true);
     when(admin.getStore(CLUSTER_NAME, STORE_NAME)).thenReturn(null); // simulate missing store
 
     Object result = emptyPushRoute.handle(request, response);
@@ -1042,7 +1176,7 @@ public class CreateVersionTest {
     when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
 
     // Admin behavior
-    when(admin.whetherEnableBatchPushFromAdmin(STORE_NAME)).thenReturn(true);
+    when(admin.whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME)).thenReturn(true);
     when(admin.calculateNumberOfPartitions(CLUSTER_NAME, STORE_NAME)).thenReturn(2);
     when(admin.getReplicationFactor(CLUSTER_NAME, STORE_NAME)).thenReturn(3);
 
@@ -1081,7 +1215,7 @@ public class CreateVersionTest {
     when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
 
     // Admin config
-    when(admin.whetherEnableBatchPushFromAdmin(STORE_NAME)).thenReturn(true);
+    when(admin.whetherEnableBatchPushFromAdmin(CLUSTER_NAME, STORE_NAME)).thenReturn(true);
     when(admin.calculateNumberOfPartitions(CLUSTER_NAME, STORE_NAME)).thenReturn(2);
     when(admin.getReplicationFactor(CLUSTER_NAME, STORE_NAME)).thenReturn(3);
 

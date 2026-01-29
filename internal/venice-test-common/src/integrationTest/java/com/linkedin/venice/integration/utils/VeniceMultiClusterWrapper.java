@@ -9,20 +9,27 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class VeniceMultiClusterWrapper extends ProcessWrapper {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceMultiClusterWrapper.class);
   public static final String SERVICE_NAME = "VeniceMultiCluster";
   private final Map<String, VeniceClusterWrapper> clusters;
   private final Map<Integer, VeniceControllerWrapper> controllers;
@@ -59,11 +66,23 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     Map<Integer, VeniceControllerWrapper> controllerMap = new HashMap<>();
     ZkServerWrapper zkServerWrapper = options.getZkServerWrapper();
     PubSubBrokerWrapper pubSubBrokerWrapper = options.getKafkaBrokerWrapper();
+    Map<String, D2Client> d2Clients = options.getD2Clients();
 
     try {
       if (zkServerWrapper == null) {
         zkServerWrapper = ServiceFactory.getZkServer();
       }
+
+      // Set local d2Client for the cluster.
+      String regionName = options.getRegionName();
+      if (d2Clients == null) {
+        if (regionName == null || regionName.isEmpty()) {
+          regionName = VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
+        }
+        d2Clients = new HashMap<>();
+      }
+      d2Clients.put(regionName, D2TestUtils.getAndStartD2Client(zkServerWrapper.getAddress()));
+
       IntegrationTestUtils.ensureZkPathExists(zkServerWrapper.getAddress(), options.getVeniceZkBasePath());
       if (pubSubBrokerWrapper == null) {
         pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
@@ -111,7 +130,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .setD2Client(clientConfigD2Client));
       pubBrokerDetails.forEach((key, value) -> controllerProperties.putIfAbsent(key, value));
       VeniceControllerCreateOptions controllerCreateOptions =
-          new VeniceControllerCreateOptions.Builder(clusterNames, zkServerWrapper, pubSubBrokerWrapper)
+          new VeniceControllerCreateOptions.Builder(clusterNames, zkServerWrapper, pubSubBrokerWrapper, d2Clients)
               .multiRegion(options.isMultiRegion())
               .regionName(options.getRegionName())
               .veniceZkBasePath(options.getVeniceZkBasePath())
@@ -163,7 +182,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .sslToStorageNodes(options.isSslToStorageNodes())
               .extraProperties(extraProperties)
               .forkServer(options.isForkServer())
-              .kafkaClusterMap(options.getKafkaClusterMap());
+              .kafkaClusterMap(options.getKafkaClusterMap())
+              .d2Clients(d2Clients);
 
       for (int i = 0; i < options.getNumberOfClusters(); i++) {
         // Create a wrapper for cluster without controller.
@@ -209,8 +229,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   }
 
   @Override
-  public String getComponentTagForLogging() {
-    return new StringBuilder(getComponentTagPrefix(regionName)).append(getServiceName()).toString();
+  public LogContext getComponentTagForLogging() {
+    return LogContext.newBuilder().setComponentName(getServiceName()).setRegionName(regionName).build();
   }
 
   @Override
@@ -220,13 +240,85 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStop() throws Exception {
-    controllers.values().forEach(IOUtils::closeQuietly);
-    clusters.values().forEach(IOUtils::closeQuietly);
-    if (clientConfigD2Client != null) {
-      D2ClientUtils.shutdownClient(clientConfigD2Client);
-    }
-    IOUtils.closeQuietly(pubSubBrokerWrapper);
-    IOUtils.closeQuietly(zkServerWrapper);
+    LOGGER.info("Starting sequential shutdown of VeniceMultiClusterWrapper");
+    long overallStartTime = System.currentTimeMillis();
+
+    // Step 1: Stop controllers in parallel
+    long controllersTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 1: Shutting down " + controllers.size() + " controllers in parallel",
+        () -> {
+          List<CompletableFuture<Void>> controllerShutdownTasks = new ArrayList<>();
+          int controllerIndex = 0;
+          for (VeniceControllerWrapper controller: controllers.values()) {
+            final int currentIndex = controllerIndex++;
+            CompletableFuture<Void> controllerShutdownTask = CompletableFuture.runAsync(() -> {
+              long controllerStartTime = System.currentTimeMillis();
+              LOGGER.debug("Shutting down controller {}", currentIndex);
+              IOUtils.closeQuietly(controller);
+              long controllerDuration = System.currentTimeMillis() - controllerStartTime;
+              LOGGER.debug("Completed shutdown of controller {} in {} ms", currentIndex, controllerDuration);
+            });
+            controllerShutdownTasks.add(controllerShutdownTask);
+          }
+          CompletableFuture.allOf(controllerShutdownTasks.toArray(new CompletableFuture[0])).join();
+        });
+
+    // Step 2: Stop clusters in parallel
+    long clustersTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 2: Shutting down " + clusters.size() + " clusters in parallel",
+        () -> {
+          List<CompletableFuture<Void>> clusterShutdownTasks = new ArrayList<>();
+          int clusterIndex = 0;
+          for (Map.Entry<String, VeniceClusterWrapper> clusterEntry: clusters.entrySet()) {
+            final int currentIndex = clusterIndex++;
+            final String clusterName = clusterEntry.getKey();
+            final VeniceClusterWrapper cluster = clusterEntry.getValue();
+            CompletableFuture<Void> clusterShutdownTask = CompletableFuture.runAsync(() -> {
+              long clusterStartTime = System.currentTimeMillis();
+              LOGGER.debug("Shutting down cluster {} ({})", currentIndex, clusterName);
+              IOUtils.closeQuietly(cluster);
+              long clusterDuration = System.currentTimeMillis() - clusterStartTime;
+              LOGGER
+                  .debug("Completed shutdown of cluster {} ({}) in {} ms", currentIndex, clusterName, clusterDuration);
+            });
+            clusterShutdownTasks.add(clusterShutdownTask);
+          }
+          CompletableFuture.allOf(clusterShutdownTasks.toArray(new CompletableFuture[0])).join();
+        });
+
+    // Step 3: Stop D2 client
+    long d2Time = TimingUtils.timeOperationAndReturnDuration(LOGGER, "Step 3: Shutting down D2 client", () -> {
+      if (clientConfigD2Client != null) {
+        D2ClientUtils.shutdownClient(clientConfigD2Client);
+      }
+    });
+
+    // Step 4: Stop PubSub broker
+    long pubSubTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 4: Shutting down PubSub broker",
+        () -> IOUtils.closeQuietly(pubSubBrokerWrapper));
+
+    // Step 5: Stop ZooKeeper last
+    long zkTime = TimingUtils.timeOperationAndReturnDuration(
+        LOGGER,
+        "Step 5: Shutting down ZooKeeper server",
+        () -> IOUtils.closeQuietly(zkServerWrapper));
+
+    long totalShutdownTime = System.currentTimeMillis() - overallStartTime;
+
+    // Log comprehensive timing summary
+    LOGGER.info(
+        "Sequential shutdown timing summary - Total: {} ms, "
+            + "Controllers: {} ms, Clusters: {} ms, D2 client: {} ms, PubSub broker: {} ms, ZooKeeper: {} ms",
+        totalShutdownTime,
+        controllersTime,
+        clustersTime,
+        d2Time,
+        pubSubTime,
+        zkTime);
   }
 
   @Override

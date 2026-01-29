@@ -5,11 +5,12 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
+import org.apache.spark.unsafe.types.UTF8String;
 import org.jetbrains.annotations.NotNull;
 
 
@@ -25,16 +26,11 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
    * Static factory method to maintain backward compatibility.
    */
   public static InternalRow convertPubSubMessageToRow(
-      @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage,
+      @NotNull DefaultPubSubMessage pubSubMessage,
       String region,
-      int partitionNumber) {
-    return new VenicePubSubMessageToRow().convert(pubSubMessage, region, partitionNumber);
-  }
-
-  static byte[] loadRemainingBytes(ByteBuffer buffer) {
-    byte[] bytes = new byte[buffer.remaining()];
-    buffer.get(bytes); // this stamps the bytes with contents of the buffer
-    return bytes;
+      int partitionNumber,
+      long offset) {
+    return new VenicePubSubMessageToRow().convert(pubSubMessage, region, partitionNumber, offset);
   }
 
   /**
@@ -43,31 +39,32 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
    * @param pubSubMessage The PubSub message to process. Contains key, value, and metadata.
    * @param region The region identifier to include in the row.
    * @param partitionNumber The partition number to include in the row.
+   * @param offset The offset of the message in the Kafka topic partition.
    * @return An InternalRow containing the processed message data.
-   *         The row includes the following fields:
+   *         The row includes the following fields (must match RAW_PUBSUB_INPUT_TABLE_SCHEMA):
    *         1. Region (String)
    *         2. Partition number (int)
-   *         3. Message type (int)
-   *         4. Offset (long)
+   *         3. Offset (long)
+   *         4. Message type (int)
    *         5. Schema ID (int)
    *         6. Key bytes (byte[])
    *         7. Value bytes (byte[])
-   *         8. Replication metadata payload bytes (byte[])
-   *         9. Replication metadata version ID (int)
+   *         8. Replication metadata version ID (int)
+   *         9. Replication metadata payload bytes (byte[])
    *         See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
    */
   @Override
   public InternalRow convert(
-      @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage,
+      @NotNull DefaultPubSubMessage pubSubMessage,
       String region,
-      int partitionNumber) {
+      int partitionNumber,
+      long offset) {
 
     KafkaKey pubSubMessageKey = pubSubMessage.getKey();
     KafkaMessageEnvelope pubSubMessageValue = pubSubMessage.getValue();
     MessageType pubSubMessageType = MessageType.valueOf(pubSubMessageValue);
 
     // Spark row setup :
-    long offset = pubSubMessage.getOffset().getNumericOffset();
     ByteBuffer key = ByteBuffer.wrap(pubSubMessageKey.getKey(), 0, pubSubMessageKey.getKeyLength());
     ByteBuffer value;
     int messageType;
@@ -102,13 +99,13 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
         // we don't care about messages other than PUT and DELETE
     }
 
-    byte[] keyBytes = loadRemainingBytes(key);
-    byte[] valueBytes = loadRemainingBytes(value);
-    byte[] replicationMetadataPayloadBytes = loadRemainingBytes(replicationMetadataPayload);
-
-    // See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
+    /**
+     *  See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
+     *  Field order MUST match: region, partition, offset, message_type, schema_id, key, value, rmd_version_id, rmd_payload
+     */
     return new GenericInternalRow(
-        new Object[] { region, partitionNumber, messageType, offset, schemaId, keyBytes, valueBytes,
-            replicationMetadataPayloadBytes, replicationMetadataVersionId });
+        new Object[] { UTF8String.fromString(region), partitionNumber, offset, messageType, schemaId,
+            ByteUtils.extractByteArray(key), ByteUtils.extractByteArray(value), replicationMetadataVersionId,
+            ByteUtils.extractByteArray(replicationMetadataPayload) });
   }
 }

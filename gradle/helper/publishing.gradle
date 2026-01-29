@@ -1,42 +1,82 @@
-ext.publishing = [
+ext.mavenPublishing = [
     configureArtifactPublishing: { currentProject, testJar ->
-      if (currentProject.version != project.DEFAULT_VERSION) {
-        println "Will publish ${currentProject.path} at ${currentProject.group}:${currentProject.name}:${currentProject.version}"
+      publishing {
+        publications {
+          "${currentProject.name}" (MavenPublication) {
+            groupId currentProject.group
+            artifactId currentProject.name
+            version currentProject.version
 
-        publishing {
-          publications {
-            "${currentProject.name}" (MavenPublication) {
-              groupId currentProject.group
-              artifactId currentProject.name
-              version currentProject.version
+            from currentProject.components.java
 
-              from currentProject.components.java
+            artifact testJar
 
-              artifact testJar
+            //we strive to meet https://central.sonatype.org/pages/requirements.html
+            pom {
+              name = 'Venice'
+              description = 'Derived Data Platform for planet-scale workloads'
+              url = 'https://github.com/linkedin/venice'
 
-              //we strive to meet https://central.sonatype.org/pages/requirements.html
-              pom {
-                name = 'Venice'
-                description = 'Derived Data Platform for planet-scale workloads'
+              licenses {
+                license {
+                  name = 'BSD 2-Clause'
+                  url = 'https://raw.githubusercontent.com/linkedin/venice/main/LICENSE'
+                }
+              }
+              scm {
+                connection = 'scm:git:git://github.com:linkedin/venice.git'
+                developerConnection = 'scm:git:ssh://github.com:linkedin/venice.git'
                 url = 'https://github.com/linkedin/venice'
-
-                licenses {
-                  license {
-                    name = 'BSD 2-Clause'
-                    url = 'https://raw.githubusercontent.com/linkedin/venice/main/LICENSE'
-                  }
-                }
-                scm {
-                  connection = 'scm:git:git://github.com:linkedin/venice.git'
-                  developerConnection = 'scm:git:ssh://github.com:linkedin/venice.git'
-                  url = 'https://github.com/linkedin/venice'
-                }
               }
             }
           }
+        }
 
-          //repositories inherited from parent build.gradle
+        //repositories inherited from parent build.gradle
+      }
+    },
+
+    ensureCatchAllModuleGetsPublishedLast: { repositories ->
+      // Ensure that the 'all-modules' module is published last
+      repositories.each { repo ->
+        def allModulesMavenRepoTaskName = getPublishingTaskForRepo('all-modules', repo.name)
+        def otherModulesMavenRepoTaskNames = rootProject.tasks.matching {
+          it.name != allModulesMavenRepoTaskName
+              && it.name.startsWith('publish')
+              && it.name.endsWith(getMavenRepositoryPublicationTaskSuffix(repo.name))
+        }
+        rootProject.tasks.named(allModulesMavenRepoTaskName) {
+          dependsOn otherModulesMavenRepoTaskNames
         }
       }
     }
 ]
+
+static def getMavenRepositoryPublicationTaskSuffix(String repositoryName) {
+  if (!repositoryName) {
+    throw new IllegalArgumentException("Repository name must not be null or empty")
+  }
+
+  if (repositoryName == 'MavenLocal') {
+    return 'PublicationToMavenLocal'
+  }
+
+  return "PublicationTo${repositoryName}Repository"
+}
+
+static def capitalizeFirstLetter(String str) {
+  if (!str || str.isEmpty()) {
+    return str
+  }
+  return str[0].toUpperCase() + str.substring(1)
+}
+
+static def getPublishingTaskForRepo(String moduleName, String repositoryName) {
+  if (!repositoryName) {
+    throw new IllegalArgumentException("Repository name must not be null or empty")
+  }
+
+  def moduleNameCapitalized = capitalizeFirstLetter(moduleName)
+  def repositoryPublicationTaskSuffix = getMavenRepositoryPublicationTaskSuffix(repositoryName)
+  return "publish${moduleNameCapitalized}${repositoryPublicationTaskSuffix}"
+}

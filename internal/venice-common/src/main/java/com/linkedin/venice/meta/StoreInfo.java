@@ -5,6 +5,7 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -71,18 +72,28 @@ public class StoreInfo {
     storeInfo.setReplicationMetadataVersionId(store.getRmdVersion());
     storeInfo.setViewConfigs(store.getViewConfigs());
     storeInfo.setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
+    storeInfo.setCompactionEnabled(store.isCompactionEnabled());
+    storeInfo.setCompactionThreshold(store.getCompactionThresholdMilliseconds());
     storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     storeInfo.setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     storeInfo.setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
     storeInfo.setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
+    storeInfo.setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
     storeInfo.setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     storeInfo.setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
     storeInfo.setTargetRegionSwap(store.getTargetSwapRegion());
     storeInfo.setTargetRegionSwapWaitTime(store.getTargetSwapRegionWaitTime());
     storeInfo.setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
     storeInfo.setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
+    storeInfo.setTTLRepushEnabled(store.isTTLRepushEnabled());
+    storeInfo.setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
+    storeInfo.setStoreLifecycleHooks(store.getStoreLifecycleHooks());
+    storeInfo.setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
+    storeInfo.setKeyUrnCompressionEnabled(store.isKeyUrnCompressionEnabled());
+    storeInfo.setKeyUrnFields(store.getKeyUrnFields());
+    storeInfo.setFlinkVeniceViewsEnabled(store.isFlinkVeniceViewsEnabled());
     return storeInfo;
   }
 
@@ -334,6 +345,10 @@ public class StoreInfo {
    */
   private boolean isStoreDead;
 
+  private boolean compactionEnabled;
+
+  private long compactionThreshold;
+
   private long minCompactionLagSeconds;
 
   private long maxCompactionLagSeconds;
@@ -345,6 +360,7 @@ public class StoreInfo {
   private boolean unusedSchemaDeletionEnabled;
 
   private boolean blobTransferEnabled;
+  private String blobTransferInServerEnable = ActivationState.NOT_SPECIFIED.name();
 
   private boolean nearlineProducerCompressionEnabled;
   private int nearlineProducerCountPerWriter;
@@ -352,6 +368,16 @@ public class StoreInfo {
   private int targetRegionSwapWaitTime;
   private boolean isDavinciHeartbeatReported;
   private boolean globalRtDivEnabled = false;
+  /**
+   * Self-managed config that's set to true once there is a TTL re-push.
+   */
+  private boolean ttlRepushEnabled = false;
+  private boolean enumSchemaEvolutionAllowed = false;
+  private List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
+  private long getLatestVersionPromoteToCurrentTimestamp;
+  private boolean keyUrnCompressionEnabled = false;
+  private List<String> keyUrnFields = new ArrayList<>();
+  private boolean flinkVeniceViewsEnabled = false;
 
   public StoreInfo() {
   }
@@ -802,6 +828,22 @@ public class StoreInfo {
     this.storageNodeReadQuotaEnabled = storageNodeReadQuotaEnabled;
   }
 
+  public boolean isCompactionEnabled() {
+    return this.compactionEnabled;
+  }
+
+  public void setCompactionEnabled(boolean compactionEnabled) {
+    this.compactionEnabled = compactionEnabled;
+  }
+
+  public long getCompactionThreshold() {
+    return this.compactionThreshold;
+  }
+
+  public void setCompactionThreshold(long compactionThreshold) {
+    this.compactionThreshold = compactionThreshold;
+  }
+
   public long getMinCompactionLagSeconds() {
     return minCompactionLagSeconds;
   }
@@ -848,6 +890,14 @@ public class StoreInfo {
 
   public boolean isBlobTransferEnabled() {
     return this.blobTransferEnabled;
+  }
+
+  public void setBlobTransferInServerEnabled(String blobTransferInServerEnable) {
+    this.blobTransferInServerEnable = blobTransferInServerEnable;
+  }
+
+  public String getBlobTransferInServerEnabled() {
+    return this.blobTransferInServerEnable;
   }
 
   public boolean isNearlineProducerCompressionEnabled() {
@@ -912,5 +962,61 @@ public class StoreInfo {
 
   public boolean isGlobalRtDivEnabled() {
     return this.globalRtDivEnabled;
+  }
+
+  public void setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    this.ttlRepushEnabled = ttlRepushEnabled;
+  }
+
+  public boolean isTTLRepushEnabled() {
+    return this.ttlRepushEnabled;
+  }
+
+  public boolean isEnumSchemaEvolutionAllowed() {
+    return enumSchemaEvolutionAllowed;
+  }
+
+  public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    this.enumSchemaEvolutionAllowed = enumSchemaEvolutionAllowed;
+  }
+
+  public boolean isFlinkVeniceViewsEnabled() {
+    return flinkVeniceViewsEnabled;
+  }
+
+  public void setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    this.flinkVeniceViewsEnabled = flinkVeniceViewsEnabled;
+  }
+
+  public List<LifecycleHooksRecord> getStoreLifecycleHooks() {
+    return this.storeLifecycleHooks;
+  }
+
+  public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
+    this.storeLifecycleHooks = storeLifecycleHooks;
+  }
+
+  public long getLatestVersionPromoteToCurrentTimestamp() {
+    return this.getLatestVersionPromoteToCurrentTimestamp;
+  }
+
+  public void setLatestVersionPromoteToCurrentTimestamp(long latestVersionPromoteToCurrentTimestamp) {
+    this.getLatestVersionPromoteToCurrentTimestamp = latestVersionPromoteToCurrentTimestamp;
+  }
+
+  public boolean isKeyUrnCompressionEnabled() {
+    return keyUrnCompressionEnabled;
+  }
+
+  public void setKeyUrnCompressionEnabled(boolean keyUrnCompressionEnabled) {
+    this.keyUrnCompressionEnabled = keyUrnCompressionEnabled;
+  }
+
+  public List<String> getKeyUrnFields() {
+    return keyUrnFields;
+  }
+
+  public void setKeyUrnFields(List<String> keyUrnFields) {
+    this.keyUrnFields = keyUrnFields;
   }
 }

@@ -43,11 +43,11 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOOK_BACK_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_NEARLINE_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
@@ -59,6 +59,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_OWNERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_QUOTA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_STORES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_SORTED_ORDER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_DURATION;
@@ -82,24 +83,28 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STATUS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORES_TO_REPLICATE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COMPACTION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT_STORE_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 
 import com.linkedin.venice.HttpMethod;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 
-public enum ControllerRoute {
+public enum ControllerRoute implements VeniceDimensionInterface {
+  // Fallback route
+  UNKNOWN_ROUTE("", HttpMethod.GET, Collections.emptyList()),
   // Request a topic that writer should produce to
   REQUEST_TOPIC("/request_topic", HttpMethod.POST, Arrays.asList(NAME, PUSH_TYPE, PUSH_JOB_ID), PUSH_IN_SORTED_ORDER),
   // Do an empty push into a new version for this store
@@ -118,6 +123,7 @@ public enum ControllerRoute {
 
   STORE_MIGRATION_ALLOWED("/store_migration_allowed", HttpMethod.GET, Collections.singletonList(CLUSTER)),
   MIGRATE_STORE("/migrate_store", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
+  AUTO_MIGRATE_STORE("/auto_migrate_store", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
   COMPLETE_MIGRATION("/complete_migration", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
   ABORT_MIGRATION("/abort_migration", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
   DELETE_STORE("/delete_store", HttpMethod.POST, Collections.singletonList(NAME)),
@@ -149,8 +155,9 @@ public enum ControllerRoute {
       "/update_cluster_config", HttpMethod.POST, Collections.singletonList(CLUSTER),
       SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND
   ),
-
-  JOB("/job", HttpMethod.GET, Arrays.asList(NAME, VERSION)),
+  UPDATE_DARK_CLUSTER_CONFIG(
+      "/update_dark_cluster_config", HttpMethod.POST, Collections.singletonList(CLUSTER), STORES_TO_REPLICATE
+  ), JOB("/job", HttpMethod.GET, Arrays.asList(NAME, VERSION)),
   KILL_OFFLINE_PUSH_JOB("/kill_offline_push_job", HttpMethod.POST, Collections.singletonList(TOPIC)),
   LIST_STORES("/list_stores", HttpMethod.GET, Collections.emptyList(), INCLUDE_SYSTEM_STORES),
   CLEAN_EXECUTION_IDS("/clean_execution_ids", HttpMethod.GET, Collections.emptyList(), CLUSTER),
@@ -169,7 +176,7 @@ public enum ControllerRoute {
 
   REMOVE_NODE("/remove_node", HttpMethod.POST, Collections.singletonList(STORAGE_NODE_ID)),
 
-  SKIP_ADMIN("/skip_admin_message", HttpMethod.POST, Collections.singletonList(OFFSET)),
+  SKIP_ADMIN_MESSAGE("/skip_admin_message", HttpMethod.POST, Collections.EMPTY_LIST),
 
   GET_KEY_SCHEMA("/get_key_schema", HttpMethod.GET, Collections.singletonList(NAME)),
   ADD_VALUE_SCHEMA(
@@ -237,9 +244,7 @@ public enum ControllerRoute {
   UPDATE_ACL("/update_acl", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, ACCESS_PERMISSION)),
   GET_ACL("/get_acl", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
   DELETE_ACL("/delete_acl", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
-  CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
-      "/configure_active_active_replication_for_cluster", HttpMethod.POST, Arrays.asList(CLUSTER, STORE_TYPE, STATUS)
-  ), GET_DELETABLE_STORE_TOPICS("/get_deletable_store_topics", HttpMethod.GET, Collections.emptyList()),
+  GET_DELETABLE_STORE_TOPICS("/get_deletable_store_topics", HttpMethod.GET, Collections.emptyList()),
   GET_ALL_REPLICATION_METADATA_SCHEMAS(
       "/get_all_replication_metadata_schemas", HttpMethod.GET, Collections.singletonList(NAME)
   ),
@@ -275,7 +280,9 @@ public enum ControllerRoute {
   REPUSH_STORE("/trigger_repush", HttpMethod.POST, Arrays.asList(NAME)),
   GET_STORE_LARGEST_USED_VERSION("/get_store_largest_used_version", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
 
-  GET_DEAD_STORES("/get_dead_stores", HttpMethod.GET, Arrays.asList(CLUSTER), NAME, INCLUDE_SYSTEM_STORES),
+  GET_DEAD_STORES(
+      "/get_dead_stores", HttpMethod.GET, Arrays.asList(CLUSTER), NAME, INCLUDE_SYSTEM_STORES, LOOK_BACK_MS
+  ),
   LIST_STORE_PUSH_INFO("/list_store_push_info", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)),
   GET_REGION_PUSH_DETAILS(
       "/get_region_push_details", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)
@@ -290,8 +297,8 @@ public enum ControllerRoute {
       "/update_kafka_topic_min_in_sync_replica", HttpMethod.POST, Arrays.asList(TOPIC, KAFKA_TOPIC_MIN_IN_SYNC_REPLICA)
   ), GET_ADMIN_TOPIC_METADATA("/get_admin_topic_metadata", HttpMethod.GET, Collections.singletonList(CLUSTER), NAME),
   UPDATE_ADMIN_TOPIC_METADATA(
-      "/update_admin_topic_metadata", HttpMethod.POST, Arrays.asList(CLUSTER, EXECUTION_ID), NAME, OFFSET,
-      UPSTREAM_OFFSET
+      "/update_admin_topic_metadata", HttpMethod.POST, Arrays.asList(CLUSTER, EXECUTION_ID), NAME, POSITION,
+      UPSTREAM_POSITION
   ),
   UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION(
       "/update_admin_operation_protocol_version", HttpMethod.POST,
@@ -322,7 +329,8 @@ public enum ControllerRoute {
   DELETE_UNUSED_VALUE_SCHEMAS(
       "/delete_unused_value_schemas", HttpMethod.POST, Arrays.asList(CLUSTER, NAME),
       ControllerApiConstants.VALUE_SCHEMA_IDS
-  ), GET_INUSE_SCHEMA_IDS("/get_inuse_schema_ids", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
+  ), GET_INUSE_SCHEMA_IDS("/get_inuse_schema_ids", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
+  VALIDATE_STORE_DELETED("/validate_store_deleted", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
 
   private final String path;
   private final HttpMethod httpMethod;
@@ -346,7 +354,7 @@ public enum ControllerRoute {
         return route;
       }
     }
-    return null;
+    return UNKNOWN_ROUTE;
   }
 
   public boolean pathEquals(String uri) {
@@ -367,5 +375,19 @@ public enum ControllerRoute {
 
   public List<String> getOptionalParams() {
     return optionalParams;
+  }
+
+  /**
+   * All the instances of this Enum should have the same dimension name.
+   * Refer {@link VeniceDimensionInterface#getDimensionName()} for more details.
+   */
+  @Override
+  public VeniceMetricsDimensions getDimensionName() {
+    return VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT;
+  }
+
+  @Override
+  public String getDimensionValue() {
+    return name().toLowerCase();
   }
 }

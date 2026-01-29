@@ -30,8 +30,21 @@ public class SchemaUtils {
    * @return Annotated value schema.
    */
   public static Schema annotateValueSchema(Schema schema) {
-    // Create duplicate schema here in order not to create any side effect during annotation.
-    Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
+    return annotateValueSchema(schema, true);
+  }
+
+  public static Schema annotateValueSchema(Schema schema, boolean useStrictValidation) {
+    /**
+     * We have seen some value schemas that are not strictly valid Avro schemas, but they are already in
+     * production use. For example, some have a double type field whose default value set to
+     * "0" instead of "0.0", or union whose default value does not match the 1st branch in the union.
+     * See {@link SchemaParseConfiguration} for more details.
+     * Provide an option to use loose validation here to allow the schema to be parsed even if it has some minor issues.
+     */
+    Schema replicatedSchema = useStrictValidation
+        ? AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString())
+        : AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(schema.toString());
+
     if (replicatedSchema.getType().equals(RECORD)) {
       for (Schema.Field field: replicatedSchema.getFields()) {
         if (field.schema().isUnion()) {
@@ -53,8 +66,14 @@ public class SchemaUtils {
    * @return Annotated update schema.
    */
   public static Schema annotateUpdateSchema(Schema schema) {
+    return annotateUpdateSchema(schema, true);
+  }
+
+  public static Schema annotateUpdateSchema(Schema schema, boolean useStrictValidation) {
     // Create duplicate schema here in order not to create any side effect during annotation.
-    Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
+    Schema replicatedSchema = useStrictValidation
+        ? AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString())
+        : AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(schema.toString());
     if (replicatedSchema.getType().equals(RECORD)) {
       for (Schema.Field field: replicatedSchema.getFields()) {
         if (field.schema().isUnion()) {
@@ -88,8 +107,14 @@ public class SchemaUtils {
    * @return Annotated update schema.
    */
   public static Schema annotateRmdSchema(Schema schema) {
+    return annotateRmdSchema(schema, true);
+  }
+
+  public static Schema annotateRmdSchema(Schema schema, boolean useStrictValidation) {
     // Create duplicate schema here in order not to create any side effect during annotation.
-    Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
+    Schema replicatedSchema = useStrictValidation
+        ? AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString())
+        : AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(schema.toString());
     for (Schema fieldLevelTsSchema: replicatedSchema.getFields().get(TIMESTAMP_FIELD_POS).schema().getTypes()) {
       if (fieldLevelTsSchema.getType().equals(LONG)) {
         continue;

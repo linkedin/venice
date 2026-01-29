@@ -3,6 +3,7 @@ package com.linkedin.venice.spark.datawriter.jobs;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.meta.Store.UNLIMITED_STORAGE_QUOTA;
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_APP_NAME_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_DATA_WRITER_CONF_PREFIX;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX;
@@ -11,6 +12,10 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static org.apache.spark.sql.types.DataTypes.BinaryType;
 import static org.apache.spark.sql.types.DataTypes.StringType;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
@@ -76,6 +81,52 @@ public class AbstractDataWriterSparkJobTest {
       // Properties with SPARK_DATA_WRITER_CONF_PREFIX should get applied after stripping the prefix
       Assert.assertEquals(jobConf.get(dummyConfig), dummyConfigValue);
     }
+  }
+
+  @Test
+  public void testValidateRmdSchema() {
+    PushJobSetting pushJobSetting = new PushJobSetting();
+    AbstractDataWriterSparkJob dataWriterSparkJob = spy(AbstractDataWriterSparkJob.class);
+    dataWriterSparkJob.validateRmdSchema(pushJobSetting);
+
+    final String rmdField = "rmd";
+    Schema mockSchema = mock(Schema.class);
+    Schema rmdSchema = Schema.create(Schema.Type.LONG);
+    Schema.Field mockField = mock(Schema.Field.class);
+    when(mockSchema.getField(eq(rmdField))).thenReturn(mockField);
+    when(mockField.schema()).thenReturn(rmdSchema);
+    pushJobSetting.rmdField = rmdField;
+    pushJobSetting.inputDataSchema = mockSchema;
+
+    dataWriterSparkJob.validateRmdSchema(pushJobSetting);
+  }
+
+  @Test(expectedExceptions = VeniceInvalidInputException.class, expectedExceptionsMessageRegExp = "The provided input rmd schema must be BinaryType.*")
+  public void testValidateDataFrameWithInvalidRmdTypes() {
+    AbstractDataWriterSparkJob dataWriterSparkJob = spy(AbstractDataWriterSparkJob.class);
+    StructType inputStructType = new StructType(
+        new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
+            new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+            new StructField(RMD_COLUMN_NAME, StringType, true, Metadata.empty()) });
+
+    Dataset<Row> mockDataset = mock(Dataset.class);
+    when(mockDataset.schema()).thenReturn(inputStructType);
+    dataWriterSparkJob.validateDataFrame(mockDataset);
+  }
+
+  @Test
+  public void testValidateDataFrameWithValidRmdType() {
+    AbstractDataWriterSparkJob dataWriterSparkJob = spy(AbstractDataWriterSparkJob.class);
+    StructType inputWithBinaryRmdType = new StructType(
+        new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
+            new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+            new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
+
+    Dataset<Row> mockDataset = mock(Dataset.class);
+    when(mockDataset.schema()).thenReturn(inputWithBinaryRmdType);
+    dataWriterSparkJob.validateDataFrame(mockDataset);
+    when(mockDataset.schema()).thenReturn(inputWithBinaryRmdType);
+    dataWriterSparkJob.validateDataFrame(mockDataset);
   }
 
   @Test
@@ -187,6 +238,11 @@ public class AbstractDataWriterSparkJobTest {
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
     }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
+    }
   }
 
   private static class InvalidValueSchemaDataWriterSparkJob extends AbstractDataWriterSparkJob {
@@ -206,6 +262,11 @@ public class AbstractDataWriterSparkJobTest {
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
     }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
+    }
   }
 
   private static class IncompleteFieldDataWriterSparkJob extends AbstractDataWriterSparkJob {
@@ -223,6 +284,11 @@ public class AbstractDataWriterSparkJobTest {
           .rdd();
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
+    }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
     }
   }
 
@@ -243,6 +309,11 @@ public class AbstractDataWriterSparkJobTest {
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
     }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
+    }
   }
 
   private static class MissingValueFieldDataWriterSparkJob extends AbstractDataWriterSparkJob {
@@ -261,6 +332,11 @@ public class AbstractDataWriterSparkJobTest {
           .rdd();
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
+    }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
     }
   }
 
@@ -281,6 +357,11 @@ public class AbstractDataWriterSparkJobTest {
           .rdd();
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
+    }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
     }
   }
 }

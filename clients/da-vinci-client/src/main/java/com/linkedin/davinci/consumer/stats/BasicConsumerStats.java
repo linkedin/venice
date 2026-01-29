@@ -2,14 +2,14 @@ package com.linkedin.davinci.consumer.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface.getUniqueMetricEntities;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
@@ -21,16 +21,15 @@ import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Rate;
+import io.tehuti.metrics.stats.Total;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -58,31 +57,15 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   public BasicConsumerStats(MetricsRepository metricsRepository, String consumerName, String storeName) {
     super(metricsRepository, consumerName);
 
-    boolean emitOpenTelemetryMetrics;
-    VeniceOpenTelemetryMetricsRepository otelRepository;
-    Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
+        OpenTelemetryMetricsSetup.builder(metricsRepository)
+            // set all base dimensions for this stats class and build
+            .setStoreName(storeName)
+            .build();
 
-    if (metricsRepository instanceof VeniceMetricsRepository) {
-      VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
-      VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
-      emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
-      if (emitOpenTelemetryMetrics) {
-        otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-        baseDimensionsMap = new HashMap<>();
-        baseDimensionsMap.put(VENICE_STORE_NAME, storeName);
-        AttributesBuilder baseAttributesBuilder = Attributes.builder();
-        baseAttributesBuilder.put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName);
-        baseAttributes = baseAttributesBuilder.build();
-      } else {
-        otelRepository = null;
-        baseDimensionsMap = null;
-        baseAttributes = null;
-      }
-    } else {
-      otelRepository = null;
-      baseDimensionsMap = null;
-      baseAttributes = null;
-    }
+    VeniceOpenTelemetryMetricsRepository otelRepository = otelData.getOtelRepository();
+    Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
+    this.baseAttributes = otelData.getBaseAttributes();
 
     heartBeatDelayMetric = MetricEntityStateBase.create(
         BasicConsumerMetricEntity.HEART_BEAT_DELAY.getMetricEntity(),
@@ -143,7 +126,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.VERSION_SWAP_SUCCESS_COUNT,
-        Collections.singletonList(new Rate()),
+        Collections.singletonList(new Total()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -152,7 +135,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.VERSION_SWAP_FAIL_COUNT,
-        Collections.singletonList(new Rate()),
+        Collections.singletonList(new Total()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -173,6 +156,13 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         Collections.singletonList(new Rate()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
+
+    /*
+     * Record default value for version swap metrics so the UP_DOWN_COUNTER in OTEL will emit a default 0.
+     * If you don't do this, the OTEL metric will return no data upon query time until a value is recorded.
+     */
+    versionSwapSuccessCountMetric.record(0, SUCCESS);
+    versionSwapFailCountMetric.record(0, FAIL);
   }
 
   public void emitCurrentConsumingVersionMetrics(int minVersion, int maxVersion) {
@@ -180,9 +170,6 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     maximumConsumingVersionMetric.record(maxVersion);
   }
 
-  /**
-   * This won't be emitted by DVRT CDC, since it doesn't have context into heartbeat delay.
-   */
   public void emitHeartBeatDelayMetrics(long heartBeatDelay) {
     heartBeatDelayMetric.record(heartBeatDelay);
   }
@@ -275,7 +262,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
      * Measures the count of version swaps
      */
     VERSION_SWAP_COUNT(
-        MetricType.COUNTER, MetricUnit.NUMBER, "Measures the count of version swaps",
+        MetricType.UP_DOWN_COUNTER, MetricUnit.NUMBER, "Measures the count of version swaps",
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     ),
     /**

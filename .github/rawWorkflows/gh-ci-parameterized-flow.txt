@@ -15,11 +15,11 @@
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-$FlowName
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: 17
           distribution: 'temurin'
@@ -33,10 +33,13 @@
         uses: gradle/actions/setup-gradle@v4
         with:
           add-job-summary: never
+      - name: Free up disk space in the background
+        run: |
+          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew $GradleArguments
       - name: Package Build Artifacts
-        if: success() || failure()
+        if: always()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -76,8 +79,8 @@
           detailed_summary: true
           report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
-        if: success() || failure()
-        uses: actions/upload-artifact@v4
+        if: always()
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz

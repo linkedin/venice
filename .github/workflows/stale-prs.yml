@@ -1,0 +1,48 @@
+name: Close inactive pull requests
+
+on:
+  schedule:
+    - cron: '30 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v10
+        with:
+          # Act only on PRs
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+
+          # PR timing: warn at 30 days, close 7 days later
+          days-before-pr-stale: 30
+          days-before-pr-close: 7
+
+          # Limit how much work this run performs
+          operations-per-run: 100
+
+          # Messages (folded style avoids hard line breaks)
+          stale-pr-message: >-
+            Hi there. This pull request has been inactive for 30 days. To keep
+            our review queue healthy, we plan to close it in 7 days unless there
+            is new activity. If you are still working on this, please push a
+            commit, leave a comment, or convert it to draft to signal intent.
+            Thank you for your time and contributions.
+
+          close-pr-message: >-
+            Closing this pull request due to 37 days of inactivity. This is not
+            a judgment on the value of the work. If you would like to continue,
+            please reopen or open a new PR and we will be happy to take another
+            look. Thank you again for contributing.
+
+          stale-pr-label: stale
+          close-pr-label: closed-by-stale
+
+          remove-stale-when-updated: true
+          debug-only: false
+          enable-statistics: true

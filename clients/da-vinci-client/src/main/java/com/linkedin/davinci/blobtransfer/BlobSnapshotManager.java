@@ -5,7 +5,10 @@ import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
+import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -13,6 +16,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.nio.ByteBuffer;
@@ -131,11 +135,21 @@ public class BlobSnapshotManager {
     String topicName = payload.getTopicName();
     int partitionId = payload.getPartition();
 
+    // 0. Fast failover
     // check if storageEngineRepository has this store partition, so exit early if not, otherwise won't be able to
     // create snapshot
     if (storageEngineRepository.getLocalStorageEngine(topicName) == null
         || !storageEngineRepository.getLocalStorageEngine(topicName).containsPartition(partitionId)) {
-      throw new VeniceException("No storage engine found for topic: " + topicName + " partition: " + partitionId);
+      throw new VeniceException("No storage engine found for replica " + Utils.getReplicaId(topicName, partitionId));
+    }
+    // Check if this partition transfer is in progress, if so, throw an exception to avoid creating a new snapshot
+    AbstractStoragePartition partition =
+        storageEngineRepository.getLocalStorageEngine(topicName).getPartitionOrThrow(partitionId);
+    if (partition instanceof RocksDBStoragePartition
+        && ((RocksDBStoragePartition) partition).isRocksDBPartitionBlobTransferInProgress()) {
+      throw new VeniceException(
+          "RocksDB instance is null, rocksDBPartitionBlobTransferInProgress flag is true for replica "
+              + Utils.getReplicaId(topicName, partitionId));
     }
 
     ReentrantLock lock = getSnapshotLock(topicName, partitionId);
@@ -273,6 +287,20 @@ public class BlobSnapshotManager {
   public void createSnapshot(String kafkaVersionTopic, int partitionId) {
     StorageEngine storageEngine =
         Objects.requireNonNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
+    if (storageEngine instanceof DelegatingStorageEngine) {
+      DelegatingStorageEngine delegatingStorageEngine = (DelegatingStorageEngine) storageEngine;
+      if (delegatingStorageEngine.isKeyUrnCompressionEnabled(partitionId)) {
+        /**
+         * TODO: add blob transfer support for key urn compression.
+         */
+        throw new VeniceException(
+            "Cannot create snapshot for replica " + Utils.getReplicaId(kafkaVersionTopic, partitionId)
+                + " because key urn compression is enabled.");
+      }
+    } else {
+      throw new VeniceException("Storage engine is not an instance of DelegatingStorageEngine");
+    }
+
     AbstractStoragePartition partition = storageEngine.getPartitionOrThrow(partitionId);
     partition.createSnapshot();
   }
@@ -283,8 +311,12 @@ public class BlobSnapshotManager {
    * @param partitionId the partition id
    */
   public void cleanupSnapshot(String kafkaVersionTopic, int partitionId) {
-    StorageEngine storageEngine =
-        Objects.requireNonNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
+    StorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+    if (storageEngine == null) {
+      LOGGER
+          .warn("Storage engine is null for topic {} partition {}, skipping cleanup. ", kafkaVersionTopic, partitionId);
+      return;
+    }
     AbstractStoragePartition partition = storageEngine.getPartitionOrThrow(partitionId);
     partition.cleanupSnapshot();
   }
@@ -311,7 +343,7 @@ public class BlobSnapshotManager {
 
     if (storageMetadataService.getStoreVersionState(blobTransferRequest.getTopicName()) == null
         || storageMetadataService
-            .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition()) == null) {
+            .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), null) == null) {
       throw new VeniceException("Cannot get store version state or offset record from storage metadata service.");
     }
 
@@ -321,8 +353,15 @@ public class BlobSnapshotManager {
     java.nio.ByteBuffer storeVersionStateByte =
         ByteBuffer.wrap(storeVersionStateSerializer.serialize(blobTransferRequest.getTopicName(), storeVersionState));
 
-    OffsetRecord offsetRecord =
-        storageMetadataService.getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
+    OffsetRecord offsetRecord = storageMetadataService
+        .getLastOffset(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition(), null);
+
+    LOGGER.info(
+        "Preparing offset record for topic {} partition {} with pushTrackingIncrementalPushStatus {}",
+        blobTransferRequest.getTopicName(),
+        blobTransferRequest.getPartition(),
+        offsetRecord.getTrackingIncrementalPushStatus());
+
     java.nio.ByteBuffer offsetRecordByte = ByteBuffer.wrap(offsetRecord.toBytes());
 
     return new BlobTransferPartitionMetadata(
@@ -396,7 +435,16 @@ public class BlobSnapshotManager {
       }
 
       LOGGER.info("Cleaning up stale snapshot for topic {} partition {}", topicName, partitionId);
-      cleanupSnapshot(topicName, partitionId);
+
+      try {
+        cleanupSnapshot(topicName, partitionId);
+      } catch (PersistenceFailureException e) {
+        LOGGER.warn(
+            "Failed to clean up snapshot for topic {} partition {} due to partition no longer exists, only removing from tracking.",
+            topicName,
+            partitionId);
+      }
+
       removeTrackingValues(topicName, partitionId);
 
       LOGGER.info("Successfully cleaned up snapshot for topic {} partition {}", topicName, partitionId);

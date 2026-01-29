@@ -20,6 +20,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_REC
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.MAP_REDUCE_PARTITIONER_CLASS_CONFIG;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SUPPRESS_END_OF_PUSH_MESSAGE;
@@ -663,5 +664,39 @@ public class TestVenicePushJob {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*regular batch push is not allowed with TTL re-push")
+  public void testRegularBatchPushWithTTLRepush() throws Exception {
+    File inputDir = getTempDataDirectory();
+    String storeName = Utils.getUniqueString("store");
+    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    ControllerClient controllerClient =
+        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
+    createStoreForJob(veniceCluster.getClusterName(), recordSchema, props);
+    TestUtils.assertCommand(
+        controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
+                .setHybridRewindSeconds(0)
+                .setActiveActiveReplicationEnabled(true)
+                .setNativeReplicationEnabled(true)
+                .setChunkingEnabled(true)
+                .setRmdChunkingEnabled(true)));
+    controllerClient.emptyPush(storeName, "test-empty-push", 1000000L);
+    // Enable ttl re-push
+    props.setProperty(REPUSH_TTL_ENABLE, "true");
+    props.setProperty(SOURCE_KAFKA, "true");
+    IntegrationTestPushUtils.runVPJ(props);
+    StoreResponse response = controllerClient.getStore(storeName);
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getStore().getVersions().size(), 2);
+    Assert.assertTrue(response.getStore().isTTLRepushEnabled());
+    props.remove(REPUSH_TTL_ENABLE);
+    props.remove(SOURCE_KAFKA);
+    // A regular batch push should fail
+    IntegrationTestPushUtils.runVPJ(props);
   }
 }

@@ -1,7 +1,9 @@
 package com.linkedin.venice;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -19,10 +21,13 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.unit.kafka.SimplePartitioner;
+import com.linkedin.venice.pubsub.mock.SimplePartitioner;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Optional;
@@ -45,6 +50,9 @@ public class TopicMessageFinderTest {
   private static final int VERSION_NUMBER = 1;
   private static final int PARTITION_COUNT = 3;
   private static final String KEY_SCHEMA_STR = "\"string\"";
+  private static final ApacheKafkaOffsetPosition POSITION_0 = ApacheKafkaOffsetPosition.of(0L);
+  private static final ApacheKafkaOffsetPosition POSITION_10 = ApacheKafkaOffsetPosition.of(10L);
+  private static final ApacheKafkaOffsetPosition POSITION_20 = ApacheKafkaOffsetPosition.of(20L);
 
   @BeforeMethod
   public void setUp() {
@@ -122,12 +130,19 @@ public class TopicMessageFinderTest {
     PubSubTopicPartition mockPartition = mock(PubSubTopicPartitionImpl.class);
     when(mockConsumer.poll(anyLong())).thenReturn(Collections.singletonMap(mockPartition, Arrays.asList(mockMessage)))
         .thenReturn(Collections.emptyMap());
-    when(mockMessage.getPosition().getNumericOffset()).thenReturn(10L);
+    when(mockMessage.getPosition()).thenReturn(POSITION_10);
     when(mockMessage.getKey()).thenReturn(new KafkaKey((byte) 0, KEY.getBytes()));
-    when(mockMessage.getPosition().getNumericOffset()).thenReturn(10L);
+    when(mockMessage.getPosition()).thenReturn(POSITION_10);
+    doAnswer(invocation -> {
+      PubSubTopicPartition tp = invocation.getArgument(0);
+      PubSubPosition p1 = invocation.getArgument(1);
+      PubSubPosition p2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(tp, p1, p2, mockConsumer);
+    }).when(mockConsumer)
+        .positionDifference(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
 
-    long recordsConsumed =
-        TopicMessageFinder.consume(mockConsumer, mockPartition, 0L, 20L, 5L, mockMessage.getKey().getKey());
+    long recordsConsumed = TopicMessageFinder
+        .consume(mockConsumer, mockPartition, POSITION_0, POSITION_20, 5L, mockMessage.getKey().getKey());
 
     assertTrue(recordsConsumed > 0);
   }
@@ -138,7 +153,8 @@ public class TopicMessageFinderTest {
     when(mockConsumer.poll(anyInt())).thenReturn(Collections.singletonMap(mockPartition, Arrays.asList(mockMessage)));
     when(mockMessage.getKey()).thenReturn(new KafkaKey((byte) 0, "different_key".getBytes()));
 
-    long recordsConsumed = TopicMessageFinder.consume(mockConsumer, mockPartition, 0L, 20L, 5L, KEY.getBytes());
+    long recordsConsumed =
+        TopicMessageFinder.consume(mockConsumer, mockPartition, POSITION_0, POSITION_20, 5L, KEY.getBytes());
 
     assertEquals(recordsConsumed, 0);
   }
@@ -147,9 +163,19 @@ public class TopicMessageFinderTest {
   public void testConsumeExceedsEndOffset() {
     PubSubTopicPartition mockPartition = mock(PubSubTopicPartitionImpl.class);
     when(mockConsumer.poll(anyInt())).thenReturn(Collections.singletonMap(mockPartition, Arrays.asList(mockMessage)));
-    when(mockMessage.getPosition().getNumericOffset()).thenReturn(30L);
+    ApacheKafkaOffsetPosition position30 = ApacheKafkaOffsetPosition.of(30L);
+    when(mockMessage.getPosition()).thenReturn(position30);
 
-    long recordsConsumed = TopicMessageFinder.consume(mockConsumer, mockPartition, 0L, 20L, 5L, KEY.getBytes());
+    doAnswer(invocation -> {
+      PubSubTopicPartition tp = invocation.getArgument(0);
+      PubSubPosition p1 = invocation.getArgument(1);
+      PubSubPosition p2 = invocation.getArgument(2);
+      return PubSubUtil.computeOffsetDelta(tp, p1, p2, mockConsumer);
+    }).when(mockConsumer)
+        .positionDifference(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class));
+
+    long recordsConsumed =
+        TopicMessageFinder.consume(mockConsumer, mockPartition, POSITION_0, POSITION_20, 5L, KEY.getBytes());
 
     assertEquals(recordsConsumed, 0);
   }

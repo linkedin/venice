@@ -11,9 +11,11 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.io.IOException;
@@ -142,14 +144,15 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
   }
 
   @Override
-  public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
+  public OffsetRecord getLastOffset(String topicName, int partitionId, PubSubContext pubSubContext)
+      throws VeniceException {
     Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.get(topicName);
     OffsetRecord offsetRecord = null;
     if (partitionOffsetRecordMap != null) {
       offsetRecord = partitionOffsetRecordMap.get(partitionId);
     }
     if (offsetRecord == null) {
-      return new OffsetRecord(partitionStateSerializer);
+      return new OffsetRecord(partitionStateSerializer, pubSubContext);
     }
     return offsetRecord;
   }
@@ -158,7 +161,8 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
    * putOffsetRecord will only put OffsetRecord into in-memory state, without persisting into metadata RocksDB partition.
    */
   public void putOffsetRecord(String topicName, int partitionId, OffsetRecord record) {
-    LOGGER.info("Updating OffsetRecord: {} for topic: {}, partition: {}", record.toString(), topicName, partitionId);
+    String replicaId = Utils.getReplicaId(topicName, partitionId);
+    LOGGER.info("Updating OffsetRecord: {} for replica: {}", record.toString(), replicaId);
     Map<Integer, OffsetRecord> partitionOffsetRecordMap =
         topicPartitionOffsetRecordMap.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>());
     partitionOffsetRecordMap.put(partitionId, record);

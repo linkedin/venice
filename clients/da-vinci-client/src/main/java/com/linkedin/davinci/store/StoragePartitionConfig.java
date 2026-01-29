@@ -19,8 +19,13 @@ public class StoragePartitionConfig {
   private boolean writeOnlyConfig;
   private boolean readWriteLeaderForDefaultCF;
   private boolean readWriteLeaderForRMDCF;
+  private final boolean blobTransferInProgress;
 
   public StoragePartitionConfig(String storeName, int partitionId) {
+    this(storeName, partitionId, false);
+  }
+
+  public StoragePartitionConfig(String storeName, int partitionId, boolean isBlobTransferInProgress) {
     this.storeName = storeName;
     this.partitionId = partitionId;
     this.deferredWrite = false;
@@ -28,6 +33,7 @@ public class StoragePartitionConfig {
     this.writeOnlyConfig = true;
     this.readWriteLeaderForDefaultCF = false;
     this.readWriteLeaderForRMDCF = false;
+    this.blobTransferInProgress = isBlobTransferInProgress;
   }
 
   public String getStoreName() {
@@ -36,6 +42,10 @@ public class StoragePartitionConfig {
 
   public int getPartitionId() {
     return this.partitionId;
+  }
+
+  public boolean isBlobTransferInProgress() {
+    return blobTransferInProgress;
   }
 
   public void setDeferredWrite(boolean deferredWrite) {
@@ -113,8 +123,15 @@ public class StoragePartitionConfig {
 
   @Override
   public String toString() {
-    return "Replica: " + Utils.getReplicaId(storeName, partitionId) + ", deferred-write: " + deferredWrite
-        + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", read-write leader for default CF: "
-        + readWriteLeaderForDefaultCF + ", read-write leader for RMD CF: " + readWriteLeaderForRMDCF;
+    String toStringResult =
+        "Replica: " + Utils.getReplicaId(storeName, partitionId) + ", deferred-write: " + deferredWrite
+            + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", read-write leader for default CF: "
+            + readWriteLeaderForDefaultCF + ", read-write leader for RMD CF: " + readWriteLeaderForRMDCF;
+
+    if (blobTransferInProgress) {
+      toStringResult += ", blob transfer in progress: true.";
+    }
+
+    return toStringResult;
   }
 }

@@ -35,6 +35,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private Class<T> specificValueClass = null;
   private Schema specificValueSchema = null;
   private boolean isVsonClient = false;
+  private boolean isStatTrackingEnabled = true;
 
   // D2 specific settings
   private boolean isD2Routing = false;
@@ -102,6 +103,7 @@ public class ClientConfig<T extends SpecificRecord> {
         .setSpecificValueClass(config.getSpecificValueClass())
         .setSpecificValueSchema(config.getSpecificValueSchema())
         .setVsonClient(config.isVsonClient())
+        .setStatTrackingEnabled(config.isStatTrackingEnabled())
 
         // D2 specific settings
         .setD2ServiceName(config.getD2ServiceName())
@@ -246,6 +248,15 @@ public class ClientConfig<T extends SpecificRecord> {
       setD2Routing(false);
     }
 
+    return this;
+  }
+
+  public boolean isStatTrackingEnabled() {
+    return isStatTrackingEnabled;
+  }
+
+  public ClientConfig<T> setStatTrackingEnabled(boolean statTrackingEnabled) {
+    this.isStatTrackingEnabled = statTrackingEnabled;
     return this;
   }
 

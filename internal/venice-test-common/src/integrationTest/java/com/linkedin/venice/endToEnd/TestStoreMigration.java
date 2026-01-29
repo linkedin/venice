@@ -28,6 +28,7 @@ import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.AdminTool.PrintFunction;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -126,6 +127,8 @@ public class TestStoreMigration {
     parentControllerProperties
         .setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     parentControllerProperties.setProperty(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
+    parentControllerProperties.put(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, true);
+    parentControllerProperties.put(ConfigKeys.STORE_MIGRATION_TASK_SCHEDULING_INTERVAL_SECONDS, 2);
 
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
@@ -868,6 +871,19 @@ public class TestStoreMigration {
         assertEquals(destStoreInfo.getCurrentVersion(), 1);
       });
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAutoStoreMigration() throws Exception {
+    String storeName = Utils.getUniqueString("testAutoMigration");
+    try {
+      createAndPushStore(srcClusterName, storeName);
+      StoreMigrationTestUtil
+          .autoStoreMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, "0", "false");
+    } finally {
+      StoreMigrationTestUtil.deleteStore(parentControllerUrl, storeName);
+    }
+
   }
 
   private void verifyKillMessageInParticipantStore(

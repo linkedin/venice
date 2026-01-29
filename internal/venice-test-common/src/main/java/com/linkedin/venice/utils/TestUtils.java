@@ -78,8 +78,12 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -147,6 +151,23 @@ import org.testng.Assert;
  * General-purpose utility functions for tests.
  */
 public class TestUtils {
+  /**
+   * **FOR UNIT TESTING PURPOSES ONLY** - Do not use in production code.
+   *
+   * A pre-configured PubSubContext instance with default test values for use in unit tests.
+   * This instance is initialized with basic default components suitable for testing scenarios
+   * where a fully configured PubSubContext is not required.
+   *
+   * Production code should propagate properly configured PubSubContext instances
+   * with appropriate TopicManagerRepository and other production-ready components.
+   *
+   */
+  public static final PubSubContext DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING =
+      new PubSubContext.Builder().setPubSubTopicRepository(new PubSubTopicRepository())
+          .setPubSubPositionDeserializer(PubSubPositionDeserializer.DEFAULT_DESERIALIZER)
+          .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
+          .setUseCheckpointedPubSubPositionWithFallback(true)
+          .build();
   private static final Logger LOGGER = LogManager.getLogger(TestUtils.class);
 
   /** In milliseconds */
@@ -670,7 +691,7 @@ public class TestUtils {
         cluster,
         new ZkClient(zkAddress),
         new HelixAdapterSerializer(),
-        cluster,
+        LogContext.newBuilder().setComponentName(TestUtils.class.getName()).build(),
         3);
     MockTestStateModelFactory stateModelFactory = new MockTestStateModelFactory(offlinePushStatusAccessor);
     return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);
@@ -691,19 +712,14 @@ public class TestUtils {
     return participant;
   }
 
-  public static OffsetRecord getOffsetRecord(long currentOffset) {
-    return getOffsetRecord(currentOffset, Optional.empty());
-  }
-
-  public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete) {
-    return getOffsetRecord(currentOffset, complete ? Optional.of(1000L) : Optional.of(0L));
-  }
-
-  public static OffsetRecord getOffsetRecord(long currentOffset, Optional<Long> endOfPushOffset) {
-    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
-    offsetRecord.setCheckpointLocalVersionTopicOffset(currentOffset);
+  public static OffsetRecord getOffsetRecord(
+      PubSubPosition currentPosition,
+      Optional<PubSubPosition> endOfPushOffset,
+      PubSubContext pubSubContext) {
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer, pubSubContext);
+    offsetRecord.checkpointLocalVtPosition(currentPosition);
     if (endOfPushOffset.isPresent()) {
-      offsetRecord.endOfPushReceived(endOfPushOffset.get());
+      offsetRecord.endOfPushReceived();
     }
     return offsetRecord;
   }
@@ -797,7 +813,21 @@ public class TestUtils {
       String storeName,
       ControllerClient parentControllerClient,
       List<ControllerClient> controllerClientList) {
-    Assert.assertFalse(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\"").isError());
+    createAndVerifyStoreInAllRegions(
+        storeName,
+        parentControllerClient,
+        controllerClientList,
+        "\"string\"",
+        "\"string\"");
+  }
+
+  public static void createAndVerifyStoreInAllRegions(
+      String storeName,
+      ControllerClient parentControllerClient,
+      List<ControllerClient> controllerClientList,
+      String keySchema,
+      String valueSchema) {
+    Assert.assertFalse(parentControllerClient.createNewStore(storeName, "owner", keySchema, valueSchema).isError());
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       for (ControllerClient client: controllerClientList) {
         Assert.assertFalse(client.getStore(storeName).isError());
@@ -848,7 +878,7 @@ public class TestUtils {
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     doReturn(Collections.emptyMap()).when(mockOffsetRecord).getProducerPartitionStateMap();
     String versionTopic = Version.composeKafkaTopic(storeName, 1);
-    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0));
+    doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0), any());
 
     int partitionCount = 1;
     VenicePartitioner partitioner = new DefaultVenicePartitioner();
@@ -894,7 +924,10 @@ public class TestUtils {
         .setLeaderFollowerNotifiersQueue(new ArrayDeque<>())
         .setSchemaRepository(mock(ReadOnlySchemaRepository.class))
         .setMetadataRepository(mockReadOnlyStoreRepository)
-        .setTopicManagerRepository(mock(TopicManagerRepository.class))
+        .setPubSubContext(
+            new PubSubContext.Builder().setPubSubTopicRepository(new PubSubTopicRepository())
+                .setTopicManagerRepository(mock(TopicManagerRepository.class))
+                .build())
         .setHostLevelIngestionStats(mock(AggHostLevelIngestionStats.class))
         .setVersionedDIVStats(mock(AggVersionedDIVStats.class))
         .setVersionedIngestionStats(mock(AggVersionedIngestionStats.class))

@@ -4,7 +4,7 @@ import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_TIMESTAMP_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_INPUT_FILE_DATA_SIZE;
@@ -152,13 +152,19 @@ public class TestWriteUtils {
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(STRING_SCHEMA).build();
   public static final Schema STRING_TO_STRING_WITH_TIMESTAMP = new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
       .setValueSchema(STRING_SCHEMA)
-      .setFieldSchema(DEFAULT_TIMESTAMP_FIELD_PROP, Schema.create(Schema.Type.LONG))
+      .setFieldSchema(DEFAULT_RMD_FIELD_PROP, Schema.create(Schema.Type.LONG))
       .build();
+
+  public static final Schema STRING_TO_STRING_WITH_TIMESTAMP_BYTES =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
+          .setValueSchema(STRING_SCHEMA)
+          .setFieldSchema(DEFAULT_RMD_FIELD_PROP, Schema.create(Schema.Type.BYTES))
+          .build();
 
   public static final Schema STRING_TO_NAME_WITH_TIMESTAMP_RECORD_V1_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
           .setValueSchema(NAME_RECORD_V1_SCHEMA)
-          .setFieldSchema(DEFAULT_TIMESTAMP_FIELD_PROP, Schema.create(Schema.Type.LONG))
+          .setFieldSchema(DEFAULT_RMD_FIELD_PROP, Schema.create(Schema.Type.BYTES))
           .build();
 
   public static final Schema STRING_TO_NAME_RECORD_V1_SCHEMA =
@@ -250,20 +256,46 @@ public class TestWriteUtils {
     return writeSimpleAvroFileWithStringToStringSchema(parentDir, DEFAULT_USER_DATA_RECORD_COUNT);
   }
 
-  public static void writeSimpleAvroFileWithStringToStringAndTimestampSchema(
+  public static Schema writeSimpleAvroFileWithStringToStringAndTimestampSchema(File parentDir, long timestamp)
+      throws IOException {
+    return writeSimpleAvroFileWithStringToStringAndTimestampSchema(
+        parentDir,
+        DEFAULT_USER_DATA_RECORD_COUNT,
+        "string2string_with_timestamp.avro",
+        timestamp);
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToStringAndTimestampSchema(
       File parentDir,
       int recordCount,
       String fileName,
       long timestamp) throws IOException {
-    writeAvroFile(parentDir, fileName, STRING_TO_STRING_WITH_TIMESTAMP, (recordSchema, writer) -> {
+    return writeAvroFile(parentDir, fileName, STRING_TO_STRING_WITH_TIMESTAMP, (recordSchema, writer) -> {
       for (int i = 1; i <= recordCount; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
         user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
-        user.put(DEFAULT_TIMESTAMP_FIELD_PROP, timestamp);
+        user.put(DEFAULT_RMD_FIELD_PROP, timestamp);
         writer.append(user);
       }
     });
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToStringAndTimestampSchema(File parentDir, byte[] timestamp)
+      throws IOException {
+    return writeAvroFile(
+        parentDir,
+        "string2string_with_timestamp.avro",
+        STRING_TO_STRING_WITH_TIMESTAMP_BYTES,
+        (recordSchema, writer) -> {
+          for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+            user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+            user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
+            user.put(DEFAULT_RMD_FIELD_PROP, ByteBuffer.wrap(timestamp));
+            writer.append(user);
+          }
+        });
   }
 
   public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir, int recordCount) throws IOException {
@@ -960,48 +992,57 @@ public class TestWriteUtils {
   }
 
   public static Schema writeETLFileWithUserSchema(File parentDir) throws IOException {
+    return writeETLFileWithUserSchema(parentDir, false);
+  }
+
+  public static Schema writeETLFileWithUserSchema(File parentDir, boolean includeRmd) throws IOException {
     String fileName = "simple_etl_user.avro";
-    return writeAvroFile(
-        parentDir,
-        fileName,
-        getETLFileSchema(ETL_KEY_SCHEMA, ETL_VALUE_SCHEMA),
-        (recordSchema, writer) -> {
-          for (int i = 1; i <= 50; ++i) {
-            GenericRecord user = new GenericData.Record(recordSchema);
+    Schema schema = includeRmd
+        ? getETLFileSchemaWithRmd(ETL_KEY_SCHEMA, ETL_VALUE_SCHEMA)
+        : getETLFileSchema(ETL_KEY_SCHEMA, ETL_VALUE_SCHEMA);
+    return writeAvroFile(parentDir, fileName, schema, (recordSchema, writer) -> {
+      for (int i = 1; i <= 50; ++i) {
+        GenericRecord user = new GenericData.Record(recordSchema);
 
-            GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
-            GenericRecord value = new GenericData.Record(ETL_VALUE_SCHEMA);
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+        GenericRecord value = new GenericData.Record(ETL_VALUE_SCHEMA);
 
-            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-            value.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
+        key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        value.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
 
-            user.put("metadata", new HashMap<>());
+        user.put("metadata", new HashMap<>());
 
-            user.put("key", key);
-            user.put("value", value);
-            user.put("offset", (long) i);
-            user.put("DELETED_TS", null);
+        user.put("key", key);
+        user.put("value", value);
+        user.put("offset", (long) i);
+        if (includeRmd) {
+          user.put("rmd", 123456789L);
+        }
+        user.put("DELETED_TS", null);
 
-            writer.append(user);
-          }
+        writer.append(user);
+      }
 
-          for (int i = 51; i <= 100; ++i) {
-            GenericRecord user = new GenericData.Record(recordSchema);
+      for (int i = 51; i <= 100; ++i) {
+        GenericRecord user = new GenericData.Record(recordSchema);
 
-            GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
 
-            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
 
-            user.put("metadata", new HashMap<>());
+        user.put("metadata", new HashMap<>());
 
-            user.put("key", key);
-            user.put("value", null);
-            user.put("offset", (long) i);
-            user.put("DELETED_TS", (long) i);
+        user.put("key", key);
+        user.put("value", null);
+        user.put("offset", (long) i);
+        if (includeRmd) {
+          user.put("rmd", 123456789L);
+        }
+        user.put("DELETED_TS", (long) i);
 
-            writer.append(user);
-          }
-        });
+        writer.append(user);
+      }
+    });
   }
 
   public static Schema writeETLFileWithUserSchemaAndNullDefaultValue(File parentDir) throws IOException {
@@ -1180,6 +1221,31 @@ public class TestWriteUtils {
                 .setSchema(finalValueSchema)
                 .build(),
             AvroCompatibilityHelper.newField(null).setName("offset").setSchema(Schema.create(Schema.Type.LONG)).build(),
+            AvroCompatibilityHelper.newField(null)
+                .setName("DELETED_TS")
+                .setSchema(Schema.createUnion(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.LONG)))
+                .build(),
+            AvroCompatibilityHelper.newField(null)
+                .setName("metadata")
+                .setSchema(Schema.createMap(Schema.create(Schema.Type.STRING)))
+                .build()));
+  }
+
+  public static Schema getETLFileSchemaWithRmd(Schema keySchema, Schema valueSchema) {
+    Schema finalValueSchema = ETLUtils.transformValueSchemaForETL(valueSchema);
+    return Schema.createRecord(
+        "storeName_v1",
+        "",
+        "",
+        false,
+        Arrays.asList(
+            AvroCompatibilityHelper.newField(null).setName(DEFAULT_KEY_FIELD_PROP).setSchema(keySchema).build(),
+            AvroCompatibilityHelper.newField(null)
+                .setName(DEFAULT_VALUE_FIELD_PROP)
+                .setSchema(finalValueSchema)
+                .build(),
+            AvroCompatibilityHelper.newField(null).setName("offset").setSchema(Schema.create(Schema.Type.LONG)).build(),
+            AvroCompatibilityHelper.newField(null).setName("rmd").setSchema(Schema.create(Schema.Type.LONG)).build(),
             AvroCompatibilityHelper.newField(null)
                 .setName("DELETED_TS")
                 .setSchema(Schema.createUnion(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.LONG)))

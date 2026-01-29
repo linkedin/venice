@@ -33,9 +33,6 @@ dependencies {
   testImplementation project(':internal:venice-common').sourceSets.test.output
 }
 
-apply from: "$rootDir/gradle/helper/publishing.gradle"
-apply from: "$rootDir/gradle/helper/packaging.gradle"
-
 jar {
   manifest {
     attributes = ['Implementation-Title'  : 'Venice Admin Tool',

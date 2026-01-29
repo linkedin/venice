@@ -2,6 +2,7 @@ package com.linkedin.davinci.transformer;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -11,16 +12,21 @@ import org.apache.avro.util.Utf8;
 
 public class TestStringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
   public TestStringRecordTransformer(
+      String storeName,
       int storeVersion,
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
       DaVinciRecordTransformerConfig recordTransformerConfig) {
-    super(storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+    super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
   }
 
   @Override
-  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value, int partitionId) {
+  public DaVinciRecordTransformerResult<String> transform(
+      Lazy<Integer> key,
+      Lazy<String> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
     Object valueObj = value.get();
     String valueStr;
 
@@ -36,8 +42,13 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   }
 
   @Override
-  public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
-    return;
+  public void processPut(
+      Lazy<Integer> key,
+      Lazy<String> value,
+      int partitionId,
+      DaVinciRecordTransformerRecordMetadata recordMetadata) {
+    // Running for sake of unit test
+    value.get();
   }
 
   @Override

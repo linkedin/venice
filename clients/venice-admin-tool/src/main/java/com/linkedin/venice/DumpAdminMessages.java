@@ -14,6 +14,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import java.text.DateFormat;
@@ -37,7 +38,7 @@ import java.util.TimeZone;
  */
 public class DumpAdminMessages {
   public static class AdminOperationInfo {
-    public long offset;
+    public PubSubPosition position;
     public int schemaId;
     public String operationType;
     public String adminOperation;
@@ -48,15 +49,14 @@ public class DumpAdminMessages {
   public static List<AdminOperationInfo> dumpAdminMessages(
       PubSubConsumerAdapter consumer,
       String clusterName,
-      long startingOffset,
+      PubSubPosition startingPosition,
       int messageCnt) {
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    // include the message with startingOffset
     PubSubTopicPartition adminTopicPartition = new PubSubTopicPartitionImpl(
         pubSubTopicRepository.getTopic(adminTopic),
         AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    consumer.subscribe(adminTopicPartition, startingOffset - 1);
+    consumer.subscribe(adminTopicPartition, startingPosition, true);
     AdminOperationSerializer deserializer = new AdminOperationSerializer();
     List<AdminOperationInfo> adminOperations = new ArrayList<>();
     int curMsgCnt = 0;
@@ -81,7 +81,7 @@ public class DumpAdminMessages {
           Put put = (Put) messageEnvelope.payloadUnion;
           AdminOperation adminMessage = deserializer.deserialize(put.putValue, put.schemaId);
           AdminOperationInfo adminOperationInfo = new AdminOperationInfo();
-          adminOperationInfo.offset = record.getPosition().getNumericOffset();
+          adminOperationInfo.position = record.getPosition();
           adminOperationInfo.schemaId = put.schemaId;
           adminOperationInfo.adminOperation = adminMessage.toString();
           adminOperationInfo.operationType = AdminMessageType.valueOf(adminMessage).name();

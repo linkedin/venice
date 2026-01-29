@@ -198,6 +198,8 @@ Commands:
                                                       Requires: --url --store --cluster-src --cluster-dest
     --migration-status                                Get store migration status.
                                                       Requires: --url --store --cluster-src --cluster-dest
+    --auto-migrate-store                              Auto migrate store from one cluster to another within the same fabric.
+                                                      Requires: --url --store --cluster-src --cluster-dest
     --monitor-data-recovery                           Monitor data recovery progress for a group of stores. ('--stores' overwrites
                                                       '--cluster' value).
                                                       Requires: --url --dest-fabric --datetime
@@ -521,6 +523,7 @@ java -jar venice-admin-tool-all.jar --disable-store-read --url <url> --store <st
 java -jar venice-admin-tool-all.jar --disable-store-write --url <url> --store <store> [--cluster <cluster>]
 java -jar venice-admin-tool-all.jar --disable-throttling --url <url> --cluster <cluster>
 java -jar venice-admin-tool-all.jar --dump-admin-messages --cluster <cluster> --kafka-bootstrap-servers <kafka-bootstrap-servers> --starting_offset <starting_offset> --message_count <message_count> --kafka-consumer-config-file <kafka-consumer-config-file>
+java -jar venice-admin-tool-all.jar --dump-admin-messages --cluster <cluster> --kafka-bootstrap-servers <kafka-bootstrap-servers> --starting_position <typeid:starting_position> --message_count <message_count> --kafka-consumer-config-file <kafka-consumer-config-file>
 java -jar venice-admin-tool-all.jar --dump-control-messages --kafka-bootstrap-servers <kafka-bootstrap-servers> --kafka-consumer-config-file <kafka-consumer-config-file> --kafka-topic-name <kafka-topic-name> --kafka-topic-partition <kafka-topic-partition> --starting_offset <starting_offset> --message_count <message_count>
 java -jar venice-admin-tool-all.jar --dump-ingestion-state --server-url <server-url> --store <store> --version <version> [--partition <partition>]
 java -jar venice-admin-tool-all.jar --dump-kafka-topic --kafka-bootstrap-servers <kafka-bootstrap-servers> --kafka-consumer-config-file <kafka-consumer-config-file> --kafka-topic-name <kafka-topic-name> --cluster <cluster> --url <url>
@@ -556,6 +559,7 @@ java -jar venice-admin-tool-all.jar --list-storage-nodes --url <url> --cluster <
 java -jar venice-admin-tool-all.jar --list-store-push-info --url <url> --store <store> [--cluster <cluster>] [--partition-detail-enabled <partition-detail-enabled>]
 java -jar venice-admin-tool-all.jar --list-stores --url <url> --cluster <cluster> [--include-system-stores <include-system-stores>]
 java -jar venice-admin-tool-all.jar --migrate-store --url <url> --store <store> --cluster-src <cluster-src> --cluster-dest <cluster-dest>
+java -jar venice-admin-tool-all.jar --auto-migrate-store --url <url> --store <store> --cluster-src <cluster-src> --cluster-dest <cluster-dest> [--initial-step <initial-step>] [--paused-after-step <paused-after-step>] [--abort-on-failure <abort-on-failure>]
 java -jar venice-admin-tool-all.jar --migration-status --url <url> --store <store> --cluster-src <cluster-src> --cluster-dest <cluster-dest>
 java -jar venice-admin-tool-all.jar --monitor-data-recovery --url <url> --dest-fabric <dest-fabric> --datetime <datetime> [--stores <stores>] [--cluster <cluster>] [--interval <interval>]
 java -jar venice-admin-tool-all.jar --new-storage-persona --url <url> --cluster <cluster> --storage-persona <storage-persona> --storage-quota <storage-quota> --store <store> --owner <owner>

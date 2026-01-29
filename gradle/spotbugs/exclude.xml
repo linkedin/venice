@@ -290,6 +290,7 @@
       <Class name="com.linkedin.venice.utils.TestMockTime"/>
       <Class name="com.linkedin.davinci.ingestion.IsolatedIngestionBackend"/>
       <Class name="com.linkedin.venice.endToEnd.TestChangelogValue"/>
+      <Class name="com.linkedin.venice.endToEnd.TestChangelogValueV2"/>
       <Class name="com.linkedin.venice.endToEnd.TestChangelogKey"/>
       <Class name="com.linkedin.davinci.transformer.TestSpecificValue"/>
       <Class name="com.linkedin.davinci.transformer.TestSpecificKey"/>
@@ -497,6 +498,7 @@
     <Or>
       <Package name="com.linkedin.venice.protocols"/>
       <Package name="com.linkedin.venice.protocols.controller"/>
+      <Package name="com.linkedin.venice.protocols.hooks"/>
     </Or>
   </Match>
   <Match>
@@ -527,6 +529,13 @@
     <Or>
       <Class name="com.linkedin.venice.duckdb.DuckDBAvroToSQLTest"/>
       <Class name="com.linkedin.venice.duckdb.DuckDBDaVinciRecordTransformer"/>
+    </Or>
+  </Match>
+  <Match>
+    <Bug pattern="DB_DUPLICATE_SWITCH_CLAUSES"/>
+    <Or>
+      <!-- Copied class from Avro-1.9 -->
+      <Class name="com.linkedin.venice.schema.avro.SchemaCompatibility19$ReaderWriterCompatibilityChecker"/>
     </Or>
   </Match>
 </FindBugsFilter>

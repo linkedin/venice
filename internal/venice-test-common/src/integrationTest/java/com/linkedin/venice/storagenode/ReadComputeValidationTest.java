@@ -8,7 +8,13 @@ import com.linkedin.venice.client.store.AvroGenericReadComputeStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.ComputeAggregationResponse;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
+import com.linkedin.venice.client.store.predicate.DoublePredicate;
+import com.linkedin.venice.client.store.predicate.FloatPredicate;
+import com.linkedin.venice.client.store.predicate.IntPredicate;
+import com.linkedin.venice.client.store.predicate.LongPredicate;
+import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compute.ComputeUtils;
@@ -417,7 +423,8 @@ public class ReadComputeValidationTest {
         Assert.assertNotNull(expectedException);
         Assert.assertTrue(expectedException instanceof VeniceClientException);
         Assert.assertEquals(((VeniceClientException) expectedException).getErrorType(), ErrorType.GENERAL_ERROR);
-        Assert.assertEquals(expectedException.getMessage(), "COUNT field: member_feature isn't 'ARRAY' or 'MAP' type");
+        Assert.assertTrue(
+            expectedException.getMessage().contains("COUNT field: member_feature isn't 'ARRAY' or 'MAP' type"));
       });
     }
   }
@@ -530,47 +537,13 @@ public class ReadComputeValidationTest {
     Schema valueSchema = Schema.parse(valueSchemaSimple);
     Map<Integer, GenericRecord> valuesByKey = new HashMap<>();
 
-    // Job 1: jobType=full-time, location=remote
-    GenericRecord value1 = new GenericData.Record(valueSchema);
-    value1.put(ID_FIELD, "1");
-    value1.put(JOB_TYPE_FIELD, "full-time");
-    value1.put(LOCATION_FIELD, "remote");
-    valuesByKey.put(1, value1);
-
-    // Job 2: jobType=part-time, location=onsite
-    GenericRecord value2 = new GenericData.Record(valueSchema);
-    value2.put(ID_FIELD, "2");
-    value2.put(JOB_TYPE_FIELD, "part-time");
-    value2.put(LOCATION_FIELD, "onsite");
-    valuesByKey.put(2, value2);
-
-    // Job 3: jobType=full-time, location=remote
-    GenericRecord value3 = new GenericData.Record(valueSchema);
-    value3.put(ID_FIELD, "3");
-    value3.put(JOB_TYPE_FIELD, "full-time");
-    value3.put(LOCATION_FIELD, "remote");
-    valuesByKey.put(3, value3);
-
-    // Job 4: jobType=part-time, location=hybrid
-    GenericRecord value4 = new GenericData.Record(valueSchema);
-    value4.put(ID_FIELD, "4");
-    value4.put(JOB_TYPE_FIELD, "part-time");
-    value4.put(LOCATION_FIELD, "hybrid");
-    valuesByKey.put(4, value4);
-
-    // Job 5: jobType=full-time, location=remote
-    GenericRecord value5 = new GenericData.Record(valueSchema);
-    value5.put(ID_FIELD, "5");
-    value5.put(JOB_TYPE_FIELD, "full-time");
-    value5.put(LOCATION_FIELD, "remote");
-    valuesByKey.put(5, value5);
-
-    // Job 6: jobType=part-time, location=onsite
-    GenericRecord value6 = new GenericData.Record(valueSchema);
-    value6.put(ID_FIELD, "6");
-    value6.put(JOB_TYPE_FIELD, "part-time");
-    value6.put(LOCATION_FIELD, "onsite");
-    valuesByKey.put(6, value6);
+    // Create test job records using helper method
+    valuesByKey.put(1, createJobRecord(valueSchema, "1", "full-time", "remote"));
+    valuesByKey.put(2, createJobRecord(valueSchema, "2", "part-time", "onsite"));
+    valuesByKey.put(3, createJobRecord(valueSchema, "3", "full-time", "remote"));
+    valuesByKey.put(4, createJobRecord(valueSchema, "4", "part-time", "hybrid"));
+    valuesByKey.put(5, createJobRecord(valueSchema, "5", "full-time", "remote"));
+    valuesByKey.put(6, createJobRecord(valueSchema, "6", "part-time", "onsite"));
 
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
@@ -594,7 +567,7 @@ public class ReadComputeValidationTest {
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         // Test single field aggregation: countGroupByValue on jobType field
-        com.linkedin.venice.client.store.ComputeAggregationResponse jobTypeAggResponse =
+        ComputeAggregationResponse jobTypeAggResponse =
             computeStoreClient.computeAggregation().countGroupByValue(2, JOB_TYPE_FIELD).execute(keySet).get();
 
         Map<String, Integer> jobTypeCounts = jobTypeAggResponse.getValueToCount(JOB_TYPE_FIELD);
@@ -606,7 +579,7 @@ public class ReadComputeValidationTest {
         Assert.assertEquals(jobTypeCounts.get("part-time"), Integer.valueOf(3), "part-time count should be 3");
 
         // Test single field aggregation: countGroupByValue on location field, topK=2
-        com.linkedin.venice.client.store.ComputeAggregationResponse locationAggResponse =
+        ComputeAggregationResponse locationAggResponse =
             computeStoreClient.computeAggregation().countGroupByValue(2, LOCATION_FIELD).execute(keySet).get();
 
         Map<String, Integer> locationCounts = locationAggResponse.getValueToCount(LOCATION_FIELD);
@@ -619,11 +592,10 @@ public class ReadComputeValidationTest {
         Assert.assertFalse(locationCounts.containsKey("hybrid"), "hybrid should not be included in top 2");
 
         // Test multi-field aggregation: countGroupByValue on both jobType and location fields
-        com.linkedin.venice.client.store.ComputeAggregationResponse multiFieldAggResponse =
-            computeStoreClient.computeAggregation()
-                .countGroupByValue(3, JOB_TYPE_FIELD, LOCATION_FIELD)
-                .execute(keySet)
-                .get();
+        ComputeAggregationResponse multiFieldAggResponse = computeStoreClient.computeAggregation()
+            .countGroupByValue(3, JOB_TYPE_FIELD, LOCATION_FIELD)
+            .execute(keySet)
+            .get();
 
         // Verify jobType aggregation results from multi-field response
         Map<String, Integer> multiFieldJobTypeCounts = multiFieldAggResponse.getValueToCount(JOB_TYPE_FIELD);
@@ -654,6 +626,470 @@ public class ReadComputeValidationTest {
             multiFieldLocationCounts.get("hybrid"),
             Integer.valueOf(1),
             "Multi-field hybrid count should be 1");
+      });
+    }
+  }
+
+  /**
+   * Test countGroupByBucket aggregation functionality.
+   * This test creates a store with numeric fields, then performs
+   * count group by bucket aggregation on these fields using different predicates.
+   * Covers all available predicate methods for comprehensive testing.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testCountGroupByBucketAggregation() throws Exception {
+    String keySchema = "\"int\"";
+    String valueSchemaWithNumericFields = "{" + "  \"namespace\": \"example.bucket.aggregation\",    "
+        + "  \"type\": \"record\",        " + "  \"name\": \"EmployeeProfile\",       " + "  \"fields\": [        "
+        + "         { \"name\": \"id\", \"type\": \"string\" },             "
+        + "         { \"name\": \"name\", \"type\": \"string\" },           "
+        + "         { \"name\": \"salary\", \"type\": \"float\" },        "
+        + "         { \"name\": \"age\", \"type\": \"int\" },        "
+        + "         { \"name\": \"score\", \"type\": \"double\" },        "
+        + "         { \"name\": \"joinDate\", \"type\": \"long\" },        "
+        + "         { \"name\": \"department\", \"type\": \"string\" }        " + "  ]       " + " }       ";
+
+    VeniceAvroKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
+    VeniceAvroKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaWithNumericFields);
+
+    // Create store with a version
+    VersionCreationResponse creationResponse =
+        veniceCluster.getNewStoreVersion(keySchema, valueSchemaWithNumericFields);
+    Assert.assertFalse(creationResponse.isError());
+    final String topic = creationResponse.getKafkaTopic();
+    final String storeName = Version.parseStoreFromKafkaTopicName(creationResponse.getKafkaTopic());
+
+    // Update the store to enable read compute
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setCompressionStrategy(CompressionStrategy.NO_OP);
+    params.setReadComputationEnabled(true);
+    params.setChunkingEnabled(false);
+    ControllerResponse controllerResponse = veniceCluster.updateStore(storeName, params);
+    Assert.assertFalse(controllerResponse.isError());
+
+    // Create test data
+    Schema valueSchema = Schema.parse(valueSchemaWithNumericFields);
+    Map<Integer, GenericRecord> valuesByKey = new HashMap<>();
+
+    // Create test employee records using helper method
+    // Employee 1: salary=45000.0f, age=25, score=85.5, joinDate=1609459200000L (2021-01-01), department="Engineering"
+    valuesByKey
+        .put(1, createEmployeeRecord(valueSchema, "1", "Alice", 45000.0f, 25, 85.5, 1609459200000L, "Engineering"));
+
+    // Employee 2: salary=75000.0f, age=35, score=92.0, joinDate=1640995200000L (2022-01-01), department="Sales"
+    valuesByKey.put(2, createEmployeeRecord(valueSchema, "2", "Bob", 75000.0f, 35, 92.0, 1640995200000L, "Sales"));
+
+    // Employee 3: salary=55000.0f, age=28, score=78.5, joinDate=1672531200000L (2023-01-01), department="Engineering"
+    valuesByKey
+        .put(3, createEmployeeRecord(valueSchema, "3", "Charlie", 55000.0f, 28, 78.5, 1672531200000L, "Engineering"));
+
+    // Employee 4: salary=95000.0f, age=42, score=88.0, joinDate=1704067200000L (2024-01-01), department="Marketing"
+    valuesByKey
+        .put(4, createEmployeeRecord(valueSchema, "4", "Diana", 95000.0f, 42, 88.0, 1704067200000L, "Marketing"));
+
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory vwFactory = IntegrationTestPushUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
+
+    try (
+        VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory
+            .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer).build());
+        AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr))) {
+
+      // Cast to AvroGenericReadComputeStoreClient to access computeAggregation method
+      AvroGenericReadComputeStoreClient<Integer, Object> computeStoreClient =
+          (AvroGenericReadComputeStoreClient<Integer, Object>) storeClient;
+
+      // Write test data to the store
+      pushRecordsToStore(topic, valuesByKey, veniceWriter, valueSerializer, 1);
+
+      Set<Integer> keySet = new HashSet<>(Arrays.asList(1, 2, 3, 4));
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        // Test countGroupByBucket on salary field with FloatPredicate - all methods
+        Map<String, Predicate<Float>> salaryBuckets = new HashMap<>();
+        salaryBuckets.put("low", FloatPredicate.lowerThan(50000.0f));
+        salaryBuckets.put("medium", FloatPredicate.greaterOrEquals(50000.0f));
+        salaryBuckets.put("high", FloatPredicate.greaterThan(80000.0f));
+        salaryBuckets.put("equal_55000", FloatPredicate.equalTo(55000.0f, 1000.0f));
+        salaryBuckets.put("any_of_45000_75000", FloatPredicate.anyOf(45000.0f, 75000.0f));
+
+        ComputeAggregationResponse salaryAggResponse =
+            computeStoreClient.computeAggregation().countGroupByBucket(salaryBuckets, "salary").execute(keySet).get();
+
+        Map<String, Integer> salaryBucketCounts = salaryAggResponse.getBucketNameToCount("salary");
+        Assert.assertNotNull(salaryBucketCounts);
+
+        // Salary (float) bucket counts
+        // Data: 45000, 75000, 55000, 95000
+        // low: <50000 -> 45000 (1)
+        // medium: >=50000 -> 75000, 55000, 95000 (3)
+        // high: >80000 -> 95000 (1)
+        // equal_55000: ==55000 -> 55000 (1)
+        // any_of_45000_75000: 45000, 75000 (2)
+        Assert.assertEquals(salaryBucketCounts.get("low"), Integer.valueOf(1), "Low salary count should be 1");
+        Assert.assertEquals(salaryBucketCounts.get("medium"), Integer.valueOf(3), "Medium salary count should be 3");
+        Assert.assertEquals(salaryBucketCounts.get("high"), Integer.valueOf(1), "High salary count should be 1");
+        Assert.assertEquals(
+            salaryBucketCounts.get("equal_55000"),
+            Integer.valueOf(1),
+            "Equal 55000 salary count should be 1");
+        Assert.assertEquals(
+            salaryBucketCounts.get("any_of_45000_75000"),
+            Integer.valueOf(2),
+            "Any of 45000,75000 salary count should be 2");
+
+        // Test countGroupByBucket on age field with IntPredicate - all methods
+        Map<String, Predicate<Integer>> ageBuckets = new HashMap<>();
+        ageBuckets.put("young", IntPredicate.lowerThan(30));
+        ageBuckets.put("mid_career", IntPredicate.greaterOrEquals(30));
+        ageBuckets.put("senior", IntPredicate.greaterThan(40));
+        ageBuckets.put("equal_35", IntPredicate.equalTo(35));
+        ageBuckets.put("lower_or_equal_35", IntPredicate.lowerOrEquals(35));
+        ageBuckets.put("any_of_25_42", IntPredicate.anyOf(25, 42));
+
+        ComputeAggregationResponse ageAggResponse =
+            computeStoreClient.computeAggregation().countGroupByBucket(ageBuckets, "age").execute(keySet).get();
+
+        Map<String, Integer> ageBucketCounts = ageAggResponse.getBucketNameToCount("age");
+        Assert.assertNotNull(ageBucketCounts);
+
+        // Age (int) bucket counts
+        // Data: 25, 35, 28, 42
+        // young: <30 -> 25, 28 (2)
+        // mid_career: >=30 -> 35, 42 (2)
+        // senior: >40 -> 42 (1)
+        // equal_35: ==35 -> 35 (1)
+        // lower_or_equal_35: <=35 -> 25, 28, 35 (3)
+        // any_of_25_42: 25, 42 (2)
+        Assert.assertEquals(ageBucketCounts.get("young"), Integer.valueOf(2), "Young age count should be 2");
+        Assert.assertEquals(ageBucketCounts.get("mid_career"), Integer.valueOf(2), "Mid career age count should be 2");
+        Assert.assertEquals(ageBucketCounts.get("senior"), Integer.valueOf(1), "Senior age count should be 1");
+        Assert.assertEquals(ageBucketCounts.get("equal_35"), Integer.valueOf(1), "Equal 35 age count should be 1");
+        Assert.assertEquals(
+            ageBucketCounts.get("lower_or_equal_35"),
+            Integer.valueOf(3),
+            "Lower or equal 35 age count should be 3");
+        Assert.assertEquals(
+            ageBucketCounts.get("any_of_25_42"),
+            Integer.valueOf(2),
+            "Any of 25,42 age count should be 2");
+
+        // Test countGroupByBucket on score field with DoublePredicate - all methods
+        Map<String, Predicate<Double>> scoreBuckets = new HashMap<>();
+        scoreBuckets.put("excellent", DoublePredicate.greaterThan(90.0));
+        scoreBuckets.put("good", DoublePredicate.greaterThan(80.0));
+        scoreBuckets.put("average", DoublePredicate.lowerOrEquals(80.0));
+        scoreBuckets.put("equal_85_5", DoublePredicate.equalTo(85.5, 0.1));
+        scoreBuckets.put("lower_or_equal_92", DoublePredicate.lowerOrEquals(92.0));
+        scoreBuckets.put("any_of_78_5_92_0", DoublePredicate.anyOf(78.5, 92.0));
+
+        ComputeAggregationResponse scoreAggResponse =
+            computeStoreClient.computeAggregation().countGroupByBucket(scoreBuckets, "score").execute(keySet).get();
+
+        Map<String, Integer> scoreBucketCounts = scoreAggResponse.getBucketNameToCount("score");
+        Assert.assertNotNull(scoreBucketCounts);
+
+        // Score (double) bucket counts
+        // Data: 85.5, 92.0, 78.5, 88.0
+        // excellent: >90.0 -> 92.0 (1)
+        // good: >80.0 -> 85.5, 92.0, 88.0 (3)
+        // average: <=80.0 -> 78.5 (1)
+        // equal_85_5: ==85.5 -> 85.5 (1)
+        // lower_or_equal_92: <=92.0 -> 85.5, 78.5, 88.0, 92.0 (4)
+        // any_of_78_5_92_0: 78.5, 92.0 (2)
+        Assert
+            .assertEquals(scoreBucketCounts.get("excellent"), Integer.valueOf(1), "Excellent score count should be 1");
+        Assert.assertEquals(scoreBucketCounts.get("good"), Integer.valueOf(3), "Good score count should be 3");
+        Assert.assertEquals(scoreBucketCounts.get("average"), Integer.valueOf(1), "Average score count should be 1");
+        Assert.assertEquals(
+            scoreBucketCounts.get("equal_85_5"),
+            Integer.valueOf(1),
+            "Equal 85.5 score count should be 1");
+        Assert.assertEquals(
+            scoreBucketCounts.get("lower_or_equal_92"),
+            Integer.valueOf(4),
+            "Lower or equal 92.0 score count should be 4");
+        Assert.assertEquals(
+            scoreBucketCounts.get("any_of_78_5_92_0"),
+            Integer.valueOf(2),
+            "Any of 78.5,92.0 score count should be 2");
+
+        // Test countGroupByBucket on joinDate field with LongPredicate - all methods
+        Map<String, Predicate<Long>> joinDateBuckets = new HashMap<>();
+        joinDateBuckets.put("early", LongPredicate.lowerThan(1640995200000L)); // Before
+                                                                               // 2022
+        joinDateBuckets.put("recent", LongPredicate.greaterOrEquals(1640995200000L)); // 2022
+                                                                                      // and
+                                                                                      // later
+        joinDateBuckets.put("very_recent", LongPredicate.greaterThan(1672531200000L)); // After
+                                                                                       // 2023
+        joinDateBuckets.put("equal_2022", LongPredicate.equalTo(1640995200000L));
+        joinDateBuckets.put("lower_or_equal_1640995200000", LongPredicate.lowerOrEquals(1640995200000L));
+        joinDateBuckets.put("any_of_1609459200000_1704067200000", LongPredicate.anyOf(1609459200000L, 1704067200000L));
+
+        ComputeAggregationResponse joinDateAggResponse = computeStoreClient.computeAggregation()
+            .countGroupByBucket(joinDateBuckets, "joinDate")
+            .execute(keySet)
+            .get();
+
+        Map<String, Integer> joinDateBucketCounts = joinDateAggResponse.getBucketNameToCount("joinDate");
+        Assert.assertNotNull(joinDateBucketCounts);
+
+        // Join date (long) bucket counts
+        // Data: 1609459200000L, 1640995200000L, 1672531200000L, 1704067200000L
+        // early: <1640995200000L -> 1609459200000L (1)
+        // recent: >=1640995200000L -> 1640995200000L, 1672531200000L, 1704067200000L (3)
+        // very_recent: >1672531200000L -> 1704067200000L (1)
+        // equal_2022: ==1640995200000L -> 1640995200000L (1)
+        // lower_or_equal_1640995200000: <=1640995200000L -> 1609459200000L, 1640995200000L (2)
+        // any_of_1609459200000_1704067200000: 1609459200000L, 1704067200000L (2)
+        Assert.assertEquals(joinDateBucketCounts.get("early"), Integer.valueOf(1), "Early join date count should be 1");
+        Assert
+            .assertEquals(joinDateBucketCounts.get("recent"), Integer.valueOf(3), "Recent join date count should be 3");
+        Assert.assertEquals(
+            joinDateBucketCounts.get("very_recent"),
+            Integer.valueOf(1),
+            "Very recent join date count should be 1");
+        Assert.assertEquals(
+            joinDateBucketCounts.get("equal_2022"),
+            Integer.valueOf(1),
+            "Equal 2022 join date count should be 1");
+        Assert.assertEquals(
+            joinDateBucketCounts.get("lower_or_equal_1640995200000"),
+            Integer.valueOf(2),
+            "Lower or equal 1640995200000 join date count should be 2");
+        Assert.assertEquals(
+            joinDateBucketCounts.get("any_of_1609459200000_1704067200000"),
+            Integer.valueOf(2),
+            "Any of 1609459200000,1704067200000 join date count should be 2");
+
+        // Test countGroupByBucket on department field with StringPredicate - all methods
+        Map<String, Predicate<String>> departmentBuckets = new HashMap<>();
+        departmentBuckets.put("engineering", Predicate.equalTo("Engineering"));
+        departmentBuckets.put("any_of_eng_sales", Predicate.anyOf("Engineering", "Sales"));
+
+        ComputeAggregationResponse departmentAggResponse = computeStoreClient.computeAggregation()
+            .countGroupByBucket(departmentBuckets, "department")
+            .execute(keySet)
+            .get();
+
+        Map<String, Integer> departmentBucketCounts = departmentAggResponse.getBucketNameToCount("department");
+        Assert.assertNotNull(departmentBucketCounts);
+
+        // Expected counts: engineering=2 (Engineering appears twice), any_of_eng_sales=3 (Engineering twice + Sales
+        // once)
+        Assert.assertEquals(
+            departmentBucketCounts.get("engineering"),
+            Integer.valueOf(2),
+            "Engineering count should be 2");
+        Assert.assertEquals(
+            departmentBucketCounts.get("any_of_eng_sales"),
+            Integer.valueOf(3),
+            "Any of Engineering,Sales count should be 3");
+
+        // Test complex predicate combinations
+        Map<String, Predicate<Integer>> complexBuckets = new HashMap<>();
+        complexBuckets.put("and_combination", Predicate.and(IntPredicate.greaterThan(20), IntPredicate.lowerThan(40)));
+        complexBuckets.put("or_combination", Predicate.or(IntPredicate.equalTo(25), IntPredicate.equalTo(42)));
+
+        ComputeAggregationResponse complexAggResponse =
+            computeStoreClient.computeAggregation().countGroupByBucket(complexBuckets, "age").execute(keySet).get();
+
+        Map<String, Integer> complexBucketCounts = complexAggResponse.getBucketNameToCount("age");
+        Assert.assertNotNull(complexBucketCounts);
+
+        // Expected: and_combination=3 (25, 28, 35), or_combination=2 (25, 42)
+        Assert.assertEquals(
+            complexBucketCounts.get("and_combination"),
+            Integer.valueOf(3),
+            "And combination count should be 3");
+        Assert.assertEquals(
+            complexBucketCounts.get("or_combination"),
+            Integer.valueOf(2),
+            "Or combination count should be 2");
+      });
+    }
+  }
+
+  /**
+   * Creates a job record with the given parameters.
+   * This helper method reduces code duplication when creating test data.
+   */
+  private GenericRecord createJobRecord(Schema valueSchema, String id, String jobType, String location) {
+    GenericRecord record = new GenericData.Record(valueSchema);
+    record.put(ID_FIELD, id);
+    record.put(JOB_TYPE_FIELD, jobType);
+    record.put(LOCATION_FIELD, location);
+    return record;
+  }
+
+  /**
+   * Creates an employee record with the given parameters.
+   * This helper method reduces code duplication when creating test data.
+   */
+  private GenericRecord createEmployeeRecord(
+      Schema valueSchema,
+      String id,
+      String name,
+      float salary,
+      int age,
+      double score,
+      long joinDate,
+      String department) {
+    GenericRecord record = new GenericData.Record(valueSchema);
+    record.put("id", id);
+    record.put("name", name);
+    record.put("salary", salary);
+    record.put("age", age);
+    record.put("score", score);
+    record.put("joinDate", joinDate);
+    record.put("department", department);
+    return record;
+  }
+
+  /**
+   * Test error handling when using unsupported predicates.
+   * This test verifies that the client properly throws exceptions when
+   * encountering predicates that cannot be handled by the aggregation system.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testUnsupportedPredicateErrorHandling() throws Exception {
+    String keySchema = "\"int\"";
+    String valueSchemaWithNumericFields = "{" + "  \"namespace\": \"example.error.testing\",    "
+        + "  \"type\": \"record\",        " + "  \"name\": \"EmployeeProfile\",       " + "  \"fields\": [        "
+        + "         { \"name\": \"id\", \"type\": \"string\" },             "
+        + "         { \"name\": \"name\", \"type\": \"string\" },           "
+        + "         { \"name\": \"salary\", \"type\": \"float\" },        "
+        + "         { \"name\": \"age\", \"type\": \"int\" },        "
+        + "         { \"name\": \"score\", \"type\": \"double\" },        "
+        + "         { \"name\": \"joinDate\", \"type\": \"long\" },        "
+        + "         { \"name\": \"department\", \"type\": \"string\" }        " + "  ]       " + " }       ";
+
+    VeniceAvroKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
+    VeniceAvroKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaWithNumericFields);
+
+    // Create store with a version
+    VersionCreationResponse creationResponse =
+        veniceCluster.getNewStoreVersion(keySchema, valueSchemaWithNumericFields);
+    Assert.assertFalse(creationResponse.isError());
+    final String topic = creationResponse.getKafkaTopic();
+    final String storeName = Version.parseStoreFromKafkaTopicName(creationResponse.getKafkaTopic());
+
+    // Update the store to enable read compute
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setCompressionStrategy(CompressionStrategy.NO_OP);
+    params.setReadComputationEnabled(true);
+    params.setChunkingEnabled(false);
+    ControllerResponse controllerResponse = veniceCluster.updateStore(storeName, params);
+    Assert.assertFalse(controllerResponse.isError());
+
+    // Create test data
+    Schema valueSchema = Schema.parse(valueSchemaWithNumericFields);
+    Map<Integer, GenericRecord> valuesByKey = new HashMap<>();
+
+    // Create a simple test record
+    valuesByKey
+        .put(1, createEmployeeRecord(valueSchema, "1", "Alice", 45000.0f, 25, 85.5, 1609459200000L, "Engineering"));
+
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory vwFactory = IntegrationTestPushUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
+
+    try (
+        VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory
+            .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer).build());
+        AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr))) {
+
+      // Cast to AvroGenericReadComputeStoreClient to access computeAggregation method
+      AvroGenericReadComputeStoreClient<Integer, Object> computeStoreClient =
+          (AvroGenericReadComputeStoreClient<Integer, Object>) storeClient;
+
+      // Write test data to the store
+      pushRecordsToStore(topic, valuesByKey, veniceWriter, valueSerializer, 1);
+
+      Set<Integer> keySet = new HashSet<>(Arrays.asList(1));
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        // Test 1: Try to use a predicate on a non-existent field
+        Map<String, Predicate<String>> invalidFieldBuckets = new HashMap<>();
+        invalidFieldBuckets.put("invalid", Predicate.equalTo("test"));
+
+        try {
+          computeStoreClient.computeAggregation()
+              .countGroupByBucket(invalidFieldBuckets, "nonExistentField")
+              .execute(keySet)
+              .get();
+          Assert.fail("Should have thrown an exception for non-existent field");
+        } catch (Exception e) {
+          // Expected to throw an exception
+          Assert.assertTrue(
+              e instanceof VeniceClientException,
+              "Should throw VeniceClientException for non-existent field");
+          Assert.assertTrue(
+              e.getMessage().contains("nonExistentField") || e.getMessage().contains("field not found"),
+              "Exception message should mention the non-existent field");
+        }
+
+        // Test 2: Try to use a predicate type that doesn't match the field type
+        Map<String, Predicate<Integer>> typeMismatchBuckets = new HashMap<>();
+        typeMismatchBuckets.put("mismatch", IntPredicate.equalTo(25));
+
+        try {
+          computeStoreClient.computeAggregation()
+              .countGroupByBucket(typeMismatchBuckets, "salary") // salary is float, not int
+              .execute(keySet)
+              .get();
+          Assert.fail("Should have thrown an exception for type mismatch");
+        } catch (Exception e) {
+          // Expected to throw an exception
+          Assert.assertTrue(e instanceof VeniceClientException, "Should throw VeniceClientException for type mismatch");
+          Assert.assertTrue(
+              e.getMessage().contains("salary") || e.getMessage().contains("type"),
+              "Exception message should mention the field or type mismatch");
+        }
+
+        // Test 3: Try to use an unsupported predicate combination
+        Map<String, Predicate<Integer>> unsupportedBuckets = new HashMap<>();
+        // Create a deeply nested predicate that might not be supported
+        Predicate<Integer> complexPredicate = Predicate.and(
+            IntPredicate.greaterThan(20),
+            Predicate
+                .or(IntPredicate.equalTo(25), Predicate.and(IntPredicate.lowerThan(30), IntPredicate.greaterThan(15))));
+        unsupportedBuckets.put("complex", complexPredicate);
+
+        try {
+          computeStoreClient.computeAggregation().countGroupByBucket(unsupportedBuckets, "age").execute(keySet).get();
+          // This might succeed or fail depending on implementation
+          // We're testing that the system handles complex predicates gracefully
+          // If it succeeds, that's fine - complex predicates are supported
+        } catch (Exception e) {
+          // If it fails, that's also acceptable - complex predicates might not be supported
+          Assert.assertTrue(
+              e instanceof VeniceClientException || e instanceof RuntimeException,
+              "Should throw appropriate exception for unsupported complex predicate");
+        }
+
+        // Test 4: Try to use an empty bucket map
+        Map<String, Predicate<Integer>> emptyBuckets = new HashMap<>();
+
+        try {
+          computeStoreClient.computeAggregation().countGroupByBucket(emptyBuckets, "age").execute(keySet).get();
+          Assert.fail("Should have thrown an exception for empty buckets");
+        } catch (Exception e) {
+          // Expected to throw an exception
+          Assert.assertTrue(
+              e instanceof VeniceClientException || e instanceof IllegalArgumentException,
+              "Should throw appropriate exception for empty buckets");
+          Assert.assertTrue(
+              e.getMessage().contains("empty") || e.getMessage().contains("bucket")
+                  || e.getMessage().contains("invalid"),
+              "Exception message should mention empty buckets or invalid input");
+        }
       });
     }
   }

@@ -105,6 +105,10 @@ public class AggVersionedIngestionStats
     recordVersionedAndTotalStat(storeName, version, IngestionStats::recordTotalDCR);
   }
 
+  public void recordTotalDuplicateKeyUpdate(String storeName, int version) {
+    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordTotalDuplicateKeyUpdate);
+  }
+
   public void recordTimestampRegressionDCRError(String storeName, int version) {
     recordVersionedAndTotalStat(storeName, version, IngestionStats::recordTimestampRegressionDCRError);
   }
@@ -188,10 +192,6 @@ public class AggVersionedIngestionStats
         storeName,
         version,
         stat -> stat.recordConsumedRecordEndToEndProcessingLatency(value, currentTimeMs));
-  }
-
-  public void recordVersionTopicEndOffsetRewind(String storeName, int version) {
-    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordVersionTopicEndOffsetRewind);
   }
 
   public void recordNearlineProducerToLocalBrokerLatency(String storeName, int version, double value, long timestamp) {

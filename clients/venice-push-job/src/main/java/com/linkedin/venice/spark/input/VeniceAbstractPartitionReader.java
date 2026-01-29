@@ -28,7 +28,7 @@ public abstract class VeniceAbstractPartitionReader implements PartitionReader<I
   public InternalRow get() {
     return new GenericInternalRow(
         new Object[] { recordIterator.getCurrentKey(), recordIterator.getCurrentValue(),
-            recordIterator.getTimeStamp() });
+            recordIterator.getCurrentRmd() });
   }
 
   @Override

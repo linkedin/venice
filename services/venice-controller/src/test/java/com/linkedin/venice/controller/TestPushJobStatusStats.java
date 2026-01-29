@@ -14,7 +14,9 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.PushJobCheckpoints;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
@@ -35,23 +37,34 @@ public class TestPushJobStatusStats {
   private static final Set<PushJobCheckpoints> CUSTOM_USER_ERROR_CHECKPOINTS =
       new HashSet<>(Collections.singletonList(DVC_INGESTION_ERROR_OTHER));
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testEmitPushJobStatusMetrics(boolean isIncrementalPush, boolean useUserProvidedUserErrorCheckpoints) {
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testEmitPushJobStatusMetrics(
+      boolean isIncrementalPush,
+      boolean useUserProvidedUserErrorCheckpoints,
+      boolean isRepush) {
     Set<PushJobCheckpoints> userErrorCheckpoints =
         useUserProvidedUserErrorCheckpoints ? CUSTOM_USER_ERROR_CHECKPOINTS : DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS;
-    PushJobStatusRecordKey key = new PushJobStatusRecordKey("test", 1);
+    String storeName = "test-store";
+    PushJobStatusRecordKey key = new PushJobStatusRecordKey(storeName, 1);
     PushJobDetails pushJobDetails = mock(PushJobDetails.class);
     Map<CharSequence, CharSequence> pushJobConfigs = new HashMap<>();
     pushJobConfigs.put(new Utf8("incremental.push"), String.valueOf(isIncrementalPush));
     when(pushJobDetails.getPushJobConfigs()).thenReturn(pushJobConfigs);
+
+    String pushId = (isRepush ? Version.VENICE_RE_PUSH_PUSH_ID_PREFIX : "") + "test-push";
+    when(pushJobDetails.getPushId()).thenReturn(pushId);
 
     when(pushJobDetails.getClusterName()).thenReturn(new Utf8("cluster1"));
     List<PushJobDetailsStatusTuple> statusTuples = new ArrayList<>();
     when(pushJobDetails.getOverallStatus()).thenReturn(statusTuples);
 
     Map<String, PushJobStatusStats> pushJobStatusStatsMap = new HashMap<>();
-    PushJobStatusStats stats = mock(PushJobStatusStats.class);
-    pushJobStatusStatsMap.put("cluster1", stats);
+    PushJobStatusStats pushJobStatusStats = mock(PushJobStatusStats.class);
+    pushJobStatusStatsMap.put("cluster1", pushJobStatusStats);
+
+    Map<String, LogCompactionStats> logCompactionStatsMap = new HashMap<>();
+    LogCompactionStats logCompactionStats = mock(LogCompactionStats.class);
+    logCompactionStatsMap.put("cluster1", logCompactionStats);
 
     int numberSuccess = 0;
     int numberUserErrors = 0;
@@ -67,7 +80,12 @@ public class TestPushJobStatusStats {
 
       for (PushJobCheckpoints checkpoint: PushJobCheckpoints.values()) {
         when(pushJobDetails.getPushJobLatestCheckpoint()).thenReturn(checkpoint.getValue());
-        emitPushJobStatusMetrics(pushJobStatusStatsMap, key, pushJobDetails, userErrorCheckpoints);
+        emitPushJobStatusMetrics(
+            pushJobStatusStatsMap,
+            logCompactionStatsMap,
+            key,
+            pushJobDetails,
+            userErrorCheckpoints);
         boolean isUserError = userErrorCheckpoints.contains(checkpoint);
 
         if (isUserError) {
@@ -76,16 +94,20 @@ public class TestPushJobStatusStats {
               assertTrue(isPushJobFailedDueToUserError(status, pushJobDetails, userErrorCheckpoints));
               numberUserErrors++;
               if (isIncrementalPush) {
-                verify(stats, times(numberUserErrors)).recordIncrementalPushFailureDueToUserErrorSensor();
+                verify(pushJobStatusStats, times(numberUserErrors)).recordIncrementalPushFailureDueToUserErrorSensor();
               } else {
-                verify(stats, times(numberUserErrors)).recordBatchPushFailureDueToUserErrorSensor();
+                verify(pushJobStatusStats, times(numberUserErrors)).recordBatchPushFailureDueToUserErrorSensor();
               }
             } else {
               numberSuccess++;
               if (isIncrementalPush) {
-                verify(stats, times(numberSuccess)).recordIncrementalPushSuccessSensor();
+                verify(pushJobStatusStats, times(numberSuccess)).recordIncrementalPushSuccessSensor();
               } else {
-                verify(stats, times(numberSuccess)).recordBatchPushSuccessSensor();
+                verify(pushJobStatusStats, times(numberSuccess)).recordBatchPushSuccessSensor();
+              }
+
+              if (isRepush) {
+                verify(logCompactionStats, times(numberSuccess)).setCompactionComplete(storeName);
               }
             }
           }
@@ -95,16 +117,21 @@ public class TestPushJobStatusStats {
             if (isFailed(status)) {
               numberNonUserErrors++;
               if (isIncrementalPush) {
-                verify(stats, times(numberNonUserErrors)).recordIncrementalPushFailureNotDueToUserErrorSensor();
+                verify(pushJobStatusStats, times(numberNonUserErrors))
+                    .recordIncrementalPushFailureNotDueToUserErrorSensor();
               } else {
-                verify(stats, times(numberNonUserErrors)).recordBatchPushFailureNotDueToUserErrorSensor();
+                verify(pushJobStatusStats, times(numberNonUserErrors)).recordBatchPushFailureNotDueToUserErrorSensor();
               }
             } else {
               numberSuccess++;
               if (isIncrementalPush) {
-                verify(stats, times(numberSuccess)).recordIncrementalPushSuccessSensor();
+                verify(pushJobStatusStats, times(numberSuccess)).recordIncrementalPushSuccessSensor();
               } else {
-                verify(stats, times(numberSuccess)).recordBatchPushSuccessSensor();
+                verify(pushJobStatusStats, times(numberSuccess)).recordBatchPushSuccessSensor();
+              }
+
+              if (isRepush) {
+                verify(logCompactionStats, times(numberSuccess)).setCompactionComplete(storeName);
               }
             }
           }

@@ -33,6 +33,7 @@ import com.linkedin.venice.serializer.VeniceSerializationException;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -61,6 +62,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public static final String TYPE_STORAGE = "storage";
   public static final String TYPE_COMPUTE = "compute";
   public static final String B64_FORMAT = "?f=b64";
+  private final Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
 
   private final ClientConfig clientConfig;
   protected final boolean needSchemaReader;
@@ -263,7 +265,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
               stats.ifPresent(
                   (clientStats) -> clientStats
                       .recordResponseDecompressionTime(LatencyUtils.getElapsedTimeFromNSToMS(decompressionStartTime)));
-              RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
+              RecordDeserializer<V> deserializer = getDataRecordDeserializerFromCache(response.getSchemaId());
               valueFuture.complete(tryToDeserialize(deserializer, data, response.getSchemaId(), key));
               responseCompleteReporter.report();
             }
@@ -490,7 +492,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         getDeserializationExecutor(),
         streamingFooterRecordDeserializer,
         () -> getComputeResultRecordDeserializer(resultSchema),
-        schemaId -> (RecordDeserializer) getDataRecordDeserializer(schemaId),
+        schemaId -> (RecordDeserializer) getDataRecordDeserializerFromCache(schemaId),
         this::decompressRecord);
 
     if (clientConfig.isRemoteComputationOnly() || remoteComputationAllowed.get()) {
@@ -700,7 +702,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         decoderCallback,
         getDeserializationExecutor(),
         streamingFooterRecordDeserializer,
-        this::getDataRecordDeserializer,
+        this::getDataRecordDeserializerFromCache,
         this::decompressRecord);
     streamingBatchGet(keyList, decoder, decoderCallback.getStats());
   }
@@ -727,6 +729,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     byte[] result = multiGetRequestSerializer.serializeObjects(serializedKeyList);
     stats.ifPresent(s -> s.recordRequestSerializationTime(LatencyUtils.getElapsedTimeFromNSToMS(startTime)));
     return result;
+  }
+
+  protected RecordDeserializer<V> getDataRecordDeserializerFromCache(int schemaId) {
+    return deserializerCache.computeIfAbsent(schemaId, this::getDataRecordDeserializer);
   }
 
   protected static boolean handleCallbackForEmptyKeySet(Collection<?> keys, StreamingCallback callback) {

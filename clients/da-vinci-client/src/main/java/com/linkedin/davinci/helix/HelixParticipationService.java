@@ -83,6 +83,7 @@ public class HelixParticipationService extends AbstractVeniceService
   private final CompletableFuture<SafeHelixManager> managerFuture; // complete this future when the manager is connected
   private final CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture;
   private PushStatusStoreWriter statusStoreWriter;
+  private PushStatusNotifier pushStatusNotifier;
   private ZkClient zkClient;
   private SafeHelixManager helixManager;
   private AbstractStateModelFactory leaderFollowerParticipantModelFactory;
@@ -149,7 +150,7 @@ public class HelixParticipationService extends AbstractVeniceService
         300L,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory(threadName, veniceConfigLoader.getVeniceServerConfig().getRegionName()));
+        new DaemonThreadFactory(threadName, veniceConfigLoader.getVeniceServerConfig().getLogContext()));
     helixStateTransitionThreadPool.allowCoreThreadTimeOut(true);
 
     return helixStateTransitionThreadPool;
@@ -368,7 +369,7 @@ public class HelixParticipationService extends AbstractVeniceService
         clusterName,
         zkClient,
         new HelixAdapterSerializer(),
-        veniceServerConfig.getRegionName(),
+        veniceServerConfig.getLogContext(),
         veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect());
 
     /**
@@ -404,6 +405,7 @@ public class HelixParticipationService extends AbstractVeniceService
           helixReadOnlyStoreRepository,
           instance.getNodeId(),
           veniceServerConfig.getIncrementalPushStatusWriteMode());
+      this.pushStatusNotifier = pushStatusNotifier;
 
       ingestionBackend.getStoreIngestionService().addIngestionNotifier(pushStatusNotifier);
 
@@ -427,6 +429,19 @@ public class HelixParticipationService extends AbstractVeniceService
     // Get all hosted stores
     currentLogger.info("Started resetting all instance CV states");
     Map<String, Set<Integer>> storePartitionMapping = storageService.getStoreAndUserPartitionsMapping();
+
+    // TODO: remove the log
+    currentLogger.info("Reset total {} of stores' CV states", storePartitionMapping.size());
+    storePartitionMapping.entrySet().stream().limit(10).forEach(entry -> {
+      String storeName = entry.getKey();
+      Set<Integer> partitionIds = entry.getValue();
+      currentLogger.info(
+          "Resetting store: {}, Total partitions: {}, First 10 partitions: {}",
+          storeName,
+          partitionIds.size(),
+          partitionIds.stream().limit(10).collect(java.util.stream.Collectors.toList()));
+    });
+
     storePartitionMapping.forEach((storeName, partitionIds) -> {
       partitionIds.forEach(partitionId -> {
         try {
@@ -455,6 +470,10 @@ public class HelixParticipationService extends AbstractVeniceService
 
   public PushStatusStoreWriter getStatusStoreWriter() {
     return statusStoreWriter;
+  }
+
+  public PushStatusNotifier getPushStatusNotifier() {
+    return pushStatusNotifier;
   }
 
   public ReadOnlyStoreRepository getHelixReadOnlyStoreRepository() {

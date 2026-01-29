@@ -78,9 +78,8 @@ public class PushJobSetting implements Serializable {
   public String targetedRegions;
   public boolean isTargetedRegionPushEnabled;
   public boolean isTargetRegionPushWithDeferredSwapEnabled;
+  public int targetRegionPushWithDeferredSwapWaitTime;
   public boolean isSystemSchemaReaderEnabled;
-  public String systemSchemaClusterD2ServiceName;
-  public String systemSchemaClusterD2ZKHost;
   public boolean isZstdDictCreationRequired;
   public boolean isZstdDictCreationSuccess;
 
@@ -123,10 +122,12 @@ public class PushJobSetting implements Serializable {
   // Schema-properties
   public boolean isAvro = true;
   public int valueSchemaId; // Value schema id retrieved from backend for valueSchemaString
+  public int rmdSchemaId = -1; // Replication metadata schema id retrieved from backend for
+                               // replicationMetadataSchemaString
   public int derivedSchemaId = -1;
   public String keyField;
   public String valueField;
-  public String timestampField;
+  public String rmdField;
 
   public Schema inputDataSchema;
   public String inputDataSchemaString;
@@ -147,6 +148,7 @@ public class PushJobSetting implements Serializable {
 
   public boolean generatePartialUpdateRecordFromInput;
   public ETLValueSchemaTransformation etlValueSchemaTransformation;
+  public Map<Integer, String> newKmeSchemasFromController;
 
   // Additional inferred properties
   public boolean inputHasRecords;
@@ -163,4 +165,9 @@ public class PushJobSetting implements Serializable {
   }
 
   public String materializedViewConfigFlatMap;
+
+  public boolean isBatchWriteOptimizationForHybridStoreEnabled;
+  public boolean isSortedIngestionEnabled;
+  public boolean allowRegularPushWithTTLRepush;
+
 }

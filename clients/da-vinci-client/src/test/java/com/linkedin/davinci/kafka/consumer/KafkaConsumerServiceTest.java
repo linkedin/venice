@@ -20,17 +20,21 @@ import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.davinci.utils.IndexedMap;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.utils.RandomAccessDaemonThreadFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -62,96 +66,7 @@ public class KafkaConsumerServiceTest {
     mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(mockVeniceServerConfig)
         .getPubSubPositionTypeRegistry();
-  }
-
-  @Test
-  public void testTopicWiseGetConsumer() throws Exception {
-    String testKafkaClusterAlias = "test_kafka_cluster_alias";
-    ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
-    when(consumer1.hasAnySubscription()).thenReturn(true);
-
-    ApacheKafkaConsumerAdapter consumer2 = mock(ApacheKafkaConsumerAdapter.class);
-    when(consumer2.hasAnySubscription()).thenReturn(true);
-
-    String storeName1 = Utils.getUniqueString("test_consumer_service1");
-    StoreIngestionTask task1 = mock(StoreIngestionTask.class);
-    PubSubTopic topicForStoreName1 = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName1, 1));
-    when(task1.getVersionTopic()).thenReturn(topicForStoreName1);
-    when(task1.isHybridMode()).thenReturn(true);
-
-    String storeName2 = Utils.getUniqueString("test_consumer_service2");
-    PubSubTopic topicForStoreName2 = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName2, 1));
-    StoreIngestionTask task2 = mock(StoreIngestionTask.class);
-    when(task2.getVersionTopic()).thenReturn(topicForStoreName2);
-    when(task2.isHybridMode()).thenReturn(true);
-
-    PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1, consumer2);
-
-    Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
-
-    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
-    final Sensor mockSensor = mock(Sensor.class);
-    doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
-    KafkaConsumerService consumerService = new TopicWiseKafkaConsumerService(
-        ConsumerPoolType.REGULAR_POOL,
-        factory,
-        properties,
-        1000L,
-        2,
-        mock(IngestionThrottler.class),
-        mock(KafkaClusterBasedRecordThrottler.class),
-        mockMetricsRepository,
-        testKafkaClusterAlias,
-        TimeUnit.MINUTES.toMillis(1),
-        mock(StaleTopicChecker.class),
-        false,
-        pubSubDeserializer,
-        SystemTime.INSTANCE,
-        null,
-        false,
-        mock(ReadOnlyStoreRepository.class),
-        false,
-        mockVeniceServerConfig);
-    consumerService.start();
-
-    PubSubTopic versionTopicForTask1 = task1.getVersionTopic();
-    PubSubConsumerAdapter assignedConsumerForTask1 =
-        consumerService.assignConsumerFor(versionTopicForTask1, new PubSubTopicPartitionImpl(versionTopicForTask1, 0));
-    PubSubTopic versionTopicForTask2 = task2.getVersionTopic();
-    PubSubConsumerAdapter assignedConsumerForTask2 =
-        consumerService.assignConsumerFor(versionTopicForTask2, new PubSubTopicPartitionImpl(versionTopicForTask2, 0));
-    Assert.assertNotEquals(
-        assignedConsumerForTask1,
-        assignedConsumerForTask2,
-        "We should avoid to share consumer when there is consumer not assigned topic.");
-
-    // Get partitions assigned to those two consumers
-    Set<PubSubTopicPartition> consumer1AssignedPartitions = getPubSubTopicPartitionsSet(topicForStoreName1, 5);
-    when(consumer1.getAssignment()).thenReturn(consumer1AssignedPartitions);
-
-    Set<PubSubTopicPartition> consumer2AssignedPartitions = getPubSubTopicPartitionsSet(topicForStoreName2, 3);
-
-    when(consumer2.getAssignment()).thenReturn(consumer2AssignedPartitions);
-    SharedKafkaConsumer sharedAssignedConsumerForTask1 = (SharedKafkaConsumer) assignedConsumerForTask1;
-    sharedAssignedConsumerForTask1.setCurrentAssignment(consumer1AssignedPartitions);
-    SharedKafkaConsumer sharedAssignedConsumerForTask2 = (SharedKafkaConsumer) assignedConsumerForTask2;
-    sharedAssignedConsumerForTask2.setCurrentAssignment(consumer2AssignedPartitions);
-
-    String storeName3 = Utils.getUniqueString("test_consumer_service3");
-    PubSubTopic topicForStoreName3 = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName3, 1));
-    StoreIngestionTask task3 = mock(StoreIngestionTask.class);
-    when(task3.getVersionTopic()).thenReturn(topicForStoreName3);
-    when(task3.isHybridMode()).thenReturn(true);
-    PubSubTopic versionTopicForTask3 = task3.getVersionTopic();
-    PubSubConsumerAdapter assignedConsumerForTask3 =
-        consumerService.assignConsumerFor(versionTopicForTask3, new PubSubTopicPartitionImpl(versionTopicForTask3, 0));
-    Assert.assertEquals(
-        assignedConsumerForTask3,
-        assignedConsumerForTask2,
-        "The assigned consumer should come with least partitions, when no zero loaded consumer available.");
-    consumerService.stop();
+    doReturn(20).when(mockVeniceServerConfig).getServerIngestionInfoLogLineLimit();
   }
 
   @Test
@@ -185,12 +100,16 @@ public class KafkaConsumerServiceTest {
     PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
         versionTopic,
         topicPartition,
-        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
 
     ConsumedDataReceiver consumedDataReceiver = mock(ConsumedDataReceiver.class);
     when(consumedDataReceiver.destinationIdentifier()).thenReturn(versionTopic);
-    consumerService.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, 0, consumedDataReceiver);
+    consumerService.startConsumptionIntoDataReceiver(
+        partitionReplicaIngestionContext,
+        ApacheKafkaOffsetPosition.of(0),
+        consumedDataReceiver,
+        false);
 
     SharedKafkaConsumer assignedConsumer = consumerService.assignConsumerFor(versionTopic, topicPartition);
     Set<PubSubTopicPartition> consumerAssignedPartitions = new HashSet<>();
@@ -209,7 +128,7 @@ public class KafkaConsumerServiceTest {
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, true, true, () -> {
       verify(consumer1, atLeastOnce()).poll(anyLong());
       Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-          consumerService.getIngestionInfoFor(versionTopic, topicPartition);
+          consumerService.getIngestionInfoFor(versionTopic, topicPartition, false);
       Assert.assertEquals(topicPartitionIngestionInfoMap.size(), 1);
       Assert.assertTrue(topicPartitionIngestionInfoMap.containsKey(topicPartition));
       TopicPartitionIngestionInfo info = topicPartitionIngestionInfoMap.get(topicPartition);
@@ -244,9 +163,15 @@ public class KafkaConsumerServiceTest {
       MetricsRepository mockMetricsRepository,
       ConsumerPoolType poolType,
       IngestionThrottler mockIngestionThrottler) {
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    doReturn(factory).when(mockPubSubClientsFactory).getConsumerAdapterFactory();
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
+    doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
+
     KafkaConsumerService consumerService = new KafkaConsumerService(
         poolType,
-        factory,
         properties,
         1000L,
         1,
@@ -257,13 +182,13 @@ public class KafkaConsumerServiceTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(StaleTopicChecker.class),
         false,
-        pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mockVeniceServerConfig) {
+        mockVeniceServerConfig,
+        mockPubSubContext) {
       @Override
       protected SharedKafkaConsumer pickConsumerForPartition(
           PubSubTopic versionTopic,
@@ -272,100 +197,6 @@ public class KafkaConsumerServiceTest {
       }
     };
     return consumerService;
-  }
-
-  private Set<PubSubTopicPartition> getPubSubTopicPartitionsSet(PubSubTopic pubSubTopic, int partitionNum) {
-    Set<PubSubTopicPartition> topicPartitionsSet = new HashSet<>();
-    for (int i = 0; i < partitionNum; i++) {
-      topicPartitionsSet.add(new PubSubTopicPartitionImpl(pubSubTopic, i));
-    }
-    return topicPartitionsSet;
-  }
-
-  @Test
-  public void testTopicWiseGetConsumerForHybridMode() throws Exception {
-    ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
-    when(consumer1.hasAnySubscription()).thenReturn(false);
-
-    ApacheKafkaConsumerAdapter consumer2 = mock(ApacheKafkaConsumerAdapter.class);
-    when(consumer1.hasAnySubscription()).thenReturn(false);
-
-    PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1, consumer2);
-
-    Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
-
-    MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
-    final Sensor mockSensor = mock(Sensor.class);
-    doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
-    KafkaConsumerService consumerService = new TopicWiseKafkaConsumerService(
-        ConsumerPoolType.REGULAR_POOL,
-        factory,
-        properties,
-        1000L,
-        2,
-        mock(IngestionThrottler.class),
-        mock(KafkaClusterBasedRecordThrottler.class),
-        mockMetricsRepository,
-        "test_kafka_cluster_alias",
-        TimeUnit.MINUTES.toMillis(1),
-        mock(StaleTopicChecker.class),
-        false,
-        pubSubDeserializer,
-        SystemTime.INSTANCE,
-        null,
-        false,
-        mock(ReadOnlyStoreRepository.class),
-        false,
-        mockVeniceServerConfig);
-    consumerService.start();
-
-    String storeName = Utils.getUniqueString("test_consumer_service");
-    StoreIngestionTask task1 = mock(StoreIngestionTask.class);
-    String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
-    PubSubTopic pubSubTopicForStoreVersion1 = pubSubTopicRepository.getTopic(topicForStoreVersion1);
-    when(task1.getVersionTopic()).thenReturn(pubSubTopicForStoreVersion1);
-    when(task1.isHybridMode()).thenReturn(true);
-
-    SharedKafkaConsumer assignedConsumerForV1 = consumerService
-        .assignConsumerFor(pubSubTopicForStoreVersion1, new PubSubTopicPartitionImpl(task1.getVersionTopic(), 0));
-    Assert.assertEquals(
-        consumerService
-            .assignConsumerFor(pubSubTopicForStoreVersion1, new PubSubTopicPartitionImpl(task1.getVersionTopic(), 0)),
-        assignedConsumerForV1,
-        "The 'getConsumer' function should be idempotent");
-
-    String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
-    StoreIngestionTask task2 = mock(StoreIngestionTask.class);
-    PubSubTopic pubSubTopicForStoreVersion2 = pubSubTopicRepository.getTopic(topicForStoreVersion2);
-    when(task2.getVersionTopic()).thenReturn(pubSubTopicForStoreVersion2);
-    when(task2.isHybridMode()).thenReturn(true);
-
-    SharedKafkaConsumer assignedConsumerForV2 = consumerService
-        .assignConsumerFor(pubSubTopicForStoreVersion2, new PubSubTopicPartitionImpl(pubSubTopicForStoreVersion2, 0));
-    Assert.assertNotEquals(
-        assignedConsumerForV2,
-        assignedConsumerForV1,
-        "The 'getConsumer' function should return a different consumer from v1");
-
-    String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
-    PubSubTopic pubSubTopicForStoreVersion3 = pubSubTopicRepository.getTopic(topicForStoreVersion3);
-    StoreIngestionTask task3 = mock(StoreIngestionTask.class);
-    when(task3.getVersionTopic()).thenReturn(pubSubTopicForStoreVersion3);
-    when(task3.isHybridMode()).thenReturn(true);
-    boolean caughtException = false;
-    try {
-      consumerService
-          .assignConsumerFor(pubSubTopicForStoreVersion3, new PubSubTopicPartitionImpl(pubSubTopicForStoreVersion3, 0));
-      Assert.fail("An exception should be thrown since all 2 consumers should be occupied by other versions");
-    } catch (IllegalStateException e) {
-      // expected
-      caughtException = true;
-    }
-    Assert.assertTrue(caughtException);
-
-    consumerService.stop();
   }
 
   @Test
@@ -400,9 +231,16 @@ public class KafkaConsumerServiceTest {
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
+
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    doReturn(factory).when(mockPubSubClientsFactory).getConsumerAdapterFactory();
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
+    doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
+
     PartitionWiseKafkaConsumerService consumerService = new PartitionWiseKafkaConsumerService(
         ConsumerPoolType.REGULAR_POOL,
-        factory,
         properties,
         1000L,
         2,
@@ -413,13 +251,13 @@ public class KafkaConsumerServiceTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(StaleTopicChecker.class),
         false,
-        pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mockVeniceServerConfig);
+        mockVeniceServerConfig,
+        mockPubSubContext);
     consumerService.start();
 
     PubSubConsumerAdapter consumerForT1P0 = consumerService
@@ -574,9 +412,15 @@ public class KafkaConsumerServiceTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
 
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    doReturn(factory).when(mockPubSubClientsFactory).getConsumerAdapterFactory();
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    doReturn(pubSubDeserializer).when(mockPubSubContext).getPubSubMessageDeserializer();
+    doReturn(mockPubSubClientsFactory).when(mockPubSubContext).getPubSubClientsFactory();
+
     KafkaConsumerService consumerService = new KafkaConsumerService(
         ConsumerPoolType.REGULAR_POOL,
-        factory,
         properties,
         1000L,
         2,
@@ -587,13 +431,13 @@ public class KafkaConsumerServiceTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(StaleTopicChecker.class),
         false,
-        pubSubDeserializer,
         SystemTime.INSTANCE,
         null,
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mockVeniceServerConfig) {
+        mockVeniceServerConfig,
+        mockPubSubContext) {
       @Override
       protected SharedKafkaConsumer pickConsumerForPartition(
           PubSubTopic versionTopic,
@@ -631,5 +475,22 @@ public class KafkaConsumerServiceTest {
     Assert.assertTrue(maxElapsedTime >= 60000, "The max elapsed time should be greater than 60000 ms");
     // Verify that the getStackTrace method was called once for t.
     verify(t, times(1)).getStackTrace();
+  }
+
+  @Test
+  public void testInactiveTopicPartitionChecker() {
+    KafkaConsumerService consumerService = mock(KafkaConsumerService.class);
+    doCallRealMethod().when(consumerService).shouldEnableInactiveTopicPartitionChecker(any(), any());
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    for (int i = 0; i < 2; i++) {
+      boolean configEnabled = (i == 0);
+      doReturn(configEnabled).when(serverConfig).isInactiveTopicPartitionCheckerEnabled();
+      for (ConsumerPoolType poolType: ConsumerPoolType.values()) {
+        boolean expected = configEnabled && (poolType.equals(ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL)
+            || poolType.equals(ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL));
+        Assert
+            .assertEquals(expected, consumerService.shouldEnableInactiveTopicPartitionChecker(serverConfig, poolType));
+      }
+    }
   }
 }

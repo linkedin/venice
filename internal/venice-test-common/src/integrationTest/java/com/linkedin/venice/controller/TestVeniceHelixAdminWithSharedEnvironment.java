@@ -24,6 +24,7 @@ import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeExcep
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
@@ -43,12 +44,15 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -78,9 +82,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -108,16 +109,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
-    setupCluster(true, metricsRepository);
+    setupCluster(metricsRepository);
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    // Controller shutdown needs to complete within 5 minutes
-    ExecutorService ex = Executors.newSingleThreadExecutor();
-    Future clusterShutdownFuture = ex.submit(this::cleanupCluster);
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.MINUTES, clusterShutdownFuture::isDone);
-    ex.shutdownNow();
+    super.cleanUp();
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)
@@ -157,7 +154,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         D2TestUtils.getAndStartD2Client(zkAddress),
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory(),
-        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
+        Optional.empty());
     // Start stand by controller
     newLeaderAdmin.initStorageCluster(clusterName);
     Assert.assertFalse(
@@ -417,9 +415,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       return !routingDataRepository.containsKafkaTopic(version.kafkaTopicName());
     });
 
-    stateModelFactoryByNodeID.forEach(
-        (nodeId, stateModelFactory) -> Assert
-            .assertEquals(stateModelFactory.getModelList(version.kafkaTopicName(), 0).size(), 1));
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      stateModelFactoryByNodeID.forEach(
+          (nodeId, stateModelFactory) -> Assert
+              .assertEquals(stateModelFactory.getModelList(version.kafkaTopicName(), 0).size(), 1));
+    });
+
     // Replica become OFFLINE state
     stateModelFactoryByNodeID.forEach(
         (nodeId, stateModelFactory) -> Assert.assertEquals(
@@ -477,6 +478,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), newPartitionCount);
     Assert.assertThrows(() -> veniceAdmin.setStorePartitionCount(clusterName, storeName, MAX_NUMBER_OF_PARTITION + 1));
     Assert.assertThrows(() -> veniceAdmin.setStorePartitionCount(clusterName, storeName, -1));
+    // Even above two set partition count are failed, the partition count should remain the same.
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
+        partitionCount);
 
     // test setting amplification factor
     Assert.assertEquals(
@@ -570,6 +575,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
               -1,
               multiClusterConfig.getCommonConfig().getReplicationMetadataVersion(),
               false,
+              -1,
               -1));
     }
     Assert.assertNull(veniceAdmin.getStore(clusterName, storeName).getVersion(1));
@@ -587,6 +593,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         -1,
         multiClusterConfig.getCommonConfig().getReplicationMetadataVersion(),
         false,
+        -1,
         -1);
     Assert.assertNotNull(veniceAdmin.getStore(clusterName, storeName).getVersion(1));
     Assert.assertEquals(
@@ -904,15 +911,17 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       }
     });
     // Now we have two participants blocked on ST from BOOTSTRAP to ONLINE.
-    Map<Integer, Long> participantTopicOffsets =
-        veniceAdmin.getTopicManager().getTopicLatestOffsets(participantStoreRTTopic);
+    Map<PubSubTopicPartition, PubSubPosition> participantTopicOffsets =
+        veniceAdmin.getTopicManager().getEndPositionsForTopicWithRetries(participantStoreRTTopic);
     veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName(), false);
     // Verify the kill offline push message have been written to the participant message store RT topic.
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
-      Map<Integer, Long> newPartitionTopicOffsets =
-          veniceAdmin.getTopicManager().getTopicLatestOffsets(participantStoreRTTopic);
-      for (Map.Entry<Integer, Long> entry: participantTopicOffsets.entrySet()) {
-        if (newPartitionTopicOffsets.get(entry.getKey()) > entry.getValue()) {
+      Map<PubSubTopicPartition, PubSubPosition> newPartitionTopicOffsets =
+          veniceAdmin.getTopicManager().getEndPositionsForTopicWithRetries(participantStoreRTTopic);
+      for (Map.Entry<PubSubTopicPartition, PubSubPosition> entry: participantTopicOffsets.entrySet()) {
+        PubSubPosition oldPosition = entry.getValue();
+        PubSubPosition newPosition = newPartitionTopicOffsets.get(entry.getKey());
+        if (veniceAdmin.getTopicManager().comparePosition(entry.getKey(), newPosition, oldPosition) > 0) {
           return true;
         }
       }
@@ -1629,7 +1638,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         false,
         null,
         -1,
-        DEFAULT_RT_VERSION_NUMBER);
+        DEFAULT_RT_VERSION_NUMBER,
+        -1);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
 
@@ -1657,7 +1667,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         false,
         null,
         -1,
-        DEFAULT_RT_VERSION_NUMBER);
+        DEFAULT_RT_VERSION_NUMBER,
+        -1);
     // Version 2 should exist and remote Kafka bootstrap servers info should exist in version 2.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
     Assert.assertEquals(
@@ -1795,7 +1806,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         false,
         null,
         -1,
-        DEFAULT_RT_VERSION_NUMBER);
+        DEFAULT_RT_VERSION_NUMBER,
+        -1);
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
     // A/A version level config should be true
@@ -2136,5 +2148,178 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     assertThrows(
         VeniceException.class,
         () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties)));
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testCannotUpdateStorePartitionNumWhenVTExists() throws Exception {
+    String storeName = Utils.getUniqueString("test");
+    String owner = Utils.getUniqueString("owner");
+    int oldPartitionCount = 5;
+    String additionalNode = "localhost_6868";
+    startParticipant(true, additionalNode);
+    veniceAdmin.createStore(clusterName, storeName, owner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    Version version = veniceAdmin
+        .incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), oldPartitionCount, 2);
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 0);
+
+    veniceAdmin.setStoreCurrentVersion(clusterName, storeName, version.getNumber());
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
+
+    // 1. validate current partition num is same as oldPartitionCount before any update
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
+        oldPartitionCount);
+
+    // 2. update store as hybrid store
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(100)
+            .setHybridRewindSeconds(100)
+            .setSeparateRealTimeTopicEnabled(true));
+
+    // 3. create the real-time topic
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
+    veniceAdmin.createOrUpdateRealTimeTopic(clusterName, store, store.getVersion(version.getNumber()), topic);
+
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
+        oldPartitionCount);
+
+    // 4. remove the hybrid config, to mock client might toggle hybrid store to batch-only store
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(-1)
+            .setHybridRewindSeconds(-1)
+            .setSeparateRealTimeTopicEnabled(false));
+
+    // 5. validate partition num is not changed after hybrid config is removed
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
+        oldPartitionCount);
+
+    // 6. Action
+    // change the partition count, which is not allowed anymore due to partition num if used in vt now.
+    int newPartitionCount = 100;
+
+    try {
+      veniceAdmin.setStorePartitionCount(clusterName, storeName, newPartitionCount);
+      Assert.fail("Should not be able to change partition count of a store.");
+    } catch (VeniceHttpException e) {
+      // 7. Assertion
+      Assert.assertTrue(
+          e.getMessage()
+              .contains(
+                  "Cannot update partition count for batch store with an existing RT topic having a different partition count"));
+    }
+
+    // 8. validate partition num is not changed, still oldPartitionCount
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
+        oldPartitionCount);
+
+    // 9. validate invalid partition num input also not change the partition num
+    Assert.assertThrows(() -> veniceAdmin.setStorePartitionCount(clusterName, storeName, MAX_NUMBER_OF_PARTITION + 1));
+    Assert.assertThrows(() -> veniceAdmin.setStorePartitionCount(clusterName, storeName, -1));
+    Assert.assertEquals(
+        veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).getPartitionCount(),
+        oldPartitionCount);
+    stopParticipant(additionalNode);
+  }
+
+  @Test
+  public void testVersionLifecycleEvents() {
+    resetVersionLifecycleEvents();
+    Assert.assertEquals(versionLifecycleEvents.size(), 0);
+    String storeName = Utils.getUniqueString("test_version_lifecycle_events");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
+        TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 1);
+    // Expecting 2 events: 1 for version creation, 1 for version becoming current
+    Assert.assertEquals(versionLifecycleEvents.size(), 2);
+    String v1TopicName = Version.composeKafkaTopic(storeName, 1);
+    VersionLifecycleEvent creationEvent = versionLifecycleEvents.get(0);
+    Assert.assertEquals(creationEvent.version.kafkaTopicName(), v1TopicName);
+    Assert.assertTrue(creationEvent.isSourceCluster);
+    Assert.assertEquals(creationEvent.type, VersionLifecycleEventType.CREATED);
+    VersionLifecycleEvent becomeCurrentFromFutureEvent = versionLifecycleEvents.get(1);
+    Assert.assertEquals(becomeCurrentFromFutureEvent.version.kafkaTopicName(), v1TopicName);
+    Assert.assertEquals(becomeCurrentFromFutureEvent.type, VersionLifecycleEventType.BECOMING_CURRENT_FROM_FUTURE);
+    Assert.assertTrue(becomeCurrentFromFutureEvent.isSourceCluster);
+    resetVersionLifecycleEvents();
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
+        TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
+    // Expecting 3 events: 1 for version creation, 1 for version becoming current, 1 for current becoming backup
+    Assert.assertEquals(versionLifecycleEvents.size(), 3);
+    String v2TopicName = Version.composeKafkaTopic(storeName, 2);
+    creationEvent = versionLifecycleEvents.get(0);
+    Assert.assertEquals(creationEvent.version.kafkaTopicName(), v2TopicName);
+    Assert.assertTrue(creationEvent.isSourceCluster);
+    Assert.assertEquals(creationEvent.type, VersionLifecycleEventType.CREATED);
+    becomeCurrentFromFutureEvent = versionLifecycleEvents.get(1);
+    Assert.assertEquals(becomeCurrentFromFutureEvent.version.kafkaTopicName(), v2TopicName);
+    Assert.assertEquals(becomeCurrentFromFutureEvent.type, VersionLifecycleEventType.BECOMING_CURRENT_FROM_FUTURE);
+    Assert.assertTrue(becomeCurrentFromFutureEvent.isSourceCluster);
+    VersionLifecycleEvent becomeBackupEvent = versionLifecycleEvents.get(2);
+    Assert.assertEquals(becomeBackupEvent.version.kafkaTopicName(), v1TopicName);
+    Assert.assertEquals(becomeBackupEvent.type, VersionLifecycleEventType.BECOMING_BACKUP);
+    Assert.assertTrue(becomeBackupEvent.isSourceCluster);
+    resetVersionLifecycleEvents();
+    veniceAdmin.rollbackToBackupVersion(clusterName, storeName, "");
+    // Expecting 2 events: 1 for version becoming current from backup, 1 for current becoming backup
+    Assert.assertEquals(versionLifecycleEvents.size(), 2);
+    VersionLifecycleEvent becomeCurrentFromBackupEvent = versionLifecycleEvents.get(0);
+    Assert.assertEquals(becomeCurrentFromBackupEvent.version.kafkaTopicName(), v1TopicName);
+    Assert.assertEquals(becomeCurrentFromBackupEvent.type, VersionLifecycleEventType.BECOMING_CURRENT_FROM_BACKUP);
+    Assert.assertTrue(becomeCurrentFromBackupEvent.isSourceCluster);
+    becomeBackupEvent = versionLifecycleEvents.get(1);
+    Assert.assertEquals(becomeBackupEvent.version.kafkaTopicName(), v2TopicName);
+    Assert.assertEquals(becomeBackupEvent.type, VersionLifecycleEventType.BECOMING_BACKUP);
+    Assert.assertTrue(becomeBackupEvent.isSourceCluster);
+    resetVersionLifecycleEvents();
+    veniceAdmin.rollForwardToFutureVersion(clusterName, storeName, "");
+    // Expecting 0 events: previously rolled back version cannot be rolled forward to anymore
+    Assert.assertEquals(versionLifecycleEvents.size(), 0);
+    veniceAdmin.setStoreCurrentVersion(clusterName, storeName, 2);
+    // Expecting 2 events: 1 for version becoming current from backup, 1 for current becoming backup
+    Assert.assertEquals(versionLifecycleEvents.size(), 2);
+    becomeCurrentFromBackupEvent = versionLifecycleEvents.get(0);
+    Assert.assertEquals(becomeCurrentFromBackupEvent.version.kafkaTopicName(), v2TopicName);
+    Assert.assertEquals(becomeCurrentFromBackupEvent.type, VersionLifecycleEventType.BECOMING_CURRENT_FROM_BACKUP);
+    Assert.assertTrue(becomeCurrentFromBackupEvent.isSourceCluster);
+    becomeBackupEvent = versionLifecycleEvents.get(1);
+    Assert.assertEquals(becomeBackupEvent.version.kafkaTopicName(), v1TopicName);
+    Assert.assertEquals(becomeBackupEvent.type, VersionLifecycleEventType.BECOMING_BACKUP);
+    Assert.assertTrue(becomeBackupEvent.isSourceCluster);
+  }
+
+  @Test
+  public void testETLStoreConfig() {
+    String storeName = Utils.getUniqueString("test_version_lifecycle_events");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    // Verify update ETLStoreConfig is backward compatible without providing the newly added config(s)
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setRegularVersionETLEnabled(true));
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(store.getEtlStoreConfig().isRegularVersionETLEnabled());
+    Assert.assertFalse(store.getEtlStoreConfig().isFutureVersionETLEnabled());
+    Assert.assertEquals(store.getEtlStoreConfig().getETLStrategy(), VeniceETLStrategy.EXTERNAL_SERVICE);
+    // Verify update ETLStoreConfig works with new config(s)
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setFutureVersionETLEnabled(true)
+            .setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER));
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(store.getEtlStoreConfig().isFutureVersionETLEnabled());
+    Assert.assertEquals(store.getEtlStoreConfig().getETLStrategy(), VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER);
   }
 }

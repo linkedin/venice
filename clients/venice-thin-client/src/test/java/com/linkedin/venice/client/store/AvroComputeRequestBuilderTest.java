@@ -271,7 +271,7 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*isn't an 'ARRAY' type. Got: INT")
+  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*isn't an 'ARRAY' type. Got: INT.*")
   public void testDotProductAgainstNonFloatArrayField1() {
     AbstractAvroStoreClient mockClient = getMockClient(VALID_RECORD_SCHEMA);
     AvroComputeRequestBuilderV3<String> computeRequestBuilder =
@@ -280,7 +280,7 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*isn't an 'ARRAY' type. Got: INT")
+  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*isn't an 'ARRAY' type. Got: INT.*")
   public void testCosineSimilarityAgainstNonFloatArrayField1() {
     AbstractAvroStoreClient mockClient = getMockClient(VALID_RECORD_SCHEMA);
     AvroComputeRequestBuilderV3<String> computeRequestBuilder =
@@ -289,7 +289,7 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*int_array_field2 isn't an 'ARRAY' of 'FLOAT'")
+  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*int_array_field2 isn't an 'ARRAY' of 'FLOAT'.*")
   public void testDotProductAgainstNonFloatArrayField2() {
     AbstractAvroStoreClient mockClient = getMockClient(VALID_RECORD_SCHEMA);
     AvroComputeRequestBuilderV3<String> computeRequestBuilder =
@@ -298,7 +298,7 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*int_array_field2 isn't an 'ARRAY' of 'FLOAT'")
+  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*int_array_field2 isn't an 'ARRAY' of 'FLOAT'.*")
   public void testCosineSimilarityAgainstNonFloatArrayField2() {
     AbstractAvroStoreClient mockClient = getMockClient(VALID_RECORD_SCHEMA);
     AvroComputeRequestBuilderV3<String> computeRequestBuilder =
@@ -336,7 +336,7 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "DOT_PRODUCT result field: int_field collides with the fields defined in value schema")
+  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "DOT_PRODUCT result field: int_field collides with the fields defined in value schema.*")
   public void testDotProductWhileResultFieldUsingExistingFieldName() {
     AbstractAvroStoreClient mockClient = getMockClient(VALID_RECORD_SCHEMA);
     AvroComputeRequestBuilderV3<String> computeRequestBuilder =
@@ -345,7 +345,7 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "COSINE_SIMILARITY result field: int_field collides with the fields defined in value schema")
+  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "COSINE_SIMILARITY result field: int_field collides with the fields defined in value schema.*")
   public void testCosineSimilarityWhileResultFieldUsingExistingFieldName() {
     AbstractAvroStoreClient mockClient = getMockClient(VALID_RECORD_SCHEMA);
     AvroComputeRequestBuilderV3<String> computeRequestBuilder =
@@ -354,7 +354,7 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "DOT_PRODUCT result field: same_field_name has been specified more than once")
+  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "DOT_PRODUCT result field: same_field_name has been specified more than once.*")
   public void testDotProductWhileResultFieldUsingSameFieldNameMultipleTimes() {
     AbstractAvroStoreClient mockClient = getMockClient(VALID_RECORD_SCHEMA);
     AvroComputeRequestBuilderV3<String> computeRequestBuilder =
@@ -364,7 +364,7 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "COSINE_SIMILARITY result field: same_field_name has been specified more than once")
+  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "COSINE_SIMILARITY result field: same_field_name has been specified more than once.*")
   public void testCosineSimilarityWhileResultFieldUsingSameFieldNameMultipleTimes() {
     AbstractAvroStoreClient mockClient = getMockClient(VALID_RECORD_SCHEMA);
     AvroComputeRequestBuilderV3<String> computeRequestBuilder =
@@ -374,7 +374,7 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "COSINE_SIMILARITY result field: same_field_name has been specified more than once")
+  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "COSINE_SIMILARITY result field: same_field_name has been specified more than once.*")
   public void testDifferentOperationsWhileResultFieldUsingSameFieldNameMultipleTimes() {
     AbstractAvroStoreClient mockClient = getMockClient(VALID_RECORD_SCHEMA);
     AvroComputeRequestBuilderV3<String> computeRequestBuilder =
@@ -496,6 +496,7 @@ public class AvroComputeRequestBuilderTest {
     doReturn(valueSchema).when(schemaReader).getValueSchema(1);
     doReturn(valueSchema).when(schemaReader).getLatestValueSchema();
     doReturn(1).when(schemaReader).getLatestValueSchemaId();
+    doReturn(1).when(schemaReader).getLatestValueSchemaId(true);
     doReturn(1).when(schemaReader).getValueSchemaId(valueSchema);
     return schemaReader;
   }

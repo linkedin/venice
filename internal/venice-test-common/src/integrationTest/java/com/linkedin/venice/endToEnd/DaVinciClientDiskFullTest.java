@@ -10,6 +10,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.integration.utils.ServiceFactory.getVeniceCluster;
@@ -131,8 +132,9 @@ public class DaVinciClientDiskFullTest {
     return diskFullThreshold;
   }
 
-  private VeniceProperties getDaVinciBackendConfig(boolean useDaVinciSpecificExecutionStatusForError)
-      throws IOException {
+  private VeniceProperties getDaVinciBackendConfig(
+      boolean useDaVinciSpecificExecutionStatusForError,
+      Boolean isD2ClientEnabled) throws IOException {
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     PropertyBuilder venicePropertyBuilder = new PropertyBuilder();
 
@@ -145,7 +147,8 @@ public class DaVinciClientDiskFullTest {
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .put(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, useDaVinciSpecificExecutionStatusForError)
-        .put(SERVER_DISK_FULL_THRESHOLD, getDiskFullThreshold(largePushRecordCount, largePushRecordMinSize));
+        .put(SERVER_DISK_FULL_THRESHOLD, getDiskFullThreshold(largePushRecordCount, largePushRecordMinSize))
+        .put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled);
     return venicePropertyBuilder.build();
   }
 
@@ -198,8 +201,9 @@ public class DaVinciClientDiskFullTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testDaVinciDiskFullFailure(boolean useDaVinciSpecificExecutionStatusForError) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  public void testDaVinciDiskFullFailure(boolean useDaVinciSpecificExecutionStatusForError, Boolean isD2ClientEnabled)
+      throws Exception {
     String storeName = Utils.getUniqueString("davinci_disk_full_test");
     // Test a small push
     File inputDir = getTempDataDirectory();
@@ -237,7 +241,8 @@ public class DaVinciClientDiskFullTest {
       });
 
       // Spin up DaVinci client
-      VeniceProperties backendConfig = getDaVinciBackendConfig(useDaVinciSpecificExecutionStatusForError);
+      VeniceProperties backendConfig =
+          getDaVinciBackendConfig(useDaVinciSpecificExecutionStatusForError, isD2ClientEnabled);
       MetricsRepository metricsRepository = new MetricsRepository();
       try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
           d2Client,

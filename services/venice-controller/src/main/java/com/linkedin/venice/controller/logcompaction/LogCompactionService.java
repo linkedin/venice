@@ -7,11 +7,15 @@ import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import com.linkedin.venice.utils.LogContext;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -39,7 +43,9 @@ public class LogCompactionService extends AbstractVeniceService {
   private final Admin admin;
   private final String clusterName;
   private final VeniceControllerClusterConfig clusterConfigs;
-  final ScheduledExecutorService executor;
+
+  private final ScheduledExecutorService scheduler;
+  private final ThreadPoolExecutor executor;
 
   public LogCompactionService(Admin admin, String clusterName, VeniceControllerClusterConfig clusterConfigs) {
     this.admin = admin;
@@ -47,13 +53,20 @@ public class LogCompactionService extends AbstractVeniceService {
 
     this.clusterConfigs = clusterConfigs;
 
-    executor = Executors.newScheduledThreadPool(clusterConfigs.getLogCompactionThreadCount());
+    scheduler = Executors.newSingleThreadScheduledExecutor();
+    executor = new ThreadPoolExecutor(
+        clusterConfigs.getLogCompactionThreadCount(),
+        clusterConfigs.getLogCompactionThreadCount(),
+        0L,
+        TimeUnit.MILLISECONDS,
+        new SynchronousQueue<>(),
+        createDropAndLogPolicy(LOGGER));
   }
 
   @Override
   public boolean startInner() throws Exception {
-    executor.scheduleAtFixedRate(
-        new LogCompactionTask(clusterName),
+    scheduler.scheduleWithFixedDelay(
+        () -> executor.execute(new LogCompactionTask(clusterName)),
         PRE_EXECUTION_DELAY_MS,
         clusterConfigs.getLogCompactionIntervalMS(),
         TimeUnit.MILLISECONDS);
@@ -66,6 +79,19 @@ public class LogCompactionService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
+    scheduler.shutdown();
+    try {
+      if (!scheduler.awaitTermination(SCHEDULED_EXECUTOR_TIMEOUT_S, TimeUnit.SECONDS)) {
+        scheduler.shutdownNow();
+        LOGGER.info(
+            "Log compaction service scheduler shutdown timed out and is forcefully shutdown in cluster: {}",
+            clusterName);
+      }
+    } catch (InterruptedException e) {
+      scheduler.shutdownNow();
+      LOGGER.info("Log compaction service interrupted in cluster: {}", clusterName, e);
+    }
+
     executor.shutdown();
     try {
       if (!executor.awaitTermination(SCHEDULED_EXECUTOR_TIMEOUT_S, TimeUnit.SECONDS)) {
@@ -76,8 +102,21 @@ public class LogCompactionService extends AbstractVeniceService {
       }
     } catch (InterruptedException e) {
       executor.shutdownNow();
-      LOGGER.info("Log compaction service interrupted in cluster: {}", clusterName, e);
+      LOGGER.info("Log compaction executor interrupted in cluster: {}", clusterName, e);
     }
+  }
+
+  static RejectedExecutionHandler createDropAndLogPolicy(Logger logger) {
+    return (r, e) -> {
+      if (!e.isShutdown()) {
+        logger.warn(
+            "Dropping log compaction task because executor is saturated. "
+                + "ActiveThreads={}, QueueSize={}, PoolSize={}",
+            e.getActiveCount(),
+            e.getQueue().size(),
+            e.getPoolSize());
+      }
+    };
   }
 
   private class LogCompactionTask implements Runnable {
@@ -89,7 +128,7 @@ public class LogCompactionService extends AbstractVeniceService {
 
     @Override
     public void run() {
-      LogContext.setStructuredLogContext(clusterConfigs.getLogContext());
+      LogContext.setLogContext(clusterConfigs.getLogContext());
       try {
         LOGGER.info(
             "Scheduled log compaction cycle started for cluster: {} at time: {}",
@@ -108,20 +147,22 @@ public class LogCompactionService extends AbstractVeniceService {
     private void compactStoresInClusters() {
       for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
         try {
-          RepushJobResponse response = admin
-              .repushStore(new RepushJobRequest(clusterName, storeInfo.getName(), RepushJobRequest.SCHEDULED_TRIGGER));
+          RepushJobResponse response = admin.repushStore(
+              new RepushJobRequest(
+                  clusterName,
+                  storeInfo.getName(),
+                  StoreRepushTriggerSource.SCHEDULED_FOR_LOG_COMPACTION));
           LOGGER.info(
-              "Log compaction triggered for cluster: {} store: {} | execution ID: {}",
-              clusterName,
+              "Succeeded to trigger log compaction for store: {} in cluster: {} | execution ID: {}",
               response.getName(),
+              clusterName,
               response.getExecutionId());
         } catch (Exception e) {
           LOGGER.error(
-              "Error checking if store is ready for log compaction for cluster: {} store: {}",
-              clusterName,
+              "Failed to trigger log compaction for store: {} in cluster: {}",
               storeInfo.getName(),
+              clusterName,
               e);
-          // TODO LC: add metrics for log compaction failures
         }
       }
     }
