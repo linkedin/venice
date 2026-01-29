@@ -4,8 +4,7 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.Max;
-import io.tehuti.metrics.stats.Min;
+import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -20,6 +19,7 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
   private Sensor failedOperationSensor = null;
   private Sensor produceLatencySensor = null;
   private Sensor preprocessingLatencySensor = null;
+  private Sensor produceEnqueueLatencySensor = null;
   private Sensor pendingOperationSensor = null;
 
   private final AtomicInteger pendingOperationCounter = new AtomicInteger(0);
@@ -44,8 +44,12 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
       preprocessingLatencySensor = registerSensor(
           preprocessingLatencySensorName,
           TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + preprocessingLatencySensorName));
+      String produceEnqueueLatencySensorName = "produce_enqueue_latency";
+      produceEnqueueLatencySensor = registerSensor(
+          produceEnqueueLatencySensorName,
+          TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + produceEnqueueLatencySensorName));
 
-      pendingOperationSensor = registerSensor("pending_write_operation", new Min(), new Max());
+      pendingOperationSensor = registerSensor("pending_write_operation", new Gauge());
     } else {
       enableMetrics = false;
     }
@@ -94,9 +98,22 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
     }
   }
 
-  public void recordPreprocessingLatency(long latencyMs) {
+  public void recordPreprocessingLatency(double latencyMs) {
     if (enableMetrics) {
       preprocessingLatencySensor.record(latencyMs);
+    }
+  }
+
+  /**
+   * Records the latency of enqueueing a produce request to the PubSub producer.
+   * This measures the synchronous time to submit a write to the VeniceWriter,
+   * before waiting for the asynchronous acknowledgment from the PubSub system.
+   *
+   * @param latencyMs latency in milliseconds (supports sub-millisecond precision as a double)
+   */
+  public void recordProduceEnqueueLatency(double latencyMs) {
+    if (enableMetrics) {
+      produceEnqueueLatencySensor.record(latencyMs);
     }
   }
 }

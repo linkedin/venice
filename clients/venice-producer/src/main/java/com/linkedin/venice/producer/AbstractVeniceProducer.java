@@ -20,6 +20,7 @@ import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.stats.ThreadPoolStats;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -206,7 +207,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     // Step 1: Pre-process in parallel (schema fetching and serialization)
     // This can happen concurrently across multiple threads for performance
     CompletableFuture<PreparedWriteData> preprocessFuture = CompletableFuture.supplyAsync(() -> {
-      final Instant preProcessingStartTime = Instant.now();
+      final long preProcessingStartTimeNs = System.nanoTime();
       Schema valueSchema;
       try {
         valueSchema = getSchemaFromObject(value);
@@ -235,8 +236,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       byte[] valueBytes = getSerializer(valueSchema).serialize(value);
 
       // Record preprocessing latency
-      Duration preprocessingDuration = Duration.between(preProcessingStartTime, Instant.now());
-      producerMetrics.recordPreprocessingLatency(preprocessingDuration.toMillis());
+      producerMetrics.recordPreprocessingLatency(LatencyUtils.getElapsedTimeFromNSToMS(preProcessingStartTimeNs));
 
       return new PreparedWriteData(keyBytes, valueBytes, valueSchemaId, -1, logicalTime);
     }, producerExecutor);
@@ -303,12 +303,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
     // Step 1: Pre-process in parallel (key serialization)
     CompletableFuture<PreparedWriteData> preprocessFuture = CompletableFuture.supplyAsync(() -> {
-      final Instant preProcessingStartTime = Instant.now();
+      final long preProcessingStartTimeNs = System.nanoTime();
       byte[] keyBytes = keySerializer.serialize(key);
 
       // Record preprocessing latency
-      Duration preprocessingDuration = Duration.between(preProcessingStartTime, Instant.now());
-      producerMetrics.recordPreprocessingLatency(preprocessingDuration.toMillis());
+      producerMetrics.recordPreprocessingLatency(LatencyUtils.getElapsedTimeFromNSToMS(preProcessingStartTimeNs));
 
       return new PreparedWriteData(keyBytes, null, -1, -1, logicalTime);
     }, producerExecutor);
@@ -347,7 +346,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
     // Step 1: Pre-process in parallel (schema fetching, building update record, serialization)
     CompletableFuture<PreparedWriteData> preprocessFuture = CompletableFuture.supplyAsync(() -> {
-      final Instant preProcessingStartTime = Instant.now();
+      final long preProcessingStartTimeNs = System.nanoTime();
       // Caching to avoid race conditions during processing of the function
       DerivedSchemaEntry updateSchemaEntry = schemaReader.getLatestUpdateSchema();
 
@@ -376,8 +375,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       byte[] updateBytes = getSerializer(updateSchema).serialize(updateRecord);
 
       // Record preprocessing latency
-      Duration preprocessingDuration = Duration.between(preProcessingStartTime, Instant.now());
-      producerMetrics.recordPreprocessingLatency(preprocessingDuration.toMillis());
+      producerMetrics.recordPreprocessingLatency(LatencyUtils.getElapsedTimeFromNSToMS(preProcessingStartTimeNs));
 
       return new PreparedWriteData(
           keyBytes,
@@ -474,7 +472,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       final PubSubProducerCallback callback = getPubSubProducerCallback(sendStartTime, writeFuture, errorMessage);
 
       try {
+        long produceEnqueueStartTimeNs = System.nanoTime();
         writeOperation.execute(preparedData, callback);
+        producerMetrics.recordProduceEnqueueLatency(LatencyUtils.getElapsedTimeFromNSToMS(produceEnqueueStartTimeNs));
       } catch (Exception e) {
         callback.onCompletion(null, e);
         throw new VeniceException(errorMessage, e);
