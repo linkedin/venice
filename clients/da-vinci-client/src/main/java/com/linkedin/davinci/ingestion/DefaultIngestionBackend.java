@@ -2,6 +2,7 @@ package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import com.linkedin.davinci.blobtransfer.NettyP2PBlobTransferManager;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -11,6 +12,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.exceptions.VenicePartitionDroppedException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
@@ -115,6 +117,33 @@ public class DefaultIngestionBackend implements IngestionBackend {
           svsSupplier);
 
       bootstrapFuture.whenComplete((result, throwable) -> {
+        // Check if partition was dropped during OR after blob transfer
+        // We need to check the drop flag even if transfer succeeded, because drop could arrive
+        // right after successful completion but before runnable.run() executes
+        if (blobTransferManager != null && blobTransferManager.isDropRequested(
+            storeAndVersion.getStore().getName(),
+            storeAndVersion.getVersion().getNumber(),
+            partition)) {
+          LOGGER.info(
+              "Partition drop was requested for store {} partition {}. Skipping consumption startup.",
+              storeVersion,
+              partition);
+          // Do NOT run consumption startup - partition is being dropped
+          // NOTE: Drop flag will be cleaned up at the end of dropStoragePartitionGracefully()
+          return;
+        }
+
+        // Also check if exception was VenicePartitionDroppedException
+        if (throwable != null && throwable.getCause() instanceof VenicePartitionDroppedException) {
+          LOGGER.info(
+              "Partition drop was requested during blob transfer for store {} partition {}. Skipping consumption startup.",
+              storeVersion,
+              partition);
+          // NOTE: Drop flag will be cleaned up at the end of dropStoragePartitionGracefully()
+          return;
+        }
+
+        // For all other cases (success or other failures), proceed with consumption startup
         runnable.run();
       });
     }
@@ -434,11 +463,85 @@ public class DefaultIngestionBackend implements IngestionBackend {
       int partition,
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
+    String storeVersion = storeConfig.getStoreVersionName();
+
+    // Handle blob transfer drop coordination
+    if (blobTransferManager != null) {
+      try {
+        StoreVersionInfo storeAndVersion =
+            Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
+        String storeName = storeAndVersion.getStore().getName();
+        int versionNumber = storeAndVersion.getVersion().getNumber();
+
+        // ALWAYS call cancelTransfer, even if blob transfer is not currently in progress
+        // This is critical because:
+        // 1. Blob transfer may have JUST completed (not in progress anymore)
+        // 2. But the bootstrapFuture.whenComplete() callback is about to run runnable.run()
+        // 3. cancelTransfer() sets the drop flag FIRST, preventing the race condition
+        LOGGER.info(
+            "Drop request for store {} version {} partition {}. Checking for blob transfer coordination.",
+            storeName,
+            versionNumber,
+            partition);
+
+        // This call:
+        // 1. Sets the drop request flag FIRST (prevents consumption startup even if transfer just completed)
+        // 2. If transfer is ongoing: closes channel and blocks until complete
+        // 3. If transfer already completed: returns immediately (flag is already set)
+        blobTransferManager.cancelTransfer(storeName, versionNumber, partition, timeoutInSeconds);
+
+        LOGGER.info(
+            "Blob transfer coordination completed for store {} version {} partition {}",
+            storeName,
+            versionNumber,
+            partition);
+      } catch (java.util.concurrent.TimeoutException e) {
+        LOGGER.warn(
+            "Timeout waiting for blob transfer cancellation for store {} partition {} after {} seconds. Proceeding with drop.",
+            storeVersion,
+            partition,
+            timeoutInSeconds);
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Exception while coordinating blob transfer for store {} partition {}. Proceeding with drop.",
+            storeVersion,
+            partition,
+            e);
+      }
+    }
+
     // Stop consumption of the partition.
     final int waitIntervalInSecond = 1;
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, waitIntervalInSecond, maxRetry, true);
-    return getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
+    CompletableFuture<Void> dropFuture =
+        getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
+
+    // Clean up the drop request flag after drop completes
+    // This is critical: the flag must be cleaned up after the drop operation, not in whenComplete()
+    // Otherwise, if drop arrives after consumption starts, the flag would never be cleaned up
+    if (blobTransferManager != null) {
+      dropFuture.whenComplete((result, throwable) -> {
+        try {
+          StoreVersionInfo storeAndVersion =
+              Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
+          if (blobTransferManager instanceof NettyP2PBlobTransferManager) {
+            ((NettyP2PBlobTransferManager) blobTransferManager).clearDropRequestFlag(
+                storeAndVersion.getStore().getName(),
+                storeAndVersion.getVersion().getNumber(),
+                partition);
+            LOGGER.info(
+                "Cleaned up drop request flag for store {} partition {} after drop completed",
+                storeVersion,
+                partition);
+          }
+        } catch (Exception e) {
+          LOGGER.warn("Failed to clean up drop request flag for store {} partition {}", storeVersion, partition, e);
+        }
+      });
+    }
+
+    return dropFuture;
   }
 
   @Override

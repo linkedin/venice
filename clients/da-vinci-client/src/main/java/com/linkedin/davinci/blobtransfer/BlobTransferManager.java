@@ -60,4 +60,33 @@ public interface BlobTransferManager<T> extends AutoCloseable {
    * @return the blob transfer stats
    */
   AggVersionedBlobTransferStats getAggVersionedBlobTransferStats();
+
+  /**
+   * Cancel an ongoing blob transfer for the given storeName, version and partition.
+   * This is a blocking operation that waits until:
+   * 1. The active channel (if any) is closed
+   * 2. No more hosts will be tried in the sequential chain
+   * 3. Cleanup is complete
+   *
+   * @param storeName the name of the store
+   * @param version the version of the store
+   * @param partition the partition of the store
+   * @param timeoutInSeconds maximum time to wait for cancellation to complete
+   * @throws InterruptedException if interrupted while waiting
+   * @throws java.util.concurrent.TimeoutException if cancellation doesn't complete within timeout
+   */
+  void cancelTransfer(String storeName, int version, int partition, int timeoutInSeconds)
+      throws InterruptedException, java.util.concurrent.TimeoutException, java.util.concurrent.ExecutionException;
+
+  /**
+   * Check if a drop was requested for the given partition.
+   * This is used to prevent starting consumption after a successful blob transfer
+   * if a drop request arrived right after the transfer completed.
+   *
+   * @param storeName the name of the store
+   * @param version the version of the store
+   * @param partition the partition of the store
+   * @return true if drop was requested for this partition, false otherwise
+   */
+  boolean isDropRequested(String storeName, int version, int partition);
 }
