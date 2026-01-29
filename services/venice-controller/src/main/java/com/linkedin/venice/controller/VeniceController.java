@@ -9,6 +9,7 @@ import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.grpc.server.ClusterAdminOpsGrpcServiceImpl;
+import com.linkedin.venice.controller.grpc.server.SchemaGrpcServiceImpl;
 import com.linkedin.venice.controller.grpc.server.StoreGrpcServiceImpl;
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcAuditLoggingInterceptor;
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslSessionInterceptor;
@@ -330,6 +331,8 @@ public class VeniceController {
     StoreGrpcServiceImpl storeGrpcServiceGrpc = new StoreGrpcServiceImpl(
         unsecureRequestHandler.getStoreRequestHandler(),
         unsecureRequestHandler.getControllerAccessManager());
+    SchemaGrpcServiceImpl schemaGrpcService =
+        new SchemaGrpcServiceImpl(unsecureRequestHandler.getSchemaRequestHandler());
     ClusterAdminOpsGrpcServiceImpl clusterAdminOpsGrpcService = new ClusterAdminOpsGrpcServiceImpl(
         unsecureRequestHandler.getClusterAdminOpsRequestHandler(),
         unsecureRequestHandler.getControllerAccessManager());
@@ -344,6 +347,7 @@ public class VeniceController {
         new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminGrpcPort())
             .addService(grpcService)
             .addService(storeGrpcServiceGrpc)
+            .addService(schemaGrpcService)
             .addService(clusterAdminOpsGrpcService)
             .setExecutor(grpcExecutor)
             .setInterceptors(interceptors)
@@ -358,6 +362,8 @@ public class VeniceController {
       StoreGrpcServiceImpl secureStoreGrpcService = new StoreGrpcServiceImpl(
           secureRequestHandler.getStoreRequestHandler(),
           secureRequestHandler.getControllerAccessManager());
+      SchemaGrpcServiceImpl secureSchemaGrpcService =
+          new SchemaGrpcServiceImpl(secureRequestHandler.getSchemaRequestHandler());
       ClusterAdminOpsGrpcServiceImpl secureClusterAdminOpsGrpcService = new ClusterAdminOpsGrpcServiceImpl(
           secureRequestHandler.getClusterAdminOpsRequestHandler(),
           secureRequestHandler.getControllerAccessManager());
@@ -365,6 +371,7 @@ public class VeniceController {
           new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminSecureGrpcPort())
               .addService(secureGrpcService)
               .addService(secureStoreGrpcService)
+              .addService(secureSchemaGrpcService)
               .addService(secureClusterAdminOpsGrpcService)
               .setExecutor(grpcExecutor)
               .setSslFactory(sslFactory)

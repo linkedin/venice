@@ -1,0 +1,22 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols.controller;
+
+
+import "controller/ControllerGrpcRequestContext.proto";
+
+option java_multiple_files = true;
+
+service SchemaGrpcService {
+  rpc getValueSchema(GetValueSchemaGrpcRequest) returns (GetValueSchemaGrpcResponse);
+}
+
+message GetValueSchemaGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  int32 schemaId = 2;
+}
+
+message GetValueSchemaGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  int32 schemaId = 2;
+  string schemaStr = 3;
+}
