@@ -77,8 +77,6 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       new VeniceConcurrentHashMap<>();
   // Track drop requests: <replicaId, drop requested flag>
   private final Map<String, AtomicBoolean> partitionLevelDroppedFlag = new VeniceConcurrentHashMap<>();
-  // Track current ongoing channel: <replicaId, current ongoing Channel>
-  private final Map<String, Channel> partitionLevelOngoingChannel = new VeniceConcurrentHashMap<>();
 
   public NettyP2PBlobTransferManager(
       P2PBlobTransferService blobTransferService,
@@ -127,7 +125,6 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     // The flag will be cleaned up later when new consumption starts or drop completes
     perPartitionTransferFuture.whenComplete((result, throwable) -> {
       partitionLevelTransferStatus.remove(replicaId);
-      partitionLevelOngoingChannel.remove(replicaId);
     });
 
     // 1. Discover peers for the requested blob
@@ -245,12 +242,6 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         CompletionStage<InputStream> perHostTransferFuture =
             nettyClient.get(chosenHost, storeName, version, partition, tableFormat);
 
-        // Track and update the current channel for this host attempt
-        Channel currentChannel = nettyClient.getActiveChannel(storeName, version, partition);
-        if (currentChannel != null) {
-          partitionLevelOngoingChannel.put(replicaId, currentChannel);
-        }
-
         return perHostTransferFuture.toCompletableFuture().thenAccept(inputStream -> {
           // Success case: Complete the future with the input stream
           long transferTime = Duration.between(startTime, Instant.now()).getSeconds();
@@ -336,7 +327,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         replicaId);
 
     // Step 3: Close the current ongoing channel
-    Channel currentChannel = partitionLevelOngoingChannel.get(replicaId);
+    Channel currentChannel = nettyClient.getActiveChannel(storeName, version, partition);
     if (currentChannel != null && currentChannel.isActive()) {
       currentChannel.close().syncUninterruptibly();
       LOGGER.info("Cancel step 3: Current channel closed for replica {}", replicaId);
