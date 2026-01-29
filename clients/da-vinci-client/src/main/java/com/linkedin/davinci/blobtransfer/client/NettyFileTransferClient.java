@@ -83,7 +83,7 @@ public class NettyFileTransferClient {
 
   private final VerifySslHandler verifySsl = new VerifySslHandler();
 
-  // Track active channels: "storeName_version_partition" -> Channel
+  // Track active channels: <replica_id, active channel with ongoing transfer>
   private final VeniceConcurrentHashMap<String, Channel> activeChannels = new VeniceConcurrentHashMap<>();
 
   // TODO: consider either increasing worker threads or have a dedicated thread pool to handle requests.
@@ -280,7 +280,7 @@ public class NettyFileTransferClient {
       int version,
       int partition,
       BlobTransferTableFormat requestedTableFormat) {
-    String transferKey = storeName + "_" + version + "_" + partition;
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
     CompletionStage<InputStream> perHostTransferFuture = new CompletableFuture<>();
     try {
       // Connects to the remote host
@@ -289,11 +289,11 @@ public class NettyFileTransferClient {
       Channel ch = connectToHost(host, storeName, version, partition);
 
       // Track the active channel
-      activeChannels.put(transferKey, ch);
+      activeChannels.put(replicaId, ch);
 
       // Remove from tracking when transfer completes
       perHostTransferFuture.toCompletableFuture().whenComplete((result, throwable) -> {
-        activeChannels.remove(transferKey);
+        activeChannels.remove(replicaId);
       });
 
       // Check if the channel already has a P2PFileTransferClientHandler/P2PMetadataTransferHandler
@@ -338,7 +338,6 @@ public class NettyFileTransferClient {
       ChannelFuture requestFuture =
           ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));
 
-      String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
       requestFuture.addListener(f -> {
         if (f.isSuccess()) {
           LOGGER.info("Request successfully sent to the server for replica {} to remote host {}", replicaId, host);
@@ -378,8 +377,8 @@ public class NettyFileTransferClient {
    * @return the active Channel, or null if no active transfer
    */
   public Channel getActiveChannel(String storeName, int version, int partition) {
-    String transferKey = storeName + "_" + version + "_" + partition;
-    return activeChannels.get(transferKey);
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
+    return activeChannels.get(replicaId);
   }
 
   public void close() {

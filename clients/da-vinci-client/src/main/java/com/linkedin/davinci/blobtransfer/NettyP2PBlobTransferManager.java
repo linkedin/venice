@@ -72,11 +72,11 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   // That request tries a chain of peers (one host after another until success or all peers fail).
   private final ExecutorService replicaBlobFetchExecutor;
 
-  // Track ongoing blob transfers: "storeName_version_partition" -> perPartitionTransferFuture
+  // Track ongoing blob transfers: replicaId -> perPartitionTransferFuture
   private final Map<String, CompletableFuture<InputStream>> ongoingPartitionTransfers = new VeniceConcurrentHashMap<>();
-  // Track drop requests: "storeName_version_partition" -> drop requested flag
+  // Track drop requests: replicaId -> drop requested flag
   private final Map<String, AtomicBoolean> dropRequestFlags = new VeniceConcurrentHashMap<>();
-  // Track current ongoing channel: "storeName_version_partition" -> current Channel
+  // Track current ongoing channel: replicaId -> current Channel
   private final Map<String, Channel> currentOngoingChannels = new VeniceConcurrentHashMap<>();
 
   public NettyP2PBlobTransferManager(
