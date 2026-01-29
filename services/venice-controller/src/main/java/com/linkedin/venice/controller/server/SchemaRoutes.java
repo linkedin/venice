@@ -28,11 +28,6 @@ import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
-import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
-import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -40,6 +35,7 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Utils;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -47,6 +43,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
+import spark.Request;
 import spark.Route;
 
 
@@ -66,31 +63,28 @@ public class SchemaRoutes extends AbstractRoute {
    * @see Admin#getKeySchema(String, String)
    */
   public Route getKeySchema(Admin admin) {
-    return (request, response) -> {
-      SchemaResponse responseObject = new SchemaResponse();
-      response.type(HttpConstants.JSON);
-      try {
+    return new VeniceRouteHandler<SchemaResponse>(SchemaResponse.class) {
+      @Override
+      public void internalHandle(Request request, SchemaResponse veniceResponse) {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_KEY_SCHEMA.getParams(), admin);
+
+        // Extract primitives from HTTP request
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
 
-        // Convert HTTP request to gRPC request
-        ClusterStoreGrpcInfo storeInfo =
-            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
-        GetKeySchemaGrpcRequest grpcRequest = GetKeySchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+        // Build transport-agnostic context
+        ControllerRequestContext context = buildRequestContext(request);
 
-        // Call the handler and convert the response
-        GetKeySchemaGrpcResponse grpcResponse = schemaRequestHandler.getKeySchema(grpcRequest);
-        responseObject.setCluster(clusterName);
-        responseObject.setName(storeName);
-        responseObject.setId(grpcResponse.getSchemaId());
-        responseObject.setSchemaStr(grpcResponse.getSchemaStr());
-      } catch (Throwable e) {
-        responseObject.setError(e);
-        AdminSparkServer.handleError(new VeniceException(e), request, response);
+        // Call handler - returns POJO directly
+        SchemaResponse result = schemaRequestHandler.getKeySchema(clusterName, storeName, context);
+
+        // Copy result to response
+        veniceResponse.setCluster(result.getCluster());
+        veniceResponse.setName(result.getName());
+        veniceResponse.setId(result.getId());
+        veniceResponse.setSchemaStr(result.getSchemaStr());
       }
-      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -209,34 +203,30 @@ public class SchemaRoutes extends AbstractRoute {
    * @see Admin#getValueSchema(String, String, int)
    */
   public Route getValueSchema(Admin admin) {
-    return (request, response) -> {
-      SchemaResponse responseObject = new SchemaResponse();
-      response.type(HttpConstants.JSON);
-      try {
+    return new VeniceRouteHandler<SchemaResponse>(SchemaResponse.class) {
+      @Override
+      public void internalHandle(Request request, SchemaResponse veniceResponse) {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA.getParams(), admin);
+
+        // Extract primitives from HTTP request
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String schemaIdStr = request.queryParams(SCHEMA_ID);
         int schemaId = Utils.parseIntFromString(schemaIdStr, "schema id");
 
-        // Build gRPC request and delegate to handler
-        ClusterStoreGrpcInfo storeInfo =
-            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
-        GetValueSchemaGrpcRequest grpcRequest =
-            GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(schemaId).build();
+        // Build transport-agnostic context
+        ControllerRequestContext context = buildRequestContext(request);
 
-        GetValueSchemaGrpcResponse grpcResponse = schemaRequestHandler.getValueSchema(grpcRequest);
+        // Call handler - returns POJO directly
+        SchemaResponse result = schemaRequestHandler.getValueSchema(clusterName, storeName, schemaId, context);
 
-        responseObject.setCluster(clusterName);
-        responseObject.setName(storeName);
-        responseObject.setId(grpcResponse.getSchemaId());
-        responseObject.setSchemaStr(grpcResponse.getSchemaStr());
-      } catch (Throwable e) {
-        responseObject.setError(e);
-        AdminSparkServer.handleError(new VeniceException(e), request, response);
+        // Copy result to response
+        veniceResponse.setCluster(result.getCluster());
+        veniceResponse.setName(result.getName());
+        veniceResponse.setId(result.getId());
+        veniceResponse.setSchemaStr(result.getSchemaStr());
       }
-      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -496,5 +486,17 @@ public class SchemaRoutes extends AbstractRoute {
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
+  }
+
+  /**
+   * Build request context from HTTP request.
+   */
+  private ControllerRequestContext buildRequestContext(Request request) {
+    if (!isSslEnabled()) {
+      return ControllerRequestContext.anonymous();
+    }
+    X509Certificate cert = getCertificate(request);
+    String principalId = getPrincipalId(request);
+    return new ControllerRequestContext(cert, principalId);
   }
 }

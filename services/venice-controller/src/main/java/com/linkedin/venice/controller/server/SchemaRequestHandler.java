@@ -2,12 +2,8 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
-import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
-import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.schema.SchemaEntry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -16,6 +12,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * Request handler for schema-related operations.
  * Handles schema retrieval and management for Venice stores.
+ * Follows v2 architecture: takes primitives + ControllerRequestContext, returns POJOs.
  */
 public class SchemaRequestHandler {
   private static final Logger LOGGER = LogManager.getLogger(SchemaRequestHandler.class);
@@ -28,48 +25,58 @@ public class SchemaRequestHandler {
 
   /**
    * Retrieves the value schema for a store by schema ID.
-   * @param request the request containing cluster name, store name, and schema ID
-   * @return response containing the value schema string
+   * No ACL check required - reading schema metadata is public.
+   *
+   * @param clusterName the cluster name
+   * @param storeName the store name
+   * @param schemaId the schema ID
+   * @param context the request context (contains client identity)
+   * @return SchemaResponse containing the value schema
    */
-  public GetValueSchemaGrpcResponse getValueSchema(GetValueSchemaGrpcRequest request) {
-    ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
-    ControllerRequestParamValidator.validateClusterStoreInfo(storeInfo);
-    String clusterName = storeInfo.getClusterName();
-    String storeName = storeInfo.getStoreName();
-    int schemaId = request.getSchemaId();
+  public SchemaResponse getValueSchema(
+      String clusterName,
+      String storeName,
+      int schemaId,
+      ControllerRequestContext context) {
     LOGGER
         .info("Getting value schema for store: {} in cluster: {} with schema id: {}", storeName, clusterName, schemaId);
+
     SchemaEntry valueSchemaEntry = admin.getValueSchema(clusterName, storeName, schemaId);
     if (valueSchemaEntry == null) {
-      throw new IllegalArgumentException(
+      throw new VeniceException(
           "Value schema for schema id: " + schemaId + " of store: " + storeName + " doesn't exist");
     }
-    return GetValueSchemaGrpcResponse.newBuilder()
-        .setStoreInfo(storeInfo)
-        .setSchemaId(valueSchemaEntry.getId())
-        .setSchemaStr(valueSchemaEntry.getSchema().toString())
-        .build();
+
+    SchemaResponse response = new SchemaResponse();
+    response.setCluster(clusterName);
+    response.setName(storeName);
+    response.setId(valueSchemaEntry.getId());
+    response.setSchemaStr(valueSchemaEntry.getSchema().toString());
+    return response;
   }
 
   /**
    * Retrieves the key schema for a store.
-   * @param request the request containing cluster and store name
-   * @return response containing the key schema id and schema string
+   * No ACL check required - reading schema metadata is public.
+   *
+   * @param clusterName the cluster name
+   * @param storeName the store name
+   * @param context the request context (contains client identity)
+   * @return SchemaResponse containing the key schema
    */
-  public GetKeySchemaGrpcResponse getKeySchema(GetKeySchemaGrpcRequest request) {
-    ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
-    ControllerRequestParamValidator.validateClusterStoreInfo(storeInfo);
-    String clusterName = storeInfo.getClusterName();
-    String storeName = storeInfo.getStoreName();
+  public SchemaResponse getKeySchema(String clusterName, String storeName, ControllerRequestContext context) {
     LOGGER.info("Getting key schema for store: {} in cluster: {}", storeName, clusterName);
+
     SchemaEntry keySchemaEntry = admin.getKeySchema(clusterName, storeName);
     if (keySchemaEntry == null) {
       throw new VeniceException("Key schema doesn't exist for store: " + storeName);
     }
-    return GetKeySchemaGrpcResponse.newBuilder()
-        .setStoreInfo(storeInfo)
-        .setSchemaId(keySchemaEntry.getId())
-        .setSchemaStr(keySchemaEntry.getSchema().toString())
-        .build();
+
+    SchemaResponse response = new SchemaResponse();
+    response.setCluster(clusterName);
+    response.setName(storeName);
+    response.setId(keySchemaEntry.getId());
+    response.setSchemaStr(keySchemaEntry.getSchema().toString());
+    return response;
   }
 }
