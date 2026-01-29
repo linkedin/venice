@@ -11,6 +11,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.exceptions.VeniceBlobTransferCancelledException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
@@ -29,6 +30,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -115,6 +117,31 @@ public class DefaultIngestionBackend implements IngestionBackend {
           svsSupplier);
 
       bootstrapFuture.whenComplete((result, throwable) -> {
+        String storeName = storeAndVersion.getStore().getName();
+        int versionNumber = storeAndVersion.getVersion().getNumber();
+        String replicaId = Utils.getReplicaId(storeVersion, partition);
+
+        // Check if blob transfer was cancelled during OR after blob transfer.
+        // 1: Cancellation request arrives right after successful transfer
+        if (blobTransferManager.isBlobTransferCancelled(storeName, versionNumber, partition)) {
+          LOGGER.info(
+              "Blob transfer cancellation was requested for replica {}. Discarding bootstrap result and skipping consumption startup.",
+              replicaId);
+          return;
+        }
+
+        // 2: Cancellation arrives during transfer
+        if (throwable != null && throwable.getCause() instanceof VeniceBlobTransferCancelledException) {
+          LOGGER.info(
+              "Blob transfer was cancelled during transfer for store {} partition {}. Skipping consumption startup.",
+              storeVersion,
+              partition);
+          return;
+        }
+
+        // 3. For all other cases (success without cancellation, or failure due to other reasons),
+        // proceed with consumption startup
+        blobTransferManager.clearCancellationRequest(storeName, versionNumber, partition);
         runnable.run();
       });
     }
@@ -132,8 +159,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * If the blob transfer succeeds:
    * When falling back to Kafka ingestion, it will resume from the last offset instead of starting from the beginning.
    *
-   * Regardless of whether the blob transfer succeeds or fails,
-   * this method always returns a completed future, All exceptions are handled either by cleaning up the folder or dropping the partition.
+   * If the blob transfer is cancelled (e.g., due to partition drop):
+   * VeniceBlobTransferCancelledException is propagated to the caller to signal that consumption should not start.
+   *
+   * Exception handling:
+   * - VeniceBlobTransferCancelledException: Propagated to caller (cancellation)
+   * - All other exceptions: Swallowed and returns completed future with null (falls back to Kafka)
    */
   CompletionStage<Void> bootstrapFromBlobs(
       Store store,
@@ -183,27 +214,37 @@ public class DefaultIngestionBackend implements IngestionBackend {
     validateDirectoriesBeforeBlobTransfer(storeName, versionNumber, partitionId);
     addStoragePartitionWhenBlobTransferStart(partitionId, storeConfig, svsSupplier);
 
-    return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
-        .handle((inputStream, throwable) -> {
-          updateBlobTransferResponseStats(throwable, storeName, versionNumber);
-          if (throwable != null) {
-            LOGGER.error(
-                "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}, falling back to kafka ingestion.",
-                partitionId,
-                storeName,
-                throwable);
-          } else {
-            LOGGER.info(
-                "Successfully bootstrapped partition {} from blobs transfer for store {}",
-                partitionId,
-                storeName);
-          }
+    return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat).handle((inputStream, ex) -> {
+      Throwable throwable = (Throwable) ex;
+      updateBlobTransferResponseStats(throwable, storeName, versionNumber);
 
-          // Post-transfer validation and cleanup
-          validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partitionId, throwable == null);
-          adjustStoragePartitionWhenBlobTransferComplete(storageService.getStorageEngine(kafkaTopic), partitionId);
-          return null;
-        });
+      // Special handling for blob transfer cancellation, so that the outer caller can skip kafka ingestion.
+      if (throwable != null && throwable.getCause() instanceof VeniceBlobTransferCancelledException) {
+        LOGGER.info(
+            "Blob transfer was cancelled for partition {} store {}. Propagating cancellation exception.",
+            partitionId,
+            storeName);
+        // Post-transfer validation and cleanup
+        validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partitionId, false);
+        adjustStoragePartitionWhenBlobTransferComplete(storageService.getStorageEngine(kafkaTopic), partitionId);
+        throw new CompletionException(throwable.getCause());
+      }
+
+      if (throwable != null) {
+        LOGGER.error(
+            "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}, falling back to kafka ingestion.",
+            partitionId,
+            storeName,
+            throwable);
+      } else {
+        LOGGER.info("Successfully bootstrapped partition {} from blobs transfer for store {}", partitionId, storeName);
+      }
+
+      // Post-transfer validation and cleanup
+      validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partitionId, throwable == null);
+      adjustStoragePartitionWhenBlobTransferComplete(storageService.getStorageEngine(kafkaTopic), partitionId);
+      return null;
+    });
   }
 
   /**
@@ -411,6 +452,111 @@ public class DefaultIngestionBackend implements IngestionBackend {
   @Override
   public CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
     return getStoreIngestionService().stopConsumption(storeConfig, partition);
+  }
+
+  @Override
+  public void cancelBlobTransferIfInProgress(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      int timeoutInSeconds) {
+    String storeVersion = storeConfig.getStoreVersionName();
+
+    if (blobTransferManager == null) {
+      return;
+    }
+
+    try {
+      StoreVersionInfo storeAndVersion =
+          Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
+      Store store = storeAndVersion.getStore();
+      String storeName = store.getName();
+      int versionNumber = storeAndVersion.getVersion().getNumber();
+
+      boolean blobTransferActiveInReceiver = shouldEnableBlobTransfer(store);
+
+      if (!blobTransferActiveInReceiver) {
+        LOGGER.debug(
+            "Blob transfer is not active for replica {}. No cancellation needed.",
+            Utils.getReplicaId(storeVersion, partition));
+        return;
+      }
+
+      // Check if blob transfer is in progress
+      if (!blobTransferManager.isBlobTransferInProgress(storeName, versionNumber, partition)) {
+        LOGGER.info(
+            "No ongoing blob transfer found for store {} version {} partition {}. Checking if cancellation flag should be set.",
+            storeName,
+            versionNumber,
+            partition);
+
+        // Even if no transfer is in progress, set the cancellation flag to prevent any future transfer
+        // This handles the case where the transfer might start right after this check
+        if (!blobTransferManager.isBlobTransferCancelled(storeName, versionNumber, partition)) {
+          LOGGER.info(
+              "Setting cancellation flag for store {} version {} partition {} to prevent future blob transfer during OFFLINE transition.",
+              storeName,
+              versionNumber,
+              partition);
+
+          try {
+            // Call cancelTransfer to SET the flag (even though no transfer is in progress)
+            // The BlobTransferCancellationManager.cancelTransfer() will:
+            // 1. Set the cancellation flag
+            // 2. Return early since no transfer is in progress
+            blobTransferManager.cancelTransfer(storeName, versionNumber, partition, timeoutInSeconds);
+
+            LOGGER.info(
+                "Cancellation flag set successfully for store {} version {} partition {}.",
+                storeName,
+                versionNumber,
+                partition);
+          } catch (Exception e) {
+            LOGGER.warn(
+                "Exception while setting cancellation flag for store {} version {} partition {}. This is non-fatal.",
+                storeName,
+                versionNumber,
+                partition,
+                e);
+          }
+        } else {
+          LOGGER.info(
+              "Cancellation flag already set for store {} version {} partition {}. No action needed.",
+              storeName,
+              versionNumber,
+              partition);
+        }
+        return;
+      }
+
+      LOGGER.info(
+          "Blob transfer is in progress for replica {}. Initiating cancellation during OFFLINE transition.",
+          Utils.getReplicaId(storeVersion, partition));
+
+      blobTransferManager.cancelTransfer(storeName, versionNumber, partition, timeoutInSeconds);
+
+      LOGGER.info(
+          "Blob transfer cancellation completed for replica {} during OFFLINE transition. Clearing cancellation flag.",
+          Utils.getReplicaId(storeVersion, partition));
+
+      // Clear the cancellation flag after successful cancellation
+      blobTransferManager.clearCancellationRequest(storeName, versionNumber, partition);
+
+      LOGGER.info(
+          "Cancellation flag cleared for replica {} after successful cancellation.",
+          Utils.getReplicaId(storeVersion, partition));
+    } catch (java.util.concurrent.TimeoutException e) {
+      LOGGER.warn(
+          "Timeout waiting for blob transfer cancellation for store {} partition {} after {} seconds during OFFLINE transition. Proceeding with state transition.",
+          storeVersion,
+          partition,
+          timeoutInSeconds);
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Exception while canceling blob transfer for store {} partition {} during OFFLINE transition. Proceeding with state transition.",
+          storeVersion,
+          partition,
+          e);
+    }
   }
 
   @Override

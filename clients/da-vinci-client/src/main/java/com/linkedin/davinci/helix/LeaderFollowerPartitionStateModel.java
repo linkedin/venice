@@ -163,6 +163,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.REMOVE_MONITOR);
 
     executeStateTransition(message, context, () -> {
+      // Cancel any ongoing blob transfer before stopping consumption
+      cancelBlobTransferIfNeeded();
       stopConsumption(true);
       // Capture the timestamp when partition becomes OFFLINE for graceful drop delay calculation
       lastOfflineTransitionTimestampMs = System.currentTimeMillis();

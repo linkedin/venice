@@ -7,6 +7,8 @@ import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 
 /**
@@ -60,4 +62,47 @@ public interface BlobTransferManager<T> extends AutoCloseable {
    * @return the blob transfer stats
    */
   AggVersionedBlobTransferStats getAggVersionedBlobTransferStats();
+
+  /**
+   * Cancel an ongoing blob transfer for the given storeName, version and partition.
+   *
+   * @param storeName the name of the store
+   * @param version the version of the store
+   * @param partition the partition of the store
+   * @param timeoutInSeconds maximum time to wait for cancellation to complete
+   * @throws InterruptedException if interrupted while waiting
+   * @throws TimeoutException if cancellation doesn't complete within timeout
+   */
+  void cancelTransfer(String storeName, int version, int partition, int timeoutInSeconds)
+      throws InterruptedException, TimeoutException, ExecutionException;
+
+  /**
+   * Check if blob transfer cancellation was requested for the given partition.
+   *
+   * @param storeName the name of the store
+   * @param version the version of the store
+   * @param partition the partition of the store
+   * @return true if blob transfer cancellation was requested for this partition, false otherwise
+   */
+  boolean isBlobTransferCancelled(String storeName, int version, int partition);
+
+  /**
+   * Check if there's an ongoing blob transfer for the given partition.
+   *
+   * @param storeName the name of the store
+   * @param version the version of the store
+   * @param partition the partition of the store
+   * @return true if blob transfer is in progress for this partition, false otherwise
+   */
+  boolean isBlobTransferInProgress(String storeName, int version, int partition);
+
+  /**
+   * Clear the cancellation request flag for a partition.
+   * Should be called after consumption successfully starts or after cancellation completes.
+   *
+   * @param storeName the name of the store
+   * @param version the version of the store
+   * @param partition the partition of the store
+   */
+  void clearCancellationRequest(String storeName, int version, int partition);
 }

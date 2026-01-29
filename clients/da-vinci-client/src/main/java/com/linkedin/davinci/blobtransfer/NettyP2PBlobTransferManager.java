@@ -9,6 +9,7 @@ import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
+import com.linkedin.venice.exceptions.VeniceBlobTransferCancelledException;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
@@ -29,6 +30,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -67,6 +69,9 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   // That request tries a chain of peers (one host after another until success or all peers fail).
   private final ExecutorService replicaBlobFetchExecutor;
 
+  // Cancellation manager is responsible for coordinating blob transfer cancellations
+  private final BlobTransferCancellationManager cancellationManager;
+
   public NettyP2PBlobTransferManager(
       P2PBlobTransferService blobTransferService,
       NettyFileTransferClient nettyClient,
@@ -86,6 +91,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("Venice-BlobTransfer-Replica-Blob-Fetch-Executor"));
+    this.cancellationManager = new BlobTransferCancellationManager(nettyClient);
   }
 
   @Override
@@ -99,7 +105,12 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       int version,
       int partition,
       BlobTransferTableFormat tableFormat) throws VenicePeersNotFoundException {
-    CompletableFuture<InputStream> resultFuture = new CompletableFuture<>();
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
+    CompletableFuture<InputStream> perPartitionTransferFuture = new CompletableFuture<>();
+
+    // Register the transfer with the cancellation manager
+    cancellationManager.registerTransfer(storeName, version, partition, perPartitionTransferFuture);
+
     // 1. Discover peers for the requested blob
     BlobPeersDiscoveryResponse response = peerFinder.discoverBlobPeers(storeName, version, partition);
     if (response == null || response.isError() || response.getDiscoveryResult() == null
@@ -108,17 +119,17 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       String errorMsg = String.format(
           NO_PEERS_FOUND_ERROR_MSG_FORMAT,
           Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition));
-      resultFuture.completeExceptionally(new VenicePeersNotFoundException(errorMsg));
-      return resultFuture;
+      perPartitionTransferFuture.completeExceptionally(new VenicePeersNotFoundException(errorMsg));
+      return perPartitionTransferFuture;
     }
 
     List<String> discoverPeers = response.getDiscoveryResult();
     List<String> connectablePeers = getConnectableHosts(discoverPeers, storeName, version, partition);
 
     // 2: Process peers sequentially to fetch the blob
-    processPeersSequentially(connectablePeers, storeName, version, partition, tableFormat, resultFuture);
+    processPeersSequentially(connectablePeers, storeName, version, partition, tableFormat, perPartitionTransferFuture);
 
-    return resultFuture;
+    return perPartitionTransferFuture;
   }
 
   /**
@@ -172,7 +183,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
    * @param version the version of the store
    * @param partition the partition of the store
    * @param tableFormat the needed table format
-   * @param resultFuture the future to complete with the InputStream of the blob
+   * @param perPartitionTransferFuture the future to complete with the InputStream of the blob
    */
   private void processPeersSequentially(
       List<String> uniqueConnectablePeers,
@@ -180,7 +191,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       int version,
       int partition,
       BlobTransferTableFormat tableFormat,
-      CompletableFuture<InputStream> resultFuture) {
+      CompletableFuture<InputStream> perPartitionTransferFuture) {
     String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
     Instant startTime = Instant.now();
 
@@ -192,7 +203,13 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       // Chain the next operation to the previous future
       chainOfPeersFuture = chainOfPeersFuture.thenComposeAsync(v -> {
 
-        if (resultFuture.isDone()) {
+        // Check cancellation request flag, if blob transfer cancellation was requested, skip all remaining hosts
+        AtomicBoolean cancellationFlag = cancellationManager.getCancellationFlag(storeName, version, partition);
+        if (cancellationFlag != null && cancellationFlag.get()) {
+          return CompletableFuture.completedFuture(null);
+        }
+
+        if (perPartitionTransferFuture.isDone()) {
           // If the result future is already completed, skip the current peer
           return CompletableFuture.completedFuture(null);
         }
@@ -206,28 +223,41 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
             partition,
             tableFormat);
 
-        return nettyClient.get(chosenHost, storeName, version, partition, tableFormat)
-            .toCompletableFuture()
-            .thenAccept(inputStream -> {
-              // Success case: Complete the future with the input stream
-              long transferTime = Duration.between(startTime, Instant.now()).getSeconds();
-              LOGGER.info(FETCHED_BLOB_SUCCESS_MSG, replicaId, chosenHost, transferTime);
-              resultFuture.complete(inputStream);
-              // Updating the blob transfer stats with the transfer time and throughput
-              updateBlobTransferFileReceiveStats(transferTime, storeName, version, partition);
-            })
-            .exceptionally(ex -> {
-              handlePeerFetchException(ex, chosenHost, storeName, version, partition, replicaId);
-              return null;
-            });
+        CompletionStage<InputStream> perHostTransferFuture =
+            nettyClient.get(chosenHost, storeName, version, partition, tableFormat);
+
+        return perHostTransferFuture.toCompletableFuture().thenAccept(inputStream -> {
+          // Success case: Complete the future with the input stream
+          long transferTime = Duration.between(startTime, Instant.now()).getSeconds();
+          LOGGER.info(FETCHED_BLOB_SUCCESS_MSG, replicaId, chosenHost, transferTime);
+          perPartitionTransferFuture.complete(inputStream);
+          // Updating the blob transfer stats with the transfer time and throughput
+          updateBlobTransferFileReceiveStats(transferTime, storeName, version, partition);
+        }).exceptionally(ex -> {
+          handlePeerFetchException(ex, chosenHost, storeName, version, partition, replicaId);
+          return null;
+        });
       }, replicaBlobFetchExecutor);
     }
 
-    // error case 2: all hosts have been tried and failed for blob transfer, falling back to Kafka for bootstrapping.
+    // After all hosts have been tried:
+    // - If cancellation was requested: complete with VeniceBlobTransferCancelledException
+    // - Otherwise if all failed: complete with VenicePeersAllFailedException
     chainOfPeersFuture.thenRun(() -> {
-      if (!resultFuture.isDone()) {
-        resultFuture.completeExceptionally(
-            new VenicePeersAllFailedException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
+      if (!perPartitionTransferFuture.isDone()) {
+        AtomicBoolean cancellationFlag = cancellationManager.getCancellationFlag(storeName, version, partition);
+        if (cancellationFlag != null && cancellationFlag.get()) {
+          String errorMsg = String.format(
+              "Blob transfer cancellation was requested for replica %s while blob transfer was in progress. Aborting transfer. "
+                  + "The entire chain of peer attempts was terminated.",
+              replicaId);
+          perPartitionTransferFuture.completeExceptionally(new VeniceBlobTransferCancelledException(errorMsg));
+          LOGGER.info(errorMsg);
+        } else {
+          // All hosts failed, fall back to Kafka bootstrapping
+          perPartitionTransferFuture.completeExceptionally(
+              new VenicePeersAllFailedException(String.format(NO_VALID_PEERS_MSG_FORMAT, replicaId)));
+        }
       }
     });
   }
@@ -254,6 +284,27 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       RocksDBUtils.cleanupBothPartitionDirAndTempTransferredDir(storeName, version, partition, baseDir);
       LOGGER.error(FAILED_TO_FETCH_BLOB_MSG, replicaId, chosenHost, ex.getMessage());
     }
+  }
+
+  @Override
+  public void cancelTransfer(String storeName, int version, int partition, int timeoutInSeconds)
+      throws InterruptedException, java.util.concurrent.TimeoutException, java.util.concurrent.ExecutionException {
+    cancellationManager.cancelTransfer(storeName, version, partition, timeoutInSeconds);
+  }
+
+  @Override
+  public boolean isBlobTransferCancelled(String storeName, int version, int partition) {
+    return cancellationManager.isBlobTransferCancelled(storeName, version, partition);
+  }
+
+  @Override
+  public boolean isBlobTransferInProgress(String storeName, int version, int partition) {
+    return cancellationManager.isBlobTransferInProgress(storeName, version, partition);
+  }
+
+  @Override
+  public void clearCancellationRequest(String storeName, int version, int partition) {
+    cancellationManager.clearCancellationRequest(storeName, version, partition);
   }
 
   @Override
