@@ -5,7 +5,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -143,13 +142,13 @@ public class SchemaRoutesTest {
     pojoResponse.setName(store);
     pojoResponse.setId(schemaId);
     pojoResponse.setSchemaStr(schemaStr);
-    when(schemaRequestHandler.getValueSchema(eq(cluster), eq(store), eq(schemaId), any())).thenReturn(pojoResponse);
+    when(schemaRequestHandler.getValueSchema(eq(cluster), eq(store), eq(schemaId))).thenReturn(pojoResponse);
 
     SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
     Route route = schemaRoutes.getValueSchema(admin);
     String result = (String) route.handle(request, response);
 
-    verify(schemaRequestHandler, times(1)).getValueSchema(eq(cluster), eq(store), eq(schemaId), any());
+    verify(schemaRequestHandler, times(1)).getValueSchema(eq(cluster), eq(store), eq(schemaId));
     verify(response, times(0)).status(anyInt()); // no error
     assertTrue(result.contains("\"schemaStr\":\"\\\"string\\\"\""), "Response should contain the schema string");
     assertTrue(result.contains("\"id\":1"), "Response should contain the schema ID");
@@ -179,14 +178,14 @@ public class SchemaRoutesTest {
     doReturn(queryMapResult).when(paramsMap).toMap();
     doReturn(paramsMap).when(request).queryMap();
 
-    when(schemaRequestHandler.getValueSchema(eq(cluster), eq(store), eq(schemaId), any()))
+    when(schemaRequestHandler.getValueSchema(eq(cluster), eq(store), eq(schemaId)))
         .thenThrow(new VeniceException("Value schema for schema id: 99 of store: store_name doesn't exist"));
 
     SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
     Route route = schemaRoutes.getValueSchema(admin);
     String result = (String) route.handle(request, response);
 
-    verify(schemaRequestHandler, times(1)).getValueSchema(eq(cluster), eq(store), eq(schemaId), any());
+    verify(schemaRequestHandler, times(1)).getValueSchema(eq(cluster), eq(store), eq(schemaId));
     assertTrue(
         result.contains("Value schema for schema id: 99 of store: store_name doesn't exist"),
         "Response should contain error message");
@@ -211,14 +210,14 @@ public class SchemaRoutesTest {
     pojoResponse.setName(store);
     pojoResponse.setId(1);
     pojoResponse.setSchemaStr("\"string\"");
-    when(schemaRequestHandler.getKeySchema(eq(cluster), eq(store), any())).thenReturn(pojoResponse);
+    when(schemaRequestHandler.getKeySchema(eq(cluster), eq(store))).thenReturn(pojoResponse);
 
     SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
     Route route = schemaRoutes.getKeySchema(admin);
     String result = (String) route.handle(request, response);
 
     verify(response, times(0)).status(anyInt()); // no error
-    verify(schemaRequestHandler, times(1)).getKeySchema(eq(cluster), eq(store), any());
+    verify(schemaRequestHandler, times(1)).getKeySchema(eq(cluster), eq(store));
 
     ObjectMapper mapper = ObjectMapperFactory.getInstance();
     SchemaResponse schemaResponse = mapper.readValue(result, SchemaResponse.class);
@@ -247,14 +246,14 @@ public class SchemaRoutesTest {
 
     doReturn(true).when(admin).isLeaderControllerFor(cluster);
 
-    when(schemaRequestHandler.getKeySchema(eq(cluster), eq(store), any()))
+    when(schemaRequestHandler.getKeySchema(eq(cluster), eq(store)))
         .thenThrow(new VeniceException("Key schema doesn't exist for store: " + store));
 
     SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), schemaRequestHandler);
     Route route = schemaRoutes.getKeySchema(admin);
     String result = (String) route.handle(request, response);
 
-    verify(schemaRequestHandler, times(1)).getKeySchema(eq(cluster), eq(store), any());
+    verify(schemaRequestHandler, times(1)).getKeySchema(eq(cluster), eq(store));
 
     ObjectMapper mapper = ObjectMapperFactory.getInstance();
     SchemaResponse schemaResponse = mapper.readValue(result, SchemaResponse.class);

@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.grpc.server;
 
-import com.linkedin.venice.controller.server.ControllerRequestContext;
 import com.linkedin.venice.controller.server.SchemaRequestHandler;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
@@ -10,7 +9,6 @@ import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.SchemaGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.SchemaGrpcServiceGrpc.SchemaGrpcServiceImplBase;
-import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -46,11 +44,8 @@ public class SchemaGrpcServiceImpl extends SchemaGrpcServiceImplBase {
       String storeName = storeInfo.getStoreName();
       int schemaId = request.getSchemaId();
 
-      // Build transport-agnostic context from gRPC
-      ControllerRequestContext context = ControllerGrpcServerUtils.buildRequestContext(Context.current());
-
       // Call handler - returns POJO
-      SchemaResponse result = schemaRequestHandler.getValueSchema(clusterName, storeName, schemaId, context);
+      SchemaResponse result = schemaRequestHandler.getValueSchema(clusterName, storeName, schemaId);
 
       // Convert POJO to protobuf response
       return GetValueSchemaGrpcResponse.newBuilder()
@@ -75,11 +70,8 @@ public class SchemaGrpcServiceImpl extends SchemaGrpcServiceImplBase {
       String clusterName = storeInfo.getClusterName();
       String storeName = storeInfo.getStoreName();
 
-      // Build transport-agnostic context from gRPC
-      ControllerRequestContext context = ControllerGrpcServerUtils.buildRequestContext(Context.current());
-
       // Call handler - returns POJO
-      SchemaResponse result = schemaRequestHandler.getKeySchema(clusterName, storeName, context);
+      SchemaResponse result = schemaRequestHandler.getKeySchema(clusterName, storeName);
 
       // Convert POJO to protobuf response
       return GetKeySchemaGrpcResponse.newBuilder()

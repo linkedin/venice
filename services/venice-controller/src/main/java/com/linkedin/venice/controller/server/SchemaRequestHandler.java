@@ -30,14 +30,9 @@ public class SchemaRequestHandler {
    * @param clusterName the cluster name
    * @param storeName the store name
    * @param schemaId the schema ID
-   * @param context the request context (contains client identity for request tracking and potential future ACL checks)
    * @return SchemaResponse containing the value schema
    */
-  public SchemaResponse getValueSchema(
-      String clusterName,
-      String storeName,
-      int schemaId,
-      ControllerRequestContext context) {
+  public SchemaResponse getValueSchema(String clusterName, String storeName, int schemaId) {
     LOGGER
         .info("Getting value schema for store: {} in cluster: {} with schema id: {}", storeName, clusterName, schemaId);
 
@@ -71,10 +66,9 @@ public class SchemaRequestHandler {
    *
    * @param clusterName the cluster name
    * @param storeName the store name
-   * @param context the request context (contains client identity for request tracking and potential future ACL checks)
    * @return SchemaResponse containing the key schema
    */
-  public SchemaResponse getKeySchema(String clusterName, String storeName, ControllerRequestContext context) {
+  public SchemaResponse getKeySchema(String clusterName, String storeName) {
     LOGGER.info("Getting key schema for store: {} in cluster: {}", storeName, clusterName);
 
     SchemaEntry keySchemaEntry;

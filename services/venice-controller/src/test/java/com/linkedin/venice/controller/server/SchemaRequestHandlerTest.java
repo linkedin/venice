@@ -18,13 +18,11 @@ import org.testng.annotations.Test;
 
 /**
  * Unit tests for SchemaRequestHandler.
- * Tests the v2 architecture where handler takes primitives + ControllerRequestContext
- * and returns POJOs.
+ * Tests the v2 architecture where handler takes primitives and returns POJOs.
  */
 public class SchemaRequestHandlerTest {
   private SchemaRequestHandler schemaRequestHandler;
   private Admin admin;
-  private ControllerRequestContext context;
 
   @BeforeMethod
   public void setUp() {
@@ -32,7 +30,6 @@ public class SchemaRequestHandlerTest {
     ControllerRequestHandlerDependencies dependencies = mock(ControllerRequestHandlerDependencies.class);
     when(dependencies.getAdmin()).thenReturn(admin);
     schemaRequestHandler = new SchemaRequestHandler(dependencies);
-    context = ControllerRequestContext.anonymous();
   }
 
   @Test
@@ -45,7 +42,7 @@ public class SchemaRequestHandlerTest {
     SchemaEntry schemaEntry = new SchemaEntry(1, avroSchema);
     when(admin.getValueSchema(clusterName, storeName, schemaId)).thenReturn(schemaEntry);
 
-    SchemaResponse response = schemaRequestHandler.getValueSchema(clusterName, storeName, schemaId, context);
+    SchemaResponse response = schemaRequestHandler.getValueSchema(clusterName, storeName, schemaId);
 
     verify(admin, times(1)).getValueSchema(clusterName, storeName, schemaId);
     assertNotNull(response);
@@ -63,7 +60,7 @@ public class SchemaRequestHandlerTest {
 
     when(admin.getValueSchema(clusterName, storeName, schemaId)).thenReturn(null);
 
-    schemaRequestHandler.getValueSchema(clusterName, storeName, schemaId, context);
+    schemaRequestHandler.getValueSchema(clusterName, storeName, schemaId);
   }
 
   @Test
@@ -75,7 +72,7 @@ public class SchemaRequestHandlerTest {
     SchemaEntry schemaEntry = new SchemaEntry(1, schema);
     when(admin.getKeySchema(clusterName, storeName)).thenReturn(schemaEntry);
 
-    SchemaResponse response = schemaRequestHandler.getKeySchema(clusterName, storeName, context);
+    SchemaResponse response = schemaRequestHandler.getKeySchema(clusterName, storeName);
 
     verify(admin, times(1)).getKeySchema(clusterName, storeName);
     assertNotNull(response);
@@ -92,6 +89,6 @@ public class SchemaRequestHandlerTest {
 
     when(admin.getKeySchema(clusterName, storeName)).thenReturn(null);
 
-    schemaRequestHandler.getKeySchema(clusterName, storeName, context);
+    schemaRequestHandler.getKeySchema(clusterName, storeName);
   }
 }

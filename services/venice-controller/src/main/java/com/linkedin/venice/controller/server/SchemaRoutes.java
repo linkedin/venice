@@ -73,11 +73,8 @@ public class SchemaRoutes extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
 
-        // Build transport-agnostic context
-        ControllerRequestContext context = buildRequestContext(request);
-
         // Call handler - returns POJO directly
-        SchemaResponse result = schemaRequestHandler.getKeySchema(clusterName, storeName, context);
+        SchemaResponse result = schemaRequestHandler.getKeySchema(clusterName, storeName);
 
         // Copy result to response
         veniceResponse.setCluster(result.getCluster());
@@ -215,11 +212,8 @@ public class SchemaRoutes extends AbstractRoute {
         String schemaIdStr = request.queryParams(SCHEMA_ID);
         int schemaId = Utils.parseIntFromString(schemaIdStr, "schema id");
 
-        // Build transport-agnostic context
-        ControllerRequestContext context = buildRequestContext(request);
-
         // Call handler - returns POJO directly
-        SchemaResponse result = schemaRequestHandler.getValueSchema(clusterName, storeName, schemaId, context);
+        SchemaResponse result = schemaRequestHandler.getValueSchema(clusterName, storeName, schemaId);
 
         // Copy result to response
         veniceResponse.setCluster(result.getCluster());

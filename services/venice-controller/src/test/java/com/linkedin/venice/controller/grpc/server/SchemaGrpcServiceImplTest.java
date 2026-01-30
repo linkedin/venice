@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.grpc.server;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -87,7 +86,7 @@ public class SchemaGrpcServiceImplTest {
     pojoResponse.setName(TEST_STORE);
     pojoResponse.setId(1);
     pojoResponse.setSchemaStr(VALUE_SCHEMA);
-    when(schemaRequestHandler.getValueSchema(eq(TEST_CLUSTER), eq(TEST_STORE), eq(1), any())).thenReturn(pojoResponse);
+    when(schemaRequestHandler.getValueSchema(eq(TEST_CLUSTER), eq(TEST_STORE), eq(1))).thenReturn(pojoResponse);
 
     GetValueSchemaGrpcResponse actualResponse = blockingStub.getValueSchema(request);
 
@@ -104,7 +103,7 @@ public class SchemaGrpcServiceImplTest {
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetValueSchemaGrpcRequest request =
         GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(99).build();
-    when(schemaRequestHandler.getValueSchema(eq(TEST_CLUSTER), eq(TEST_STORE), eq(99), any()))
+    when(schemaRequestHandler.getValueSchema(eq(TEST_CLUSTER), eq(TEST_STORE), eq(99)))
         .thenThrow(new VeniceException("Value schema for schema id: 99 of store: test-store doesn't exist"));
 
     StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getValueSchema(request));
@@ -123,7 +122,7 @@ public class SchemaGrpcServiceImplTest {
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetValueSchemaGrpcRequest request =
         GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(1).build();
-    when(schemaRequestHandler.getValueSchema(eq(TEST_CLUSTER), eq(TEST_STORE), eq(1), any()))
+    when(schemaRequestHandler.getValueSchema(eq(TEST_CLUSTER), eq(TEST_STORE), eq(1)))
         .thenThrow(new VeniceException("Internal error fetching schema"));
 
     StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getValueSchema(request));
@@ -148,7 +147,7 @@ public class SchemaGrpcServiceImplTest {
     pojoResponse.setName(TEST_STORE);
     pojoResponse.setId(1);
     pojoResponse.setSchemaStr("\"string\"");
-    when(schemaRequestHandler.getKeySchema(eq(TEST_CLUSTER), eq(TEST_STORE), any())).thenReturn(pojoResponse);
+    when(schemaRequestHandler.getKeySchema(eq(TEST_CLUSTER), eq(TEST_STORE))).thenReturn(pojoResponse);
 
     GetKeySchemaGrpcResponse actualResponse = blockingStub.getKeySchema(request);
 
@@ -163,7 +162,7 @@ public class SchemaGrpcServiceImplTest {
     ClusterStoreGrpcInfo storeInfo =
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetKeySchemaGrpcRequest request = GetKeySchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
-    when(schemaRequestHandler.getKeySchema(eq(TEST_CLUSTER), eq(TEST_STORE), any()))
+    when(schemaRequestHandler.getKeySchema(eq(TEST_CLUSTER), eq(TEST_STORE)))
         .thenThrow(new VeniceException("Key schema doesn't exist for store: " + TEST_STORE));
 
     StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getKeySchema(request));
