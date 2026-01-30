@@ -287,7 +287,7 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
 
-        // Call handler with primitives (v2 pattern)
+        // Call handler with primitives
         StoreInfo storeInfo = storeRequestHandler.getStore(clusterName, storeName);
         veniceResponse.setStore(storeInfo);
       }

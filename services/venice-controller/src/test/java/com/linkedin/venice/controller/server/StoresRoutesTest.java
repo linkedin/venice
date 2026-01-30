@@ -310,7 +310,7 @@ public class StoresRoutesTest {
     final Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
 
-    // Mock handler returning StoreInfo (v2 pattern)
+    // Mock handler returning StoreInfo
     final StoreRequestHandler mockHandler = mock(StoreRequestHandler.class);
     StoreInfo storeInfo = new StoreInfo();
     storeInfo.setName(TEST_STORE_NAME);

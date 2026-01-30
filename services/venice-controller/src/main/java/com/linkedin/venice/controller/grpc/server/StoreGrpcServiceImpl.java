@@ -163,7 +163,7 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
     String storeName = grpcRequest.getStoreInfo().getStoreName();
 
     handleRequest(StoreGrpcServiceGrpc.getGetStoreMethod(), () -> {
-      // Call handler with primitives (v2 pattern)
+      // Call handler with primitives
       StoreInfo storeInfo = storeRequestHandler.getStore(clusterName, storeName);
 
       // Convert POJO to protobuf response

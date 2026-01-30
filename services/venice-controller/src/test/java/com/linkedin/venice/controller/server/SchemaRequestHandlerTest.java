@@ -18,7 +18,6 @@ import org.testng.annotations.Test;
 
 /**
  * Unit tests for SchemaRequestHandler.
- * Tests the v2 architecture where handler takes primitives and returns POJOs.
  */
 public class SchemaRequestHandlerTest {
   private SchemaRequestHandler schemaRequestHandler;

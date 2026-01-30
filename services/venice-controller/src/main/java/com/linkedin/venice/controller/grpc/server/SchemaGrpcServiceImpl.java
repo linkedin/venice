@@ -16,8 +16,7 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * gRPC service implementation for schema operations.
- * Follows v2 architecture: extracts primitives from protobuf, builds ControllerRequestContext,
- * calls handler, and converts POJO response back to protobuf.
+ * Extracts primitives from protobuf, calls handler, and converts POJO response back to protobuf.
  */
 public class SchemaGrpcServiceImpl extends SchemaGrpcServiceImplBase {
   private static final Logger LOGGER = LogManager.getLogger(SchemaGrpcServiceImpl.class);

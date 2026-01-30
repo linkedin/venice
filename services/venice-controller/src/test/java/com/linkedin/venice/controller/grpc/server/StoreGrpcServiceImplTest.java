@@ -456,7 +456,7 @@ public class StoreGrpcServiceImplTest {
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetStoreGrpcRequest request = GetStoreGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
 
-    // Mock handler returning StoreInfo (v2 pattern)
+    // Mock handler returning StoreInfo
     StoreInfo mockStoreInfo = new StoreInfo();
     mockStoreInfo.setName(TEST_STORE);
     mockStoreInfo.setOwner(OWNER);

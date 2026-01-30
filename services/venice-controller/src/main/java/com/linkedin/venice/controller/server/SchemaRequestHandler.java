@@ -12,7 +12,6 @@ import org.apache.logging.log4j.Logger;
 /**
  * Request handler for schema-related operations.
  * Handles schema retrieval and management for Venice stores.
- * Follows v2 architecture: takes primitives + ControllerRequestContext, returns POJOs.
  */
 public class SchemaRequestHandler {
   private static final Logger LOGGER = LogManager.getLogger(SchemaRequestHandler.class);
