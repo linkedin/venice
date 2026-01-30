@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.grpc.server;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -14,8 +15,11 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
+import com.linkedin.venice.controller.server.ControllerRequestContext;
+import com.linkedin.venice.controller.server.SchemaRequestHandler;
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
+import com.linkedin.venice.controllerapi.AllValueSchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
@@ -25,6 +29,8 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetAllValueSchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetAllValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
@@ -57,6 +63,7 @@ public class StoreGrpcServiceImplTest {
   private Server grpcServer;
   private ManagedChannel grpcChannel;
   private StoreRequestHandler storeRequestHandler;
+  private SchemaRequestHandler schemaRequestHandler;
   private StoreGrpcServiceBlockingStub blockingStub;
   private VeniceControllerAccessManager controllerAccessManager;
 
@@ -64,6 +71,7 @@ public class StoreGrpcServiceImplTest {
   public void setUp() throws Exception {
     controllerAccessManager = mock(VeniceControllerAccessManager.class);
     storeRequestHandler = mock(StoreRequestHandler.class);
+    schemaRequestHandler = mock(SchemaRequestHandler.class);
 
     // Create a unique server name for the in-process server
     String serverName = InProcessServerBuilder.generateName();
@@ -71,7 +79,7 @@ public class StoreGrpcServiceImplTest {
     // Start the gRPC server in-process
     grpcServer = InProcessServerBuilder.forName(serverName)
         .directExecutor()
-        .addService(new StoreGrpcServiceImpl(storeRequestHandler, controllerAccessManager))
+        .addService(new StoreGrpcServiceImpl(storeRequestHandler, schemaRequestHandler, controllerAccessManager))
         .build()
         .start();
 
@@ -444,5 +452,55 @@ public class StoreGrpcServiceImplTest {
     assertNotNull(actualResponse, "Response should not be null");
     assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
     assertEquals(actualResponse.getStoreNamesCount(), 1, "Should have 1 store after filtering");
+  }
+
+  @Test
+  public void testGetAllValueSchemaReturnsSuccessfulResponse() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    GetAllValueSchemaGrpcRequest request = GetAllValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+
+    // Mock the v2 handler method
+    AllValueSchemaResponse mockResponse = new AllValueSchemaResponse();
+    mockResponse.setCluster(TEST_CLUSTER);
+    mockResponse.setName(TEST_STORE);
+    mockResponse.setSchemas(
+        Arrays.asList(
+            new AllValueSchemaResponse.SchemaInfo(1, "\"string\""),
+            new AllValueSchemaResponse.SchemaInfo(2, "{\"type\":\"record\"}")));
+    mockResponse.setSuperSetSchemaId(2);
+    when(schemaRequestHandler.getAllValueSchema(eq(TEST_CLUSTER), eq(TEST_STORE), any(ControllerRequestContext.class)))
+        .thenReturn(mockResponse);
+
+    GetAllValueSchemaGrpcResponse actualResponse = blockingStub.getAllValueSchema(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getStoreInfo().getClusterName(), TEST_CLUSTER, "Cluster name should match");
+    assertEquals(actualResponse.getStoreInfo().getStoreName(), TEST_STORE, "Store name should match");
+    assertEquals(actualResponse.getSchemasCount(), 2, "Should have 2 schemas");
+    assertEquals(actualResponse.getSchemas(0).getId(), 1, "First schema ID should be 1");
+    assertEquals(actualResponse.getSchemas(0).getSchemaStr(), "\"string\"", "First schema should match");
+    assertEquals(actualResponse.getSchemas(1).getId(), 2, "Second schema ID should be 2");
+    assertEquals(actualResponse.getSuperSetSchemaId(), 2, "Super set schema ID should be 2");
+  }
+
+  @Test
+  public void testGetAllValueSchemaReturnsErrorResponse() {
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    GetAllValueSchemaGrpcRequest request = GetAllValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+
+    // Mock the v2 handler method to throw exception
+    when(schemaRequestHandler.getAllValueSchema(eq(TEST_CLUSTER), eq(TEST_STORE), any(ControllerRequestContext.class)))
+        .thenThrow(new VeniceException("Failed to get schemas"));
+
+    StatusRuntimeException e =
+        expectThrows(StatusRuntimeException.class, () -> blockingStub.getAllValueSchema(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INTERNAL.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
+    assertTrue(errorInfo.getErrorMessage().contains("Failed to get schemas"));
   }
 }

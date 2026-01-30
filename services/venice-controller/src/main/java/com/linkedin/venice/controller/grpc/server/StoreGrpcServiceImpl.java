@@ -1,11 +1,15 @@
 package com.linkedin.venice.controller.grpc.server;
 
+import static com.linkedin.venice.controller.grpc.ControllerGrpcConstants.GRPC_CONTROLLER_CLIENT_DETAILS;
 import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUtils.handleRequest;
 import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUtils.isAllowListUser;
 import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
 
+import com.linkedin.venice.controller.server.ControllerRequestContext;
+import com.linkedin.venice.controller.server.SchemaRequestHandler;
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
+import com.linkedin.venice.controllerapi.AllValueSchemaResponse;
 import com.linkedin.venice.exceptions.VeniceUnauthorizedAccessException;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
@@ -14,9 +18,12 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetAllValueSchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetAllValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
+import com.linkedin.venice.protocols.controller.SchemaGrpcInfo;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceImplBase;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
@@ -32,10 +39,15 @@ import org.apache.logging.log4j.Logger;
 public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
   private static final Logger LOGGER = LogManager.getLogger(StoreGrpcServiceImpl.class);
   private final StoreRequestHandler storeRequestHandler;
+  private final SchemaRequestHandler schemaRequestHandler;
   private final VeniceControllerAccessManager accessManager;
 
-  public StoreGrpcServiceImpl(StoreRequestHandler storeRequestHandler, VeniceControllerAccessManager accessManager) {
+  public StoreGrpcServiceImpl(
+      StoreRequestHandler storeRequestHandler,
+      SchemaRequestHandler schemaRequestHandler,
+      VeniceControllerAccessManager accessManager) {
     this.storeRequestHandler = storeRequestHandler;
+    this.schemaRequestHandler = schemaRequestHandler;
     this.accessManager = accessManager;
   }
 
@@ -146,5 +158,54 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
         responseObserver,
         clusterName,
         null);
+  }
+
+  @Override
+  public void getAllValueSchema(
+      GetAllValueSchemaGrpcRequest request,
+      StreamObserver<GetAllValueSchemaGrpcResponse> responseObserver) {
+    LOGGER.debug("Received getAllValueSchema with args: {}", request);
+
+    ControllerGrpcServerUtils.handleRequest(StoreGrpcServiceGrpc.getGetAllValueSchemaMethod(), () -> {
+      // Extract primitives from protobuf
+      ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
+      String clusterName = storeInfo.getClusterName();
+      String storeName = storeInfo.getStoreName();
+
+      // Build context from gRPC
+      ControllerRequestContext context = buildRequestContext(Context.current());
+
+      // Call handler - returns POJO (no ACL check for read-only operation)
+      AllValueSchemaResponse result = schemaRequestHandler.getAllValueSchema(clusterName, storeName, context);
+
+      // Convert POJO to protobuf
+      GetAllValueSchemaGrpcResponse.Builder responseBuilder = GetAllValueSchemaGrpcResponse.newBuilder()
+          .setStoreInfo(
+              ClusterStoreGrpcInfo.newBuilder()
+                  .setClusterName(result.getCluster())
+                  .setStoreName(result.getName())
+                  .build())
+          .setSuperSetSchemaId(result.getSuperSetSchemaId());
+
+      for (AllValueSchemaResponse.SchemaInfo schema: result.getSchemas()) {
+        responseBuilder
+            .addSchemas(SchemaGrpcInfo.newBuilder().setId(schema.getId()).setSchemaStr(schema.getSchemaStr()).build());
+      }
+
+      return responseBuilder.build();
+    }, responseObserver, request.getStoreInfo());
+  }
+
+  /**
+   * Builds a ControllerRequestContext from the gRPC context.
+   */
+  private ControllerRequestContext buildRequestContext(Context context) {
+    GrpcControllerClientDetails clientDetails = GRPC_CONTROLLER_CLIENT_DETAILS.get(context);
+    if (clientDetails == null) {
+      clientDetails = GrpcControllerClientDetails.UNDEFINED_CLIENT_DETAILS;
+    }
+    return new ControllerRequestContext(
+        clientDetails.getClientCertificate(),
+        clientDetails.getClientAddress() != null ? clientDetails.getClientAddress() : "anonymous");
   }
 }
