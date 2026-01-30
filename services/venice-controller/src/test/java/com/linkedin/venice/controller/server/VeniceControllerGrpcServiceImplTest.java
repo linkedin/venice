@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller.server;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -11,6 +13,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
+import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcRequest;
 import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcResponse;
@@ -188,11 +191,12 @@ public class VeniceControllerGrpcServiceImplTest {
     instancesStatusMap.put("instance1", "CONNECTED");
     instancesStatusMap.put("instance2", "DISCONNECTED");
 
-    ClusterHealthInstancesGrpcResponse response = ClusterHealthInstancesGrpcResponse.newBuilder()
-        .setClusterName(TEST_CLUSTER)
-        .putAllInstancesStatusMap(instancesStatusMap)
-        .build();
-    doReturn(response).when(requestHandler).getClusterHealthInstances(any(ClusterHealthInstancesGrpcRequest.class));
+    MultiNodesStatusResponse pojoResponse = new MultiNodesStatusResponse();
+    pojoResponse.setCluster(TEST_CLUSTER);
+    pojoResponse.setInstancesStatusMap(instancesStatusMap);
+
+    doReturn(pojoResponse).when(requestHandler)
+        .getClusterHealthInstances(eq(TEST_CLUSTER), anyBoolean(), any(ControllerRequestContext.class));
 
     ClusterHealthInstancesGrpcRequest request =
         ClusterHealthInstancesGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
@@ -206,7 +210,7 @@ public class VeniceControllerGrpcServiceImplTest {
 
     // Case 2: Bad request as cluster name is missing
     doThrow(new IllegalArgumentException("Cluster name is required for cluster health instances")).when(requestHandler)
-        .getClusterHealthInstances(any(ClusterHealthInstancesGrpcRequest.class));
+        .getClusterHealthInstances(eq(""), anyBoolean(), any(ControllerRequestContext.class));
     ClusterHealthInstancesGrpcRequest requestWithoutClusterName =
         ClusterHealthInstancesGrpcRequest.newBuilder().build();
     StatusRuntimeException e = expectThrows(
@@ -223,7 +227,7 @@ public class VeniceControllerGrpcServiceImplTest {
 
     // Case 3: requestHandler throws an exception
     doThrow(new VeniceException("Failed to get cluster health instances")).when(requestHandler)
-        .getClusterHealthInstances(any(ClusterHealthInstancesGrpcRequest.class));
+        .getClusterHealthInstances(eq(TEST_CLUSTER), anyBoolean(), any(ControllerRequestContext.class));
     StatusRuntimeException e2 =
         expectThrows(StatusRuntimeException.class, () -> blockingStub.getClusterHealthInstances(request));
     assertNotNull(e2.getStatus(), "Status should not be null");

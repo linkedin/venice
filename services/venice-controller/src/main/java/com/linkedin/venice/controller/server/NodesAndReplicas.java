@@ -29,8 +29,6 @@ import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcRequest;
-import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcResponse;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
@@ -100,30 +98,40 @@ public class NodesAndReplicas extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         AdminSparkServer.validateParams(request, ClUSTER_HEALTH_INSTANCES.getParams(), admin);
+
+        // Extract primitives from HTTP request
         String clusterName = request.queryParams(CLUSTER);
         String value = AdminSparkServer.getOptionalParameterValue(request, ENABLE_DISABLED_REPLICAS);
         boolean enableDisabledReplicas = Objects.equals(value, "true");
 
-        // Build gRPC request from HTTP parameters
-        ClusterHealthInstancesGrpcRequest.Builder grpcRequestBuilder =
-            ClusterHealthInstancesGrpcRequest.newBuilder().setClusterName(clusterName);
-        if (enableDisabledReplicas) {
-          grpcRequestBuilder.setEnableDisabledReplicas(true);
-        }
+        // Build transport-agnostic context
+        ControllerRequestContext context = buildRequestContext(request);
 
-        // Call handler
-        ClusterHealthInstancesGrpcResponse grpcResponse =
-            requestHandler.getClusterHealthInstances(grpcRequestBuilder.build());
+        // Call handler - returns POJO directly
+        MultiNodesStatusResponse result =
+            requestHandler.getClusterHealthInstances(clusterName, enableDisabledReplicas, context);
 
-        // Map response back to HTTP
-        responseObject.setCluster(grpcResponse.getClusterName());
-        responseObject.setInstancesStatusMap(grpcResponse.getInstancesStatusMapMap());
+        // Copy result to response
+        responseObject.setCluster(result.getCluster());
+        responseObject.setInstancesStatusMap(result.getInstancesStatusMap());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
+  }
+
+  /**
+   * Build request context from HTTP request.
+   */
+  private ControllerRequestContext buildRequestContext(spark.Request request) {
+    if (!isSslEnabled()) {
+      return ControllerRequestContext.anonymous();
+    }
+    java.security.cert.X509Certificate cert = getCertificate(request);
+    String principalId = getPrincipalId(request);
+    return new ControllerRequestContext(cert, principalId);
   }
 
   /**

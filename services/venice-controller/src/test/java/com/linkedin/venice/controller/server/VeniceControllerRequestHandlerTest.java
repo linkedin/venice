@@ -7,9 +7,8 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcRequest;
-import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
@@ -98,15 +97,13 @@ public class VeniceControllerRequestHandlerTest {
 
     when(admin.getStorageNodesStatus(clusterName, false)).thenReturn(instancesStatus);
 
-    ClusterHealthInstancesGrpcRequest request =
-        ClusterHealthInstancesGrpcRequest.newBuilder().setClusterName(clusterName).build();
+    ControllerRequestContext context = ControllerRequestContext.anonymous();
+    MultiNodesStatusResponse response = requestHandler.getClusterHealthInstances(clusterName, false, context);
 
-    ClusterHealthInstancesGrpcResponse response = requestHandler.getClusterHealthInstances(request);
-
-    assertEquals(response.getClusterName(), clusterName);
-    assertEquals(response.getInstancesStatusMapMap().size(), 2);
-    assertEquals(response.getInstancesStatusMapMap().get("instance1"), "CONNECTED");
-    assertEquals(response.getInstancesStatusMapMap().get("instance2"), "DISCONNECTED");
+    assertEquals(response.getCluster(), clusterName);
+    assertEquals(response.getInstancesStatusMap().size(), 2);
+    assertEquals(response.getInstancesStatusMap().get("instance1"), "CONNECTED");
+    assertEquals(response.getInstancesStatusMap().get("instance2"), "DISCONNECTED");
   }
 
   @Test
@@ -117,21 +114,17 @@ public class VeniceControllerRequestHandlerTest {
 
     when(admin.getStorageNodesStatus(clusterName, true)).thenReturn(instancesStatus);
 
-    ClusterHealthInstancesGrpcRequest request = ClusterHealthInstancesGrpcRequest.newBuilder()
-        .setClusterName(clusterName)
-        .setEnableDisabledReplicas(true)
-        .build();
+    ControllerRequestContext context = ControllerRequestContext.anonymous();
+    MultiNodesStatusResponse response = requestHandler.getClusterHealthInstances(clusterName, true, context);
 
-    ClusterHealthInstancesGrpcResponse response = requestHandler.getClusterHealthInstances(request);
-
-    assertEquals(response.getClusterName(), clusterName);
-    assertEquals(response.getInstancesStatusMapMap().size(), 1);
-    assertEquals(response.getInstancesStatusMapMap().get("instance1"), "CONNECTED");
+    assertEquals(response.getCluster(), clusterName);
+    assertEquals(response.getInstancesStatusMap().size(), 1);
+    assertEquals(response.getInstancesStatusMap().get("instance1"), "CONNECTED");
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required for cluster health instances")
   public void testGetClusterHealthInstancesWithEmptyClusterName() {
-    ClusterHealthInstancesGrpcRequest request = ClusterHealthInstancesGrpcRequest.newBuilder().build();
-    requestHandler.getClusterHealthInstances(request);
+    ControllerRequestContext context = ControllerRequestContext.anonymous();
+    requestHandler.getClusterHealthInstances("", false, context);
   }
 }

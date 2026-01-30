@@ -1,7 +1,11 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controller.grpc.ControllerGrpcConstants.GRPC_CONTROLLER_CLIENT_DETAILS;
 import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUtils.handleRequest;
 
+import com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUtils;
+import com.linkedin.venice.controller.grpc.server.GrpcControllerClientDetails;
+import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcRequest;
 import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
@@ -10,6 +14,7 @@ import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc.VeniceControllerGrpcServiceImplBase;
+import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -64,11 +69,39 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
       ClusterHealthInstancesGrpcRequest grpcRequest,
       StreamObserver<ClusterHealthInstancesGrpcResponse> responseObserver) {
     LOGGER.debug("Received getClusterHealthInstances with args: {}", grpcRequest);
-    handleRequest(
-        VeniceControllerGrpcServiceGrpc.getGetClusterHealthInstancesMethod(),
-        () -> requestHandler.getClusterHealthInstances(grpcRequest),
-        responseObserver,
-        grpcRequest.getClusterName(),
-        null);
+
+    ControllerGrpcServerUtils
+        .handleRequest(VeniceControllerGrpcServiceGrpc.getGetClusterHealthInstancesMethod(), () -> {
+          // Extract primitives from protobuf
+          String clusterName = grpcRequest.getClusterName();
+          boolean enableDisabledReplicas =
+              grpcRequest.hasEnableDisabledReplicas() && grpcRequest.getEnableDisabledReplicas();
+
+          // Build transport-agnostic context from gRPC
+          ControllerRequestContext context = buildRequestContext(Context.current());
+
+          // Call handler - returns POJO
+          MultiNodesStatusResponse result =
+              requestHandler.getClusterHealthInstances(clusterName, enableDisabledReplicas, context);
+
+          // Convert POJO to protobuf response
+          return ClusterHealthInstancesGrpcResponse.newBuilder()
+              .setClusterName(result.getCluster())
+              .putAllInstancesStatusMap(result.getInstancesStatusMap())
+              .build();
+        }, responseObserver, grpcRequest.getClusterName(), null);
+  }
+
+  /**
+   * Builds a ControllerRequestContext from the gRPC context.
+   */
+  private ControllerRequestContext buildRequestContext(Context context) {
+    GrpcControllerClientDetails clientDetails = GRPC_CONTROLLER_CLIENT_DETAILS.get(context);
+    if (clientDetails == null) {
+      clientDetails = GrpcControllerClientDetails.UNDEFINED_CLIENT_DETAILS;
+    }
+    return new ControllerRequestContext(
+        clientDetails.getClientCertificate(),
+        clientDetails.getClientAddress() != null ? clientDetails.getClientAddress() : "anonymous");
   }
 }

@@ -2,9 +2,8 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcRequest;
-import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
@@ -125,15 +124,20 @@ public class VeniceControllerRequestHandler {
 
   /**
    * Gets the health status of all storage instances in the cluster.
-   * @param request the request containing cluster name and optional enableDisabledReplicas flag
-   * @return response with cluster name and map of instance IDs to their status
+   * No ACL check required - reading cluster health is public.
+   *
+   * @param clusterName the cluster name
+   * @param enableDisabledReplicas whether to include disabled replicas
+   * @param context the request context (contains client identity)
+   * @return MultiNodesStatusResponse containing cluster name and map of instance IDs to their status
    */
-  public ClusterHealthInstancesGrpcResponse getClusterHealthInstances(ClusterHealthInstancesGrpcRequest request) {
-    String clusterName = request.getClusterName();
+  public MultiNodesStatusResponse getClusterHealthInstances(
+      String clusterName,
+      boolean enableDisabledReplicas,
+      ControllerRequestContext context) {
     if (StringUtils.isBlank(clusterName)) {
       throw new IllegalArgumentException("Cluster name is required for cluster health instances");
     }
-    boolean enableDisabledReplicas = request.hasEnableDisabledReplicas() && request.getEnableDisabledReplicas();
 
     LOGGER.info(
         "Getting cluster health instances for cluster: {} with enableDisabledReplicas: {}",
@@ -142,9 +146,9 @@ public class VeniceControllerRequestHandler {
 
     Map<String, String> instancesStatusMap = admin.getStorageNodesStatus(clusterName, enableDisabledReplicas);
 
-    return ClusterHealthInstancesGrpcResponse.newBuilder()
-        .setClusterName(clusterName)
-        .putAllInstancesStatusMap(instancesStatusMap)
-        .build();
+    MultiNodesStatusResponse response = new MultiNodesStatusResponse();
+    response.setCluster(clusterName);
+    response.setInstancesStatusMap(instancesStatusMap);
+    return response;
   }
 }
