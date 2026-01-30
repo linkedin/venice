@@ -20,13 +20,10 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
-<<<<<<< HEAD
-import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
-=======
 import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
->>>>>>> 3b44a8ea8 ([Controller] Add gRPC support for getClusterHealthStores API)
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
