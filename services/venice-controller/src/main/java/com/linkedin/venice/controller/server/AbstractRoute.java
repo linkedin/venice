@@ -181,22 +181,6 @@ public class AbstractRoute {
   }
 
   /**
-   * Builds a ControllerRequestContext from an HTTP request.
-   * Delegates to ControllerRequestContext.fromHttpRequest().
-   *
-   * @param request the HTTP request
-   * @param sslEnabled whether SSL is enabled
-   * @param accessController optional access controller for principal ID extraction
-   * @return a ControllerRequestContext with client information
-   */
-  public static ControllerRequestContext buildRequestContext(
-      Request request,
-      boolean sslEnabled,
-      Optional<DynamicAccessController> accessController) {
-    return ControllerRequestContext.fromHttpRequest(request, sslEnabled, accessController);
-  }
-
-  /**
    * A function that would check whether a principal has access to a resource.
    */
   @FunctionalInterface
