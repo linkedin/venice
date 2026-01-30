@@ -713,8 +713,7 @@ public class StoresRoutesTest {
     doReturn(queryMap).when(queryParamsMap).toMap();
     doReturn(queryParamsMap).when(request).queryMap();
 
-    Route route =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getRepushInfo(mockAdmin, mockRequestHandler);
+    Route route = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getRepushInfo(mockAdmin);
 
     // Create a real Version for admin.getRepushInfo() call to avoid Jackson serialization issues
     Version version = new VersionImpl(TEST_STORE_NAME, 1, "test-push-job", 10);
@@ -728,8 +727,7 @@ public class StoresRoutesTest {
     mockResponse.setName(TEST_STORE_NAME);
     mockResponse.setRepushInfo(mockRepushInfo);
 
-    when(mockRequestHandler.getRepushInfo(any(), any(), any(), any(ControllerRequestContext.class)))
-        .thenReturn(mockResponse);
+    when(mockRequestHandler.getRepushInfo(any(), any(), any())).thenReturn(mockResponse);
 
     RepushInfoResponse response = ObjectMapperFactory.getInstance()
         .readValue(route.handle(request, mock(Response.class)).toString(), RepushInfoResponse.class);
@@ -741,8 +739,7 @@ public class StoresRoutesTest {
     Assert.assertEquals(response.getRepushInfo().getKafkaBrokerUrl(), "kafka.broker:9092");
 
     // Test error case
-    when(mockRequestHandler.getRepushInfo(any(), any(), any(), any(ControllerRequestContext.class)))
-        .thenThrow(new VeniceException("Error"));
+    when(mockRequestHandler.getRepushInfo(any(), any(), any())).thenThrow(new VeniceException("Error"));
     response = ObjectMapperFactory.getInstance()
         .readValue(route.handle(request, mock(Response.class)).toString(), RepushInfoResponse.class);
     Assert.assertTrue(response.isError());
@@ -767,8 +764,7 @@ public class StoresRoutesTest {
     doReturn(queryMap).when(queryParamsMap).toMap();
     doReturn(queryParamsMap).when(request).queryMap();
 
-    Route route =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getRepushInfo(mockAdmin, mockRequestHandler);
+    Route route = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getRepushInfo(mockAdmin);
 
     RepushInfo mockRepushInfo = RepushInfo.createRepushInfo(null, "another.kafka:9092", null, null);
 
@@ -777,8 +773,7 @@ public class StoresRoutesTest {
     mockResponse.setName(TEST_STORE_NAME);
     mockResponse.setRepushInfo(mockRepushInfo);
 
-    when(mockRequestHandler.getRepushInfo(any(), any(), any(), any(ControllerRequestContext.class)))
-        .thenReturn(mockResponse);
+    when(mockRequestHandler.getRepushInfo(any(), any(), any())).thenReturn(mockResponse);
 
     RepushInfoResponse response = ObjectMapperFactory.getInstance()
         .readValue(route.handle(request, mock(Response.class)).toString(), RepushInfoResponse.class);

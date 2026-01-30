@@ -4,7 +4,6 @@ import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUti
 import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUtils.isAllowListUser;
 import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
 
-import com.linkedin.venice.controller.server.ControllerRequestContext;
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
 import com.linkedin.venice.controllerapi.RepushInfo;
@@ -174,11 +173,8 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
       String storeName = storeInfo.getStoreName();
       Optional<String> fabric = request.hasFabric() ? Optional.of(request.getFabric()) : Optional.empty();
 
-      // Build transport-agnostic context from gRPC
-      ControllerRequestContext context = buildRequestContext(Context.current());
-
       // Call handler - returns POJO
-      RepushInfoResponse result = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric, context);
+      RepushInfoResponse result = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
 
       // Convert POJO to protobuf response
       RepushInfo repushInfo = result.getRepushInfo();
@@ -200,16 +196,6 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
           .setRepushInfo(repushInfoBuilder.build())
           .build();
     }, responseObserver, request.getStoreInfo());
-  }
-
-  /**
-   * Builds a ControllerRequestContext from the gRPC context.
-   */
-  private ControllerRequestContext buildRequestContext(Context context) {
-    GrpcControllerClientDetails clientDetails = ControllerGrpcServerUtils.getClientDetails(context);
-    return new ControllerRequestContext(
-        clientDetails.getClientCertificate(),
-        clientDetails.getClientAddress() != null ? clientDetails.getClientAddress() : "anonymous");
   }
 
   /**

@@ -383,7 +383,7 @@ public class StoreRequestHandlerTest {
 
     when(admin.getRepushInfo(clusterName, storeName, fabric)).thenReturn(mockRepushInfo);
 
-    RepushInfoResponse response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric, context);
+    RepushInfoResponse response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
 
     verify(admin, times(1)).getRepushInfo(clusterName, storeName, fabric);
     assertEquals(response.getCluster(), clusterName);
@@ -419,7 +419,7 @@ public class StoreRequestHandlerTest {
 
     when(admin.getRepushInfo(clusterName, storeName, fabric)).thenReturn(mockRepushInfo);
 
-    RepushInfoResponse response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric, context);
+    RepushInfoResponse response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
 
     verify(admin, times(1)).getRepushInfo(clusterName, storeName, fabric);
     assertEquals(response.getCluster(), clusterName);
@@ -439,7 +439,7 @@ public class StoreRequestHandlerTest {
 
     when(admin.getRepushInfo(clusterName, storeName, fabric)).thenReturn(mockRepushInfo);
 
-    RepushInfoResponse response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric, context);
+    RepushInfoResponse response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
 
     assertEquals(response.getRepushInfo().getKafkaBrokerUrl(), "kafka.broker:9092");
     assertTrue(response.getRepushInfo().getVersion() == null);

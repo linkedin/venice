@@ -264,14 +264,12 @@ public class StoreRequestHandler {
    * @param clusterName the cluster name
    * @param storeName the store name
    * @param fabric optional fabric for multi-region setups
-   * @param context the request context (contains client identity)
    * @return RepushInfoResponse containing repush information including version and Kafka details
    */
   public com.linkedin.venice.controllerapi.RepushInfoResponse getRepushInfo(
       String clusterName,
       String storeName,
-      Optional<String> fabric,
-      ControllerRequestContext context) {
+      Optional<String> fabric) {
     LOGGER.info(
         "Getting repush info for store: {} in cluster: {} with fabric: {}",
         storeName,

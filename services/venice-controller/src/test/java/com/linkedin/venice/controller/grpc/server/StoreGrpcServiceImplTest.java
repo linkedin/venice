@@ -14,7 +14,6 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
-import com.linkedin.venice.controller.server.ControllerRequestContext;
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
 import com.linkedin.venice.controllerapi.RepushInfo;
@@ -475,8 +474,7 @@ public class StoreGrpcServiceImplTest {
     mockResponse.setName(TEST_STORE);
     mockResponse.setRepushInfo(repushInfo);
 
-    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any(), any(ControllerRequestContext.class)))
-        .thenReturn(mockResponse);
+    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any())).thenReturn(mockResponse);
 
     GetRepushInfoGrpcResponse actualResponse = blockingStub.getRepushInfo(request);
 
@@ -494,7 +492,7 @@ public class StoreGrpcServiceImplTest {
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetRepushInfoGrpcRequest request = GetRepushInfoGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
 
-    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any(), any(ControllerRequestContext.class)))
+    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any()))
         .thenThrow(new VeniceException("Failed to get repush info"));
 
     StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getRepushInfo(request));
@@ -515,8 +513,7 @@ public class StoreGrpcServiceImplTest {
     mockResponse.setName(TEST_STORE);
     mockResponse.setRepushInfo(repushInfo);
 
-    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any(), any(ControllerRequestContext.class)))
-        .thenReturn(mockResponse);
+    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any())).thenReturn(mockResponse);
 
     GetRepushInfoGrpcResponse actualResponse = blockingStub.getRepushInfo(request);
 

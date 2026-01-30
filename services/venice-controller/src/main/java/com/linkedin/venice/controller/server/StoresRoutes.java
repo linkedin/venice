@@ -252,7 +252,7 @@ public class StoresRoutes extends AbstractRoute {
   /**
    * @see Admin#getRepushInfo(String, String, Optional)
    */
-  public Route getRepushInfo(Admin admin, StoreRequestHandler requestHandler) {
+  public Route getRepushInfo(Admin admin) {
     return new VeniceRouteHandler<RepushInfoResponse>(RepushInfoResponse.class) {
       @Override
       public void internalHandle(Request request, RepushInfoResponse veniceResponse) {
@@ -264,11 +264,8 @@ public class StoresRoutes extends AbstractRoute {
         String fabricName = request.queryParams(FABRIC);
         Optional<String> fabric = fabricName != null ? Optional.of(fabricName) : Optional.empty();
 
-        // Build transport-agnostic context
-        ControllerRequestContext context = buildRequestContext(request);
-
         // Call handler - returns POJO directly
-        RepushInfoResponse result = requestHandler.getRepushInfo(clusterName, storeName, fabric, context);
+        RepushInfoResponse result = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
 
         // Copy result to response
         veniceResponse.setCluster(result.getCluster());
@@ -1231,17 +1228,5 @@ public class StoresRoutes extends AbstractRoute {
         }
       }
     };
-  }
-
-  /**
-   * Build request context from HTTP request.
-   */
-  private ControllerRequestContext buildRequestContext(spark.Request request) {
-    if (!isSslEnabled()) {
-      return ControllerRequestContext.anonymous();
-    }
-    java.security.cert.X509Certificate cert = getCertificate(request);
-    String principalId = getPrincipalId(request);
-    return new ControllerRequestContext(cert, principalId);
   }
 }
