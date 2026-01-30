@@ -12,6 +12,7 @@ import static org.testng.Assert.expectThrows;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -25,8 +26,6 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
-import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
@@ -366,10 +365,10 @@ public class StoreRequestHandlerTest {
 
   @Test
   public void testGetRepushInfoSuccess() {
-    GetRepushInfoGrpcRequest request = GetRepushInfoGrpcRequest.newBuilder()
-        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
-        .setFabric("testFabric")
-        .build();
+    String clusterName = "testCluster";
+    String storeName = "testStore";
+    Optional<String> fabric = Optional.of("testFabric");
+    ControllerRequestContext context = mock(ControllerRequestContext.class);
 
     Version mockVersion = mock(Version.class);
     when(mockVersion.getNumber()).thenReturn(1);
@@ -382,18 +381,17 @@ public class StoreRequestHandlerTest {
     RepushInfo mockRepushInfo =
         RepushInfo.createRepushInfo(mockVersion, "kafka.broker.url:9092", "testD2Service", "testZkHost");
 
-    when(admin.getRepushInfo("testCluster", "testStore", Optional.of("testFabric"))).thenReturn(mockRepushInfo);
+    when(admin.getRepushInfo(clusterName, storeName, fabric)).thenReturn(mockRepushInfo);
 
-    GetRepushInfoGrpcResponse response = storeRequestHandler.getRepushInfo(request);
+    RepushInfoResponse response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric, context);
 
-    verify(admin, times(1)).getRepushInfo("testCluster", "testStore", Optional.of("testFabric"));
-    assertEquals(response.getStoreInfo().getClusterName(), "testCluster");
-    assertEquals(response.getStoreInfo().getStoreName(), "testStore");
+    verify(admin, times(1)).getRepushInfo(clusterName, storeName, fabric);
+    assertEquals(response.getCluster(), clusterName);
+    assertEquals(response.getName(), storeName);
     assertEquals(response.getRepushInfo().getKafkaBrokerUrl(), "kafka.broker.url:9092");
-    assertTrue(response.getRepushInfo().hasVersion());
     assertEquals(response.getRepushInfo().getVersion().getNumber(), 1);
     assertEquals(response.getRepushInfo().getVersion().getCreatedTime(), 123456789L);
-    assertEquals(response.getRepushInfo().getVersion().getStatus(), VersionStatus.ONLINE.getValue());
+    assertEquals(response.getRepushInfo().getVersion().getStatus(), VersionStatus.ONLINE);
     assertEquals(response.getRepushInfo().getVersion().getPushJobId(), "test-push-job-123");
     assertEquals(response.getRepushInfo().getVersion().getPartitionCount(), 10);
     assertEquals(response.getRepushInfo().getVersion().getReplicationFactor(), 3);
@@ -403,9 +401,10 @@ public class StoreRequestHandlerTest {
 
   @Test
   public void testGetRepushInfoWithoutFabric() {
-    GetRepushInfoGrpcRequest request = GetRepushInfoGrpcRequest.newBuilder()
-        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
-        .build();
+    String clusterName = "testCluster";
+    String storeName = "testStore";
+    Optional<String> fabric = Optional.empty();
+    ControllerRequestContext context = mock(ControllerRequestContext.class);
 
     Version mockVersion = mock(Version.class);
     when(mockVersion.getNumber()).thenReturn(2);
@@ -418,33 +417,33 @@ public class StoreRequestHandlerTest {
     RepushInfo mockRepushInfo =
         RepushInfo.createRepushInfo(mockVersion, "another.kafka.broker:9092", "anotherD2Service", "anotherZkHost");
 
-    when(admin.getRepushInfo("testCluster", "testStore", Optional.empty())).thenReturn(mockRepushInfo);
+    when(admin.getRepushInfo(clusterName, storeName, fabric)).thenReturn(mockRepushInfo);
 
-    GetRepushInfoGrpcResponse response = storeRequestHandler.getRepushInfo(request);
+    RepushInfoResponse response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric, context);
 
-    verify(admin, times(1)).getRepushInfo("testCluster", "testStore", Optional.empty());
-    assertEquals(response.getStoreInfo().getClusterName(), "testCluster");
-    assertEquals(response.getStoreInfo().getStoreName(), "testStore");
+    verify(admin, times(1)).getRepushInfo(clusterName, storeName, fabric);
+    assertEquals(response.getCluster(), clusterName);
+    assertEquals(response.getName(), storeName);
     assertEquals(response.getRepushInfo().getKafkaBrokerUrl(), "another.kafka.broker:9092");
-    assertTrue(response.getRepushInfo().hasVersion());
     assertEquals(response.getRepushInfo().getVersion().getNumber(), 2);
   }
 
   @Test
   public void testGetRepushInfoWithNullVersion() {
-    GetRepushInfoGrpcRequest request = GetRepushInfoGrpcRequest.newBuilder()
-        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName("testCluster").setStoreName("testStore").build())
-        .build();
+    String clusterName = "testCluster";
+    String storeName = "testStore";
+    Optional<String> fabric = Optional.empty();
+    ControllerRequestContext context = mock(ControllerRequestContext.class);
 
     RepushInfo mockRepushInfo = RepushInfo.createRepushInfo(null, "kafka.broker:9092", null, null);
 
-    when(admin.getRepushInfo("testCluster", "testStore", Optional.empty())).thenReturn(mockRepushInfo);
+    when(admin.getRepushInfo(clusterName, storeName, fabric)).thenReturn(mockRepushInfo);
 
-    GetRepushInfoGrpcResponse response = storeRequestHandler.getRepushInfo(request);
+    RepushInfoResponse response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric, context);
 
     assertEquals(response.getRepushInfo().getKafkaBrokerUrl(), "kafka.broker:9092");
-    assertTrue(!response.getRepushInfo().hasVersion());
-    assertTrue(!response.getRepushInfo().hasSystemSchemaClusterD2ServiceName());
-    assertTrue(!response.getRepushInfo().hasSystemSchemaClusterD2ZkHost());
+    assertTrue(response.getRepushInfo().getVersion() == null);
+    assertTrue(response.getRepushInfo().getSystemSchemaClusterD2ServiceName() == null);
+    assertTrue(response.getRepushInfo().getSystemSchemaClusterD2ZkHost() == null);
   }
 }

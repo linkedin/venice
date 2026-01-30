@@ -14,9 +14,13 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
+import com.linkedin.venice.controller.server.ControllerRequestContext;
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
+import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
@@ -30,7 +34,6 @@ import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
-import com.linkedin.venice.protocols.controller.RepushInfoGrpc;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub;
@@ -39,7 +42,6 @@ import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcErrorInfo;
-import com.linkedin.venice.protocols.controller.VersionGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
 import io.grpc.Status;
@@ -458,26 +460,23 @@ public class StoreGrpcServiceImplTest {
     GetRepushInfoGrpcRequest request =
         GetRepushInfoGrpcRequest.newBuilder().setStoreInfo(storeInfo).setFabric("test-fabric").build();
 
-    VersionGrpc versionGrpc = VersionGrpc.newBuilder()
-        .setNumber(1)
-        .setCreatedTime(123456789L)
-        .setStatus(VersionStatus.ONLINE.getValue())
-        .setPushJobId("test-push-job")
-        .setPartitionCount(10)
-        .setReplicationFactor(3)
-        .build();
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getNumber()).thenReturn(1);
+    when(mockVersion.getCreatedTime()).thenReturn(123456789L);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.ONLINE);
+    when(mockVersion.getPushJobId()).thenReturn("test-push-job");
+    when(mockVersion.getPartitionCount()).thenReturn(10);
+    when(mockVersion.getReplicationFactor()).thenReturn(3);
 
-    RepushInfoGrpc repushInfoGrpc = RepushInfoGrpc.newBuilder()
-        .setKafkaBrokerUrl("kafka.broker:9092")
-        .setVersion(versionGrpc)
-        .setSystemSchemaClusterD2ServiceName("d2-service")
-        .setSystemSchemaClusterD2ZkHost("zk-host")
-        .build();
+    RepushInfo repushInfo = RepushInfo.createRepushInfo(mockVersion, "kafka.broker:9092", "d2-service", "zk-host");
 
-    GetRepushInfoGrpcResponse mockResponse =
-        GetRepushInfoGrpcResponse.newBuilder().setStoreInfo(storeInfo).setRepushInfo(repushInfoGrpc).build();
+    RepushInfoResponse mockResponse = new RepushInfoResponse();
+    mockResponse.setCluster(TEST_CLUSTER);
+    mockResponse.setName(TEST_STORE);
+    mockResponse.setRepushInfo(repushInfo);
 
-    when(storeRequestHandler.getRepushInfo(any(GetRepushInfoGrpcRequest.class))).thenReturn(mockResponse);
+    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any(), any(ControllerRequestContext.class)))
+        .thenReturn(mockResponse);
 
     GetRepushInfoGrpcResponse actualResponse = blockingStub.getRepushInfo(request);
 
@@ -495,7 +494,7 @@ public class StoreGrpcServiceImplTest {
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetRepushInfoGrpcRequest request = GetRepushInfoGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
 
-    when(storeRequestHandler.getRepushInfo(any(GetRepushInfoGrpcRequest.class)))
+    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any(), any(ControllerRequestContext.class)))
         .thenThrow(new VeniceException("Failed to get repush info"));
 
     StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getRepushInfo(request));
@@ -509,12 +508,15 @@ public class StoreGrpcServiceImplTest {
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetRepushInfoGrpcRequest request = GetRepushInfoGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
 
-    RepushInfoGrpc repushInfoGrpc = RepushInfoGrpc.newBuilder().setKafkaBrokerUrl("another.kafka.broker:9092").build();
+    RepushInfo repushInfo = RepushInfo.createRepushInfo(null, "another.kafka.broker:9092", null, null);
 
-    GetRepushInfoGrpcResponse mockResponse =
-        GetRepushInfoGrpcResponse.newBuilder().setStoreInfo(storeInfo).setRepushInfo(repushInfoGrpc).build();
+    RepushInfoResponse mockResponse = new RepushInfoResponse();
+    mockResponse.setCluster(TEST_CLUSTER);
+    mockResponse.setName(TEST_STORE);
+    mockResponse.setRepushInfo(repushInfo);
 
-    when(storeRequestHandler.getRepushInfo(any(GetRepushInfoGrpcRequest.class))).thenReturn(mockResponse);
+    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any(), any(ControllerRequestContext.class)))
+        .thenReturn(mockResponse);
 
     GetRepushInfoGrpcResponse actualResponse = blockingStub.getRepushInfo(request);
 

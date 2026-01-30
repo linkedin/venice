@@ -42,14 +42,10 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
-import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
-import com.linkedin.venice.protocols.controller.RepushInfoGrpc;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
-import com.linkedin.venice.protocols.controller.VersionGrpc;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.Arrays;
@@ -720,29 +716,6 @@ public class StoresRoutesTest {
     Route route =
         new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getRepushInfo(mockAdmin, mockRequestHandler);
 
-    // Test success case
-    ClusterStoreGrpcInfo storeInfo =
-        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE_NAME).build();
-
-    VersionGrpc versionGrpc = VersionGrpc.newBuilder()
-        .setNumber(1)
-        .setCreatedTime(123456789L)
-        .setStatus(VersionStatus.ONLINE.getValue())
-        .setPushJobId("test-push-job")
-        .setPartitionCount(10)
-        .setReplicationFactor(3)
-        .build();
-
-    RepushInfoGrpc repushInfoGrpc = RepushInfoGrpc.newBuilder()
-        .setKafkaBrokerUrl("kafka.broker:9092")
-        .setVersion(versionGrpc)
-        .setSystemSchemaClusterD2ServiceName("d2-service")
-        .setSystemSchemaClusterD2ZkHost("zk-host")
-        .build();
-
-    GetRepushInfoGrpcResponse grpcResponse =
-        GetRepushInfoGrpcResponse.newBuilder().setStoreInfo(storeInfo).setRepushInfo(repushInfoGrpc).build();
-
     // Create a real Version for admin.getRepushInfo() call to avoid Jackson serialization issues
     Version version = new VersionImpl(TEST_STORE_NAME, 1, "test-push-job", 10);
     version.setStatus(VersionStatus.ONLINE);
@@ -750,9 +723,13 @@ public class StoresRoutesTest {
 
     RepushInfo mockRepushInfo = RepushInfo.createRepushInfo(version, "kafka.broker:9092", "d2-service", "zk-host");
 
-    when(mockRequestHandler.getRepushInfo(any(GetRepushInfoGrpcRequest.class))).thenReturn(grpcResponse);
-    when(mockAdmin.getRepushInfo(eq(TEST_CLUSTER), eq(TEST_STORE_NAME), eq(Optional.of("test-fabric"))))
-        .thenReturn(mockRepushInfo);
+    RepushInfoResponse mockResponse = new RepushInfoResponse();
+    mockResponse.setCluster(TEST_CLUSTER);
+    mockResponse.setName(TEST_STORE_NAME);
+    mockResponse.setRepushInfo(mockRepushInfo);
+
+    when(mockRequestHandler.getRepushInfo(any(), any(), any(), any(ControllerRequestContext.class)))
+        .thenReturn(mockResponse);
 
     RepushInfoResponse response = ObjectMapperFactory.getInstance()
         .readValue(route.handle(request, mock(Response.class)).toString(), RepushInfoResponse.class);
@@ -764,7 +741,8 @@ public class StoresRoutesTest {
     Assert.assertEquals(response.getRepushInfo().getKafkaBrokerUrl(), "kafka.broker:9092");
 
     // Test error case
-    when(mockRequestHandler.getRepushInfo(any(GetRepushInfoGrpcRequest.class))).thenThrow(new VeniceException("Error"));
+    when(mockRequestHandler.getRepushInfo(any(), any(), any(), any(ControllerRequestContext.class)))
+        .thenThrow(new VeniceException("Error"));
     response = ObjectMapperFactory.getInstance()
         .readValue(route.handle(request, mock(Response.class)).toString(), RepushInfoResponse.class);
     Assert.assertTrue(response.isError());
@@ -792,19 +770,15 @@ public class StoresRoutesTest {
     Route route =
         new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getRepushInfo(mockAdmin, mockRequestHandler);
 
-    ClusterStoreGrpcInfo storeInfo =
-        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE_NAME).build();
-
-    RepushInfoGrpc repushInfoGrpc = RepushInfoGrpc.newBuilder().setKafkaBrokerUrl("another.kafka:9092").build();
-
-    GetRepushInfoGrpcResponse grpcResponse =
-        GetRepushInfoGrpcResponse.newBuilder().setStoreInfo(storeInfo).setRepushInfo(repushInfoGrpc).build();
-
     RepushInfo mockRepushInfo = RepushInfo.createRepushInfo(null, "another.kafka:9092", null, null);
 
-    when(mockRequestHandler.getRepushInfo(any(GetRepushInfoGrpcRequest.class))).thenReturn(grpcResponse);
-    when(mockAdmin.getRepushInfo(eq(TEST_CLUSTER), eq(TEST_STORE_NAME), eq(Optional.empty())))
-        .thenReturn(mockRepushInfo);
+    RepushInfoResponse mockResponse = new RepushInfoResponse();
+    mockResponse.setCluster(TEST_CLUSTER);
+    mockResponse.setName(TEST_STORE_NAME);
+    mockResponse.setRepushInfo(mockRepushInfo);
+
+    when(mockRequestHandler.getRepushInfo(any(), any(), any(), any(ControllerRequestContext.class)))
+        .thenReturn(mockResponse);
 
     RepushInfoResponse response = ObjectMapperFactory.getInstance()
         .readValue(route.handle(request, mock(Response.class)).toString(), RepushInfoResponse.class);
