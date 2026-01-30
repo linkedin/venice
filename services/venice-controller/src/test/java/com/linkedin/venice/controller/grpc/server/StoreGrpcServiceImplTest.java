@@ -16,6 +16,7 @@ import static org.testng.Assert.expectThrows;
 import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
@@ -458,12 +459,10 @@ public class StoreGrpcServiceImplTest {
     storeStatusMap.put("store1", "ONLINE");
     storeStatusMap.put("store2", "DEGRADED");
     storeStatusMap.put("store3", "UNAVAILABLE");
-    GetClusterHealthStoresGrpcResponse expectedResponse = GetClusterHealthStoresGrpcResponse.newBuilder()
-        .setClusterName(TEST_CLUSTER)
-        .putAllStoreStatusMap(storeStatusMap)
-        .build();
-    when(storeRequestHandler.getClusterHealthStores(any(GetClusterHealthStoresGrpcRequest.class)))
-        .thenReturn(expectedResponse);
+    MultiStoreStatusResponse handlerResponse = new MultiStoreStatusResponse();
+    handlerResponse.setCluster(TEST_CLUSTER);
+    handlerResponse.setStoreStatusMap(storeStatusMap);
+    when(storeRequestHandler.getClusterHealthStores(TEST_CLUSTER)).thenReturn(handlerResponse);
 
     GetClusterHealthStoresGrpcResponse actualResponse = blockingStub.getClusterHealthStores(request);
 
@@ -479,10 +478,10 @@ public class StoreGrpcServiceImplTest {
   public void testGetClusterHealthStoresReturnsEmptyMapWhenNoStores() {
     GetClusterHealthStoresGrpcRequest request =
         GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
-    GetClusterHealthStoresGrpcResponse expectedResponse =
-        GetClusterHealthStoresGrpcResponse.newBuilder().setClusterName(TEST_CLUSTER).build();
-    when(storeRequestHandler.getClusterHealthStores(any(GetClusterHealthStoresGrpcRequest.class)))
-        .thenReturn(expectedResponse);
+    MultiStoreStatusResponse handlerResponse = new MultiStoreStatusResponse();
+    handlerResponse.setCluster(TEST_CLUSTER);
+    handlerResponse.setStoreStatusMap(new HashMap<>());
+    when(storeRequestHandler.getClusterHealthStores(TEST_CLUSTER)).thenReturn(handlerResponse);
 
     GetClusterHealthStoresGrpcResponse actualResponse = blockingStub.getClusterHealthStores(request);
 
@@ -495,7 +494,7 @@ public class StoreGrpcServiceImplTest {
   public void testGetClusterHealthStoresReturnsErrorResponse() {
     GetClusterHealthStoresGrpcRequest request =
         GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
-    when(storeRequestHandler.getClusterHealthStores(any(GetClusterHealthStoresGrpcRequest.class)))
+    when(storeRequestHandler.getClusterHealthStores(TEST_CLUSTER))
         .thenThrow(new VeniceException("Failed to get cluster health stores"));
 
     StatusRuntimeException e =
@@ -512,7 +511,7 @@ public class StoreGrpcServiceImplTest {
   @Test
   public void testGetClusterHealthStoresReturnsBadRequestForMissingClusterName() {
     GetClusterHealthStoresGrpcRequest request = GetClusterHealthStoresGrpcRequest.newBuilder().build();
-    when(storeRequestHandler.getClusterHealthStores(any(GetClusterHealthStoresGrpcRequest.class)))
+    when(storeRequestHandler.getClusterHealthStores(""))
         .thenThrow(new IllegalArgumentException("Cluster name is required"));
 
     StatusRuntimeException e =

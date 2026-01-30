@@ -37,8 +37,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -715,12 +713,10 @@ public class StoresRoutesTest {
     storeStatusMap.put("store1", "ONLINE");
     storeStatusMap.put("store2", "DEGRADED");
     storeStatusMap.put("store3", "UNAVAILABLE");
-    GetClusterHealthStoresGrpcResponse grpcResponse = GetClusterHealthStoresGrpcResponse.newBuilder()
-        .setClusterName(TEST_CLUSTER)
-        .putAllStoreStatusMap(storeStatusMap)
-        .build();
-    when(mockRequestHandler.getClusterHealthStores(any(GetClusterHealthStoresGrpcRequest.class)))
-        .thenReturn(grpcResponse);
+    MultiStoreStatusResponse handlerResponse = new MultiStoreStatusResponse();
+    handlerResponse.setCluster(TEST_CLUSTER);
+    handlerResponse.setStoreStatusMap(storeStatusMap);
+    when(mockRequestHandler.getClusterHealthStores(TEST_CLUSTER)).thenReturn(handlerResponse);
 
     MultiStoreStatusResponse response = ObjectMapperFactory.getInstance()
         .readValue(
@@ -734,10 +730,10 @@ public class StoresRoutesTest {
     Assert.assertEquals(response.getStoreStatusMap().get("store3"), "UNAVAILABLE");
 
     // Case 2: Empty response
-    GetClusterHealthStoresGrpcResponse emptyResponse =
-        GetClusterHealthStoresGrpcResponse.newBuilder().setClusterName(TEST_CLUSTER).build();
-    when(mockRequestHandler.getClusterHealthStores(any(GetClusterHealthStoresGrpcRequest.class)))
-        .thenReturn(emptyResponse);
+    MultiStoreStatusResponse emptyHandlerResponse = new MultiStoreStatusResponse();
+    emptyHandlerResponse.setCluster(TEST_CLUSTER);
+    emptyHandlerResponse.setStoreStatusMap(new HashMap<>());
+    when(mockRequestHandler.getClusterHealthStores(TEST_CLUSTER)).thenReturn(emptyHandlerResponse);
 
     response = ObjectMapperFactory.getInstance()
         .readValue(
@@ -749,8 +745,7 @@ public class StoresRoutesTest {
 
     // Case 3: Handler throws exception
     String errorMessage = "Failed to get cluster health stores";
-    when(mockRequestHandler.getClusterHealthStores(any(GetClusterHealthStoresGrpcRequest.class)))
-        .thenThrow(new VeniceException(errorMessage));
+    when(mockRequestHandler.getClusterHealthStores(TEST_CLUSTER)).thenThrow(new VeniceException(errorMessage));
 
     response = ObjectMapperFactory.getInstance()
         .readValue(

@@ -6,6 +6,7 @@ import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK
 
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.exceptions.VeniceUnauthorizedAccessException;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
@@ -160,11 +161,12 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
       StreamObserver<GetClusterHealthStoresGrpcResponse> responseObserver) {
     LOGGER.debug("Received getClusterHealthStores with args: {}", grpcRequest);
     String clusterName = grpcRequest.getClusterName();
-    handleRequest(
-        StoreGrpcServiceGrpc.getGetClusterHealthStoresMethod(),
-        () -> storeRequestHandler.getClusterHealthStores(grpcRequest),
-        responseObserver,
-        clusterName,
-        null);
+    handleRequest(StoreGrpcServiceGrpc.getGetClusterHealthStoresMethod(), () -> {
+      MultiStoreStatusResponse response = storeRequestHandler.getClusterHealthStores(clusterName);
+      return GetClusterHealthStoresGrpcResponse.newBuilder()
+          .setClusterName(response.getCluster())
+          .putAllStoreStatusMap(response.getStoreStatusMap())
+          .build();
+    }, responseObserver, clusterName, null);
   }
 }
