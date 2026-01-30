@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.grpc.server;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -14,9 +15,11 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
+import com.linkedin.venice.controller.server.ControllerRequestContext;
 import com.linkedin.venice.controller.server.SchemaRequestHandler;
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
+import com.linkedin.venice.controllerapi.AllValueSchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
@@ -31,7 +34,6 @@ import com.linkedin.venice.protocols.controller.GetAllValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
-import com.linkedin.venice.protocols.controller.SchemaGrpcInfo;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
@@ -457,18 +459,24 @@ public class StoreGrpcServiceImplTest {
     ClusterStoreGrpcInfo storeInfo =
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetAllValueSchemaGrpcRequest request = GetAllValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
-    GetAllValueSchemaGrpcResponse response = GetAllValueSchemaGrpcResponse.newBuilder()
-        .setStoreInfo(storeInfo)
-        .addSchemas(SchemaGrpcInfo.newBuilder().setId(1).setSchemaStr("\"string\"").build())
-        .addSchemas(SchemaGrpcInfo.newBuilder().setId(2).setSchemaStr("{\"type\":\"record\"}").build())
-        .setSuperSetSchemaId(2)
-        .build();
-    when(schemaRequestHandler.getAllValueSchema(any(GetAllValueSchemaGrpcRequest.class))).thenReturn(response);
+
+    // Mock the v2 handler method
+    AllValueSchemaResponse mockResponse = new AllValueSchemaResponse();
+    mockResponse.setCluster(TEST_CLUSTER);
+    mockResponse.setName(TEST_STORE);
+    mockResponse.setSchemas(
+        Arrays.asList(
+            new AllValueSchemaResponse.SchemaInfo(1, "\"string\""),
+            new AllValueSchemaResponse.SchemaInfo(2, "{\"type\":\"record\"}")));
+    mockResponse.setSuperSetSchemaId(2);
+    when(schemaRequestHandler.getAllValueSchema(eq(TEST_CLUSTER), eq(TEST_STORE), any(ControllerRequestContext.class)))
+        .thenReturn(mockResponse);
 
     GetAllValueSchemaGrpcResponse actualResponse = blockingStub.getAllValueSchema(request);
 
     assertNotNull(actualResponse, "Response should not be null");
-    assertEquals(actualResponse.getStoreInfo(), storeInfo, "Store info should match");
+    assertEquals(actualResponse.getStoreInfo().getClusterName(), TEST_CLUSTER, "Cluster name should match");
+    assertEquals(actualResponse.getStoreInfo().getStoreName(), TEST_STORE, "Store name should match");
     assertEquals(actualResponse.getSchemasCount(), 2, "Should have 2 schemas");
     assertEquals(actualResponse.getSchemas(0).getId(), 1, "First schema ID should be 1");
     assertEquals(actualResponse.getSchemas(0).getSchemaStr(), "\"string\"", "First schema should match");
@@ -481,7 +489,9 @@ public class StoreGrpcServiceImplTest {
     ClusterStoreGrpcInfo storeInfo =
         ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
     GetAllValueSchemaGrpcRequest request = GetAllValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
-    when(schemaRequestHandler.getAllValueSchema(any(GetAllValueSchemaGrpcRequest.class)))
+
+    // Mock the v2 handler method to throw exception
+    when(schemaRequestHandler.getAllValueSchema(eq(TEST_CLUSTER), eq(TEST_STORE), any(ControllerRequestContext.class)))
         .thenThrow(new VeniceException("Failed to get schemas"));
 
     StatusRuntimeException e =
