@@ -10,7 +10,6 @@ import static org.testng.Assert.assertNotNull;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controllerapi.SchemaResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
 import org.apache.avro.Schema;
 import org.testng.annotations.BeforeMethod;
@@ -56,7 +55,7 @@ public class SchemaRequestHandlerTest {
     assertEquals(response.getSchemaStr(), avroSchema.toString());
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Value schema for schema id: 99 of store: testStore doesn't exist")
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Value schema for schema id: 99 of store: testStore doesn't exist")
   public void testGetValueSchemaNotFound() {
     String clusterName = "testCluster";
     String storeName = "testStore";
@@ -86,7 +85,7 @@ public class SchemaRequestHandlerTest {
     assertEquals(response.getSchemaStr(), "\"string\"");
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Key schema doesn't exist for store: testStore")
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Key schema doesn't exist for store: testStore")
   public void testGetKeySchemaWhenSchemaDoesNotExist() {
     String clusterName = "testCluster";
     String storeName = "testStore";

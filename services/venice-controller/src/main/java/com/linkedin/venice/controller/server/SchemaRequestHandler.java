@@ -41,9 +41,19 @@ public class SchemaRequestHandler {
     LOGGER
         .info("Getting value schema for store: {} in cluster: {} with schema id: {}", storeName, clusterName, schemaId);
 
-    SchemaEntry valueSchemaEntry = admin.getValueSchema(clusterName, storeName, schemaId);
+    SchemaEntry valueSchemaEntry;
+    try {
+      valueSchemaEntry = admin.getValueSchema(clusterName, storeName, schemaId);
+    } catch (VeniceException e) {
+      // Convert VeniceException to IllegalArgumentException for consistent error handling
+      LOGGER.warn("Failed to get value schema for store: {} schema id: {}", storeName, schemaId, e);
+      throw new IllegalArgumentException(
+          "Value schema for schema id: " + schemaId + " of store: " + storeName + " doesn't exist: " + e.getMessage(),
+          e);
+    }
+
     if (valueSchemaEntry == null) {
-      throw new VeniceException(
+      throw new IllegalArgumentException(
           "Value schema for schema id: " + schemaId + " of store: " + storeName + " doesn't exist");
     }
 
@@ -67,9 +77,17 @@ public class SchemaRequestHandler {
   public SchemaResponse getKeySchema(String clusterName, String storeName, ControllerRequestContext context) {
     LOGGER.info("Getting key schema for store: {} in cluster: {}", storeName, clusterName);
 
-    SchemaEntry keySchemaEntry = admin.getKeySchema(clusterName, storeName);
+    SchemaEntry keySchemaEntry;
+    try {
+      keySchemaEntry = admin.getKeySchema(clusterName, storeName);
+    } catch (VeniceException e) {
+      // Convert VeniceException to IllegalArgumentException for consistent error handling
+      LOGGER.warn("Failed to get key schema for store: {}", storeName, e);
+      throw new IllegalArgumentException("Key schema doesn't exist for store: " + storeName + ": " + e.getMessage(), e);
+    }
+
     if (keySchemaEntry == null) {
-      throw new VeniceException("Key schema doesn't exist for store: " + storeName);
+      throw new IllegalArgumentException("Key schema doesn't exist for store: " + storeName);
     }
 
     SchemaResponse response = new SchemaResponse();
