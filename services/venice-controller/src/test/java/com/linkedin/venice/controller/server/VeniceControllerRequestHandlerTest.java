@@ -7,11 +7,14 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import java.util.HashMap;
+import java.util.Map;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -83,5 +86,45 @@ public class VeniceControllerRequestHandlerTest {
   public void testIsSslEnabled() {
     boolean sslEnabled = requestHandler.isSslEnabled();
     assertTrue(sslEnabled);
+  }
+
+  @Test
+  public void testGetClusterHealthInstances() {
+    String clusterName = "testCluster";
+    Map<String, String> instancesStatus = new HashMap<>();
+    instancesStatus.put("instance1", "CONNECTED");
+    instancesStatus.put("instance2", "DISCONNECTED");
+
+    when(admin.getStorageNodesStatus(clusterName, false)).thenReturn(instancesStatus);
+
+    ControllerRequestContext context = ControllerRequestContext.anonymous();
+    MultiNodesStatusResponse response = requestHandler.getClusterHealthInstances(clusterName, false, context);
+
+    assertEquals(response.getCluster(), clusterName);
+    assertEquals(response.getInstancesStatusMap().size(), 2);
+    assertEquals(response.getInstancesStatusMap().get("instance1"), "CONNECTED");
+    assertEquals(response.getInstancesStatusMap().get("instance2"), "DISCONNECTED");
+  }
+
+  @Test
+  public void testGetClusterHealthInstancesWithEnabledDisabledReplicas() {
+    String clusterName = "testCluster";
+    Map<String, String> instancesStatus = new HashMap<>();
+    instancesStatus.put("instance1", "CONNECTED");
+
+    when(admin.getStorageNodesStatus(clusterName, true)).thenReturn(instancesStatus);
+
+    ControllerRequestContext context = ControllerRequestContext.anonymous();
+    MultiNodesStatusResponse response = requestHandler.getClusterHealthInstances(clusterName, true, context);
+
+    assertEquals(response.getCluster(), clusterName);
+    assertEquals(response.getInstancesStatusMap().size(), 1);
+    assertEquals(response.getInstancesStatusMap().get("instance1"), "CONNECTED");
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required for cluster health instances")
+  public void testGetClusterHealthInstancesWithEmptyClusterName() {
+    ControllerRequestContext context = ControllerRequestContext.anonymous();
+    requestHandler.getClusterHealthInstances("", false, context);
   }
 }

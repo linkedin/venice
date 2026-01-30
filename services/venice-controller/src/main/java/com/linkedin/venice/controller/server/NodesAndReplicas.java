@@ -33,7 +33,6 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
@@ -47,11 +46,21 @@ public class NodesAndReplicas extends AbstractRoute {
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
+  private final VeniceControllerRequestHandler requestHandler;
+
   /**
    * TODO: Make sure services "venice-hooks-deployable" is also in allowlist
    */
   public NodesAndReplicas(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    this(sslEnabled, accessController, null);
+  }
+
+  public NodesAndReplicas(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      VeniceControllerRequestHandler requestHandler) {
     super(sslEnabled, accessController);
+    this.requestHandler = requestHandler;
   }
 
   /**
@@ -89,17 +98,40 @@ public class NodesAndReplicas extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         AdminSparkServer.validateParams(request, ClUSTER_HEALTH_INSTANCES.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
+
+        // Extract primitives from HTTP request
+        String clusterName = request.queryParams(CLUSTER);
         String value = AdminSparkServer.getOptionalParameterValue(request, ENABLE_DISABLED_REPLICAS);
-        Map<String, String> nodesStatusesMap =
-            admin.getStorageNodesStatus(responseObject.getCluster(), Objects.equals(value, "true"));
-        responseObject.setInstancesStatusMap(nodesStatusesMap);
+        boolean enableDisabledReplicas = Objects.equals(value, "true");
+
+        // Build transport-agnostic context
+        ControllerRequestContext context = buildRequestContext(request);
+
+        // Call handler - returns POJO directly
+        MultiNodesStatusResponse result =
+            requestHandler.getClusterHealthInstances(clusterName, enableDisabledReplicas, context);
+
+        // Copy result to response
+        responseObject.setCluster(result.getCluster());
+        responseObject.setInstancesStatusMap(result.getInstancesStatusMap());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
+  }
+
+  /**
+   * Build request context from HTTP request.
+   */
+  private ControllerRequestContext buildRequestContext(spark.Request request) {
+    if (!isSslEnabled()) {
+      return ControllerRequestContext.anonymous();
+    }
+    java.security.cert.X509Certificate cert = getCertificate(request);
+    String principalId = getPrincipalId(request);
+    return new ControllerRequestContext(cert, principalId);
   }
 
   /**

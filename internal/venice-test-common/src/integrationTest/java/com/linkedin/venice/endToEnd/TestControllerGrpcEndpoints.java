@@ -15,6 +15,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc;
+import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcRequest;
+import com.linkedin.venice.protocols.controller.ClusterHealthInstancesGrpcResponse;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
@@ -384,6 +386,37 @@ public class TestControllerGrpcEndpoints {
     StatusRuntimeException exception = Assert
         .expectThrows(StatusRuntimeException.class, () -> schemaBlockingStub.getValueSchema(invalidSchemaRequest));
     assertEquals(exception.getStatus().getCode(), io.grpc.Status.Code.INVALID_ARGUMENT);
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testClusterHealthInstancesGrpcEndpoint() {
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    VeniceControllerGrpcServiceBlockingStub blockingStub = VeniceControllerGrpcServiceGrpc.newBlockingStub(channel);
+
+    // Test 1: Get cluster health instances without enableDisabledReplicas
+    ClusterHealthInstancesGrpcRequest request =
+        ClusterHealthInstancesGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+
+    ClusterHealthInstancesGrpcResponse response = blockingStub.getClusterHealthInstances(request);
+    assertNotNull(response, "Response should not be null");
+    assertEquals(response.getClusterName(), veniceCluster.getClusterName(), "Cluster name should match");
+    // There should be at least one server instance in the cluster
+    assertFalse(response.getInstancesStatusMapMap().isEmpty(), "Instances status map should not be empty");
+
+    // Test 2: Get cluster health instances with enableDisabledReplicas
+    ClusterHealthInstancesGrpcRequest requestWithDisabledReplicas = ClusterHealthInstancesGrpcRequest.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setEnableDisabledReplicas(true)
+        .build();
+
+    ClusterHealthInstancesGrpcResponse responseWithDisabledReplicas =
+        blockingStub.getClusterHealthInstances(requestWithDisabledReplicas);
+    assertNotNull(responseWithDisabledReplicas, "Response should not be null");
+    assertEquals(
+        responseWithDisabledReplicas.getClusterName(),
+        veniceCluster.getClusterName(),
+        "Cluster name should match");
   }
 
   private static class MockDynamicAccessController extends NoOpDynamicAccessController {

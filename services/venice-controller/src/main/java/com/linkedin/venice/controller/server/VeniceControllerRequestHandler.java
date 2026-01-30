@@ -2,11 +2,13 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import java.util.Map;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -118,5 +120,35 @@ public class VeniceControllerRequestHandler {
 
   public VeniceControllerAccessManager getControllerAccessManager() {
     return accessManager;
+  }
+
+  /**
+   * Gets the health status of all storage instances in the cluster.
+   * No ACL check required - reading cluster health is public.
+   *
+   * @param clusterName the cluster name
+   * @param enableDisabledReplicas whether to include disabled replicas
+   * @param context the request context (contains client identity)
+   * @return MultiNodesStatusResponse containing cluster name and map of instance IDs to their status
+   */
+  public MultiNodesStatusResponse getClusterHealthInstances(
+      String clusterName,
+      boolean enableDisabledReplicas,
+      ControllerRequestContext context) {
+    if (StringUtils.isBlank(clusterName)) {
+      throw new IllegalArgumentException("Cluster name is required for cluster health instances");
+    }
+
+    LOGGER.info(
+        "Getting cluster health instances for cluster: {} with enableDisabledReplicas: {}",
+        clusterName,
+        enableDisabledReplicas);
+
+    Map<String, String> instancesStatusMap = admin.getStorageNodesStatus(clusterName, enableDisabledReplicas);
+
+    MultiNodesStatusResponse response = new MultiNodesStatusResponse();
+    response.setCluster(clusterName);
+    response.setInstancesStatusMap(instancesStatusMap);
+    return response;
   }
 }
