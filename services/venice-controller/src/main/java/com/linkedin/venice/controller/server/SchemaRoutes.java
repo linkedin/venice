@@ -28,9 +28,6 @@ import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
-import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -45,6 +42,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
+import spark.Request;
 import spark.Route;
 
 
@@ -64,25 +62,25 @@ public class SchemaRoutes extends AbstractRoute {
    * @see Admin#getKeySchema(String, String)
    */
   public Route getKeySchema(Admin admin) {
-    return (request, response) -> {
-      SchemaResponse responseObject = new SchemaResponse();
-      response.type(HttpConstants.JSON);
-      try {
+    return new VeniceRouteHandler<SchemaResponse>(SchemaResponse.class) {
+      @Override
+      public void internalHandle(Request request, SchemaResponse veniceResponse) {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_KEY_SCHEMA.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
-        responseObject.setName(request.queryParams(NAME));
-        SchemaEntry keySchemaEntry = admin.getKeySchema(responseObject.getCluster(), responseObject.getName());
-        if (keySchemaEntry == null) {
-          throw new VeniceException("Key schema doesn't exist for store: " + responseObject.getName());
-        }
-        responseObject.setId(keySchemaEntry.getId());
-        responseObject.setSchemaStr(keySchemaEntry.getSchema().toString());
-      } catch (Throwable e) {
-        responseObject.setError(e);
-        AdminSparkServer.handleError(new VeniceException(e), request, response);
+
+        // Extract primitives from HTTP request
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+
+        // Call handler - returns POJO directly
+        SchemaResponse result = schemaRequestHandler.getKeySchema(clusterName, storeName);
+
+        // Copy result to response
+        veniceResponse.setCluster(result.getCluster());
+        veniceResponse.setName(result.getName());
+        veniceResponse.setId(result.getId());
+        veniceResponse.setSchemaStr(result.getSchemaStr());
       }
-      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 
@@ -201,34 +199,27 @@ public class SchemaRoutes extends AbstractRoute {
    * @see Admin#getValueSchema(String, String, int)
    */
   public Route getValueSchema(Admin admin) {
-    return (request, response) -> {
-      SchemaResponse responseObject = new SchemaResponse();
-      response.type(HttpConstants.JSON);
-      try {
+    return new VeniceRouteHandler<SchemaResponse>(SchemaResponse.class) {
+      @Override
+      public void internalHandle(Request request, SchemaResponse veniceResponse) {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA.getParams(), admin);
+
+        // Extract primitives from HTTP request
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String schemaIdStr = request.queryParams(SCHEMA_ID);
         int schemaId = Utils.parseIntFromString(schemaIdStr, "schema id");
 
-        // Build gRPC request and delegate to handler
-        ClusterStoreGrpcInfo storeInfo =
-            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
-        GetValueSchemaGrpcRequest grpcRequest =
-            GetValueSchemaGrpcRequest.newBuilder().setStoreInfo(storeInfo).setSchemaId(schemaId).build();
+        // Call handler - returns POJO directly
+        SchemaResponse result = schemaRequestHandler.getValueSchema(clusterName, storeName, schemaId);
 
-        GetValueSchemaGrpcResponse grpcResponse = schemaRequestHandler.getValueSchema(grpcRequest);
-
-        responseObject.setCluster(clusterName);
-        responseObject.setName(storeName);
-        responseObject.setId(grpcResponse.getSchemaId());
-        responseObject.setSchemaStr(grpcResponse.getSchemaStr());
-      } catch (Throwable e) {
-        responseObject.setError(e);
-        AdminSparkServer.handleError(new VeniceException(e), request, response);
+        // Copy result to response
+        veniceResponse.setCluster(result.getCluster());
+        veniceResponse.setName(result.getName());
+        veniceResponse.setId(result.getId());
+        veniceResponse.setSchemaStr(result.getSchemaStr());
       }
-      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }
 

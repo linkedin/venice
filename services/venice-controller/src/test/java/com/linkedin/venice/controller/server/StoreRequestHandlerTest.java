@@ -14,9 +14,11 @@ import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
@@ -368,7 +370,6 @@ public class StoreRequestHandlerTest {
     String clusterName = "testCluster";
     String storeName = "testStore";
     Optional<String> fabric = Optional.of("testFabric");
-    ControllerRequestContext context = mock(ControllerRequestContext.class);
 
     Version mockVersion = mock(Version.class);
     when(mockVersion.getNumber()).thenReturn(1);
@@ -404,7 +405,6 @@ public class StoreRequestHandlerTest {
     String clusterName = "testCluster";
     String storeName = "testStore";
     Optional<String> fabric = Optional.empty();
-    ControllerRequestContext context = mock(ControllerRequestContext.class);
 
     Version mockVersion = mock(Version.class);
     when(mockVersion.getNumber()).thenReturn(2);
@@ -433,7 +433,6 @@ public class StoreRequestHandlerTest {
     String clusterName = "testCluster";
     String storeName = "testStore";
     Optional<String> fabric = Optional.empty();
-    ControllerRequestContext context = mock(ControllerRequestContext.class);
 
     RepushInfo mockRepushInfo = RepushInfo.createRepushInfo(null, "kafka.broker:9092", null, null);
 
@@ -445,5 +444,70 @@ public class StoreRequestHandlerTest {
     assertTrue(response.getRepushInfo().getVersion() == null);
     assertTrue(response.getRepushInfo().getSystemSchemaClusterD2ServiceName() == null);
     assertTrue(response.getRepushInfo().getSystemSchemaClusterD2ZkHost() == null);
+  }
+
+  @Test
+  public void testGetStoreSuccess() {
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn("testStore");
+    when(mockStore.getOwner()).thenReturn("testOwner");
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.getVersions()).thenReturn(Collections.emptyList());
+    when(mockStore.getBackupVersionRetentionMs()).thenReturn(1000L);
+    when(mockStore.getMaxRecordSizeBytes()).thenReturn(1024);
+    when(admin.getStore("testCluster", "testStore")).thenReturn(mockStore);
+    when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(2000L);
+    when(admin.getDefaultMaxRecordSizeBytes()).thenReturn(2048);
+    when(admin.getCurrentVersionsForMultiColos("testCluster", "testStore")).thenReturn(Collections.emptyMap());
+    when(admin.isSSLEnabledForPush("testCluster", "testStore")).thenReturn(false);
+    when(admin.getKafkaBootstrapServers(false)).thenReturn("localhost:9092");
+
+    StoreInfo response = storeRequestHandler.getStore("testCluster", "testStore");
+
+    verify(admin, times(1)).getStore("testCluster", "testStore");
+    assertEquals(response.getName(), "testStore");
+  }
+
+  @Test
+  public void testGetStoreNotFound() {
+    when(admin.getStore("testCluster", "nonExistent")).thenReturn(null);
+
+    VeniceNoStoreException e =
+        expectThrows(VeniceNoStoreException.class, () -> storeRequestHandler.getStore("testCluster", "nonExistent"));
+    assertTrue(e.getMessage().contains("nonExistent"));
+  }
+
+  @Test
+  public void testGetStoreWithDefaultRetentionMs() {
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn("testStore");
+    when(mockStore.getOwner()).thenReturn("testOwner");
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.getVersions()).thenReturn(Collections.emptyList());
+    when(mockStore.getBackupVersionRetentionMs()).thenReturn(-1L);
+    when(mockStore.getMaxRecordSizeBytes()).thenReturn(-1);
+    when(admin.getStore("testCluster", "testStore")).thenReturn(mockStore);
+    when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(86400000L);
+    when(admin.getDefaultMaxRecordSizeBytes()).thenReturn(1048576);
+    when(admin.getCurrentVersionsForMultiColos("testCluster", "testStore")).thenReturn(Collections.emptyMap());
+    when(admin.isSSLEnabledForPush("testCluster", "testStore")).thenReturn(true);
+    when(admin.getKafkaBootstrapServers(true)).thenReturn("localhost:9093");
+
+    StoreInfo response = storeRequestHandler.getStore("testCluster", "testStore");
+
+    verify(admin, times(1)).getBackupVersionDefaultRetentionMs();
+    verify(admin, times(1)).getDefaultMaxRecordSizeBytes();
+    assertEquals(response.getBackupVersionRetentionMs(), 86400000L);
+    assertEquals(response.getMaxRecordSizeBytes(), 1048576);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
+  public void testGetStoreMissingClusterName() {
+    storeRequestHandler.getStore("", "testStore");
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Store name is required")
+  public void testGetStoreMissingStoreName() {
+    storeRequestHandler.getStore("testCluster", "");
   }
 }
