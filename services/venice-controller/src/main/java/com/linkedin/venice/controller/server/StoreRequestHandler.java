@@ -6,7 +6,6 @@ import com.linkedin.venice.controller.StoreDeletedValidation;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
@@ -15,16 +14,12 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
-import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
-import com.linkedin.venice.protocols.controller.RepushInfoGrpc;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
-import com.linkedin.venice.protocols.controller.VersionGrpc;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import java.util.ArrayList;
 import java.util.List;
@@ -264,16 +259,19 @@ public class StoreRequestHandler {
 
   /**
    * Retrieves repush information for a store.
-   * @param request the request containing cluster, store name, and optional fabric
-   * @return response containing repush information including version and Kafka details
+   * No ACL check required - reading repush info is public.
+   *
+   * @param clusterName the cluster name
+   * @param storeName the store name
+   * @param fabric optional fabric for multi-region setups
+   * @param context the request context (contains client identity)
+   * @return RepushInfoResponse containing repush information including version and Kafka details
    */
-  public GetRepushInfoGrpcResponse getRepushInfo(GetRepushInfoGrpcRequest request) {
-    ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
-    ControllerRequestParamValidator.validateClusterStoreInfo(storeInfo);
-    String clusterName = storeInfo.getClusterName();
-    String storeName = storeInfo.getStoreName();
-    Optional<String> fabric = request.hasFabric() ? Optional.of(request.getFabric()) : Optional.empty();
-
+  public com.linkedin.venice.controllerapi.RepushInfoResponse getRepushInfo(
+      String clusterName,
+      String storeName,
+      Optional<String> fabric,
+      ControllerRequestContext context) {
     LOGGER.info(
         "Getting repush info for store: {} in cluster: {} with fabric: {}",
         storeName,
@@ -282,33 +280,11 @@ public class StoreRequestHandler {
 
     RepushInfo repushInfo = admin.getRepushInfo(clusterName, storeName, fabric);
 
-    RepushInfoGrpc.Builder repushInfoBuilder = RepushInfoGrpc.newBuilder()
-        .setKafkaBrokerUrl(repushInfo.getKafkaBrokerUrl() != null ? repushInfo.getKafkaBrokerUrl() : "");
-
-    if (repushInfo.getVersion() != null) {
-      repushInfoBuilder.setVersion(convertVersionToProto(repushInfo.getVersion()));
-    }
-    if (repushInfo.getSystemSchemaClusterD2ServiceName() != null) {
-      repushInfoBuilder.setSystemSchemaClusterD2ServiceName(repushInfo.getSystemSchemaClusterD2ServiceName());
-    }
-    if (repushInfo.getSystemSchemaClusterD2ZkHost() != null) {
-      repushInfoBuilder.setSystemSchemaClusterD2ZkHost(repushInfo.getSystemSchemaClusterD2ZkHost());
-    }
-
-    return GetRepushInfoGrpcResponse.newBuilder()
-        .setStoreInfo(storeInfo)
-        .setRepushInfo(repushInfoBuilder.build())
-        .build();
-  }
-
-  private VersionGrpc convertVersionToProto(Version version) {
-    return VersionGrpc.newBuilder()
-        .setNumber(version.getNumber())
-        .setCreatedTime(version.getCreatedTime())
-        .setStatus(version.getStatus().getValue())
-        .setPushJobId(version.getPushJobId())
-        .setPartitionCount(version.getPartitionCount())
-        .setReplicationFactor(version.getReplicationFactor())
-        .build();
+    com.linkedin.venice.controllerapi.RepushInfoResponse response =
+        new com.linkedin.venice.controllerapi.RepushInfoResponse();
+    response.setCluster(clusterName);
+    response.setName(storeName);
+    response.setRepushInfo(repushInfo);
+    return response;
   }
 }

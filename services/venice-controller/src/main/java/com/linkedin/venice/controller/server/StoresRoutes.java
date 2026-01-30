@@ -84,7 +84,6 @@ import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
-import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.SchemaUsageResponse;
@@ -108,17 +107,11 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
-import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
-import com.linkedin.venice.protocols.controller.RepushInfoGrpc;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
-import com.linkedin.venice.protocols.controller.VersionGrpc;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -264,31 +257,23 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, RepushInfoResponse veniceResponse) {
         AdminSparkServer.validateParams(request, GET_REPUSH_INFO.getParams(), admin);
+
+        // Extract primitives from HTTP request
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String fabricName = request.queryParams(FABRIC);
+        Optional<String> fabric = fabricName != null ? Optional.of(fabricName) : Optional.empty();
 
-        // Convert to gRPC request
-        ClusterStoreGrpcInfo storeInfo =
-            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
-        GetRepushInfoGrpcRequest.Builder grpcRequestBuilder =
-            GetRepushInfoGrpcRequest.newBuilder().setStoreInfo(storeInfo);
-        if (fabricName != null) {
-          grpcRequestBuilder.setFabric(fabricName);
-        }
-        GetRepushInfoGrpcRequest grpcRequest = grpcRequestBuilder.build();
+        // Build transport-agnostic context
+        ControllerRequestContext context = buildRequestContext(request);
 
-        // Call handler
-        GetRepushInfoGrpcResponse grpcResponse = requestHandler.getRepushInfo(grpcRequest);
+        // Call handler - returns POJO directly
+        RepushInfoResponse result = requestHandler.getRepushInfo(clusterName, storeName, fabric, context);
 
-        // Map response back to HTTP
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
-
-        // Convert proto RepushInfo back to Java RepushInfo for HTTP response
-        RepushInfo repushInfo = mapGrpcRepushInfoToRepushInfo(grpcResponse.getRepushInfo(), storeName);
-
-        veniceResponse.setRepushInfo(repushInfo);
+        // Copy result to response
+        veniceResponse.setCluster(result.getCluster());
+        veniceResponse.setName(result.getName());
+        veniceResponse.setRepushInfo(result.getRepushInfo());
       }
     };
   }
@@ -1249,32 +1234,14 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * Converts a gRPC RepushInfoGrpc message to a RepushInfo object.
-   * @param repushInfoProto the gRPC message
-   * @param storeName the store name needed for Version creation
-   * @return the converted RepushInfo object
+   * Build request context from HTTP request.
    */
-  RepushInfo mapGrpcRepushInfoToRepushInfo(RepushInfoGrpc repushInfoProto, String storeName) {
-    Version version = null;
-    if (repushInfoProto.hasVersion()) {
-      VersionGrpc versionProto = repushInfoProto.getVersion();
-      version = new VersionImpl(
-          storeName,
-          versionProto.getNumber(),
-          versionProto.getCreatedTime(),
-          versionProto.getPushJobId(),
-          versionProto.getPartitionCount(),
-          null,
-          null);
-      version.setStatus(VersionStatus.getVersionStatusFromInt(versionProto.getStatus()));
+  private ControllerRequestContext buildRequestContext(spark.Request request) {
+    if (!isSslEnabled()) {
+      return ControllerRequestContext.anonymous();
     }
-
-    return RepushInfo.createRepushInfo(
-        version,
-        repushInfoProto.getKafkaBrokerUrl(),
-        repushInfoProto.hasSystemSchemaClusterD2ServiceName()
-            ? repushInfoProto.getSystemSchemaClusterD2ServiceName()
-            : null,
-        repushInfoProto.hasSystemSchemaClusterD2ZkHost() ? repushInfoProto.getSystemSchemaClusterD2ZkHost() : null);
+    java.security.cert.X509Certificate cert = getCertificate(request);
+    String principalId = getPrincipalId(request);
+    return new ControllerRequestContext(cert, principalId);
   }
 }

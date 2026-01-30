@@ -4,9 +4,13 @@ import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUti
 import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUtils.isAllowListUser;
 import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
 
+import com.linkedin.venice.controller.server.ControllerRequestContext;
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
+import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.exceptions.VeniceUnauthorizedAccessException;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
@@ -18,6 +22,7 @@ import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.RepushInfoGrpc;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceImplBase;
@@ -25,8 +30,10 @@ import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
+import com.linkedin.venice.protocols.controller.VersionGrpc;
 import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
+import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -150,15 +157,72 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
         null);
   }
 
+  /**
+   * Retrieves repush information for a store.
+   * No ACL check is required for this operation as it only reads store metadata.
+   */
   @Override
   public void getRepushInfo(
       GetRepushInfoGrpcRequest request,
       StreamObserver<GetRepushInfoGrpcResponse> responseObserver) {
     LOGGER.debug("Received getRepushInfo with args: {}", request);
-    ControllerGrpcServerUtils.handleRequest(
-        StoreGrpcServiceGrpc.getGetRepushInfoMethod(),
-        () -> storeRequestHandler.getRepushInfo(request),
-        responseObserver,
-        request.getStoreInfo());
+
+    ControllerGrpcServerUtils.handleRequest(StoreGrpcServiceGrpc.getGetRepushInfoMethod(), () -> {
+      // Extract primitives from protobuf
+      ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
+      String clusterName = storeInfo.getClusterName();
+      String storeName = storeInfo.getStoreName();
+      Optional<String> fabric = request.hasFabric() ? Optional.of(request.getFabric()) : Optional.empty();
+
+      // Build transport-agnostic context from gRPC
+      ControllerRequestContext context = buildRequestContext(Context.current());
+
+      // Call handler - returns POJO
+      RepushInfoResponse result = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric, context);
+
+      // Convert POJO to protobuf response
+      RepushInfo repushInfo = result.getRepushInfo();
+      RepushInfoGrpc.Builder repushInfoBuilder = RepushInfoGrpc.newBuilder()
+          .setKafkaBrokerUrl(repushInfo.getKafkaBrokerUrl() != null ? repushInfo.getKafkaBrokerUrl() : "");
+
+      if (repushInfo.getVersion() != null) {
+        repushInfoBuilder.setVersion(convertVersionToProto(repushInfo.getVersion()));
+      }
+      if (repushInfo.getSystemSchemaClusterD2ServiceName() != null) {
+        repushInfoBuilder.setSystemSchemaClusterD2ServiceName(repushInfo.getSystemSchemaClusterD2ServiceName());
+      }
+      if (repushInfo.getSystemSchemaClusterD2ZkHost() != null) {
+        repushInfoBuilder.setSystemSchemaClusterD2ZkHost(repushInfo.getSystemSchemaClusterD2ZkHost());
+      }
+
+      return GetRepushInfoGrpcResponse.newBuilder()
+          .setStoreInfo(storeInfo)
+          .setRepushInfo(repushInfoBuilder.build())
+          .build();
+    }, responseObserver, request.getStoreInfo());
+  }
+
+  /**
+   * Builds a ControllerRequestContext from the gRPC context.
+   */
+  private ControllerRequestContext buildRequestContext(Context context) {
+    GrpcControllerClientDetails clientDetails = ControllerGrpcServerUtils.getClientDetails(context);
+    return new ControllerRequestContext(
+        clientDetails.getClientCertificate(),
+        clientDetails.getClientAddress() != null ? clientDetails.getClientAddress() : "anonymous");
+  }
+
+  /**
+   * Converts a Version object to protobuf VersionGrpc.
+   */
+  private VersionGrpc convertVersionToProto(Version version) {
+    return VersionGrpc.newBuilder()
+        .setNumber(version.getNumber())
+        .setCreatedTime(version.getCreatedTime())
+        .setStatus(version.getStatus().getValue())
+        .setPushJobId(version.getPushJobId())
+        .setPartitionCount(version.getPartitionCount())
+        .setReplicationFactor(version.getReplicationFactor())
+        .build();
   }
 }
