@@ -107,15 +107,12 @@ public class ControllerGrpcServerUtils {
 
   /**
    * Builds a ControllerRequestContext from the gRPC context.
-   * Extracts client certificate and client address for request tracking and potential future ACL checks.
+   * Delegates to ControllerRequestContext.fromGrpcContext().
    *
    * @param context the gRPC context containing client details
    * @return a ControllerRequestContext with client information
    */
   public static ControllerRequestContext buildRequestContext(Context context) {
-    GrpcControllerClientDetails clientDetails = getClientDetails(context);
-    return new ControllerRequestContext(
-        clientDetails.getClientCertificate(),
-        clientDetails.getClientAddress() != null ? clientDetails.getClientAddress() : "anonymous");
+    return ControllerRequestContext.fromGrpcContext(context);
   }
 }
