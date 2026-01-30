@@ -32,8 +32,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
-import com.linkedin.venice.protocols.controller.GetStoreGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -316,18 +314,18 @@ public class StoresRoutesTest {
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
     doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
 
-    // Create a valid StoreInfo JSON
+    // Create a valid StoreInfo POJO
     final int testMaxRecordSizeBytesValue = 33333;
     StoreInfo storeInfo = new StoreInfo();
     storeInfo.setName(TEST_STORE_NAME);
     storeInfo.setMaxRecordSizeBytes(testMaxRecordSizeBytesValue);
-    String storeInfoJson = ObjectMapperFactory.getInstance().writeValueAsString(storeInfo);
 
-    ClusterStoreGrpcInfo grpcStoreInfo =
-        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE_NAME).build();
-    GetStoreGrpcResponse grpcResponse =
-        GetStoreGrpcResponse.newBuilder().setStoreInfo(grpcStoreInfo).setStoreInfoJson(storeInfoJson).build();
-    when(mockRequestHandler.getStore(any(GetStoreGrpcRequest.class))).thenReturn(grpcResponse);
+    StoreResponse handlerResponse = new StoreResponse();
+    handlerResponse.setCluster(TEST_CLUSTER);
+    handlerResponse.setName(TEST_STORE_NAME);
+    handlerResponse.setStore(storeInfo);
+
+    when(mockRequestHandler.getStore(eq(TEST_CLUSTER), eq(TEST_STORE_NAME))).thenReturn(handlerResponse);
 
     final StoresRoutes storesRoutes =
         new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler);
@@ -360,7 +358,8 @@ public class StoresRoutesTest {
     doReturn(queryParamsMap).when(request).queryMap();
 
     String errorMessage = "Store not found";
-    when(mockRequestHandler.getStore(any(GetStoreGrpcRequest.class))).thenThrow(new VeniceException(errorMessage));
+    when(mockRequestHandler.getStore(eq(TEST_CLUSTER), eq(TEST_STORE_NAME)))
+        .thenThrow(new VeniceException(errorMessage));
 
     final StoresRoutes storesRoutes =
         new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler);

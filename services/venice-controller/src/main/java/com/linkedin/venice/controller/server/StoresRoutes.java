@@ -109,8 +109,6 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
-import com.linkedin.venice.protocols.controller.GetStoreGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -120,7 +118,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
-import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -287,22 +284,11 @@ public class StoresRoutes extends AbstractRoute {
         String storeName = request.queryParams(NAME);
         String clusterName = request.queryParams(CLUSTER);
 
-        ClusterStoreGrpcInfo storeGrpcInfo =
-            ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
-        GetStoreGrpcRequest grpcRequest = GetStoreGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).build();
+        StoreResponse handlerResponse = storeRequestHandler.getStore(clusterName, storeName);
 
-        GetStoreGrpcResponse grpcResponse = storeRequestHandler.getStore(grpcRequest);
-
-        veniceResponse.setCluster(grpcResponse.getStoreInfo().getClusterName());
-        veniceResponse.setName(grpcResponse.getStoreInfo().getStoreName());
-
-        try {
-          StoreInfo storeInfo =
-              ObjectMapperFactory.getInstance().readValue(grpcResponse.getStoreInfoJson(), StoreInfo.class);
-          veniceResponse.setStore(storeInfo);
-        } catch (Exception e) {
-          throw new VeniceException("Failed to deserialize StoreInfo from JSON", e);
-        }
+        veniceResponse.setCluster(handlerResponse.getCluster());
+        veniceResponse.setName(handlerResponse.getName());
+        veniceResponse.setStore(handlerResponse.getStore());
       }
     };
   }

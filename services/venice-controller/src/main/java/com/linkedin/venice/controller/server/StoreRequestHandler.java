@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.StoreDeletedValidation;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
@@ -15,8 +16,6 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
-import com.linkedin.venice.protocols.controller.GetStoreGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
@@ -24,7 +23,6 @@ import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
-import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -263,14 +261,12 @@ public class StoreRequestHandler {
 
   /**
    * Gets store information for a given store in a cluster.
-   * @param request the request containing cluster and store name
-   * @return response containing store information as JSON
+   * @param clusterName the name of the cluster
+   * @param storeName the name of the store
+   * @return StoreResponse containing store information
    */
-  public GetStoreGrpcResponse getStore(GetStoreGrpcRequest request) {
-    ClusterStoreGrpcInfo storeGrpcInfo = request.getStoreInfo();
-    ControllerRequestParamValidator.validateClusterStoreInfo(storeGrpcInfo);
-    String clusterName = storeGrpcInfo.getClusterName();
-    String storeName = storeGrpcInfo.getStoreName();
+  public StoreResponse getStore(String clusterName, String storeName) {
+    ControllerRequestParamValidator.validateClusterAndStoreName(clusterName, storeName);
 
     LOGGER.info("Getting store info for store: {} in cluster: {}", storeName, clusterName);
 
@@ -292,13 +288,10 @@ public class StoreRequestHandler {
     boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
     storeInfo.setKafkaBrokerUrl(admin.getKafkaBootstrapServers(isSSL));
 
-    String storeInfoJson;
-    try {
-      storeInfoJson = ObjectMapperFactory.getInstance().writeValueAsString(storeInfo);
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to serialize StoreInfo to JSON", e);
-    }
-
-    return GetStoreGrpcResponse.newBuilder().setStoreInfo(storeGrpcInfo).setStoreInfoJson(storeInfoJson).build();
+    StoreResponse response = new StoreResponse();
+    response.setCluster(clusterName);
+    response.setName(storeName);
+    response.setStore(storeInfo);
+    return response;
   }
 }

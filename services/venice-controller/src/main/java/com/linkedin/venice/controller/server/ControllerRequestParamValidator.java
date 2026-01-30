@@ -29,10 +29,14 @@ public class ControllerRequestParamValidator {
   }
 
   public static void validateClusterStoreInfo(ClusterStoreGrpcInfo rpcContext) {
-    if (StringUtils.isBlank(rpcContext.getClusterName())) {
+    validateClusterAndStoreName(rpcContext.getClusterName(), rpcContext.getStoreName());
+  }
+
+  public static void validateClusterAndStoreName(String clusterName, String storeName) {
+    if (StringUtils.isBlank(clusterName)) {
       throw new IllegalArgumentException("Cluster name is mandatory parameter");
     }
-    if (StringUtils.isBlank(rpcContext.getStoreName())) {
+    if (StringUtils.isBlank(storeName)) {
       throw new IllegalArgumentException("Store name is mandatory parameter");
     }
   }

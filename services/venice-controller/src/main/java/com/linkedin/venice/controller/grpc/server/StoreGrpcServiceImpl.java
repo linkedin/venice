@@ -4,8 +4,10 @@ import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUti
 import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUtils.isAllowListUser;
 import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
 
+import com.linkedin.venice.controller.server.ControllerRequestParamValidator;
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceUnauthorizedAccessException;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
@@ -25,6 +27,7 @@ import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -153,11 +156,21 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
   @Override
   public void getStore(GetStoreGrpcRequest grpcRequest, StreamObserver<GetStoreGrpcResponse> responseObserver) {
     LOGGER.debug("Received getStore with args: {}", grpcRequest);
+    ClusterStoreGrpcInfo storeGrpcInfo = grpcRequest.getStoreInfo();
+    String clusterName = storeGrpcInfo.getClusterName();
+    String storeName = storeGrpcInfo.getStoreName();
     // No ACL check for getting store metadata - this is a read-only operation
-    ControllerGrpcServerUtils.handleRequest(
-        StoreGrpcServiceGrpc.getGetStoreMethod(),
-        () -> storeRequestHandler.getStore(grpcRequest),
-        responseObserver,
-        grpcRequest.getStoreInfo());
+    ControllerGrpcServerUtils.handleRequest(StoreGrpcServiceGrpc.getGetStoreMethod(), () -> {
+      ControllerRequestParamValidator.validateClusterAndStoreName(clusterName, storeName);
+      StoreResponse storeResponse = storeRequestHandler.getStore(clusterName, storeName);
+      // Convert StoreInfo to JSON for gRPC response
+      String storeInfoJson;
+      try {
+        storeInfoJson = ObjectMapperFactory.getInstance().writeValueAsString(storeResponse.getStore());
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to serialize StoreInfo to JSON", e);
+      }
+      return GetStoreGrpcResponse.newBuilder().setStoreInfo(storeGrpcInfo).setStoreInfoJson(storeInfoJson).build();
+    }, responseObserver, clusterName, storeName);
   }
 }
