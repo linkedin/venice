@@ -77,10 +77,15 @@ import org.testng.annotations.Test;
 public class DaVinciClientDiskFullTest {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientDiskFullTest.class);
   private static final int TEST_TIMEOUT = 180_000;
+  // Maximum record size allowed by VPJ is ~950KB, use 900KB to be safe
+  private static final int MAX_RECORD_SIZE = 900_000;
+  // Minimum data size to write (100MB) - actual size may be larger based on disk space
+  private static final long MIN_DATA_SIZE_BYTES = 100_000_000L;
   private VeniceClusterWrapper venice;
   private D2Client d2Client;
-  private final int largePushRecordCount = 1000;
-  private final int largePushRecordMinSize = 100000;
+  // Calculated dynamically based on disk space to ensure we exceed DiskUsage reserve
+  private int largePushRecordCount;
+  private int largePushRecordMinSize;
 
   @BeforeClass
   public void setUp() {
@@ -113,21 +118,51 @@ public class DaVinciClientDiskFullTest {
     Utils.closeQuietlyWithErrorLogged(venice);
   }
 
-  /** find the disk threshold to be configured fail on a push based on given parameters */
-  private double getDiskFullThreshold(int recordCount, int recordSizeMin) throws IOException {
+  /**
+   * Calculate the data size and threshold needed to trigger disk full during the large push.
+   *
+   * DiskUsage has a reserve mechanism: reserveSpaceBytes = 0.001 * freeSpaceBytesRequired
+   * The actual disk check only happens after writing reserveSpaceBytes worth of data.
+   * So we need: dataSize > reserveSpaceBytes
+   *
+   * Since freeSpaceBytesRequired ≈ usableSpaceBytes, we need: dataSize > 0.001 * usableSpaceBytes
+   * We use 0.3% of usable space (3x the minimum) for safety margin.
+   *
+   * This method sets {@link #largePushRecordCount} and {@link #largePushRecordMinSize},
+   * and returns the threshold.
+   */
+  private double calculateDataSizeAndThreshold() throws IOException {
     FileStore disk = Files.getFileStore(Paths.get(FileUtils.getTempDirectoryPath()));
     long totalSpaceBytes = disk.getTotalSpace();
     long usableSpaceBytes = disk.getUsableSpace();
 
-    long recordSizeBytes = (long) recordSizeMin * recordCount;
-    long freeSpaceBytesRemainingAfterUsage = usableSpaceBytes - recordSizeBytes;
-    double diskFullThreshold = 1 - (double) freeSpaceBytesRemainingAfterUsage / totalSpaceBytes;
+    // Calculate minimum data size needed to exceed DiskUsage reserve (0.1% of freeSpaceBytesRequired)
+    // Use 0.3% of usable space for safety margin (3x the reserve)
+    long minRequiredDataSize = (long) (usableSpaceBytes * 0.003);
+    // Use at least MIN_DATA_SIZE_BYTES, but scale up if disk is very large
+    long dataSizeBytes = Math.max(MIN_DATA_SIZE_BYTES, minRequiredDataSize);
+
+    // Calculate record count and size, respecting MAX_RECORD_SIZE limit
+    // Use MAX_RECORD_SIZE and calculate how many records we need
+    largePushRecordMinSize = MAX_RECORD_SIZE;
+    largePushRecordCount = (int) Math.max(1, dataSizeBytes / largePushRecordMinSize);
+    long actualDataSize = (long) largePushRecordMinSize * largePushRecordCount;
+
+    // Set threshold so disk becomes "full" after writing half the data
+    long marginBytes = actualDataSize / 2;
+    // freeSpaceBytesRequired = (1 - threshold) * totalSpaceBytes = usableSpaceBytes - marginBytes
+    // threshold = 1 - (usableSpaceBytes - marginBytes) / totalSpaceBytes
+    double diskFullThreshold = 1.0 - (double) (usableSpaceBytes - marginBytes) / totalSpaceBytes;
+    diskFullThreshold = Math.max(0.01, Math.min(0.99, diskFullThreshold));
+
     LOGGER.info(
-        "totalSpaceBytes: {}, usableSpaceBytes: {}, recordSizeBytes: {}, freeSpaceBytesRemainingAfterUsage: {}, diskFullThreshold: {}",
+        "Disk: totalSpace={}, usableSpace={}, minRequiredDataSize={}, actualDataSize={}, recordCount={}, recordSize={}, threshold={}",
         totalSpaceBytes,
         usableSpaceBytes,
-        recordSizeBytes,
-        freeSpaceBytesRemainingAfterUsage,
+        minRequiredDataSize,
+        actualDataSize,
+        largePushRecordCount,
+        largePushRecordMinSize,
         diskFullThreshold);
     return diskFullThreshold;
   }
@@ -147,7 +182,7 @@ public class DaVinciClientDiskFullTest {
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .put(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, useDaVinciSpecificExecutionStatusForError)
-        .put(SERVER_DISK_FULL_THRESHOLD, getDiskFullThreshold(largePushRecordCount, largePushRecordMinSize))
+        .put(SERVER_DISK_FULL_THRESHOLD, calculateDataSizeAndThreshold())
         .put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled);
     return venicePropertyBuilder.build();
   }
