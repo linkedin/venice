@@ -2,9 +2,8 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
-import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
-import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -25,26 +24,70 @@ public class SchemaRequestHandler {
 
   /**
    * Retrieves the value schema for a store by schema ID.
-   * @param request the request containing cluster name, store name, and schema ID
-   * @return response containing the value schema string
+   * No ACL check required - reading schema metadata is public.
+   *
+   * @param clusterName the cluster name
+   * @param storeName the store name
+   * @param schemaId the schema ID
+   * @return SchemaResponse containing the value schema
    */
-  public GetValueSchemaGrpcResponse getValueSchema(GetValueSchemaGrpcRequest request) {
-    ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
-    ControllerRequestParamValidator.validateClusterStoreInfo(storeInfo);
-    String clusterName = storeInfo.getClusterName();
-    String storeName = storeInfo.getStoreName();
-    int schemaId = request.getSchemaId();
+  public SchemaResponse getValueSchema(String clusterName, String storeName, int schemaId) {
     LOGGER
         .info("Getting value schema for store: {} in cluster: {} with schema id: {}", storeName, clusterName, schemaId);
-    SchemaEntry valueSchemaEntry = admin.getValueSchema(clusterName, storeName, schemaId);
+
+    SchemaEntry valueSchemaEntry;
+    try {
+      valueSchemaEntry = admin.getValueSchema(clusterName, storeName, schemaId);
+    } catch (VeniceException e) {
+      // Convert VeniceException to IllegalArgumentException for consistent error handling
+      LOGGER.warn("Failed to get value schema for store: {} schema id: {}", storeName, schemaId, e);
+      throw new IllegalArgumentException(
+          "Value schema for schema id: " + schemaId + " of store: " + storeName + " doesn't exist: " + e.getMessage(),
+          e);
+    }
+
     if (valueSchemaEntry == null) {
       throw new IllegalArgumentException(
           "Value schema for schema id: " + schemaId + " of store: " + storeName + " doesn't exist");
     }
-    return GetValueSchemaGrpcResponse.newBuilder()
-        .setStoreInfo(storeInfo)
-        .setSchemaId(valueSchemaEntry.getId())
-        .setSchemaStr(valueSchemaEntry.getSchema().toString())
-        .build();
+
+    SchemaResponse response = new SchemaResponse();
+    response.setCluster(clusterName);
+    response.setName(storeName);
+    response.setId(valueSchemaEntry.getId());
+    response.setSchemaStr(valueSchemaEntry.getSchema().toString());
+    return response;
+  }
+
+  /**
+   * Retrieves the key schema for a store.
+   * No ACL check required - reading schema metadata is public.
+   *
+   * @param clusterName the cluster name
+   * @param storeName the store name
+   * @return SchemaResponse containing the key schema
+   */
+  public SchemaResponse getKeySchema(String clusterName, String storeName) {
+    LOGGER.info("Getting key schema for store: {} in cluster: {}", storeName, clusterName);
+
+    SchemaEntry keySchemaEntry;
+    try {
+      keySchemaEntry = admin.getKeySchema(clusterName, storeName);
+    } catch (VeniceException e) {
+      // Convert VeniceException to IllegalArgumentException for consistent error handling
+      LOGGER.warn("Failed to get key schema for store: {}", storeName, e);
+      throw new IllegalArgumentException("Key schema doesn't exist for store: " + storeName + ": " + e.getMessage(), e);
+    }
+
+    if (keySchemaEntry == null) {
+      throw new IllegalArgumentException("Key schema doesn't exist for store: " + storeName);
+    }
+
+    SchemaResponse response = new SchemaResponse();
+    response.setCluster(clusterName);
+    response.setName(storeName);
+    response.setId(keySchemaEntry.getId());
+    response.setSchemaStr(keySchemaEntry.getSchema().toString());
+    return response;
   }
 }
