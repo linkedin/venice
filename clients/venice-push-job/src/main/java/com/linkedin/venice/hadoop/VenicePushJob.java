@@ -521,13 +521,8 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.extendedSchemaValidityCheckEnabled =
         props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED);
 
-    if (pushJobSettingToReturn.isSourceKafka) {
-      // KIF uses a different code-path to build a dictionary, and we also don't need schema validations for KIF
-      pushJobSettingToReturn.compressionMetricCollectionEnabled = false;
-    } else {
-      pushJobSettingToReturn.compressionMetricCollectionEnabled =
-          props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
-    }
+    pushJobSettingToReturn.compressionMetricCollectionEnabled =
+        props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
 
     // Compute-engine abstraction related configs
     String dataWriterComputeJobClass = props.getString(DATA_WRITER_COMPUTE_JOB_CLASS, (String) null);
@@ -759,7 +754,25 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
+      if (optionalCompressionDictionary.isPresent()) {
+        pushJobSetting.topicDictionary = ByteUtils.extractByteArray(optionalCompressionDictionary.get());
+      }
+
       if (pushJobSetting.isSourceKafka) {
+        if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+          LOGGER.info("Source version uses ZSTD_WITH_DICT. Fetching source dictionary.");
+          Properties kafkaConsumerProperties = new Properties();
+          if (pushJobSetting.enableSSL) {
+            kafkaConsumerProperties.putAll(this.sslProperties.get());
+          }
+          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaInputBrokerUrl);
+          ByteBuffer sourceDict = DictionaryUtils
+              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
+          if (sourceDict != null) {
+            pushJobSetting.sourceDictionary = ByteUtils.extractByteArray(sourceDict);
+          }
+        }
+
         if (pushJobSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null
             && pushJobSetting.rewindTimeInSecondsOverride == NOT_SET) {
           pushJobSetting.rewindTimeInSecondsOverride = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
