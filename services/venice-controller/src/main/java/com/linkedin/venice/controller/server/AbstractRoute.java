@@ -181,6 +181,37 @@ public class AbstractRoute {
   }
 
   /**
+   * Builds a ControllerRequestContext from an HTTP request.
+   * Extracts client certificate and principal ID for request tracking and potential ACL checks.
+   *
+   * @param request the HTTP request
+   * @param sslEnabled whether SSL is enabled
+   * @param accessController optional access controller for principal ID extraction
+   * @return a ControllerRequestContext with client information
+   */
+  public static ControllerRequestContext buildRequestContext(
+      Request request,
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController) {
+    if (!sslEnabled) {
+      return ControllerRequestContext.anonymous();
+    }
+    X509Certificate cert = getCertificate(request);
+    String principalId;
+    if (accessController.isPresent() && !(accessController.get() instanceof NoOpDynamicAccessController)) {
+      try {
+        principalId = accessController.get().getPrincipalId(cert);
+      } catch (Exception e) {
+        LOGGER.error("Error when retrieving principal Id from request", e);
+        principalId = USER_UNKNOWN;
+      }
+    } else {
+      principalId = cert.getSubjectX500Principal().getName();
+    }
+    return new ControllerRequestContext(cert, principalId);
+  }
+
+  /**
    * A function that would check whether a principal has access to a resource.
    */
   @FunctionalInterface

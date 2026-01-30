@@ -35,7 +35,6 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Utils;
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -480,17 +479,5 @@ public class SchemaRoutes extends AbstractRoute {
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
-  }
-
-  /**
-   * Build request context from HTTP request.
-   */
-  private ControllerRequestContext buildRequestContext(Request request) {
-    if (!isSslEnabled()) {
-      return ControllerRequestContext.anonymous();
-    }
-    X509Certificate cert = getCertificate(request);
-    String principalId = getPrincipalId(request);
-    return new ControllerRequestContext(cert, principalId);
   }
 }
