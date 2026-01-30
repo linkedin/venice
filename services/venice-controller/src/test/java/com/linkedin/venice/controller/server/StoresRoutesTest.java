@@ -704,7 +704,8 @@ public class StoresRoutesTest {
     doReturn(queryMap).when(queryParamsMap).toMap();
     doReturn(queryParamsMap).when(request).queryMap();
 
-    Route route = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getRepushInfo(mockAdmin);
+    Route route =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler).getRepushInfo(mockAdmin);
 
     // Create a real Version for admin.getRepushInfo() call to avoid Jackson serialization issues
     Version version = new VersionImpl(TEST_STORE_NAME, 1, "test-push-job", 10);
@@ -755,7 +756,8 @@ public class StoresRoutesTest {
     doReturn(queryMap).when(queryParamsMap).toMap();
     doReturn(queryParamsMap).when(request).queryMap();
 
-    Route route = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getRepushInfo(mockAdmin);
+    Route route =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler).getRepushInfo(mockAdmin);
 
     RepushInfo mockRepushInfo = RepushInfo.createRepushInfo(null, "another.kafka:9092", null, null);
 
