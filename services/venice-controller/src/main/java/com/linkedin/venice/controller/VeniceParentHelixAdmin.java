@@ -3079,6 +3079,9 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_IN_SERVER_ENABLED))
           .orElseGet(currStore::getBlobTransferInServerEnabled);
 
+      // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Store interface
+      setStore.blobDbEnabled = "NOT_SPECIFIED";
+
       setStore.separateRealTimeTopicEnabled =
           separateRealTimeTopicEnabled.map(addToUpdatedConfigList(updatedConfigsList, SEPARATE_REAL_TIME_TOPIC_ENABLED))
               .orElseGet(currStore::isSeparateRealTimeTopicEnabled);
