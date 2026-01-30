@@ -7,7 +7,6 @@ import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 
 
@@ -64,45 +63,32 @@ public interface BlobTransferManager<T> extends AutoCloseable {
   AggVersionedBlobTransferStats getAggVersionedBlobTransferStats();
 
   /**
-   * Cancel an ongoing blob transfer for the given storeName, version and partition.
+   * Cancel an ongoing blob transfer for the given replica.
+   * This method always sets the cancellation flag and keeps it set.
+   * - If transfer is in progress: closes channel and waits for completion
+   * - If no transfer in progress: just sets the flag
+   * The flag remains set after this method returns. Caller is responsible for clearing it.
    *
-   * @param storeName the name of the store
-   * @param version the version of the store
-   * @param partition the partition of the store
+   * @param replicaId the replica ID (format: storeName_vVersion-partition)
    * @param timeoutInSeconds maximum time to wait for cancellation to complete
    * @throws InterruptedException if interrupted while waiting
    * @throws TimeoutException if cancellation doesn't complete within timeout
    */
-  void cancelTransfer(String storeName, int version, int partition, int timeoutInSeconds)
-      throws InterruptedException, TimeoutException, ExecutionException;
+  void cancelTransfer(String replicaId, int timeoutInSeconds) throws InterruptedException, TimeoutException;
 
   /**
-   * Check if blob transfer cancellation was requested for the given partition.
+   * Check if blob transfer cancellation was requested for the given replica.
    *
-   * @param storeName the name of the store
-   * @param version the version of the store
-   * @param partition the partition of the store
+   * @param replicaId the replica ID (format: storeName_vVersion-partition)
    * @return true if blob transfer cancellation was requested for this partition, false otherwise
    */
-  boolean isBlobTransferCancelled(String storeName, int version, int partition);
+  boolean isBlobTransferCancelled(String replicaId);
 
   /**
-   * Check if there's an ongoing blob transfer for the given partition.
-   *
-   * @param storeName the name of the store
-   * @param version the version of the store
-   * @param partition the partition of the store
-   * @return true if blob transfer is in progress for this partition, false otherwise
-   */
-  boolean isBlobTransferInProgress(String storeName, int version, int partition);
-
-  /**
-   * Clear the cancellation request flag for a partition.
+   * Clear the cancellation request flag for a replica.
    * Should be called after consumption successfully starts or after cancellation completes.
    *
-   * @param storeName the name of the store
-   * @param version the version of the store
-   * @param partition the partition of the store
+   * @param replicaId the replica ID (format: storeName_vVersion-partition)
    */
-  void clearCancellationRequest(String storeName, int version, int partition);
+  void clearCancellationRequest(String replicaId);
 }

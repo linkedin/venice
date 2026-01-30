@@ -18,7 +18,7 @@ public interface IngestionBackend extends Closeable {
 
   /**
    * Cancel any ongoing blob transfer for the given partition.
-   * This method blocks until cancellation completes.
+   * This method blocks until cancellation completes and cleans up the cancellation flag.
    *
    * @param storeConfig Store version config
    * @param partition Partition number to cancel blob transfer for

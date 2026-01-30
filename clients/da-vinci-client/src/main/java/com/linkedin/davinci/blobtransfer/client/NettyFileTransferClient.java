@@ -294,6 +294,14 @@ public class NettyFileTransferClient {
       // Remove from tracking when transfer completes
       perHostTransferFuture.toCompletableFuture().whenComplete((result, throwable) -> {
         activeChannels.remove(replicaId);
+        if (throwable != null) {
+          LOGGER.info(
+              "Removed active channel tracking for replica {} after transfer failure: {}",
+              replicaId,
+              throwable.getMessage());
+        } else {
+          LOGGER.info("Removed active channel tracking for replica {} after successful transfer", replicaId);
+        }
       });
 
       // Check if the channel already has a P2PFileTransferClientHandler/P2PMetadataTransferHandler
@@ -371,13 +379,10 @@ public class NettyFileTransferClient {
 
   /**
    * Get the active channel for a given transfer, if any.
-   * @param storeName the name of the store
-   * @param version the version of the store
-   * @param partition the partition of the store
+   * @param replicaId the replica ID (format: storeName_vVersion-partition)
    * @return the active Channel, or null if no active transfer
    */
-  public Channel getActiveChannel(String storeName, int version, int partition) {
-    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
+  public Channel getActiveChannel(String replicaId) {
     return activeChannels.get(replicaId);
   }
 

@@ -448,4 +448,19 @@ public class DefaultIngestionBackendTest {
     doReturn(PubSubSymbolicPosition.EARLIEST).when(offsetRecord).getCheckpointedLocalVtPosition();
     Assert.assertTrue(ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, 0, 0, true));
   }
+
+  @Test
+  public void testCancelBlobTransferIfInProgress_NoBlobTransferManager() {
+    // When blobTransferManager is null, method should return early without exceptions
+    DefaultIngestionBackend backend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        null,
+        veniceServerConfig);
+
+    // Should not throw exception
+    backend.cancelBlobTransferIfInProgress(storeConfig, PARTITION, 10);
+    // No further verification needed - we just want to ensure it doesn't throw
+  }
 }

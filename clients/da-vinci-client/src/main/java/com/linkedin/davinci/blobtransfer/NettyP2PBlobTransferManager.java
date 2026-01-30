@@ -30,7 +30,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -70,7 +69,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   private final ExecutorService replicaBlobFetchExecutor;
 
   // Cancellation manager is responsible for coordinating blob transfer cancellations
-  private final BlobTransferCancellationManager cancellationManager;
+  private final BlobTransferStatusTrackingManager statusTrackingManager;
 
   public NettyP2PBlobTransferManager(
       P2PBlobTransferService blobTransferService,
@@ -91,7 +90,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("Venice-BlobTransfer-Replica-Blob-Fetch-Executor"));
-    this.cancellationManager = new BlobTransferCancellationManager(nettyClient);
+    this.statusTrackingManager = new BlobTransferStatusTrackingManager(nettyClient);
   }
 
   @Override
@@ -109,7 +108,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     CompletableFuture<InputStream> perPartitionTransferFuture = new CompletableFuture<>();
 
     // Register the transfer with the cancellation manager
-    cancellationManager.registerTransfer(storeName, version, partition, perPartitionTransferFuture);
+    statusTrackingManager.registerTransfer(replicaId, perPartitionTransferFuture);
 
     // 1. Discover peers for the requested blob
     BlobPeersDiscoveryResponse response = peerFinder.discoverBlobPeers(storeName, version, partition);
@@ -203,9 +202,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       // Chain the next operation to the previous future
       chainOfPeersFuture = chainOfPeersFuture.thenComposeAsync(v -> {
 
-        // Check cancellation request flag, if blob transfer cancellation was requested, skip all remaining hosts
-        AtomicBoolean cancellationFlag = cancellationManager.getCancellationFlag(storeName, version, partition);
-        if (cancellationFlag != null && cancellationFlag.get()) {
+        if (statusTrackingManager.isBlobTransferCancelled(replicaId)) {
+          // if blob transfer cancellation was requested, skip all remaining hosts
           return CompletableFuture.completedFuture(null);
         }
 
@@ -245,8 +243,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     // - Otherwise if all failed: complete with VenicePeersAllFailedException
     chainOfPeersFuture.thenRun(() -> {
       if (!perPartitionTransferFuture.isDone()) {
-        AtomicBoolean cancellationFlag = cancellationManager.getCancellationFlag(storeName, version, partition);
-        if (cancellationFlag != null && cancellationFlag.get()) {
+        if (statusTrackingManager.isBlobTransferCancelled(replicaId)) {
           String errorMsg = String.format(
               "Blob transfer cancellation was requested for replica %s while blob transfer was in progress. Aborting transfer. "
                   + "The entire chain of peer attempts was terminated.",
@@ -287,24 +284,19 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   }
 
   @Override
-  public void cancelTransfer(String storeName, int version, int partition, int timeoutInSeconds)
-      throws InterruptedException, java.util.concurrent.TimeoutException, java.util.concurrent.ExecutionException {
-    cancellationManager.cancelTransfer(storeName, version, partition, timeoutInSeconds);
+  public void cancelTransfer(String replicaId, int timeoutInSeconds)
+      throws InterruptedException, java.util.concurrent.TimeoutException {
+    statusTrackingManager.cancelTransfer(replicaId, timeoutInSeconds);
   }
 
   @Override
-  public boolean isBlobTransferCancelled(String storeName, int version, int partition) {
-    return cancellationManager.isBlobTransferCancelled(storeName, version, partition);
+  public boolean isBlobTransferCancelled(String replicaId) {
+    return statusTrackingManager.isBlobTransferCancelled(replicaId);
   }
 
   @Override
-  public boolean isBlobTransferInProgress(String storeName, int version, int partition) {
-    return cancellationManager.isBlobTransferInProgress(storeName, version, partition);
-  }
-
-  @Override
-  public void clearCancellationRequest(String storeName, int version, int partition) {
-    cancellationManager.clearCancellationRequest(storeName, version, partition);
+  public void clearCancellationRequest(String replicaId) {
+    statusTrackingManager.clearCancellationRequest(replicaId);
   }
 
   @Override

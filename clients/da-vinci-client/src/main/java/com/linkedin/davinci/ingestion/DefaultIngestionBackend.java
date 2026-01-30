@@ -117,16 +117,15 @@ public class DefaultIngestionBackend implements IngestionBackend {
           svsSupplier);
 
       bootstrapFuture.whenComplete((result, throwable) -> {
-        String storeName = storeAndVersion.getStore().getName();
-        int versionNumber = storeAndVersion.getVersion().getNumber();
         String replicaId = Utils.getReplicaId(storeVersion, partition);
 
         // Check if blob transfer was cancelled during OR after blob transfer.
         // 1: Cancellation request arrives right after successful transfer
-        if (blobTransferManager.isBlobTransferCancelled(storeName, versionNumber, partition)) {
+        if (blobTransferManager.isBlobTransferCancelled(replicaId)) {
           LOGGER.info(
               "Blob transfer cancellation was requested for replica {}. Discarding bootstrap result and skipping consumption startup.",
               replicaId);
+          blobTransferManager.clearCancellationRequest(replicaId);
           return;
         }
 
@@ -136,12 +135,14 @@ public class DefaultIngestionBackend implements IngestionBackend {
               "Blob transfer was cancelled during transfer for store {} partition {}. Skipping consumption startup.",
               storeVersion,
               partition);
+          blobTransferManager.clearCancellationRequest(replicaId);
           return;
         }
 
         // 3. For all other cases (success without cancellation, or failure due to other reasons),
         // proceed with consumption startup
-        blobTransferManager.clearCancellationRequest(storeName, versionNumber, partition);
+        // Clear the flag before starting consumption to prevent memory leak
+        blobTransferManager.clearCancellationRequest(replicaId);
         runnable.run();
       });
     }
@@ -465,85 +466,26 @@ public class DefaultIngestionBackend implements IngestionBackend {
       return;
     }
 
+    String replicaId = Utils.getReplicaId(storeVersion, partition);
+
     try {
       StoreVersionInfo storeAndVersion =
           Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
       Store store = storeAndVersion.getStore();
-      String storeName = store.getName();
-      int versionNumber = storeAndVersion.getVersion().getNumber();
 
       boolean blobTransferActiveInReceiver = shouldEnableBlobTransfer(store);
 
       if (!blobTransferActiveInReceiver) {
-        LOGGER.debug(
-            "Blob transfer is not active for replica {}. No cancellation needed.",
-            Utils.getReplicaId(storeVersion, partition));
         return;
       }
 
-      // Check if blob transfer is in progress
-      if (!blobTransferManager.isBlobTransferInProgress(storeName, versionNumber, partition)) {
-        LOGGER.info(
-            "No ongoing blob transfer found for store {} version {} partition {}. Checking if cancellation flag should be set.",
-            storeName,
-            versionNumber,
-            partition);
-
-        // Even if no transfer is in progress, set the cancellation flag to prevent any future transfer
-        // This handles the case where the transfer might start right after this check
-        if (!blobTransferManager.isBlobTransferCancelled(storeName, versionNumber, partition)) {
-          LOGGER.info(
-              "Setting cancellation flag for store {} version {} partition {} to prevent future blob transfer during OFFLINE transition.",
-              storeName,
-              versionNumber,
-              partition);
-
-          try {
-            // Call cancelTransfer to SET the flag (even though no transfer is in progress)
-            // The BlobTransferCancellationManager.cancelTransfer() will:
-            // 1. Set the cancellation flag
-            // 2. Return early since no transfer is in progress
-            blobTransferManager.cancelTransfer(storeName, versionNumber, partition, timeoutInSeconds);
-
-            LOGGER.info(
-                "Cancellation flag set successfully for store {} version {} partition {}.",
-                storeName,
-                versionNumber,
-                partition);
-          } catch (Exception e) {
-            LOGGER.warn(
-                "Exception while setting cancellation flag for store {} version {} partition {}. This is non-fatal.",
-                storeName,
-                versionNumber,
-                partition,
-                e);
-          }
-        } else {
-          LOGGER.info(
-              "Cancellation flag already set for store {} version {} partition {}. No action needed.",
-              storeName,
-              versionNumber,
-              partition);
-        }
+      // Skip if cancellation flag is already set
+      if (blobTransferManager.isBlobTransferCancelled(replicaId)) {
+        LOGGER.warn("Cancellation flag already set for replica {}. No action needed.", replicaId);
         return;
       }
 
-      LOGGER.info(
-          "Blob transfer is in progress for replica {}. Initiating cancellation during OFFLINE transition.",
-          Utils.getReplicaId(storeVersion, partition));
-
-      blobTransferManager.cancelTransfer(storeName, versionNumber, partition, timeoutInSeconds);
-
-      LOGGER.info(
-          "Blob transfer cancellation completed for replica {} during OFFLINE transition. Clearing cancellation flag.",
-          Utils.getReplicaId(storeVersion, partition));
-
-      // Clear the cancellation flag after successful cancellation
-      blobTransferManager.clearCancellationRequest(storeName, versionNumber, partition);
-
-      LOGGER.info(
-          "Cancellation flag cleared for replica {} after successful cancellation.",
-          Utils.getReplicaId(storeVersion, partition));
+      blobTransferManager.cancelTransfer(replicaId, timeoutInSeconds);
     } catch (java.util.concurrent.TimeoutException e) {
       LOGGER.warn(
           "Timeout waiting for blob transfer cancellation for store {} partition {} after {} seconds during OFFLINE transition. Proceeding with state transition.",
