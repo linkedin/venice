@@ -14,7 +14,7 @@ service StoreGrpcService {
   rpc checkResourceCleanupForStoreCreation(ClusterStoreGrpcInfo) returns (ResourceCleanupCheckGrpcResponse) {}
   rpc validateStoreDeleted(ValidateStoreDeletedGrpcRequest) returns (ValidateStoreDeletedGrpcResponse);
   rpc listStores(ListStoresGrpcRequest) returns (ListStoresGrpcResponse);
-  rpc getClusterHealthStores(GetClusterHealthStoresGrpcRequest) returns (GetClusterHealthStoresGrpcResponse);
+  rpc getClusterHealthStores(GetStoreStatusRequest) returns (GetStoreStatusResponse);
 }
 
 message CreateStoreGrpcRequest {
@@ -85,11 +85,16 @@ message ListStoresGrpcResponse {
   repeated string storeNames = 2;
 }
 
-message GetClusterHealthStoresGrpcRequest {
+message GetStoreStatusRequest {
   string clusterName = 1;
 }
 
-message GetClusterHealthStoresGrpcResponse {
+message StoreStatus {
+  string storeName = 1;
+  string status = 2;
+}
+
+message GetStoreStatusResponse {
   string clusterName = 1;
-  map<string, string> storeStatusMap = 2;
+  repeated StoreStatus storeStatuses = 2;
 }
