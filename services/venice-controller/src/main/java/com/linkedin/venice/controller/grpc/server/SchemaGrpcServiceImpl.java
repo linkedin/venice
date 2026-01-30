@@ -47,7 +47,7 @@ public class SchemaGrpcServiceImpl extends SchemaGrpcServiceImplBase {
       int schemaId = request.getSchemaId();
 
       // Build transport-agnostic context from gRPC
-      ControllerRequestContext context = buildRequestContext(Context.current());
+      ControllerRequestContext context = ControllerGrpcServerUtils.buildRequestContext(Context.current());
 
       // Call handler - returns POJO
       SchemaResponse result = schemaRequestHandler.getValueSchema(clusterName, storeName, schemaId, context);
@@ -76,7 +76,7 @@ public class SchemaGrpcServiceImpl extends SchemaGrpcServiceImplBase {
       String storeName = storeInfo.getStoreName();
 
       // Build transport-agnostic context from gRPC
-      ControllerRequestContext context = buildRequestContext(Context.current());
+      ControllerRequestContext context = ControllerGrpcServerUtils.buildRequestContext(Context.current());
 
       // Call handler - returns POJO
       SchemaResponse result = schemaRequestHandler.getKeySchema(clusterName, storeName, context);
@@ -90,13 +90,4 @@ public class SchemaGrpcServiceImpl extends SchemaGrpcServiceImplBase {
     }, responseObserver, request.getStoreInfo());
   }
 
-  /**
-   * Builds a ControllerRequestContext from the gRPC context.
-   */
-  private ControllerRequestContext buildRequestContext(Context context) {
-    GrpcControllerClientDetails clientDetails = ControllerGrpcServerUtils.getClientDetails(context);
-    return new ControllerRequestContext(
-        clientDetails.getClientCertificate(),
-        clientDetails.getClientAddress() != null ? clientDetails.getClientAddress() : "anonymous");
-  }
 }

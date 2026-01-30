@@ -30,7 +30,7 @@ public class SchemaRequestHandler {
    * @param clusterName the cluster name
    * @param storeName the store name
    * @param schemaId the schema ID
-   * @param context the request context (contains client identity)
+   * @param context the request context (contains client identity for request tracking and potential future ACL checks)
    * @return SchemaResponse containing the value schema
    */
   public SchemaResponse getValueSchema(
@@ -71,7 +71,7 @@ public class SchemaRequestHandler {
    *
    * @param clusterName the cluster name
    * @param storeName the store name
-   * @param context the request context (contains client identity)
+   * @param context the request context (contains client identity for request tracking and potential future ACL checks)
    * @return SchemaResponse containing the key schema
    */
   public SchemaResponse getKeySchema(String clusterName, String storeName, ControllerRequestContext context) {

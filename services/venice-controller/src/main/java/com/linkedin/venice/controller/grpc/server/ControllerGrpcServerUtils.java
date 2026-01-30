@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.grpc.server;
 import static com.linkedin.venice.controller.grpc.ControllerGrpcConstants.GRPC_CONTROLLER_CLIENT_DETAILS;
 
 import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
+import com.linkedin.venice.controller.server.ControllerRequestContext;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnauthorizedAccessException;
@@ -102,5 +103,19 @@ public class ControllerGrpcServerUtils {
       Context context) {
     GrpcControllerClientDetails clientDetails = getClientDetails(context);
     return accessManager.isAllowListUser(resourceName, clientDetails.getClientCertificate());
+  }
+
+  /**
+   * Builds a ControllerRequestContext from the gRPC context.
+   * Extracts client certificate and client address for request tracking and potential future ACL checks.
+   *
+   * @param context the gRPC context containing client details
+   * @return a ControllerRequestContext with client information
+   */
+  public static ControllerRequestContext buildRequestContext(Context context) {
+    GrpcControllerClientDetails clientDetails = getClientDetails(context);
+    return new ControllerRequestContext(
+        clientDetails.getClientCertificate(),
+        clientDetails.getClientAddress() != null ? clientDetails.getClientAddress() : "anonymous");
   }
 }
