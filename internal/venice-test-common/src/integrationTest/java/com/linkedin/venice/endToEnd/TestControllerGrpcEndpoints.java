@@ -414,7 +414,7 @@ public class TestControllerGrpcEndpoints {
     assertEquals(createResponse.getStoreInfo().getStoreName(), storeName);
 
     // Step 2: Do an empty push to create version 1
-    veniceCluster.getNewStoreVersion(storeName);
+    veniceCluster.createVersion(storeName, 0);
 
     // Step 3: Get repush info using gRPC endpoint
     GetRepushInfoGrpcRequest getRepushInfoRequest =
@@ -454,7 +454,7 @@ public class TestControllerGrpcEndpoints {
     assertNotNull(createResponse, "Response should not be null");
 
     // Step 2: Do an empty push to create version 1
-    veniceCluster.getNewStoreVersion(storeName);
+    veniceCluster.createVersion(storeName, 0);
 
     // Step 3: Get repush info with fabric parameter
     GetRepushInfoGrpcRequest getRepushInfoRequest =
