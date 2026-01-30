@@ -287,6 +287,9 @@ public class AdminTool {
             printStoreDescription(store);
           }
           break;
+        case DISCOVER_CLUSTER:
+          discoverCluster(cmd);
+          break;
         case JOB_STATUS:
           storeName = getRequiredArgument(cmd, Arg.STORE, Command.JOB_STATUS);
           versionString = getOptionalArgument(cmd, Arg.VERSION, null);
@@ -759,6 +762,17 @@ public class AdminTool {
     printObject(keySchema);
     MultiSchemaResponse valueSchemas = controllerClient.getAllValueSchema(store);
     printObject(valueSchemas);
+  }
+
+  private static void discoverCluster(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.DISCOVER_CLUSTER);
+    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
+    D2ServiceDiscoveryResponse response = ControllerClient.discoverCluster(veniceUrl, storeName, sslFactory, 3);
+    if (response.isError()) {
+      printObject(response);
+    } else {
+      System.out.println(response.getCluster());
+    }
   }
 
   private static void executeDataRecovery(CommandLine cmd) {
