@@ -81,7 +81,6 @@ public class BlobTransferStatusTrackingManager {
    * @throws TimeoutException if cancellation doesn't complete within timeout
    */
   public void cancelTransfer(String replicaId, int timeoutInSeconds) throws InterruptedException, TimeoutException {
-
     LOGGER.info("Cancellation request received for replica {}. Starting coordinated cancellation.", replicaId);
 
     // Step 1: Set the cancellation request flag FIRST
@@ -96,11 +95,16 @@ public class BlobTransferStatusTrackingManager {
 
     // Step 1.1: Check if there's an ongoing transfer
     CompletableFuture<InputStream> perPartitionTransferFuture = partitionLevelTransferStatus.get(replicaId);
-    if (perPartitionTransferFuture == null || perPartitionTransferFuture.isDone()) {
+    if (perPartitionTransferFuture == null) {
       LOGGER.info(
-          "[Step 1.1 Flag Setting]: No ongoing blob transfer found for replica {}. Cancellation flag is no longer needed",
+          "[Step 1.1 Flag Setting]: No ongoing blob transfer found for replica {}. Cancellation flag is no longer needed, removing cancellation flag.",
           replicaId);
       clearCancellationRequest(replicaId);
+      return;
+    } else if (perPartitionTransferFuture.isDone()) {
+      LOGGER.info(
+          "[Step 1.2 Flag Setting]: Having completed transfer for replica {}. Skipping closing channel and partition transfer.",
+          replicaId);
       return;
     }
 
