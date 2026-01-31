@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.StoreDeletedValidation;
 import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
@@ -268,10 +269,7 @@ public class StoreRequestHandler {
    * @param fabric optional fabric for multi-region setups
    * @return RepushInfoResponse containing repush information including version and Kafka details
    */
-  public com.linkedin.venice.controllerapi.RepushInfoResponse getRepushInfo(
-      String clusterName,
-      String storeName,
-      Optional<String> fabric) {
+  public RepushInfoResponse getRepushInfo(String clusterName, String storeName, Optional<String> fabric) {
     LOGGER.info(
         "Getting repush info for store: {} in cluster: {} with fabric: {}",
         storeName,
@@ -280,11 +278,12 @@ public class StoreRequestHandler {
 
     RepushInfo repushInfo = admin.getRepushInfo(clusterName, storeName, fabric);
 
-    com.linkedin.venice.controllerapi.RepushInfoResponse response =
-        new com.linkedin.venice.controllerapi.RepushInfoResponse();
+    RepushInfoResponse response = new RepushInfoResponse();
     response.setCluster(clusterName);
     response.setName(storeName);
-    response.setRepushInfo(repushInfo);
+    if (repushInfo != null) {
+      response.setRepushInfo(repushInfo);
+    }
     return response;
   }
 
