@@ -8,6 +8,7 @@ import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.exceptions.VeniceUnauthorizedAccessException;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
@@ -17,6 +18,8 @@ import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
@@ -26,6 +29,7 @@ import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
 import org.apache.logging.log4j.LogManager;
@@ -173,5 +177,33 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
 
       return responseBuilder.build();
     }, responseObserver, clusterName, null);
+  }
+
+  /**
+   * Gets store information for a given store in a cluster.
+   * No ACL check; this is a read-only operation.
+   */
+  @Override
+  public void getStore(GetStoreGrpcRequest grpcRequest, StreamObserver<GetStoreGrpcResponse> responseObserver) {
+    LOGGER.debug("Received getStore with args: {}", grpcRequest);
+    String clusterName = grpcRequest.getStoreInfo().getClusterName();
+    String storeName = grpcRequest.getStoreInfo().getStoreName();
+
+    handleRequest(StoreGrpcServiceGrpc.getGetStoreMethod(), () -> {
+      // Call handler with primitives
+      StoreInfo storeInfo = storeRequestHandler.getStore(clusterName, storeName);
+
+      // Convert POJO to protobuf response
+      String storeInfoJson;
+      try {
+        storeInfoJson = ObjectMapperFactory.getInstance().writeValueAsString(storeInfo);
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to serialize StoreInfo to JSON", e);
+      }
+
+      ClusterStoreGrpcInfo storeGrpcInfo =
+          ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build();
+      return GetStoreGrpcResponse.newBuilder().setStoreInfo(storeGrpcInfo).setStoreInfoJson(storeInfoJson).build();
+    }, responseObserver, clusterName, storeName);
   }
 }

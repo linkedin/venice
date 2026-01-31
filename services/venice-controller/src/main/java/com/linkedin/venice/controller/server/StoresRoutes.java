@@ -285,25 +285,12 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, STORE.getParams(), admin);
         String storeName = request.queryParams(NAME);
         String clusterName = request.queryParams(CLUSTER);
+
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
-        Store store = admin.getStore(clusterName, storeName);
-        if (store == null) {
-          throw new VeniceNoStoreException(storeName);
-        }
-        StoreInfo storeInfo = StoreInfo.fromStore(store);
-        // Make sure store info will have right default retention time for Nuage UI display.
-        if (storeInfo.getBackupVersionRetentionMs() < 0) {
-          storeInfo.setBackupVersionRetentionMs(admin.getBackupVersionDefaultRetentionMs());
-        }
-        // This is the only place the default value of maxRecordSizeBytes is set for StoreResponse for VPJ and Consumer
-        if (storeInfo.getMaxRecordSizeBytes() < 0) {
-          storeInfo.setMaxRecordSizeBytes(admin.getDefaultMaxRecordSizeBytes());
-        }
-        storeInfo.setColoToCurrentVersions(admin.getCurrentVersionsForMultiColos(clusterName, storeName));
-        boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
-        storeInfo.setKafkaBrokerUrl(admin.getKafkaBootstrapServers(isSSL));
 
+        // Call handler with primitives
+        StoreInfo storeInfo = storeRequestHandler.getStore(clusterName, storeName);
         veniceResponse.setStore(storeInfo);
       }
     };

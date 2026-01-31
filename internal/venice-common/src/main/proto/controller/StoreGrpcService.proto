@@ -15,6 +15,7 @@ service StoreGrpcService {
   rpc validateStoreDeleted(ValidateStoreDeletedGrpcRequest) returns (ValidateStoreDeletedGrpcResponse);
   rpc listStores(ListStoresGrpcRequest) returns (ListStoresGrpcResponse);
   rpc getClusterHealthStores(GetClusterHealthStoresGrpcRequest) returns (GetClusterHealthStoresGrpcResponse);
+  rpc getStore(GetStoreGrpcRequest) returns (GetStoreGrpcResponse);
 }
 
 message CreateStoreGrpcRequest {
@@ -92,4 +93,13 @@ message GetClusterHealthStoresGrpcRequest {
 message GetClusterHealthStoresGrpcResponse {
   string clusterName = 1;
   map<string, string> storeStatusMap = 2;
+}
+
+message GetStoreGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+}
+
+message GetStoreGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  string storeInfoJson = 2;
 }

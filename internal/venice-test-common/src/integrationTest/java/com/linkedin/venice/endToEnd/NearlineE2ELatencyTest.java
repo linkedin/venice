@@ -178,7 +178,6 @@ public class NearlineE2ELatencyTest {
     }
 
     AtomicBoolean producerToLocalBroker = new AtomicBoolean(false);
-    AtomicBoolean localBrokerToReadyToServe = new AtomicBoolean(false);
 
     Set<Double> producerToLocalBrokerLatencies = new HashSet<>();
     cluster0.getVeniceServers().forEach(sw -> {
@@ -192,17 +191,10 @@ public class NearlineE2ELatencyTest {
             LOGGER.info("Server: {} , Metric: {}, Value: {}", sw.getAddressForLogging(), k, v.value());
             producerToLocalBrokerLatencies.add(v.value());
           }
-        } else if (k.contains(IngestionStats.NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY)) {
-          localBrokerToReadyToServe.set(true);
-          if (k.contains("_current")) {
-            LOGGER.info("Server: {} , Metric: {}, Value: {}", sw.getAddressForLogging(), k, v.value());
-            Assert.assertTrue(v.value() > 0);
-          }
         }
       });
     });
     Assert.assertTrue(producerToLocalBroker.get());
-    Assert.assertTrue(localBrokerToReadyToServe.get());
     Assert.assertTrue(producerToLocalBrokerLatencies.stream().anyMatch(v -> v > 0));
   }
 

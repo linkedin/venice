@@ -8,6 +8,7 @@ option java_multiple_files = true;
 
 service SchemaGrpcService {
   rpc getValueSchema(GetValueSchemaGrpcRequest) returns (GetValueSchemaGrpcResponse);
+  rpc getKeySchema(GetKeySchemaGrpcRequest) returns (GetKeySchemaGrpcResponse);
 }
 
 message GetValueSchemaGrpcRequest {
@@ -16,6 +17,16 @@ message GetValueSchemaGrpcRequest {
 }
 
 message GetValueSchemaGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  int32 schemaId = 2;
+  string schemaStr = 3;
+}
+
+message GetKeySchemaGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+}
+
+message GetKeySchemaGrpcResponse {
   ClusterStoreGrpcInfo storeInfo = 1;
   int32 schemaId = 2;
   string schemaStr = 3;
