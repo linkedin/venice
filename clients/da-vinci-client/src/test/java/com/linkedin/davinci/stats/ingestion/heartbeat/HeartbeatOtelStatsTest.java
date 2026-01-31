@@ -1,7 +1,7 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_HEARTBEAT_DELAY;
-import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelStats.SERVER_METRIC_ENTITIES;
+import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
@@ -547,6 +547,37 @@ public class HeartbeatOtelStatsTest {
         expectedValue,
         expectedValue,
         expectedCount);
+  }
+
+  @Test
+  public void testCloseMethod() {
+    heartbeatOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+
+    // Record metrics for multiple regions to populate the metricsByRegion map
+    heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
+        CURRENT_VERSION,
+        REGION_US_WEST,
+        ReplicaType.LEADER,
+        ReplicaState.READY_TO_SERVE,
+        100L);
+
+    heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
+        CURRENT_VERSION,
+        REGION_US_EAST,
+        ReplicaType.FOLLOWER,
+        ReplicaState.CATCHING_UP,
+        200L);
+
+    // Close should clean up all state without throwing exceptions
+    heartbeatOtelStats.close();
+
+    // After close, recording new metrics should still work (creates new entries)
+    heartbeatOtelStats.recordHeartbeatDelayOtelMetrics(
+        CURRENT_VERSION,
+        REGION_US_WEST,
+        ReplicaType.LEADER,
+        ReplicaState.READY_TO_SERVE,
+        150L);
   }
 
   /**

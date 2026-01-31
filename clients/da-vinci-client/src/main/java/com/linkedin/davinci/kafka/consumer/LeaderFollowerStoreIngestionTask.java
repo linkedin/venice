@@ -106,6 +106,8 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -176,6 +178,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
   public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
   static final long VIEW_WRITER_CLOSE_TIMEOUT_IN_MS = 60000; // 60s
+  private static final String UNKNOWN_REGION = "unknown";
 
   /**
    * The new leader will stay inactive (not switch to any new topic or produce anything) for
@@ -203,6 +206,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
   protected final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterForRealTime;
   protected final Int2ObjectMap<String> kafkaClusterIdToUrlMap;
+  protected final Int2ObjectMap<String> kafkaClusterIdToAliasMap;
+  protected final String localRegionName;
+  protected final IntSet localKafkaClusterIds;
   protected final Map<String, byte[]> globalRtDivKeyBytesCache;
   private volatile long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
@@ -303,6 +309,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
+    this.kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
+    this.localRegionName = serverConfig.getRegionName();
+    this.localKafkaClusterIds = computeLocalKafkaClusterIds(kafkaClusterIdToAliasMap, localRegionName);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()
         && !store.isFlinkVeniceViewsEnabled()) {
       viewWriters = builder.getVeniceViewWriterFactory()
@@ -2159,10 +2168,35 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private void recordRegionHybridConsumptionStats(int kafkaClusterId, int producedRecordSize, long currentTimeMs) {
     if (kafkaClusterId >= 0) {
-      versionedIngestionStats
-          .recordRegionHybridConsumption(storeName, versionNumber, kafkaClusterId, producedRecordSize, currentTimeMs);
+      String sourceRegion = kafkaClusterIdToAliasMap.getOrDefault(kafkaClusterId, UNKNOWN_REGION);
+      boolean isLocalRegion = localKafkaClusterIds.contains(kafkaClusterId);
+      versionedIngestionStats.recordRegionHybridConsumption(
+          storeName,
+          versionNumber,
+          kafkaClusterId,
+          producedRecordSize,
+          currentTimeMs,
+          sourceRegion,
+          localRegionName,
+          isLocalRegion);
       hostLevelIngestionStats.recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize, currentTimeMs);
     }
+  }
+
+  /**
+   * Pre-computes the set of kafka cluster IDs that correspond to the local region.
+   * This allows O(1) lookup on the hot path instead of string comparison.
+   */
+  private static IntSet computeLocalKafkaClusterIds(Int2ObjectMap<String> clusterIdToAlias, String localRegion) {
+    IntSet localIds = new IntOpenHashSet();
+    if (localRegion != null && clusterIdToAlias != null) {
+      for (Int2ObjectMap.Entry<String> entry: clusterIdToAlias.int2ObjectEntrySet()) {
+        if (localRegion.equals(entry.getValue())) {
+          localIds.add(entry.getIntKey());
+        }
+      }
+    }
+    return localIds;
   }
 
   @Override
@@ -3198,7 +3232,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           hostLevelIngestionStats
               .recordWriteComputeUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS));
         } catch (Exception e) {
-          writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code;
+          setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
           throw new RuntimeException(e);
         }
 
@@ -3714,7 +3748,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         hostLevelIngestionStats
             .recordWriteComputeLookUpLatency(LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS));
       } catch (Exception e) {
-        writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+        setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
         throw e;
       }
     } else {
@@ -3729,7 +3763,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               storeDeserializerCache.getDeserializer(transientRecord.getValueSchemaId(), readerValueSchemaID),
               compressor.get());
         } catch (Exception e) {
-          writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+          setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
           throw e;
         }
         if (manifestContainer != null) {

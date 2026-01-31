@@ -90,8 +90,12 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
@@ -1085,5 +1089,48 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(storeIngestionTask, times(2)).reportError(anyString(), eq(1), any());
     verify(storeIngestionTask, times(0)).reportError(anyString(), eq(2), any());
     verify(storeIngestionTask, times(2)).reportError(anyString(), eq(3), any());
+  }
+
+  @Test
+  public void testComputeLocalKafkaClusterIds() throws Exception {
+    // Use reflection to access the private static method
+    Method method = LeaderFollowerStoreIngestionTask.class
+        .getDeclaredMethod("computeLocalKafkaClusterIds", Int2ObjectMap.class, String.class);
+    method.setAccessible(true);
+
+    // Test case 1: Normal case with multiple clusters, some local
+    Int2ObjectMap<String> clusterIdToAlias = new Int2ObjectOpenHashMap<>();
+    clusterIdToAlias.put(0, "us-west");
+    clusterIdToAlias.put(1, "us-east");
+    clusterIdToAlias.put(2, "us-west");
+    clusterIdToAlias.put(3, "eu-west");
+
+    IntSet localIds = (IntSet) method.invoke(null, clusterIdToAlias, "us-west");
+    assertEquals(localIds.size(), 2, "Should find 2 local clusters for us-west");
+    assertTrue(localIds.contains(0), "Cluster 0 should be local");
+    assertTrue(localIds.contains(2), "Cluster 2 should be local");
+    assertFalse(localIds.contains(1), "Cluster 1 should not be local");
+    assertFalse(localIds.contains(3), "Cluster 3 should not be local");
+
+    // Test case 2: No local clusters found
+    IntSet noLocalIds = (IntSet) method.invoke(null, clusterIdToAlias, "ap-south");
+    assertTrue(noLocalIds.isEmpty(), "Should find no local clusters for ap-south");
+
+    // Test case 3: Empty map
+    Int2ObjectMap<String> emptyMap = new Int2ObjectOpenHashMap<>();
+    IntSet emptyResult = (IntSet) method.invoke(null, emptyMap, "us-west");
+    assertTrue(emptyResult.isEmpty(), "Should return empty set for empty map");
+
+    // Test case 4: Null map
+    IntSet nullMapResult = (IntSet) method.invoke(null, null, "us-west");
+    assertTrue(nullMapResult.isEmpty(), "Should return empty set for null map");
+
+    // Test case 5: Null local region
+    IntSet nullRegionResult = (IntSet) method.invoke(null, clusterIdToAlias, null);
+    assertTrue(nullRegionResult.isEmpty(), "Should return empty set for null local region");
+
+    // Test case 6: Both null
+    IntSet bothNullResult = (IntSet) method.invoke(null, null, null);
+    assertTrue(bothNullResult.isEmpty(), "Should return empty set when both inputs are null");
   }
 }

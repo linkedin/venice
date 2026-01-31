@@ -2,21 +2,19 @@ package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_HEARTBEAT_DELAY;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
-import static com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface.getUniqueMetricEntities;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.linkedin.davinci.stats.ServerMetricEntity;
+import com.linkedin.davinci.stats.OtelStatsUtils;
+import com.linkedin.davinci.stats.OtelStatsUtils.VersionInfo;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -26,8 +24,6 @@ import java.util.Map;
  * Note: Tehuti metrics are managed separately in {@link HeartbeatStatReporter}.
  */
 public class HeartbeatOtelStats {
-  public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =
-      getUniqueMetricEntities(ServerMetricEntity.class);
   private final boolean emitOtelMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
@@ -35,16 +31,8 @@ public class HeartbeatOtelStats {
   // Per-region metric entity states
   private final Map<String, MetricEntityStateThreeEnums<VersionRole, ReplicaType, ReplicaState>> metricsByRegion;
 
-  private static class VersionInfo {
-    private final int currentVersion;
-    private final int futureVersion;
-
-    VersionInfo(int currentVersion, int futureVersion) {
-      this.currentVersion = currentVersion;
-      this.futureVersion = futureVersion;
-    }
-  }
-
+  // Version info cache for classifying versions as CURRENT/FUTURE/BACKUP
+  // Note: VersionInfo is from OtelStatsUtils.VersionInfo
   private volatile VersionInfo versionInfo = new VersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
 
   public HeartbeatOtelStats(MetricsRepository metricsRepository, String storeName, String clusterName) {
@@ -132,16 +120,19 @@ public class HeartbeatOtelStats {
    * @return {@link VersionRole}
    */
   static VersionRole classifyVersion(int version, VersionInfo versionInfo) {
-    if (version == versionInfo.currentVersion) {
-      return VersionRole.CURRENT;
-    } else if (version == versionInfo.futureVersion) {
-      return VersionRole.FUTURE;
-    }
-    return VersionRole.BACKUP;
+    return OtelStatsUtils.classifyVersion(version, versionInfo);
   }
 
   @VisibleForTesting
   public VersionInfo getVersionInfo() {
     return versionInfo;
+  }
+
+  /**
+   * Cleans up all resources associated with this store's OTel stats.
+   * Call this when the store is being deleted.
+   */
+  public void close() {
+    metricsByRegion.clear();
   }
 }

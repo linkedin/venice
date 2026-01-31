@@ -1,7 +1,7 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_HEARTBEAT_DELAY;
-import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelStats.SERVER_METRIC_ENTITIES;
+import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
@@ -194,5 +194,19 @@ public class HeartbeatVersionedStatsTest {
         buildAttributes(replicaType, replicaState),
         INGESTION_HEARTBEAT_DELAY.getMetricEntity().getMetricName(),
         TEST_PREFIX);
+  }
+
+  @Test
+  public void testHandleStoreDeleted() {
+    heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
+
+    // Record some metrics to create OTel stats for the store
+    heartbeatVersionedStats.recordLeaderLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 100);
+
+    // handleStoreDeleted should clean up OTel stats without throwing exceptions
+    heartbeatVersionedStats.handleStoreDeleted(STORE_NAME);
+
+    // After deletion, recording new metrics should still work (creates new stats)
+    heartbeatVersionedStats.recordLeaderLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 200);
   }
 }

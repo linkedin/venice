@@ -562,6 +562,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
+      aggVersionedIngestionStats.recordUpdateIgnoredDCR(storeName, versionNumber);
       return new PubSubMessageProcessedResult(
           new MergeConflictResultWrapper(
               mergeConflictResult,
