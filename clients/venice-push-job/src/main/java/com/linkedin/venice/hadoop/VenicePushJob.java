@@ -14,6 +14,7 @@ import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCount
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
@@ -297,7 +298,12 @@ public class VenicePushJob implements AutoCloseable {
     jobTmpDir = new Path(pushJobSetting.jobTmpDir);
     String pushId =
         pushJobSetting.jobStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
-    if (pushJobSetting.isSourceKafka) {
+
+    if (pushJobSetting.isCompliancePush) {
+      // Compliance push check comes first because it can use any data source (Kafka, HDFS, etc.).
+      // The compliance push prefix determines whether user-initiated pushes can kill this push.
+      pushId = Version.generateCompliancePushId(pushId);
+    } else if (pushJobSetting.isSourceKafka) {
       pushId = pushJobSetting.repushTTLEnabled ? Version.generateTTLRePushId(pushId) : Version.generateRePushId(pushId);
     } else if (pushJobSetting.allowRegularPushWithTTLRepush) {
       pushId = Version.generateRegularPushWithTTLRePushId(pushId);
@@ -383,6 +389,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
+    pushJobSettingToReturn.isCompliancePush = props.getBoolean(COMPLIANCE_PUSH, false);
     pushJobSettingToReturn.enableUncompressedRecordSizeLimit =
         props.getBoolean(VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT, false);
 
