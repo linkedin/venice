@@ -403,6 +403,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
   protected final AtomicBoolean recordLevelMetricEnabled;
+  protected final boolean recordLevelTimestampEnabled;
   protected final boolean isGlobalRtDivEnabled;
   protected volatile VersionRole versionRole;
   protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
@@ -670,6 +671,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.recordLevelMetricEnabled = new AtomicBoolean(
         serverConfig.isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled()
             || !this.isCurrentVersion.getAsBoolean());
+    this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
     this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
@@ -3551,10 +3553,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             leaderProducedRecordContext,
             currentTimeMs);
         // Record regular record timestamp for heartbeat monitoring if enabled
-        try {
-          recordRecordReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
-        } catch (Exception e) {
-          LOGGER.error("Failed to record regular record timestamp: ", e);
+        if (recordLevelTimestampEnabled) {
+          try {
+            recordRecordReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
+          } catch (Exception e) {
+            LOGGER.error("Failed to record regular record timestamp: ", e);
+          }
         }
         if (recordLevelMetricEnabled.get()) {
           recordNearlineLocalBrokerToReadyToServerLatency(

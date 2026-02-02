@@ -2347,38 +2347,38 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   /**
    * Record a regular data record timestamp to the heartbeat monitoring service.
-   * Only records if record-level timestamp tracking is enabled.
+   * Called only when record-level timestamp tracking is enabled (checked by caller).
    */
+  @Override
   protected void recordRecordReceived(
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
       String kafkaUrl) {
-    if (getHeartbeatMonitoringService() == null) {
-      // Not enabled!
+    HeartbeatMonitoringService hbService = getHeartbeatMonitoringService();
+    if (hbService == null) {
       return;
     }
+    String region =
+        isDaVinciClient() ? serverConfig.getRegionName() : serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl);
+    long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
+    boolean isComplete = partitionConsumptionState.isComplete();
+
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      getHeartbeatMonitoringService().recordLeaderRecordTimestamp(
-          getStoreName(),
-          getVersionNumber(),
+      hbService.recordLeaderRecordTimestamp(
+          storeName,
+          versionNumber,
           partitionConsumptionState.getPartition(),
-          getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          consumerRecord.getValue().getProducerMetadata().getMessageTimestamp(),
-          partitionConsumptionState.isComplete());
+          region,
+          messageTimestamp,
+          isComplete);
     } else {
-      getHeartbeatMonitoringService().recordFollowerRecordTimestamp(
-          getStoreName(),
-          getVersionNumber(),
+      hbService.recordFollowerRecordTimestamp(
+          storeName,
+          versionNumber,
           partitionConsumptionState.getPartition(),
-          /**
-           * For Da Vinci there is no kafkaUrl mapping configured, we should refer to local region name setup in the
-           * Venice server config. This is consistent from the heartbeat lag calculation for ready-to-serve check.
-           */
-          isDaVinciClient()
-              ? getServerConfig().getRegionName()
-              : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          consumerRecord.getValue().getProducerMetadata().getMessageTimestamp(),
-          partitionConsumptionState.isComplete());
+          region,
+          messageTimestamp,
+          isComplete);
     }
   }
 
