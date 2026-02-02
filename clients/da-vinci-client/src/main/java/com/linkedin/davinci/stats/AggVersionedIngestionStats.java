@@ -356,17 +356,11 @@ public class AggVersionedIngestionStats
   }
 
   public void recordNearlineProducerToLocalBrokerLatency(String storeName, int version, double value, long timestamp) {
-    // Tehuti metrics
+    // Tehuti metrics only
     recordVersionedAndTotalStat(
         storeName,
         version,
         stat -> stat.recordNearlineProducerToLocalBrokerLatency(value, timestamp));
-    // OTel metrics - nearline producer to local broker is captured as time between components
-    getIngestionOtelStats(storeName).recordTimeBetweenComponents(
-        version,
-        VeniceIngestionComponent.PRODUCER,
-        VeniceDestinationIngestionComponent.LOCAL_BROKER,
-        value);
   }
 
   public void recordMaxIdleTime(String storeName, int version, long idleTimeMs) {
