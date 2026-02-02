@@ -145,13 +145,17 @@ public class DefaultIngestionBackend implements IngestionBackend {
                 partition);
             return;
           }
-          runnable.run();
-        } catch (Exception e) {
-          LOGGER.error("Failed to start consumption for replica {}", replicaId, e);
-          throw e;
+          try {
+            runnable.run();
+          } catch (Exception e) {
+            LOGGER.error("Failed to start consumption for replica {}", replicaId, e);
+          }
         } finally {
-          blobTransferManager.clearCancellationRequest(replicaId);
-          consumptionLock.unlock();
+          try {
+            blobTransferManager.clearCancellationRequest(replicaId);
+          } finally {
+            consumptionLock.unlock();
+          }
         }
       });
     }

@@ -128,11 +128,8 @@ public class BlobTransferStatusTrackingManagerTest {
 
     assertFalse(statusTrackingManager.isBlobTransferCancelled(replicaId));
 
-    try {
-      statusTrackingManager.cancelTransfer(replicaId, 1);
-    } catch (Exception e) {
-      // Ignore timeout
-    }
+    // Expected the timeout exception as the transferFuture is never complete.
+    assertThrows(TimeoutException.class, () -> statusTrackingManager.cancelTransfer(replicaId, 1));
 
     assertTrue(statusTrackingManager.isBlobTransferCancelled(replicaId));
   }
