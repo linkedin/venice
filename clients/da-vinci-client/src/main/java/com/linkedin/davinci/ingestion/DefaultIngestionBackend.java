@@ -33,6 +33,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -482,12 +483,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
       VeniceStoreVersionConfig storeConfig,
       int partition,
       int timeoutInSeconds) {
-    String storeVersion = storeConfig.getStoreVersionName();
-
     if (blobTransferManager == null) {
       return;
     }
 
+    String storeVersion = storeConfig.getStoreVersionName();
     String replicaId = Utils.getReplicaId(storeVersion, partition);
 
     try {
@@ -513,7 +513,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
         consumptionLock.unlock();
         LOGGER.info("Released consumption lock for replica {} after setting cancellation flag", replicaId);
       }
-    } catch (java.util.concurrent.TimeoutException e) {
+    } catch (TimeoutException e) {
       LOGGER.warn(
           "Timeout waiting for blob transfer cancellation for store {} partition {} after {} seconds during OFFLINE transition. Proceeding with state transition.",
           storeVersion,
