@@ -34,6 +34,8 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -51,6 +53,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private final Map<String, AtomicReference<StorageEngine>> topicStorageEngineReferenceMap =
       new VeniceConcurrentHashMap<>();
   private final BlobTransferManager blobTransferManager;
+
+  // Per-replica locks to ensure mutual exclusion between blob transfer triggerred consumption start and cancel
+  // operations
+  private final Map<String, Lock> consumptionLocks = new VeniceConcurrentHashMap<>();
 
   public DefaultIngestionBackend(
       StorageMetadataService storageMetadataService,
@@ -119,31 +125,34 @@ public class DefaultIngestionBackend implements IngestionBackend {
       bootstrapFuture.whenComplete((result, throwable) -> {
         String replicaId = Utils.getReplicaId(storeVersion, partition);
 
-        // Check if blob transfer was cancelled during OR after blob transfer.
-        // 1: Cancellation request arrives right after successful transfer
-        if (blobTransferManager.isBlobTransferCancelled(replicaId)) {
-          LOGGER.info(
-              "Blob transfer cancellation was requested for replica {}. Discarding bootstrap result and skipping consumption startup.",
-              replicaId);
-          blobTransferManager.clearCancellationRequest(replicaId);
-          return;
-        }
+        Lock consumptionLock = consumptionLocks.computeIfAbsent(replicaId, k -> new ReentrantLock());
+        consumptionLock.lock();
 
-        // 2: Cancellation arrives during transfer
-        if (throwable != null && throwable.getCause() instanceof VeniceBlobTransferCancelledException) {
-          LOGGER.info(
-              "Blob transfer was cancelled during transfer for store {} partition {}. Skipping consumption startup.",
-              storeVersion,
-              partition);
-          blobTransferManager.clearCancellationRequest(replicaId);
-          return;
-        }
+        try {
+          // Check 1: Cancellation request arrives after successful transfer
+          if (blobTransferManager.isBlobTransferCancelled(replicaId)) {
+            LOGGER.info(
+                "Blob transfer cancellation was requested for replica {}. Discarding bootstrap result and skipping consumption startup.",
+                replicaId);
+            return;
+          }
 
-        // 3. For all other cases (success without cancellation, or failure due to other reasons),
-        // proceed with consumption startup
-        // Clear the flag before starting consumption to prevent memory leak
-        blobTransferManager.clearCancellationRequest(replicaId);
-        runnable.run();
+          // Check 2: Cancellation arrives during transfer
+          if (throwable != null && throwable.getCause() instanceof VeniceBlobTransferCancelledException) {
+            LOGGER.info(
+                "Blob transfer was cancelled during transfer for store {} partition {}. Skipping consumption startup.",
+                storeVersion,
+                partition);
+            return;
+          }
+          runnable.run();
+        } catch (Exception e) {
+          LOGGER.error("Failed to start consumption for replica {}", replicaId, e);
+          throw e;
+        } finally {
+          blobTransferManager.clearCancellationRequest(replicaId);
+          consumptionLock.unlock();
+        }
       });
     }
   }
@@ -455,6 +464,15 @@ public class DefaultIngestionBackend implements IngestionBackend {
     return getStoreIngestionService().stopConsumption(storeConfig, partition);
   }
 
+  /**
+   * Set cancellation flag while holding the lock
+   * This ensures that:
+   * - If bootstrapFromBlobTransfer hasn't started yet, it will see the flag and skip consumption
+   * - If bootstrapFromBlobTransfer is running, it holds the lock, so we wait for it to complete
+   * @param storeConfig Store version config
+   * @param partition Partition number to cancel blob transfer for
+   * @param timeoutInSeconds Number of seconds to wait before timeout
+   */
   @Override
   public void cancelBlobTransferIfInProgress(
       VeniceStoreVersionConfig storeConfig,
@@ -479,13 +497,18 @@ public class DefaultIngestionBackend implements IngestionBackend {
         return;
       }
 
-      // Skip if cancellation flag is already set
-      if (blobTransferManager.isBlobTransferCancelled(replicaId)) {
-        LOGGER.warn("Cancellation flag already set for replica {}. No action needed.", replicaId);
-        return;
+      Lock consumptionLock = consumptionLocks.computeIfAbsent(replicaId, k -> new ReentrantLock());
+      consumptionLock.lock();
+      try {
+        if (blobTransferManager.isBlobTransferCancelled(replicaId)) {
+          LOGGER.warn("Cancellation flag already set for replica {}. No action needed.", replicaId);
+          return;
+        }
+        blobTransferManager.cancelTransfer(replicaId, timeoutInSeconds);
+      } finally {
+        consumptionLock.unlock();
+        LOGGER.info("Released consumption lock for replica {} after setting cancellation flag", replicaId);
       }
-
-      blobTransferManager.cancelTransfer(replicaId, timeoutInSeconds);
     } catch (java.util.concurrent.TimeoutException e) {
       LOGGER.warn(
           "Timeout waiting for blob transfer cancellation for store {} partition {} after {} seconds during OFFLINE transition. Proceeding with state transition.",

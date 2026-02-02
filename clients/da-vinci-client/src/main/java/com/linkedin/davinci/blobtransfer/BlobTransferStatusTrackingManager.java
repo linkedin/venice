@@ -70,10 +70,8 @@ public class BlobTransferStatusTrackingManager {
    * Cancel an ongoing blob transfer for the given replica.
    * This method performs the following steps:
    * - Sets the cancellation request flag to stop new peer attempts in the chain
-   * - If transfer is in progress: closes the channel and waits for completion
-   * - The flag remains set after this method completes
-   *
-   * This is a blocking behavior.
+   * - Closes the active channel to abort data transfer
+   * - Waits for the transfer future to complete (with timeout)
    *
    * @param replicaId the replica ID (format: storeName_vVersion-partition)
    * @param timeoutInSeconds maximum time to wait for cancellation to complete
@@ -81,83 +79,54 @@ public class BlobTransferStatusTrackingManager {
    * @throws TimeoutException if cancellation doesn't complete within timeout
    */
   public void cancelTransfer(String replicaId, int timeoutInSeconds) throws InterruptedException, TimeoutException {
-    LOGGER.info("Cancellation request received for replica {}. Starting coordinated cancellation.", replicaId);
+    LOGGER.info("Cancellation request received for replica {}. Starting cancellation.", replicaId);
 
-    // Step 1: Set the cancellation request flag FIRST
-    // This prevents the peer chain from attempting more peers and causes early termination
+    // Step 1: Set cancellation flag to stop peer chain and signal bootstrap callback
     AtomicBoolean cancellationFlag =
         partitionLevelCancellationFlag.computeIfAbsent(replicaId, k -> new AtomicBoolean(false));
     cancellationFlag.set(true);
-    LOGGER.info(
-        "[Step 1 Flag Setting]: Set cancellation request flag for replica {}. "
-            + "This will stop the entire chain of peer attempts.",
-        replicaId);
+    LOGGER.info("Set cancellation flag for replica {}", replicaId);
 
-    // Step 1.1: Check if there's an ongoing transfer
-    CompletableFuture<InputStream> perPartitionTransferFuture = partitionLevelTransferStatus.get(replicaId);
-    if (perPartitionTransferFuture == null) {
-      LOGGER.info(
-          "[Step 1.1 Flag Setting]: No ongoing blob transfer found for replica {}. Cancellation flag is no longer needed, removing cancellation flag.",
-          replicaId);
-      clearCancellationRequest(replicaId);
-      return;
-    } else if (perPartitionTransferFuture.isDone()) {
-      LOGGER.info(
-          "[Step 1.2 Flag Setting]: Having completed transfer for replica {}. Skipping closing channel and partition transfer.",
-          replicaId);
-      return;
-    }
-
-    // Step 2: Close the current ONGOING channel to abort data transfer
-    // This will cause the current peer channel to fail, and combined with the cancellation flag,
-    // the entire chain of peer attempts will terminate
+    // Step 2: Close active channel to abort ongoing data transfer (saves bandwidth)
     Channel currentChannel = nettyClient.getActiveChannel(replicaId);
     if (currentChannel != null && currentChannel.isActive()) {
-      LOGGER.info(
-          "[Step 2 Channel Close]: Starting close active channel for replica {} to abort ongoing data transfer.",
-          replicaId);
+      LOGGER.info("Closing active channel for replica {} to abort data transfer", replicaId);
       try {
         currentChannel.close().syncUninterruptibly();
-        LOGGER.info("[Step 2 Channel Close]: Active channel closed successfully for replica {}", replicaId);
+        LOGGER.info("Successfully closed active channel for replica {}", replicaId);
       } catch (Exception e) {
-        LOGGER.warn(
-            "[Step 2 Channel Close]: Exception while closing channel for replica {}. Continuing with cancellation.",
-            replicaId,
-            e);
+        LOGGER.warn("Exception while closing channel for replica {}. Continuing with cancellation.", replicaId, e);
       }
     } else {
       LOGGER.info(
-          "[Step 2 Channel Close] : No active channel found for replica {}. Transfer may be between peer attempts.",
+          "No active channel found for replica {}. Transfer may not be in progress or already completed.",
           replicaId);
     }
 
-    // Step 3: Wait for perPartitionTransferFuture to complete
-    // After setting cancellation flag and closing channel, the transfer should stop.
-    LOGGER.info(
-        "[Step 3 Transfer Close]: Waiting for partition-level transfer future to complete for replica {} (timeout: {} seconds).",
-        replicaId,
-        timeoutInSeconds);
-
-    try {
-      perPartitionTransferFuture.get(timeoutInSeconds, TimeUnit.SECONDS);
+    // Step 3: Wait for transfer future to complete (provides clean synchronization point)
+    CompletableFuture<InputStream> perPartitionTransferFuture = partitionLevelTransferStatus.get(replicaId);
+    if (perPartitionTransferFuture != null && !perPartitionTransferFuture.isDone()) {
       LOGGER.info(
-          "[Step 3 Transfer Close]: Blob transfer completed successfully for replica {} despite cancellation request. "
-              + "This can happen if transfer completed just before cancellation.",
-          replicaId);
-    } catch (ExecutionException e) {
-      // Check if it's the EXPECTED VeniceBlobTransferCancelledException
-      if (e.getCause() instanceof VeniceBlobTransferCancelledException) {
-        LOGGER.info(
-            "Blob transfer cancelled successfully for replica {} with expected cancellation exception: {}",
-            replicaId,
-            e.getCause().getMessage());
-      } else {
-        LOGGER.warn(
-            "Blob transfer for replica {} completed with unexpected exception: {}. "
-                + "This may indicate a transfer failure rather than cancellation.",
-            replicaId,
-            e.getCause().getMessage());
+          "Waiting for transfer future to complete for replica {} (timeout: {} seconds)",
+          replicaId,
+          timeoutInSeconds);
+      try {
+        perPartitionTransferFuture.get(timeoutInSeconds, TimeUnit.SECONDS);
+      } catch (ExecutionException e) {
+        if (e.getCause() instanceof VeniceBlobTransferCancelledException) {
+          LOGGER.info("Transfer cancelled successfully for replica {}: {}", replicaId, e.getCause().getMessage());
+        } else {
+          LOGGER.info("Transfer completed with exception for replica {}: {}", replicaId, e.getCause().getMessage());
+        }
       }
+      // After waiting for transfer to complete, keep flag set for bootstrap callback to check
+    } else {
+      // No ongoing transfer - either never started or already completed
+      // Fast cleanup: Clear the flag immediately to make partition drops complete quickly
+      LOGGER.info(
+          "Transfer future not in progress for replica {}, clearing cancellation flag for fast cleanup",
+          replicaId);
+      clearCancellationRequest(replicaId);
     }
   }
 

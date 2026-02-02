@@ -197,9 +197,11 @@ public class BlobTransferStatusTrackingManagerTest {
     // Transfer is no longer in progress
     assertFalse(statusTrackingManager.isBlobTransferInProgress(replicaId));
 
-    // But we can still set and clear the cancellation flag
+    // When we cancel a transfer that already completed, the flag is cleared immediately
     statusTrackingManager.cancelTransfer(replicaId, 5);
-    assertFalse(statusTrackingManager.isBlobTransferCancelled(replicaId));
+    assertFalse(
+        statusTrackingManager.isBlobTransferCancelled(replicaId),
+        "Cancellation flag should be cleared when no transfer is in progress for fast cleanup.");
   }
 
   @Test
@@ -247,5 +249,41 @@ public class BlobTransferStatusTrackingManagerTest {
 
     assertFalse(statusTrackingManager.isBlobTransferCancelled(replicaId1));
     assertTrue(statusTrackingManager.isBlobTransferInProgress(replicaId2));
+  }
+
+  @Test
+  public void testCancelTransferRaceConditionAfterCompletion() throws Exception {
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic("testStore", 1), 0);
+    CompletableFuture<InputStream> transferFuture = new CompletableFuture<>();
+
+    // Step 1: Register the transfer (simulates OFFLINE→STANDBY transition starting blob transfer)
+    // This creates the cancellation flag in the map
+    statusTrackingManager.registerTransfer(replicaId, transferFuture);
+    assertFalse(statusTrackingManager.isBlobTransferCancelled(replicaId));
+    assertTrue(statusTrackingManager.isBlobTransferInProgress(replicaId));
+
+    // Step 2: Transfer completes successfully (simulates blob transfer finishing)
+    // The whenComplete callback in registerTransfer() will IMMEDIATELY:
+    // - Remove entry from partitionLevelTransferStatus map
+    // - Bootstrap callback gets scheduled (but not executed yet)
+    transferFuture.complete(mock(InputStream.class));
+
+    // Step 3: Verify transfer is complete and removed from tracking
+    assertFalse(
+        statusTrackingManager.isBlobTransferInProgress(replicaId),
+        "Transfer should be removed from map after completion");
+
+    // Step 4: Helix starts STANDBY→OFFLINE transition and calls cancelTransfer()
+    // cancelTransfer() clears the flag when no transfer is in progress
+    // This enables fast cleanup and avoids leaving stale flags in memory.
+    statusTrackingManager.cancelTransfer(replicaId, 10);
+
+    // Step 5:
+    assertFalse(
+        statusTrackingManager.isBlobTransferCancelled(replicaId),
+        "Cancellation flag should be cleared when no transfer is in progress for fast cleanup. "
+            + "Race condition with bootstrap callback is handled by: "
+            + "(1) consumptionLock ensures mutual exclusion, and "
+            + "(2) stopConsumption() is called after cancelTransfer() to stop any consumption that started.");
   }
 }

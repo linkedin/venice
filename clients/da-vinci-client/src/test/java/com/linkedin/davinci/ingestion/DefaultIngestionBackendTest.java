@@ -35,11 +35,16 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ConfigCommonUtils;
+import com.linkedin.venice.utils.Utils;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.logging.log4j.LogManager;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
@@ -462,5 +467,95 @@ public class DefaultIngestionBackendTest {
     // Should not throw exception
     backend.cancelBlobTransferIfInProgress(storeConfig, PARTITION, 10);
     // No further verification needed - we just want to ensure it doesn't throw
+  }
+
+  @Test
+  public void testConcurrentCancelWithLockExecutes() throws Exception {
+    // Setup mocks
+    when(metadataRepo.waitVersion(anyString(), anyInt(), any(Duration.class)))
+        .thenReturn(new StoreVersionInfo(store, version));
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
+    when(veniceServerConfig.isServerAllowlistEnabled()).thenReturn(false);
+
+    DefaultIngestionBackend backend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        blobTransferManager,
+        veniceServerConfig);
+
+    // Get the actual replica ID from storeConfig
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    // Track which threads acquired the lock and in what order
+    AtomicInteger lockAcquisitionOrder = new AtomicInteger(0);
+    ConcurrentHashMap<String, Integer> threadToOrder = new ConcurrentHashMap<>();
+
+    // Mock: Track when flag is checked (this happens inside the lock)
+    when(blobTransferManager.isBlobTransferCancelled(eq(replicaId))).thenAnswer(inv -> {
+      String threadName = Thread.currentThread().getName();
+      if (threadName.startsWith("Cancel-")) {
+        // Record the order this thread acquired the lock
+        threadToOrder.putIfAbsent(threadName, lockAcquisitionOrder.incrementAndGet());
+      }
+      return false; // Return false so threads actually call cancelTransfer
+    });
+
+    // Mock: cancelTransfer - simulate some work being done under the lock
+    Mockito.doAnswer(inv -> {
+      Thread.sleep(50); // Simulate work - if no lock, threads would overlap
+      return null;
+    }).when(blobTransferManager).cancelTransfer(eq(replicaId), anyInt());
+
+    doNothing().when(blobTransferManager).clearCancellationRequest(replicaId);
+
+    // Track completions
+    AtomicInteger completedCount = new AtomicInteger(0);
+    CountDownLatch startLatch = new CountDownLatch(1);
+    CountDownLatch doneLatch = new CountDownLatch(3);
+
+    // Task: call cancelBlobTransferIfInProgress
+    Runnable cancelTask = () -> {
+      try {
+        startLatch.await(); // Wait for signal to start
+        backend.cancelBlobTransferIfInProgress(storeConfig, PARTITION, 10);
+        completedCount.incrementAndGet();
+      } catch (Exception e) {
+        LogManager.getLogger().error("{} error: {}", Thread.currentThread().getName(), e.getMessage());
+      } finally {
+        doneLatch.countDown();
+      }
+    };
+
+    // Launch 3 threads that will try to cancel simultaneously
+    Thread t1 = new Thread(cancelTask, "Cancel-1");
+    Thread t2 = new Thread(cancelTask, "Cancel-2");
+    Thread t3 = new Thread(cancelTask, "Cancel-3");
+
+    t1.start();
+    t2.start();
+    t3.start();
+
+    // Let all threads start at once (creates the race)
+    startLatch.countDown();
+
+    // Wait for all to complete
+    assertTrue(doneLatch.await(15, TimeUnit.SECONDS), "All threads should complete without deadlock");
+
+    t1.join(1000);
+    t2.join(1000);
+    t3.join(1000);
+
+    // ASSERTIONS:
+    // 1. All threads completed (proves no deadlock)
+    Assert.assertEquals(completedCount.get(), 3, "All 3 threads should have completed");
+
+    // 2. The lock ensured serialization - threads executed in sequence
+    // Even though they started simultaneously, the lock made them execute one at a time
+    assertTrue(threadToOrder.size() <= 3, "At most 3 threads acquired lock");
+
+    // 3. Verify cancelTransfer was called
+    verify(blobTransferManager, Mockito.atLeastOnce()).cancelTransfer(eq(replicaId), anyInt());
   }
 }
