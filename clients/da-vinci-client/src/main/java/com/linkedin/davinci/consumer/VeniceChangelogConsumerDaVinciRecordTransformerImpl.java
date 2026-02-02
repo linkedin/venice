@@ -501,13 +501,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     return compactedMessageList;
   }
 
-  private VeniceProperties buildVeniceConfig() {
+  @VisibleForTesting
+  public VeniceProperties buildVeniceConfig() {
     return new PropertyBuilder().put(changelogClientConfig.getConsumerProperties())
         // We don't need the block cache, since we only read each key once from disk
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0)
         .put(DATA_BASE_PATH, changelogClientConfig.getBootstrapFileSystemPath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(PUSH_STATUS_STORE_ENABLED, !isVersionSpecificClient)
+        .put(PUSH_STATUS_STORE_ENABLED, changelogClientConfig.isStateful())
         .build();
   }
 
