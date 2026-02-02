@@ -44,6 +44,9 @@ public class AggVersionedIngestionStats
 
   @Override
   protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
+    if (otelStatsMap == null) {
+      return; // Called during super() constructor before otelStatsMap is initialized; Tehuti stats still load
+    }
     otelStatsMap.computeIfPresent(storeName, (k, stats) -> {
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
@@ -52,6 +55,9 @@ public class AggVersionedIngestionStats
 
   @Override
   protected void cleanupVersionResources(String storeName, int version) {
+    if (otelStatsMap == null) {
+      return; // Called during super() constructor before otelStatsMap is initialized
+    }
     otelStatsMap.computeIfPresent(storeName, (k, stats) -> {
       stats.removeIngestionTask(version);
       return stats;

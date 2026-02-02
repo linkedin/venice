@@ -256,10 +256,6 @@ public class IngestionStats {
     this.ingestionTask = ingestionTask;
   }
 
-  private boolean hasActiveIngestionTask() {
-    return IngestionStatsUtils.hasActiveIngestionTask(ingestionTask);
-  }
-
   // To prevent this metric being too noisy and align with the PreNotificationCheck of reportError, this metric should
   // only be set if the ingestion task errored after EOP is received for any of the partitions.
   public int getIngestionTaskErroredGauge() {

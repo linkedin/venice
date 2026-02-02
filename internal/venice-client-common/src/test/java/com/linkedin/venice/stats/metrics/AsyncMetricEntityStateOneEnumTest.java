@@ -120,7 +120,7 @@ public class AsyncMetricEntityStateOneEnumTest extends MetricEntityStateEnumTest
   public void testCallbackProviderIsInvokedForEachEnumValue() {
     Map<DimensionEnum1, AtomicLong> valuesByRole = new HashMap<>();
     for (DimensionEnum1 role: DimensionEnum1.values()) {
-      valuesByRole.put(role, new AtomicLong(role.ordinal() * 10));
+      valuesByRole.put(role, new AtomicLong(role.ordinal() * 10L));
     }
 
     Function<DimensionEnum1, LongSupplier> callbackProvider = role -> () -> valuesByRole.get(role).get();

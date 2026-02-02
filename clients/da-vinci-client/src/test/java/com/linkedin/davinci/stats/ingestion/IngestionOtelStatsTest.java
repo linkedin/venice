@@ -759,7 +759,7 @@ public class IngestionOtelStatsTest {
 
     // Record multiple idle time updates for the same version
     for (int i = 1; i <= 10; i++) {
-      ingestionOtelStats.recordIdleTime(CURRENT_VERSION, i * 1000);
+      ingestionOtelStats.recordIdleTime(CURRENT_VERSION, i * 1000L);
     }
 
     // Record for different versions concurrently
