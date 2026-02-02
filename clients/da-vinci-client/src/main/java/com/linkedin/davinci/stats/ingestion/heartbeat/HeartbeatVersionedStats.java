@@ -208,6 +208,51 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     });
   }
 
+  /**
+   * Emits a per-record OTel metric for leader record delay immediately (not aggregated).
+   * This is called for every record when per-record OTel metrics are enabled.
+   * Uses map.get() instead of computeIfAbsent to avoid synchronization overhead on hot path.
+   * Returns early if stats not initialized (store not registered yet).
+   *
+   * @param storeName The name of the store
+   * @param version The version number
+   * @param region The region name
+   * @param delay The delay in milliseconds since record was produced
+   */
+  public void emitPerRecordLeaderOtelMetric(String storeName, int version, String region, long delay) {
+    RecordOtelStats otelStats = recordOtelStatsMap.get(storeName);
+    if (otelStats == null || !otelStats.emitOtelMetrics()) {
+      return; // Fast path exit: stats not initialized or OTel disabled
+    }
+    otelStats.recordRecordDelayOtelMetrics(version, region, ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, delay);
+  }
+
+  /**
+   * Emits a per-record OTel metric for follower record delay immediately (not aggregated).
+   * This is called for every record when per-record OTel metrics are enabled.
+   * Uses map.get() instead of computeIfAbsent to avoid synchronization overhead on hot path.
+   * Returns early if stats not initialized (store not registered yet).
+   *
+   * @param storeName The name of the store
+   * @param version The version number
+   * @param region The region name
+   * @param delay The delay in milliseconds since record was produced
+   * @param isReadyToServe Whether the partition is ready to serve
+   */
+  public void emitPerRecordFollowerOtelMetric(
+      String storeName,
+      int version,
+      String region,
+      long delay,
+      boolean isReadyToServe) {
+    RecordOtelStats otelStats = recordOtelStatsMap.get(storeName);
+    if (otelStats == null || !otelStats.emitOtelMetrics()) {
+      return; // Fast path exit: stats not initialized or OTel disabled
+    }
+    ReplicaState replicaState = isReadyToServe ? ReplicaState.READY_TO_SERVE : ReplicaState.CATCHING_UP;
+    otelStats.recordRecordDelayOtelMetrics(version, region, ReplicaType.FOLLOWER, replicaState, delay);
+  }
+
   @VisibleForTesting
   HeartbeatStat getStatsForTesting(String storeName, int version) {
     return getStats(storeName, version);

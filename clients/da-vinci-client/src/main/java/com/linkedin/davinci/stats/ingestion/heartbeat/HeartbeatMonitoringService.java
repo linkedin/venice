@@ -77,6 +77,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private final String nodeId;
   private final int lagMonitorCleanupCycle;
   private final boolean recordLevelTimestampEnabled;
+  private final boolean perRecordOtelMetricsEnabled;
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
 
@@ -111,6 +112,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     this.nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
     this.lagMonitorCleanupCycle = serverConfig.getLagMonitorCleanupCycle();
     this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
+    this.perRecordOtelMetricsEnabled = serverConfig.isPerRecordOtelMetricsEnabled();
     this.serverConfig = serverConfig;
   }
 
@@ -368,6 +370,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       Long timestamp,
       boolean isReadyToServe) {
     if (recordLevelTimestampEnabled) {
+      // Store MAX timestamp for periodic Tehuti aggregation
       recordIngestionTimestamp(
           store,
           version,
@@ -378,6 +381,12 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           isReadyToServe,
           false,
           false);
+
+      // Emit per-record OTel metric immediately (if enabled)
+      if (perRecordOtelMetricsEnabled) {
+        long delay = System.currentTimeMillis() - timestamp;
+        versionStatsReporter.emitPerRecordLeaderOtelMetric(store, version, region, delay);
+      }
     }
   }
 
@@ -400,6 +409,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       Long timestamp,
       boolean isReadyToServe) {
     if (recordLevelTimestampEnabled) {
+      // Store MAX timestamp for periodic Tehuti aggregation
       recordIngestionTimestamp(
           store,
           version,
@@ -410,6 +420,12 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           isReadyToServe,
           true,
           false);
+
+      // Emit per-record OTel metric immediately (if enabled)
+      if (perRecordOtelMetricsEnabled) {
+        long delay = System.currentTimeMillis() - timestamp;
+        versionStatsReporter.emitPerRecordFollowerOtelMetric(store, version, region, delay, isReadyToServe);
+      }
     }
   }
 

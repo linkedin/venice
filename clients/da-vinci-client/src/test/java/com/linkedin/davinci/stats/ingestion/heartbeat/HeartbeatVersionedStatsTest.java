@@ -269,4 +269,60 @@ public class HeartbeatVersionedStatsTest {
         INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
         TEST_PREFIX);
   }
+
+  @Test
+  public void testEmitPerRecordLeaderOtelMetric() {
+    heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
+
+    // Initialize the OTel stats for this store by calling recordLeaderRecordLag first
+    // This simulates the normal flow where periodic emission initializes the stats
+    heartbeatVersionedStats.recordLeaderRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 50);
+
+    // Now emit per-record leader OTel metrics immediately (delays: 100ms, 200ms, 150ms)
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 100);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 200);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 150);
+
+    // Verify OTel accumulated correctly: initial 50 + 100 + 200 + 150 = 500 sum, count=4
+    validateRecordOtelHistogram(ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, 50.0, 200.0, 4, 500.0);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testEmitPerRecordFollowerOtelMetric(boolean isReadyToServe) {
+    heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
+
+    // Initialize the OTel stats for this store by calling recordFollowerRecordLag first
+    // Note: recordFollowerRecordLag records to BOTH states (one with actual value, one with 0)
+    heartbeatVersionedStats
+        .recordFollowerRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 50, isReadyToServe);
+
+    // Now emit per-record follower OTel metrics (delays: 100ms, 200ms, 150ms)
+    // Note: emitPerRecordFollowerOtelMetric only records to the active state (no squelching)
+    heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 100, isReadyToServe);
+    heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 200, isReadyToServe);
+    heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 150, isReadyToServe);
+
+    // Verify OTel metrics:
+    // - recordFollowerRecordLag: records 50 to active state, 0 to inactive state (count=1 each)
+    // - emitPerRecordFollowerOtelMetric x3: records 100, 200, 150 ONLY to active state (count=3)
+    // Active state: 50 + 100 + 200 + 150 = 500, count=4
+    // Inactive state: 0, count=1 (only from initial recordFollowerRecordLag)
+    if (isReadyToServe) {
+      validateRecordOtelHistogram(ReplicaType.FOLLOWER, ReplicaState.READY_TO_SERVE, 50.0, 200.0, 4, 500.0);
+      validateRecordOtelHistogram(ReplicaType.FOLLOWER, ReplicaState.CATCHING_UP, 0.0, 0.0, 1, 0.0);
+    } else {
+      validateRecordOtelHistogram(ReplicaType.FOLLOWER, ReplicaState.CATCHING_UP, 50.0, 200.0, 4, 500.0);
+      validateRecordOtelHistogram(ReplicaType.FOLLOWER, ReplicaState.READY_TO_SERVE, 0.0, 0.0, 1, 0.0);
+    }
+  }
+
+  @Test
+  public void testEmitPerRecordOtelMetricWhenStoreNotInitialized() {
+    // Test that emitting metrics for an unknown store doesn't throw exception
+    // This tests the null check fast path - should be a graceful no-op
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric("unknown_store", 1, REGION, 100);
+    heartbeatVersionedStats.emitPerRecordFollowerOtelMetric("unknown_store", 1, REGION, 100, true);
+    // No exception should be thrown - this is a graceful no-op
+    // The stats won't be recorded since recordOtelStatsMap.get() returns null
+  }
 }

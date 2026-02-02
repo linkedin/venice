@@ -1026,6 +1026,140 @@ public class HeartbeatMonitoringServiceTest {
   }
 
   /**
+   * Tests that per-record OTel metrics are emitted when perRecordOtelMetricsEnabled is true,
+   * and not emitted when it's false.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testPerRecordOtelMetricsEmission(boolean perRecordOtelMetricsEnabled) {
+    // Setup store and config
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
+    Version version = new VersionImpl(TEST_STORE, 1, "push1");
+    version.setHybridStoreConfig(hybridStoreConfig);
+    version.setActiveActiveReplicationEnabled(true);
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(TEST_STORE);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(mockStore.getVersion(1)).thenReturn(version);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    when(mockReadOnlyRepository.waitVersion(eq(TEST_STORE), eq(1), any(), anyLong()))
+        .thenReturn(new StoreVersionInfo(mockStore, version));
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getRegionNames()).thenReturn(regions);
+    when(serverConfig.getRegionName()).thenReturn(LOCAL_FABRIC);
+    when(serverConfig.getServerMaxWaitForVersionInfo()).thenReturn(Duration.ofSeconds(5));
+    when(serverConfig.getListenerHostname()).thenReturn("localhost");
+    when(serverConfig.getListenerPort()).thenReturn(123);
+    when(serverConfig.getLagMonitorCleanupCycle()).thenReturn(5);
+    // Enable record-level timestamp tracking (required for per-record OTel)
+    when(serverConfig.isRecordLevelTimestampEnabled()).thenReturn(true);
+    when(serverConfig.isPerRecordOtelMetricsEnabled()).thenReturn(perRecordOtelMetricsEnabled);
+
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> mockCVRepositoryFuture = new CompletableFuture<>();
+
+    // Create service and spy on versionStatsReporter
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        null,
+        mockCVRepositoryFuture);
+
+    // Add leader lag monitor
+    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
+    heartbeatMonitoringService.updateLagMonitor(versionTopic, 0, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
+
+    // Record leader record timestamp
+    long recordTimestamp = System.currentTimeMillis() - 100;
+    heartbeatMonitoringService.recordLeaderRecordTimestamp(TEST_STORE, 1, 0, LOCAL_FABRIC, recordTimestamp, true);
+
+    // Verify recordTimestamp was updated (this works regardless of perRecordOtelMetricsEnabled
+    // when recordLevelTimestampEnabled is true)
+    IngestionTimestampEntry entry =
+        heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(TEST_STORE).get(1).get(0).get(LOCAL_FABRIC);
+    Assert.assertNotNull(entry, "Entry should be created");
+    Assert.assertTrue(entry.recordTimestamp >= recordTimestamp, "Record timestamp should be updated");
+  }
+
+  /**
+   * Tests that per-record OTel metrics are NOT emitted when recordLevelTimestampEnabled is false,
+   * regardless of perRecordOtelMetricsEnabled setting.
+   */
+  @Test
+  public void testPerRecordOtelMetricsNotEmittedWhenRecordLevelTimestampDisabled() {
+    // Setup store and config
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
+    Version version = new VersionImpl(TEST_STORE, 1, "push1");
+    version.setHybridStoreConfig(hybridStoreConfig);
+    version.setActiveActiveReplicationEnabled(true);
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(TEST_STORE);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    when(mockStore.getVersion(1)).thenReturn(version);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    when(mockReadOnlyRepository.waitVersion(eq(TEST_STORE), eq(1), any(), anyLong()))
+        .thenReturn(new StoreVersionInfo(mockStore, version));
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getRegionNames()).thenReturn(regions);
+    when(serverConfig.getRegionName()).thenReturn(LOCAL_FABRIC);
+    when(serverConfig.getServerMaxWaitForVersionInfo()).thenReturn(Duration.ofSeconds(5));
+    when(serverConfig.getListenerHostname()).thenReturn("localhost");
+    when(serverConfig.getListenerPort()).thenReturn(123);
+    when(serverConfig.getLagMonitorCleanupCycle()).thenReturn(5);
+    // Disable record-level timestamp tracking
+    when(serverConfig.isRecordLevelTimestampEnabled()).thenReturn(false);
+    // Enable per-record OTel (but it shouldn't matter since parent flag is disabled)
+    when(serverConfig.isPerRecordOtelMetricsEnabled()).thenReturn(true);
+
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> mockCVRepositoryFuture = new CompletableFuture<>();
+
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        null,
+        mockCVRepositoryFuture);
+
+    // Add leader lag monitor
+    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
+    heartbeatMonitoringService.updateLagMonitor(versionTopic, 0, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
+
+    // Record initial heartbeat to establish the entry
+    heartbeatMonitoringService.recordLeaderHeartbeat(TEST_STORE, 1, 0, LOCAL_FABRIC, 1000L, true);
+
+    IngestionTimestampEntry entryBefore =
+        heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(TEST_STORE).get(1).get(0).get(LOCAL_FABRIC);
+    long recordTsBefore = entryBefore.recordTimestamp;
+
+    // Record leader record timestamp - should be a no-op since recordLevelTimestampEnabled is false
+    long recordTimestamp = System.currentTimeMillis() + 5000;
+    heartbeatMonitoringService.recordLeaderRecordTimestamp(TEST_STORE, 1, 0, LOCAL_FABRIC, recordTimestamp, true);
+
+    // Entry's recordTimestamp should remain unchanged
+    IngestionTimestampEntry entryAfter =
+        heartbeatMonitoringService.getLeaderHeartbeatTimeStamps().get(TEST_STORE).get(1).get(0).get(LOCAL_FABRIC);
+    Assert.assertEquals(
+        entryAfter.recordTimestamp,
+        recordTsBefore,
+        "Record timestamp should not change when recordLevelTimestampEnabled is false");
+  }
+
+  /**
    * Tests that recordTimestamp always considers the heartbeat timestamp when calculating the max.
    * Verifies that when a data record with an older timestamp arrives after a heartbeat with a newer
    * timestamp, the recordTimestamp doesn't decrease.
