@@ -67,6 +67,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -835,5 +836,137 @@ public abstract class KafkaStoreIngestionServiceTest {
         kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName);
     assertEquals(internalDaVinciRecordTransformerConfig.getRecordTransformerConfig(), recordTransformerConfig);
     assertNotNull(internalDaVinciRecordTransformerConfig.getRecordTransformerStats());
+  }
+
+  @Test
+  public void testAAWCThreadPoolStatsAreRegistered() {
+    // Close the existing service first
+    kafkaStoreIngestionService.close();
+
+    // Create a new MetricsRepository with a reporter to verify metrics
+    MetricsRepository metricsRepository = new MetricsRepository();
+    MockTehutiReporter reporter = new MockTehutiReporter();
+    metricsRepository.addReporter(reporter);
+
+    // Set up mock config with AA/WC parallel processing enabled
+    VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
+    String dummyKafkaUrl = "localhost:16637";
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(-1L).when(serverConfig).getKafkaFetchQuotaBytesPerSecond();
+    doReturn(-1L).when(serverConfig).getKafkaFetchQuotaRecordPerSecond();
+    doReturn(-1L).when(serverConfig).getKafkaFetchQuotaUnorderedBytesPerSecond();
+    doReturn(-1L).when(serverConfig).getKafkaFetchQuotaUnorderedRecordPerSecond();
+    doReturn(-1).when(serverConfig).getSepRTLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getCurrentVersionSepRTLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond();
+    doReturn("").when(serverConfig).getDataBasePath();
+    doReturn(0.9d).when(serverConfig).getDiskFullThreshold();
+    doReturn(Int2ObjectMaps.emptyMap()).when(serverConfig).getKafkaClusterIdToAliasMap();
+    doReturn(Object2IntMaps.emptyMap()).when(serverConfig).getKafkaClusterUrlToIdMap();
+    doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT).when(serverConfig)
+        .getConsumerPoolStrategyType();
+    doReturn(1).when(serverConfig).getStoreWriterNumber();
+    doReturn(0).when(serverConfig).getIdleIngestionTaskCleanupIntervalInSeconds();
+    doReturn(1).when(serverConfig).getStoreChangeNotifierThreadPoolSize();
+    doReturn(LogContext.EMPTY).when(serverConfig).getLogContext();
+    doReturn(dummyKafkaUrl).when(serverConfig).getKafkaBootstrapServers();
+    Function<String, String> kafkaClusterUrlResolver = String::toString;
+    doReturn(kafkaClusterUrlResolver).when(serverConfig).getKafkaClusterUrlResolver();
+    doReturn(VeniceProperties.empty()).when(serverConfig).getKafkaConsumerConfigsForLocalConsumption();
+    doReturn(getConsumerAssignmentStrategy()).when(serverConfig).getSharedConsumerAssignmentStrategy();
+    doReturn(1).when(serverConfig).getConsumerPoolSizePerKafkaCluster();
+    doReturn(PubSubSecurityProtocol.PLAINTEXT).when(serverConfig).getPubSubSecurityProtocol(dummyKafkaUrl);
+    doReturn(10).when(serverConfig).getKafkaMaxPollRecords();
+    doReturn(2).when(serverConfig).getTopicManagerMetadataFetcherConsumerPoolSize();
+    doReturn(2).when(serverConfig).getTopicManagerMetadataFetcherThreadPoolSize();
+    doReturn(30L).when(serverConfig).getKafkaFetchQuotaTimeWindow();
+    doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(serverConfig)
+        .getPubSubPositionTypeRegistry();
+    doReturn(IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL).when(serverConfig)
+        .getIngestionTaskReusableObjectsStrategy();
+
+    // Enable AA/WC parallel processing
+    doReturn(true).when(serverConfig).isAAWCWorkloadParallelProcessingEnabled();
+    doReturn(4).when(serverConfig).getAAWCWorkloadParallelProcessingThreadPoolSize();
+    doReturn(2).when(serverConfig).getAaWCIngestionStorageLookupThreadPoolSize();
+
+    VeniceClusterConfig clusterConfig = mock(VeniceClusterConfig.class);
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, dummyKafkaUrl);
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+    doReturn(veniceProperties).when(clusterConfig).getClusterProperties();
+    doReturn(veniceProperties).when(serverConfig).getClusterProperties();
+
+    doReturn(serverConfig).when(configLoader).getVeniceServerConfig();
+    doReturn(clusterConfig).when(configLoader).getVeniceClusterConfig();
+
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    // Create the ingestion service
+    KafkaStoreIngestionService service = new KafkaStoreIngestionService(
+        mockStorageService,
+        configLoader,
+        storageMetadataService,
+        mockClusterInfoProvider,
+        mockMetadataRepo,
+        mockSchemaRepo,
+        mockLiveClusterConfigRepo,
+        metricsRepository,
+        Optional.empty(),
+        Optional.empty(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        Optional.empty(),
+        null,
+        false,
+        compressorFactory,
+        Optional.empty(),
+        false,
+        null,
+        mockPubSubClientsFactory,
+        Optional.empty(),
+        heartbeatMonitoringService,
+        null,
+        null,
+        Optional.empty());
+
+    try {
+      // Verify that AA/WC parallel processing thread pool stats are registered
+      assertNotNull(
+          reporter.query(".aa_wc_parallel_processing_thread_pool--active_thread_number.LambdaStat"),
+          "AA/WC parallel processing thread pool active_thread_number metric should be registered");
+      assertNotNull(
+          reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat"),
+          "AA/WC parallel processing thread pool max_thread_number metric should be registered");
+      assertNotNull(
+          reporter.query(".aa_wc_parallel_processing_thread_pool--queued_task_count_gauge.LambdaStat"),
+          "AA/WC parallel processing thread pool queued_task_count_gauge metric should be registered");
+
+      // Verify that AA/WC ingestion storage lookup thread pool stats are registered
+      assertNotNull(
+          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--active_thread_number.LambdaStat"),
+          "AA/WC ingestion storage lookup thread pool active_thread_number metric should be registered");
+      assertNotNull(
+          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat"),
+          "AA/WC ingestion storage lookup thread pool max_thread_number metric should be registered");
+      assertNotNull(
+          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--queued_task_count_gauge.LambdaStat"),
+          "AA/WC ingestion storage lookup thread pool queued_task_count_gauge metric should be registered");
+
+      // Verify the max thread numbers are set correctly
+      assertEquals(
+          (int) reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat").value(),
+          4,
+          "AA/WC parallel processing thread pool should have 4 threads");
+      assertEquals(
+          (int) reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat").value(),
+          2,
+          "AA/WC ingestion storage lookup thread pool should have 2 threads");
+    } finally {
+      service.close();
+    }
   }
 }

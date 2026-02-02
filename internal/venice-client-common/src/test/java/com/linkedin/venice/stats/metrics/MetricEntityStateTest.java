@@ -29,6 +29,8 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
+import io.opentelemetry.api.metrics.LongGauge;
+import io.opentelemetry.api.metrics.LongUpDownCounter;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
@@ -103,7 +105,8 @@ public class MetricEntityStateTest {
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
     Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
-    Assert.assertEquals(((MetricEntityStateBase) metricEntityState).getAttributes(), baseAttributes);
+    // When OTel is disabled, attributes are not stored (they're never used)
+    Assert.assertNull(((MetricEntityStateBase) metricEntityState).getAttributes());
 
     // without tehuti sensor with empty attributes
     metricEntityState = MetricEntityStateBase.create(mockMetricEntity, null, baseDimensionsMap, null);
@@ -112,7 +115,7 @@ public class MetricEntityStateTest {
     Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
     Assert.assertNull(((MetricEntityStateBase) metricEntityState).getAttributes());
 
-    // with tehuti sensor
+    // with tehuti sensor (but OTel still disabled)
     metricEntityState = MetricEntityStateBase.create(
         mockMetricEntity,
         null,
@@ -124,7 +127,8 @@ public class MetricEntityStateTest {
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
     Assert.assertNotNull(metricEntityState.getTehutiSensor());
-    Assert.assertEquals(((MetricEntityStateBase) metricEntityState).getAttributes(), baseAttributes);
+    // When OTel is disabled, attributes are not stored (they're never used)
+    Assert.assertNull(((MetricEntityStateBase) metricEntityState).getAttributes());
   }
 
   @Test
@@ -191,7 +195,7 @@ public class MetricEntityStateTest {
     metricEntityState.setOtelMetric(doubleHistogram);
 
     Attributes attributes = Attributes.builder().put("key", "value").build();
-    metricEntityState.recordOtelMetric(5.5, attributes);
+    metricEntityState.recordOtelMetric(5.5, new MetricAttributesData(attributes));
 
     verify(doubleHistogram, times(1)).record(5.5, attributes);
   }
@@ -206,9 +210,49 @@ public class MetricEntityStateTest {
     metricEntityState.setOtelMetric(longCounter);
 
     Attributes attributes = Attributes.builder().put("key", "value").build();
-    metricEntityState.recordOtelMetric(10, attributes);
+    metricEntityState.recordOtelMetric(10, new MetricAttributesData(attributes));
 
     verify(longCounter, times(1)).add(10, attributes);
+  }
+
+  @Test
+  public void testRecordOtelMetricUpDownCounter() {
+    LongUpDownCounter longUpDownCounter = mock(LongUpDownCounter.class);
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.UP_DOWN_COUNTER);
+
+    MetricEntityState metricEntityState =
+        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+    metricEntityState.setOtelMetric(longUpDownCounter);
+
+    Attributes attributes = Attributes.builder().put("key", "value").build();
+
+    // Test positive increment
+    metricEntityState.recordOtelMetric(5L, new MetricAttributesData(attributes));
+    verify(longUpDownCounter, times(1)).add(5L, attributes);
+
+    // Test negative decrement
+    metricEntityState.recordOtelMetric(-3L, new MetricAttributesData(attributes));
+    verify(longUpDownCounter, times(1)).add(-3L, attributes);
+  }
+
+  @Test
+  public void testRecordOtelMetricGauge() {
+    LongGauge longGauge = mock(LongGauge.class);
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.GAUGE);
+
+    MetricEntityState metricEntityState =
+        MetricEntityStateBase.create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes);
+    metricEntityState.setOtelMetric(longGauge);
+
+    Attributes attributes = Attributes.builder().put("key", "value").build();
+
+    // Test setting gauge value with long
+    metricEntityState.recordOtelMetric(100L, new MetricAttributesData(attributes));
+    verify(longGauge, times(1)).set(100L, attributes);
+
+    // Test setting gauge to a different value
+    metricEntityState.recordOtelMetric(50L, new MetricAttributesData(attributes));
+    verify(longGauge, times(1)).set(50L, attributes);
   }
 
   @Test

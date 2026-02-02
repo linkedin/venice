@@ -5,6 +5,7 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_
 
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
@@ -55,7 +56,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   private final AtomicReference<Throwable> checksumExceptionHolder = new AtomicReference<>(null);
   private final BlobTransferPayload payload;
   private final ExecutorService checksumValidationExecutorService;
+  private final AggBlobTransferStats aggBlobTransferStats;
   private final List<CompletableFuture<Void>> checksumValidationFutureList = new ArrayList<>();
+  private final String storeName;
+  private final int version;
   // mutable states for a single file transfer. It will be updated for each file transfer.
   private FileChannel outputFileChannel;
   private String fileName;
@@ -73,11 +77,15 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       int version,
       int partition,
       BlobTransferUtils.BlobTransferTableFormat tableFormat,
+      AggBlobTransferStats aggBlobTransferStats,
       ExecutorService checksumValidationExecutorService) {
     this.inputStreamFuture = inputStreamFuture;
     this.payload = new BlobTransferPayload(baseDir, storeName, version, partition, tableFormat);
+    this.storeName = storeName;
+    this.version = version;
     this.replicaId = Utils.getReplicaId(payload.getTopicName(), payload.getPartition());
     this.checksumValidationExecutorService = checksumValidationExecutorService;
+    this.aggBlobTransferStats = aggBlobTransferStats;
     this.replicaTransferStartTime = System.currentTimeMillis();
   }
 
@@ -171,6 +179,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
           count += transferred;
         }
       }
+      aggBlobTransferStats.recordBlobTransferBytesReceived(storeName, version, totalBytesToTransfer);
 
       if (content instanceof DefaultLastHttpContent) {
         // End of a single file transfer

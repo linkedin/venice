@@ -52,7 +52,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -98,6 +97,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.LongBinaryOperator;
 import org.apache.avro.Schema;
@@ -120,7 +120,7 @@ import org.testng.annotations.Test;
 public abstract class TestBatch {
   private static final Logger LOGGER = LogManager.getLogger(TestBatch.class);
   protected static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
-  private static final int MAX_RETRY_ATTEMPTS = 3;
+  private static final int STORE_VERSION_AVAILABILITY_TIMEOUT_SEC = 30;
   protected static final int LARGE_VALUE_SIZE = 3 * BYTES_PER_MB; // 3 MB apiece
   protected static final String BASE_DATA_PATH_1 = Utils.getTempDataDirectory().getAbsolutePath();
   protected static final String BASE_DATA_PATH_2 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -1094,22 +1094,20 @@ public abstract class TestBatch {
         Utf8 expectedUtf8 = new Utf8(expectedString);
 
         LOGGER.info("About to query key: {}", i);
-        // This call often fails due to a race condition where the store is not perceived to exist yet
-        Utf8 returnedUtf8Value = null;
-        Integer attempts = 0;
-        while (attempts < MAX_RETRY_ATTEMPTS) {
-          try {
-            returnedUtf8Value = (Utf8) avroClient.get(key).get();
-            break;
-          } catch (VeniceClientException e) {
-            attempts++;
-            if (attempts == MAX_RETRY_ATTEMPTS) {
-              throw e;
-            }
-            // Give it a sec
-            Thread.sleep(1000);
-          }
-        }
+        // This call may fail due to a race condition where the store version is not available yet
+        AtomicReference<Utf8> returnedUtf8ValueRef = new AtomicReference<>();
+        TestUtils.waitForNonDeterministicAssertion(
+            STORE_VERSION_AVAILABILITY_TIMEOUT_SEC,
+            TimeUnit.SECONDS,
+            true, // exponentialBackOff
+            () -> {
+              try {
+                returnedUtf8ValueRef.set((Utf8) avroClient.get(key).get());
+              } catch (Exception e) {
+                throw new AssertionError("Failed to get value for key: " + key, e);
+              }
+            });
+        Utf8 returnedUtf8Value = returnedUtf8ValueRef.get();
 
         Assert.assertNotNull(returnedUtf8Value, "Avro client returned null value for key: " + key + ".");
         LOGGER.info("Received value of size: {} for key: {}", returnedUtf8Value.length(), key);

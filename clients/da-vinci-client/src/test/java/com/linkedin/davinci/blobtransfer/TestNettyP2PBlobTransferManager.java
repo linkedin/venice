@@ -15,6 +15,7 @@ import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.blobtransfer.server.P2PBlobTransferService;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -72,7 +73,8 @@ public class TestNettyP2PBlobTransferManager {
   NettyP2PBlobTransferManager manager;
   StorageMetadataService storageMetadataService;
   BlobSnapshotManager blobSnapshotManager;
-  AggVersionedBlobTransferStats blobTransferStats;
+  AggBlobTransferStats blobTransferStats;
+  AggVersionedBlobTransferStats versionedBlobTransferStats;
   Path tmpSnapshotDir;
   Path tmpPartitionDir;
   String TEST_STORE = "test_store";
@@ -100,7 +102,8 @@ public class TestNettyP2PBlobTransferManager {
     // intentionally use different directories for snapshot and partition so that we can verify the file transfer
     storageMetadataService = mock(StorageMetadataService.class);
 
-    blobTransferStats = mock(AggVersionedBlobTransferStats.class);
+    blobTransferStats = mock(AggBlobTransferStats.class);
+    versionedBlobTransferStats = mock(AggVersionedBlobTransferStats.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler =
         getGlobalChannelTrafficShapingHandlerInstance(2000000, 2000000);
@@ -132,6 +135,7 @@ public class TestNettyP2PBlobTransferManager {
         blobTransferMaxTimeoutInMin,
         blobSnapshotManager,
         globalChannelTrafficShapingHandler,
+        blobTransferStats,
         sslFactory,
         aclHandler,
         20);
@@ -144,11 +148,17 @@ public class TestNettyP2PBlobTransferManager {
             60,
             blobTransferMaxTimeoutInMin,
             globalChannelTrafficShapingHandler,
+            blobTransferStats,
             sslFactory,
             () -> notifier));
     finder = mock(BlobFinder.class);
-
-    manager = new NettyP2PBlobTransferManager(server, client, finder, tmpPartitionDir.toString(), blobTransferStats, 5);
+    manager = new NettyP2PBlobTransferManager(
+        server,
+        client,
+        finder,
+        tmpPartitionDir.toString(),
+        versionedBlobTransferStats,
+        5);
     manager.start();
   }
 
@@ -507,6 +517,7 @@ public class TestNettyP2PBlobTransferManager {
             0, // general transfer timeout immediately
             10,
             newGlobalChannelTrafficShapingHandler,
+            blobTransferStats,
             sslFactory,
             null));
 
@@ -516,12 +527,18 @@ public class TestNettyP2PBlobTransferManager {
         20,
         blobSnapshotManager,
         newGlobalChannelTrafficShapingHandler,
+        blobTransferStats,
         sslFactory,
         aclHandler,
         20);
 
-    NettyP2PBlobTransferManager newManager =
-        new NettyP2PBlobTransferManager(newServer, newClient, finder, tmpPartitionDir.toString(), blobTransferStats, 5);
+    NettyP2PBlobTransferManager newManager = new NettyP2PBlobTransferManager(
+        newServer,
+        newClient,
+        finder,
+        tmpPartitionDir.toString(),
+        versionedBlobTransferStats,
+        5);
     newManager.start();
 
     // Action
