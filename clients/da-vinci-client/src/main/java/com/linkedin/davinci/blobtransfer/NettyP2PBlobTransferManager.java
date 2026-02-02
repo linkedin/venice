@@ -47,6 +47,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       "Replica: %s are not found any peers for the requested blob.";
   private static final String NO_VALID_PEERS_MSG_FORMAT =
       "Replica %s failed to connect to any peer, after trying all possible hosts.";
+  private static final String TRANSFER_CANCELLED_MSG_FORMAT =
+      "Transfer for replica %s was canceled while in progress, aborting the entire partition-level transfer.";
   private static final String FETCHED_BLOB_SUCCESS_MSG =
       "Replica {} successfully fetched blob from peer {} in {} seconds";
   private static final String PEER_CONNECTION_EXCEPTION_MSG =
@@ -67,7 +69,6 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   // Each replica issues exactly one blob-transfer request at a time.
   // That request tries a chain of peers (one host after another until success or all peers fail).
   private final ExecutorService replicaBlobFetchExecutor;
-
   // Cancellation manager is responsible for coordinating blob transfer cancellations
   private final BlobTransferStatusTrackingManager statusTrackingManager;
 
@@ -238,18 +239,13 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       }, replicaBlobFetchExecutor);
     }
 
-    // After all hosts have been tried:
-    // - If cancellation was requested: complete with VeniceBlobTransferCancelledException
-    // - Otherwise if all failed: complete with VenicePeersAllFailedException
+    // error case 2: all hosts have been tried and failed for blob transfer
     chainOfPeersFuture.thenRun(() -> {
       if (!perPartitionTransferFuture.isDone()) {
         if (statusTrackingManager.isBlobTransferCancelled(replicaId)) {
-          String errorMsg = String.format(
-              "Blob transfer cancellation was requested for replica %s while blob transfer was in progress. Aborting transfer. "
-                  + "The entire chain of peer attempts was terminated.",
-              replicaId);
-          perPartitionTransferFuture.completeExceptionally(new VeniceBlobTransferCancelledException(errorMsg));
-          LOGGER.info(errorMsg);
+          // Receive cancellation request, skip Kafka bootstrapping
+          perPartitionTransferFuture.completeExceptionally(
+              new VeniceBlobTransferCancelledException(String.format(TRANSFER_CANCELLED_MSG_FORMAT, replicaId)));
         } else {
           // All hosts failed, fall back to Kafka bootstrapping
           perPartitionTransferFuture.completeExceptionally(

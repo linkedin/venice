@@ -46,11 +46,13 @@ public class BlobTransferStatusTrackingManager {
   /**
    * Register a blob transfer for tracking. This should be called when a new blob transfer starts.
    *
+   * NOTE: We do NOT remove cancellation flags here because we need to check it after transfer completes
+   * to prevent the race where: transfer completes -> cancellation request arrives -> consumption starts
+   * The cancellation boolean flag will be cleaned up later when new consumption starts or cancellation completes
    * @param replicaId the replica ID (format: storeName_vVersion-partition)
    * @param perPartitionTransferFuture the CompletableFuture representing the transfer operation
    */
   public void registerTransfer(String replicaId, CompletableFuture<InputStream> perPartitionTransferFuture) {
-
     // Initialize the partition level transfer future
     partitionLevelTransferStatus.put(replicaId, perPartitionTransferFuture);
 
@@ -58,9 +60,6 @@ public class BlobTransferStatusTrackingManager {
     partitionLevelCancellationFlag.put(replicaId, new AtomicBoolean(false));
 
     // Remove from tracking when complete
-    // NOTE: We do NOT remove cancellation flags here because we need to check it after transfer completes
-    // to prevent the race where: transfer completes -> cancellation request arrives -> consumption starts
-    // The cancellation boolean flag will be cleaned up later when new consumption starts or cancellation completes
     perPartitionTransferFuture.whenComplete((result, throwable) -> {
       partitionLevelTransferStatus.remove(replicaId);
     });
@@ -71,7 +70,7 @@ public class BlobTransferStatusTrackingManager {
    * This method performs the following steps:
    * - Sets the cancellation request flag to stop new peer attempts in the chain
    * - Closes the active channel to abort data transfer
-   * - Waits for the transfer future to complete (with timeout)
+   * - Waits for the transfer future to complete with timeout
    *
    * @param replicaId the replica ID (format: storeName_vVersion-partition)
    * @param timeoutInSeconds maximum time to wait for cancellation to complete
@@ -87,7 +86,7 @@ public class BlobTransferStatusTrackingManager {
     cancellationFlag.set(true);
     LOGGER.info("Set cancellation flag for replica {}", replicaId);
 
-    // Step 2: Close active channel to abort ongoing data transfer (saves bandwidth)
+    // Step 2: Close active channel to abort ongoing data transfer
     Channel currentChannel = nettyClient.getActiveChannel(replicaId);
     if (currentChannel != null && currentChannel.isActive()) {
       LOGGER.info("Closing active channel for replica {} to abort data transfer", replicaId);
@@ -119,7 +118,7 @@ public class BlobTransferStatusTrackingManager {
           LOGGER.info("Transfer completed with exception for replica {}: {}", replicaId, e.getCause().getMessage());
         }
       }
-      // After waiting for transfer to complete, keep flag set for bootstrap callback to check
+      // After waiting for transfer to complete, keep flag set for startConsumption#bootstrapFuture callback to check
     } else {
       // No ongoing transfer - either never started or already completed
       // Fast cleanup: Clear the flag immediately to make partition drops complete quickly

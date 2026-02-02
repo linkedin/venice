@@ -413,9 +413,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       ingestionBackend.cancelBlobTransferIfInProgress(storeAndServerConfigs, partition, 180);
     } catch (Exception e) {
       logger.warn(
-          "Exception while canceling blob transfer for resource: {}, partition: {}. Proceeding with state transition.",
-          storeAndServerConfigs.getStoreVersionName(),
-          partition,
+          "Exception while canceling blob transfer for replica: {}. Proceeding with state transition.",
+          Utils.getReplicaId(storeAndServerConfigs.getStoreVersionName(), partition),
           e);
     }
   }

@@ -469,15 +469,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
     return getStoreIngestionService().stopConsumption(storeConfig, partition);
   }
 
-  /**
-   * Set cancellation flag while holding the lock
-   * This ensures that:
-   * - If bootstrapFromBlobTransfer hasn't started yet, it will see the flag and skip consumption
-   * - If bootstrapFromBlobTransfer is running, it holds the lock, so we wait for it to complete
-   * @param storeConfig Store version config
-   * @param partition Partition number to cancel blob transfer for
-   * @param timeoutInSeconds Number of seconds to wait before timeout
-   */
   @Override
   public void cancelBlobTransferIfInProgress(
       VeniceStoreVersionConfig storeConfig,
