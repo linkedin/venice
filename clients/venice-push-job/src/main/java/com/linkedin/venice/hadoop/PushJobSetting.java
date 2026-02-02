@@ -159,6 +159,9 @@ public class PushJobSetting implements Serializable {
   public CompressionStrategy sourceVersionCompressionStrategy;
   public boolean sourceVersionChunkingEnabled;
 
+  public byte[] sourceDictionary;
+  public byte[] topicDictionary;
+
   public PushJobSetting() {
     // Default for preserving backward compatibility
     this.jobStartTimeMs = System.currentTimeMillis();

@@ -799,13 +799,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   @Override
   public synchronized void drop() {
     close();
-    try {
-      Options storeOptions = getStoreOptions(new StoragePartitionConfig(storeNameAndVersion, partitionId), false);
-      RocksDB.destroyDB(fullPathForPartitionDB, storeOptions);
-      storeOptions.close();
-    } catch (RocksDBException e) {
-      LOGGER.error("Failed to destroy DB for replica: {}", replicaId);
-    }
     /**
      * To avoid resource leaking, we will clean up all the database files anyway.
      */
@@ -813,6 +806,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     deleteFilesInDirectory(fullPathForTempSSTFileDir);
     // remove snapshots files
     deleteFilesInDirectory(fullPathForPartitionDBSnapshot);
+    try {
+      Options storeOptions = getStoreOptions(new StoragePartitionConfig(storeNameAndVersion, partitionId), false);
+      RocksDB.destroyDB(fullPathForPartitionDB, storeOptions);
+      storeOptions.close();
+    } catch (RocksDBException e) {
+      LOGGER.error("Failed to destroy DB for replica: {}", replicaId);
+    }
     // Remove partition directory
     deleteDirectory(fullPathForPartitionDB);
     LOGGER.info("RocksDB for replica:{} was dropped.", replicaId);

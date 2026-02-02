@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
+import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -126,5 +127,79 @@ public class LeaderProducerCallbackTest {
     verify(storeIngestionTask, times(10))
         .produceToStoreBufferService(any(), any(), anyInt(), anyString(), anyLong(), anyLong());
 
+  }
+
+  @Test
+  public void testHighProducerCompletionLatencyWarning() throws Exception {
+    LeaderFollowerStoreIngestionTask ingestionTaskMock = mock(LeaderFollowerStoreIngestionTask.class);
+    DefaultPubSubMessage sourceConsumerRecordMock = mock(DefaultPubSubMessage.class);
+    PartitionConsumptionState partitionConsumptionStateMock = mock(PartitionConsumptionState.class);
+    LeaderProducedRecordContext leaderProducedRecordContextMock = mock(LeaderProducedRecordContext.class);
+    AggVersionedIngestionStats versionedIngestionStatsMock = mock(AggVersionedIngestionStats.class);
+    com.linkedin.venice.pubsub.api.PubSubProduceResult produceResultMock =
+        mock(com.linkedin.venice.pubsub.api.PubSubProduceResult.class);
+    com.linkedin.venice.pubsub.api.PubSubTopicPartition topicPartitionMock =
+        mock(com.linkedin.venice.pubsub.api.PubSubTopicPartition.class);
+    com.linkedin.venice.pubsub.api.PubSubTopic pubSubTopicMock = mock(com.linkedin.venice.pubsub.api.PubSubTopic.class);
+    String storeName = Utils.getUniqueString("test-store");
+    String replicaId = "test_store_v1_0";
+
+    when(ingestionTaskMock.getStoreName()).thenReturn(storeName);
+    when(ingestionTaskMock.isUserSystemStore()).thenReturn(false);
+    when(ingestionTaskMock.getVersionIngestionStats()).thenReturn(versionedIngestionStatsMock);
+    when(partitionConsumptionStateMock.getReplicaId()).thenReturn(replicaId);
+    when(partitionConsumptionStateMock.isEndOfPushReceived()).thenReturn(false);
+    when(sourceConsumerRecordMock.getTopicPartition()).thenReturn(topicPartitionMock);
+    when(topicPartitionMock.getPubSubTopic()).thenReturn(pubSubTopicMock);
+    when(pubSubTopicMock.isRealTime()).thenReturn(false);
+    when(produceResultMock.getSerializedSize()).thenReturn(100);
+    when(produceResultMock.getPubSubPosition()).thenReturn(mock(com.linkedin.venice.pubsub.api.PubSubPosition.class));
+    doReturn(mock(com.linkedin.venice.pubsub.api.PubSubPosition.class)).when(leaderProducedRecordContextMock)
+        .getConsumedPosition();
+
+    InMemoryLogAppender inMemoryLogAppender = new InMemoryLogAppender.Builder().build();
+    inMemoryLogAppender.start();
+    LoggerContext ctx = ((LoggerContext) LogManager.getContext(false));
+    Configuration config = ctx.getConfiguration();
+
+    try {
+      config.addLoggerAppender(
+          (org.apache.logging.log4j.core.Logger) LogManager.getLogger(LeaderProducerCallback.class),
+          inMemoryLogAppender);
+
+      LeaderProducerCallback leaderProducerCallback = new LeaderProducerCallback(
+          ingestionTaskMock,
+          sourceConsumerRecordMock,
+          partitionConsumptionStateMock,
+          leaderProducedRecordContextMock,
+          0,
+          "kafka-url",
+          0);
+
+      // Use reflection to set produceTimeNs to simulate high latency (>30 seconds ago)
+      java.lang.reflect.Field produceTimeField = LeaderProducerCallback.class.getDeclaredField("produceTimeNs");
+      produceTimeField.setAccessible(true);
+      long thirtyFiveSecondsAgoInNs = System.nanoTime() - (35_000L * 1_000_000L); // 35 seconds in nanoseconds
+      produceTimeField.set(leaderProducerCallback, thirtyFiveSecondsAgoInNs);
+
+      // Call onCompletion with success (null exception)
+      leaderProducerCallback.onCompletion(produceResultMock, null);
+
+      // Verify warning log was generated
+      List<String> logs = inMemoryLogAppender.getLogs();
+      long matchedLogs = logs.stream()
+          .filter(log -> log.contains("High leader producer completion latency detected"))
+          .filter(log -> log.contains(replicaId))
+          .filter(log -> log.contains("threshold: 30000.0 ms"))
+          .count();
+      assertEquals(matchedLogs, 1L, "Expected exactly one warning log for high producer latency");
+    } finally {
+      LoggerConfig loggerConfig = config.getLoggerConfig(LeaderProducerCallback.class.getName());
+      if (loggerConfig.getName().equals(LeaderProducerCallback.class.getCanonicalName())) {
+        loggerConfig.removeAppender(inMemoryLogAppender.getName());
+      }
+      ctx.updateLoggers();
+      inMemoryLogAppender.stop();
+    }
   }
 }

@@ -6,6 +6,7 @@ import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -115,5 +116,53 @@ public class RocksDBStorageEngineFactoryTest {
     storeEngine.addStoragePartitionIfAbsent(1);
 
     factory.removeStorageEngine(storeEngine);
+  }
+
+  @Test
+  public void testSstFileManagerWithDefaultConfig() {
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    Assert.assertNotNull(factory.getSstFileManager(), "SstFileManager should be created");
+
+    factory.close();
+  }
+
+  @Test
+  public void testSstFileManagerWithDeletionRateLimiting() {
+    long deletionRate = 64L * 1024 * 1024; // 64 MB/s
+
+    VeniceProperties veniceServerProperties = new PropertyBuilder()
+        .put(AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB).toProperties())
+        .put(RocksDBServerConfig.ROCKSDB_SST_FILE_MANAGER_DELETE_RATE_BYTES_PER_SECOND, String.valueOf(deletionRate))
+        .build();
+
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    Assert.assertNotNull(factory.getSstFileManager(), "SstFileManager should be created");
+
+    final String testStore = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    VeniceStoreVersionConfig testStoreConfig =
+        new VeniceStoreVersionConfig(testStore, veniceServerProperties, PersistenceType.ROCKS_DB);
+    StorageEngine storeEngine = factory.getStorageEngine(testStoreConfig);
+    Assert.assertNotNull(storeEngine, "Storage engine should be created successfully");
+    factory.removeStorageEngine(storeEngine);
+    factory.close();
+  }
+
+  @Test
+  public void testSstFileManagerWithMaxTrashDBRatio() {
+    double maxTrashRatio = 0.5;
+
+    VeniceProperties veniceServerProperties = new PropertyBuilder()
+        .put(AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB).toProperties())
+        .put(RocksDBServerConfig.ROCKSDB_SST_FILE_MANAGER_MAX_TRASH_DB_RATIO, String.valueOf(maxTrashRatio))
+        .build();
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    Assert.assertNotNull(factory.getSstFileManager(), "SstFileManager should be created");
+
+    factory.close();
   }
 }

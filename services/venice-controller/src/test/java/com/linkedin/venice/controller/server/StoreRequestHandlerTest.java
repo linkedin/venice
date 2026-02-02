@@ -11,6 +11,12 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
@@ -18,8 +24,13 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
+import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -170,5 +181,248 @@ public class StoreRequestHandlerTest {
     Exception e =
         expectThrows(RuntimeException.class, () -> storeRequestHandler.checkResourceCleanupForStoreCreation(request));
     assertEquals(e.getMessage(), "Lingering resources found");
+  }
+
+  @Test
+  public void testListStoresSuccess() {
+    ListStoresGrpcRequest request =
+        ListStoresGrpcRequest.newBuilder().setClusterName("testCluster").setIncludeSystemStores(true).build();
+
+    Store store1 = mock(Store.class);
+    when(store1.getName()).thenReturn("store1");
+    when(store1.isSystemStore()).thenReturn(false);
+
+    Store store2 = mock(Store.class);
+    when(store2.getName()).thenReturn("store2");
+    when(store2.isSystemStore()).thenReturn(false);
+
+    List<Store> stores = Arrays.asList(store1, store2);
+    when(admin.getAllStores("testCluster")).thenReturn(stores);
+
+    ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
+
+    verify(admin, times(1)).getAllStores("testCluster");
+    assertEquals(response.getClusterName(), "testCluster");
+    assertEquals(response.getStoreNamesCount(), 2);
+    assertTrue(response.getStoreNamesList().contains("store1"));
+    assertTrue(response.getStoreNamesList().contains("store2"));
+  }
+
+  @Test
+  public void testListStoresWithoutSystemStores() {
+    ListStoresGrpcRequest request =
+        ListStoresGrpcRequest.newBuilder().setClusterName("testCluster").setIncludeSystemStores(false).build();
+
+    Store regularStore = mock(Store.class);
+    when(regularStore.getName()).thenReturn("regularStore");
+    when(regularStore.isSystemStore()).thenReturn(false);
+
+    Store systemStore = mock(Store.class);
+    when(systemStore.getName()).thenReturn("systemStore");
+    when(systemStore.isSystemStore()).thenReturn(true);
+
+    List<Store> stores = Arrays.asList(regularStore, systemStore);
+    when(admin.getAllStores("testCluster")).thenReturn(stores);
+
+    ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
+
+    assertEquals(response.getStoreNamesCount(), 1);
+    assertTrue(response.getStoreNamesList().contains("regularStore"));
+    assertTrue(!response.getStoreNamesList().contains("systemStore"));
+  }
+
+  @Test
+  public void testListStoresEmptyList() {
+    ListStoresGrpcRequest request = ListStoresGrpcRequest.newBuilder().setClusterName("testCluster").build();
+
+    when(admin.getAllStores("testCluster")).thenReturn(Collections.emptyList());
+
+    ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
+
+    assertEquals(response.getStoreNamesCount(), 0);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
+  public void testListStoresMissingClusterName() {
+    ListStoresGrpcRequest request = ListStoresGrpcRequest.newBuilder().build();
+    storeRequestHandler.listStores(request);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Missing parameter: store_config_value_filter")
+  public void testListStoresWithOnlyConfigNameFilter() {
+    ListStoresGrpcRequest request = ListStoresGrpcRequest.newBuilder()
+        .setClusterName("testCluster")
+        .setStoreConfigNameFilter("hybridStoreConfig")
+        .build();
+
+    when(admin.getAllStores("testCluster")).thenReturn(Collections.emptyList());
+
+    storeRequestHandler.listStores(request);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Missing parameter: store_config_name_filter")
+  public void testListStoresWithOnlyConfigValueFilter() {
+    ListStoresGrpcRequest request =
+        ListStoresGrpcRequest.newBuilder().setClusterName("testCluster").setStoreConfigValueFilter("someValue").build();
+
+    when(admin.getAllStores("testCluster")).thenReturn(Collections.emptyList());
+
+    storeRequestHandler.listStores(request);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*is not a valid store config.*")
+  public void testListStoresWithInvalidConfigNameFilter() {
+    ListStoresGrpcRequest request = ListStoresGrpcRequest.newBuilder()
+        .setClusterName("testCluster")
+        .setStoreConfigNameFilter("invalidConfigName")
+        .setStoreConfigValueFilter("someValue")
+        .build();
+
+    when(admin.getAllStores("testCluster")).thenReturn(Collections.emptyList());
+
+    storeRequestHandler.listStores(request);
+  }
+
+  @Test
+  public void testListStoresWithDataReplicationPolicyFilter() {
+    ListStoresGrpcRequest request = ListStoresGrpcRequest.newBuilder()
+        .setClusterName("testCluster")
+        .setStoreConfigNameFilter("dataReplicationPolicy")
+        .setStoreConfigValueFilter("ACTIVE_ACTIVE")
+        .build();
+
+    Store hybridStore = mock(Store.class);
+    when(hybridStore.getName()).thenReturn("hybridStore");
+    when(hybridStore.isSystemStore()).thenReturn(false);
+    when(hybridStore.isHybrid()).thenReturn(true);
+    HybridStoreConfig hybridConfig = mock(HybridStoreConfig.class);
+    when(hybridConfig.getDataReplicationPolicy()).thenReturn(DataReplicationPolicy.ACTIVE_ACTIVE);
+    when(hybridStore.getHybridStoreConfig()).thenReturn(hybridConfig);
+
+    Store nonHybridStore = mock(Store.class);
+    when(nonHybridStore.getName()).thenReturn("nonHybridStore");
+    when(nonHybridStore.isSystemStore()).thenReturn(false);
+    when(nonHybridStore.isHybrid()).thenReturn(false);
+
+    List<Store> stores = Arrays.asList(hybridStore, nonHybridStore);
+    when(admin.getAllStores("testCluster")).thenReturn(stores);
+
+    ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
+
+    assertEquals(response.getStoreNamesCount(), 1);
+    assertTrue(response.getStoreNamesList().contains("hybridStore"));
+  }
+
+  @Test
+  public void testListStoresWithDataReplicationPolicyFilterNoMatch() {
+    ListStoresGrpcRequest request = ListStoresGrpcRequest.newBuilder()
+        .setClusterName("testCluster")
+        .setStoreConfigNameFilter("dataReplicationPolicy")
+        .setStoreConfigValueFilter("NON_AGGREGATE")
+        .build();
+
+    Store hybridStore = mock(Store.class);
+    when(hybridStore.getName()).thenReturn("hybridStore");
+    when(hybridStore.isSystemStore()).thenReturn(false);
+    when(hybridStore.isHybrid()).thenReturn(true);
+    HybridStoreConfig hybridConfig = mock(HybridStoreConfig.class);
+    when(hybridConfig.getDataReplicationPolicy()).thenReturn(DataReplicationPolicy.ACTIVE_ACTIVE);
+    when(hybridStore.getHybridStoreConfig()).thenReturn(hybridConfig);
+
+    List<Store> stores = Arrays.asList(hybridStore);
+    when(admin.getAllStores("testCluster")).thenReturn(stores);
+
+    ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
+
+    assertEquals(response.getStoreNamesCount(), 0);
+  }
+
+  @Test
+  public void testListStoresWithDataReplicationPolicyFilterNullPolicy() {
+    ListStoresGrpcRequest request = ListStoresGrpcRequest.newBuilder()
+        .setClusterName("testCluster")
+        .setStoreConfigNameFilter("dataReplicationPolicy")
+        .setStoreConfigValueFilter("ACTIVE_ACTIVE")
+        .build();
+
+    Store hybridStore = mock(Store.class);
+    when(hybridStore.getName()).thenReturn("hybridStore");
+    when(hybridStore.isSystemStore()).thenReturn(false);
+    when(hybridStore.isHybrid()).thenReturn(true);
+    HybridStoreConfig hybridConfig = mock(HybridStoreConfig.class);
+    when(hybridConfig.getDataReplicationPolicy()).thenReturn(null);
+    when(hybridStore.getHybridStoreConfig()).thenReturn(hybridConfig);
+
+    List<Store> stores = Arrays.asList(hybridStore);
+    when(admin.getAllStores("testCluster")).thenReturn(stores);
+
+    ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
+
+    assertEquals(response.getStoreNamesCount(), 0);
+  }
+
+  @Test
+  public void testGetStoreSuccess() {
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn("testStore");
+    when(mockStore.getOwner()).thenReturn("testOwner");
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.getVersions()).thenReturn(Collections.emptyList());
+    when(mockStore.getBackupVersionRetentionMs()).thenReturn(1000L);
+    when(mockStore.getMaxRecordSizeBytes()).thenReturn(1024);
+    when(admin.getStore("testCluster", "testStore")).thenReturn(mockStore);
+    when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(2000L);
+    when(admin.getDefaultMaxRecordSizeBytes()).thenReturn(2048);
+    when(admin.getCurrentVersionsForMultiColos("testCluster", "testStore")).thenReturn(Collections.emptyMap());
+    when(admin.isSSLEnabledForPush("testCluster", "testStore")).thenReturn(false);
+    when(admin.getKafkaBootstrapServers(false)).thenReturn("localhost:9092");
+
+    StoreInfo response = storeRequestHandler.getStore("testCluster", "testStore");
+
+    verify(admin, times(1)).getStore("testCluster", "testStore");
+    assertEquals(response.getName(), "testStore");
+  }
+
+  @Test
+  public void testGetStoreNotFound() {
+    when(admin.getStore("testCluster", "nonExistent")).thenReturn(null);
+
+    VeniceNoStoreException e =
+        expectThrows(VeniceNoStoreException.class, () -> storeRequestHandler.getStore("testCluster", "nonExistent"));
+    assertTrue(e.getMessage().contains("nonExistent"));
+  }
+
+  @Test
+  public void testGetStoreWithDefaultRetentionMs() {
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn("testStore");
+    when(mockStore.getOwner()).thenReturn("testOwner");
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+    when(mockStore.getVersions()).thenReturn(Collections.emptyList());
+    when(mockStore.getBackupVersionRetentionMs()).thenReturn(-1L);
+    when(mockStore.getMaxRecordSizeBytes()).thenReturn(-1);
+    when(admin.getStore("testCluster", "testStore")).thenReturn(mockStore);
+    when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(86400000L);
+    when(admin.getDefaultMaxRecordSizeBytes()).thenReturn(1048576);
+    when(admin.getCurrentVersionsForMultiColos("testCluster", "testStore")).thenReturn(Collections.emptyMap());
+    when(admin.isSSLEnabledForPush("testCluster", "testStore")).thenReturn(true);
+    when(admin.getKafkaBootstrapServers(true)).thenReturn("localhost:9093");
+
+    StoreInfo response = storeRequestHandler.getStore("testCluster", "testStore");
+
+    verify(admin, times(1)).getBackupVersionDefaultRetentionMs();
+    verify(admin, times(1)).getDefaultMaxRecordSizeBytes();
+    assertEquals(response.getBackupVersionRetentionMs(), 86400000L);
+    assertEquals(response.getMaxRecordSizeBytes(), 1048576);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
+  public void testGetStoreMissingClusterName() {
+    storeRequestHandler.getStore("", "testStore");
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Store name is required")
+  public void testGetStoreMissingStoreName() {
+    storeRequestHandler.getStore("testCluster", "");
   }
 }

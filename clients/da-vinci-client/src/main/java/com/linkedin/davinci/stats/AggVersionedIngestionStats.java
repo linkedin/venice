@@ -369,24 +369,6 @@ public class AggVersionedIngestionStats
         value);
   }
 
-  public void recordNearlineLocalBrokerToReadyToServeLatency(
-      String storeName,
-      int version,
-      double value,
-      long timestamp) {
-    // Tehuti metrics
-    recordVersionedAndTotalStat(
-        storeName,
-        version,
-        stat -> stat.recordNearlineLocalBrokerToReadyToServeLatency(value, timestamp));
-    // OTel metrics - local broker to follower consumer
-    getIngestionOtelStats(storeName).recordTimeBetweenComponents(
-        version,
-        VeniceIngestionComponent.LOCAL_BROKER,
-        VeniceDestinationIngestionComponent.FOLLOWER_CONSUMER,
-        value);
-  }
-
   public void recordMaxIdleTime(String storeName, int version, long idleTimeMs) {
     // Tehuti metrics
     getStats(storeName, version).recordIdleTime(idleTimeMs);
