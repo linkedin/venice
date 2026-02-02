@@ -192,6 +192,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
       Supplier<StoreVersionState> svsSupplier) {
     String storeName = store.getName();
     String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
+    String replicaId = Utils.getReplicaId(kafkaTopic, partitionId);
 
     // Open store for lag check and later metadata update for offset/StoreVersionState
     // If the offset lag is below the blobTransferDisabledOffsetLagThreshold, it indicates there is not lagging and
@@ -204,14 +205,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
         blobTransferDisabledOffsetLagThreshold,
         blobTransferDisabledTimeLagThresholdInMinutes,
         store.isHybrid())) {
-      LOGGER.info(
-          "Replica: {} is not lagged, will consume from PubSub directly",
-          Utils.getReplicaId(Version.composeKafkaTopic(storeName, versionNumber), partitionId));
+      LOGGER.info("Replica: {} is not lagged, will consume from PubSub directly", replicaId);
       return CompletableFuture.completedFuture(null);
     } else {
-      LOGGER.info(
-          "Replica: {} is lagged, will try to bootstrap via blob transfer",
-          Utils.getReplicaId(Version.composeKafkaTopic(storeName, versionNumber), partitionId));
+      LOGGER.info("Replica: {} is lagged, will try to bootstrap via blob transfer", replicaId);
     }
 
     // After decide to bootstrap from blobs transfer, close the partition, clean up the offset and partition folder,
@@ -247,12 +244,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
       if (throwable != null) {
         LOGGER.error(
-            "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}, falling back to kafka ingestion.",
-            partitionId,
-            storeName,
+            "Failed to bootstrap replica {} from blobs transfer with exception {}, falling back to kafka ingestion.",
+            replicaId,
             throwable);
       } else {
-        LOGGER.info("Successfully bootstrapped partition {} from blobs transfer for store {}", partitionId, storeName);
+        LOGGER.info("Successfully bootstrapped replica {} from blobs transfer", replicaId);
       }
 
       // Post-transfer validation and cleanup
@@ -506,15 +502,13 @@ public class DefaultIngestionBackend implements IngestionBackend {
       }
     } catch (TimeoutException e) {
       LOGGER.warn(
-          "Timeout waiting for blob transfer cancellation for store {} partition {} after {} seconds during OFFLINE transition. Proceeding with state transition.",
-          storeVersion,
-          partition,
+          "Timeout waiting for blob transfer cancellation for replica {} after {} seconds during OFFLINE transition. Proceeding with state transition.",
+          replicaId,
           timeoutInSeconds);
     } catch (Exception e) {
       LOGGER.warn(
-          "Exception while canceling blob transfer for store {} partition {} during OFFLINE transition. Proceeding with state transition.",
-          storeVersion,
-          partition,
+          "Exception while canceling blob transfer for replica {} during OFFLINE transition. Proceeding with state transition.",
+          replicaId,
           e);
     }
   }
