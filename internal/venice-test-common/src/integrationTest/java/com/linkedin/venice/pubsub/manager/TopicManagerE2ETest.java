@@ -16,6 +16,7 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
@@ -38,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -503,8 +505,8 @@ public class TopicManagerE2ETest {
     int replicationFactor = 1;
     long retentionTimeMs = 24 * 60 * 60 * 1000L; // 24 hours
     boolean logCompaction = false;
-    java.util.Optional<Integer> minIsr = java.util.Optional.of(1);
-    java.util.Optional<Boolean> uncleanLeaderElection = java.util.Optional.of(false);
+    Optional<Integer> minIsr = Optional.of(1);
+    Optional<Boolean> uncleanLeaderElection = Optional.of(false);
 
     // Create RT topic with unclean leader election disabled
     topicManager.createTopic(
@@ -523,7 +525,7 @@ public class TopicManagerE2ETest {
     });
 
     // Retrieve the topic configuration and verify unclean leader election is set to false
-    com.linkedin.venice.pubsub.PubSubTopicConfiguration topicConfig = topicManager.getTopicConfig(rtTopic);
+    PubSubTopicConfiguration topicConfig = topicManager.getTopicConfig(rtTopic);
     assertNotNull(topicConfig, "Topic configuration should not be null");
     assertTrue(
         topicConfig.getUncleanLeaderElectionEnable().isPresent(),
@@ -549,14 +551,14 @@ public class TopicManagerE2ETest {
         retentionTimeMs,
         logCompaction,
         minIsr,
-        java.util.Optional.of(false),
+        Optional.of(false),
         false);
 
     waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
       assertTrue(topicManager.containsTopic(rtTopic2), "Second RT topic should be created");
     });
 
-    com.linkedin.venice.pubsub.PubSubTopicConfiguration rtTopic2Config = topicManager.getTopicConfig(rtTopic2);
+    PubSubTopicConfiguration rtTopic2Config = topicManager.getTopicConfig(rtTopic2);
     assertNotNull(rtTopic2Config, "Second RT topic configuration should not be null");
     assertTrue(
         rtTopic2Config.getUncleanLeaderElectionEnable().isPresent(),
@@ -574,15 +576,14 @@ public class TopicManagerE2ETest {
         retentionTimeMs,
         logCompaction,
         minIsr,
-        java.util.Optional.of(true),
+        Optional.of(true),
         false);
 
     waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
       assertTrue(topicManager.containsTopic(rtTopicWithUncleanEnabled), "RT topic should be created");
     });
 
-    com.linkedin.venice.pubsub.PubSubTopicConfiguration rtConfigWithUncleanEnabled =
-        topicManager.getTopicConfig(rtTopicWithUncleanEnabled);
+    PubSubTopicConfiguration rtConfigWithUncleanEnabled = topicManager.getTopicConfig(rtTopicWithUncleanEnabled);
     assertTrue(
         rtConfigWithUncleanEnabled.getUncleanLeaderElectionEnable().isPresent(),
         "Unclean leader election config should be present");
