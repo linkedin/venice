@@ -6,6 +6,7 @@ import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENAB
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_UPDATE_SCHEMA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
@@ -442,15 +443,20 @@ public class VenicePushJobTest {
       Assert.assertFalse(Version.isPushIdCompliancePush(pushJob.getPushJobDetails().getPushId().toString()));
     }
 
-    // Compliance push flag takes precedence - push ID should be compliance push regardless of source
+    // Compliance push cannot be combined with TTL repush
     Properties complianceRepushProps = getRepushWithTTLProps();
     complianceRepushProps.setProperty(COMPLIANCE_PUSH, "true");
-    try (VenicePushJob pushJob = getSpyVenicePushJob(complianceRepushProps, null)) {
-      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
-      Assert.assertTrue(pushJobSetting.isCompliancePush);
-      Assert.assertTrue(pushJobSetting.isSourceKafka);
-      Assert.assertTrue(Version.isPushIdCompliancePush(pushJob.getPushJobDetails().getPushId().toString()));
-    }
+    VeniceException e =
+        Assert.expectThrows(VeniceException.class, () -> getSpyVenicePushJob(complianceRepushProps, null));
+    Assert.assertTrue(e.getMessage().contains("Compliance push cannot be combined with TTL repush settings"));
+
+    // Compliance push cannot be combined with regular push with TTL repush
+    Properties complianceRegularTTLProps = new Properties();
+    complianceRegularTTLProps.setProperty(COMPLIANCE_PUSH, "true");
+    complianceRegularTTLProps.setProperty(ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH, "true");
+    VeniceException e2 =
+        Assert.expectThrows(VeniceException.class, () -> getSpyVenicePushJob(complianceRegularTTLProps, null));
+    Assert.assertTrue(e2.getMessage().contains("Compliance push cannot be combined with TTL repush settings"));
   }
 
   @Test

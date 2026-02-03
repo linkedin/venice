@@ -3380,14 +3380,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           resources.getVeniceVersionLifecycleEventManager()
               .notifyVersionCreated(store, version, !sourceVersion.isPresent());
 
-          // Check the push job id to self-manage the ttlRepushEnabled store property.
-          if (Version.isPushIdTTLRePush(pushJobId) && !store.isTTLRepushEnabled()) {
-            store.setTTLRepushEnabled(true);
-            repository.updateStore(store);
-          } else if (Version.isPushIdRegularPushWithTTLRePush(pushJobId) && store.isTTLRepushEnabled()) {
-            store.setTTLRepushEnabled(false);
-            repository.updateStore(store);
-          }
+          updateStoreTTLRepushFlag(pushJobId, store, repository);
           if (startIngestion) {
             // We need to prepare to monitor before creating helix resource.
             startMonitorOfflinePush(
@@ -9921,5 +9914,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   AsyncStoreChangeNotifier getStoreChangeNotifier() {
     return asyncStoreChangeNotifier;
+  }
+
+  /**
+   * Self-manages the store's ttlRepushEnabled property based on push job ID prefix.
+   * - TTL repush (venice_ttl_re_push_*) sets the flag to true
+   * - Regular push with TTL repush (venice_regular_push_with_ttl_re_push_*) sets the flag to false
+   * - Other push types (including compliance push) do not affect this flag
+   */
+  static void updateStoreTTLRepushFlag(String pushJobId, Store store, ReadWriteStoreRepository repository) {
+    if (Version.isPushIdTTLRePush(pushJobId) && !store.isTTLRepushEnabled()) {
+      store.setTTLRepushEnabled(true);
+      repository.updateStore(store);
+    } else if (Version.isPushIdRegularPushWithTTLRePush(pushJobId) && store.isTTLRepushEnabled()) {
+      store.setTTLRepushEnabled(false);
+      repository.updateStore(store);
+    }
   }
 }

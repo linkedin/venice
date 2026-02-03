@@ -397,6 +397,13 @@ public class VenicePushJob implements AutoCloseable {
       throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
     }
 
+    // Compliance push and TTL repush settings are mutually exclusive because the controller uses push ID prefix
+    // to manage TTL settings. See VeniceHelixAdmin#updateStoreTTLRepushFlag for details.
+    if (pushJobSettingToReturn.isCompliancePush
+        && (pushJobSettingToReturn.repushTTLEnabled || pushJobSettingToReturn.allowRegularPushWithTTLRepush)) {
+      throw new VeniceException("Compliance push cannot be combined with TTL repush settings");
+    }
+
     pushJobSettingToReturn.repushTTLStartTimeMs = -1;
     if (pushJobSettingToReturn.repushTTLEnabled) {
       long repushTtlSeconds = props.getLong(REPUSH_TTL_SECONDS, -1);
