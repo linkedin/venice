@@ -343,6 +343,27 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     offlinePushStatusAccessor.unsubscribeChildChanges(getOfflinePushStatuesParentPath(), childListener);
   }
 
+  @Override
+  public void updatePartitionStatus(String kafkaTopic, PartitionStatus partitionStatus) {
+    if (!pushStatusExists(kafkaTopic)) {
+      LOGGER.warn("Push status does not exist for topic {}, skipping partition status update", kafkaTopic);
+      return;
+    }
+    int partitionId = partitionStatus.getPartitionId();
+    String partitionStatusPath = getPartitionStatusPath(kafkaTopic, partitionId);
+    LOGGER.info(
+        "Updating partition status for topic {} partition {} in cluster {}",
+        kafkaTopic,
+        partitionId,
+        clusterName);
+    HelixUtils.update(partitionStatusAccessor, partitionStatusPath, partitionStatus);
+    LOGGER.debug(
+        "Updated partition status for topic {} partition {} in cluster {}",
+        kafkaTopic,
+        partitionId,
+        clusterName);
+  }
+
   /**
    * Get one partition status ZNode from ZK by given topic and partition.
    */

@@ -64,7 +64,8 @@ public class LeakedPushStatusCleanUpServiceTest {
         mock(StoreCleaner.class),
         aggPushStatusCleanUpStats,
         sleepIntervalInMs,
-        allowedLingerTimeInMs)) {
+        allowedLingerTimeInMs,
+        null)) {
       cleanUpService.start();
       verify(accessor, timeout(TEST_TIMEOUT).atLeastOnce())
           .deleteOfflinePushStatusAndItsPartitionStatuses(leakedStoreVersion1);
@@ -86,7 +87,8 @@ public class LeakedPushStatusCleanUpServiceTest {
         mock(StoreCleaner.class),
         aggPushStatusCleanUpStats,
         sleepIntervalInMs,
-        allowedLingerTimeInMs)) {
+        allowedLingerTimeInMs,
+        null)) {
       cleanUpService.start();
       // Both leaked resources should be deleted.
       verify(accessor, timeout(TEST_TIMEOUT).atLeastOnce())
