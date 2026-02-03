@@ -291,6 +291,11 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   }
 
   @Override
+  public void clearTransferStatus(String replicaId) {
+    statusTrackingManager.clearTransferStatus(replicaId);
+  }
+
+  @Override
   public void clearCancellationRequest(String replicaId) {
     statusTrackingManager.clearCancellationRequest(replicaId);
   }

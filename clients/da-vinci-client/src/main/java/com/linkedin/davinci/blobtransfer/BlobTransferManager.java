@@ -91,4 +91,10 @@ public interface BlobTransferManager<T> extends AutoCloseable {
    * @param replicaId the replica ID (format: storeName_vVersion-partition)
    */
   void clearCancellationRequest(String replicaId);
+
+  /**
+   * Clear the transfer status for a replica
+   * @param replicaId
+   */
+  void clearTransferStatus(String replicaId);
 }

@@ -153,6 +153,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
         } finally {
           try {
             blobTransferManager.clearCancellationRequest(replicaId);
+            blobTransferManager.clearTransferStatus(replicaId);
           } finally {
             consumptionLock.unlock();
           }

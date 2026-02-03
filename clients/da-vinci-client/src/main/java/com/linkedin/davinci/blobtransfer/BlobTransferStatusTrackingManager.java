@@ -55,14 +55,8 @@ public class BlobTransferStatusTrackingManager {
   public void registerTransfer(String replicaId, CompletableFuture<InputStream> perPartitionTransferFuture) {
     // Initialize the partition level transfer future
     partitionLevelTransferStatus.put(replicaId, perPartitionTransferFuture);
-
     // Initialize cancellation request flag as false
     partitionLevelCancellationFlag.put(replicaId, new AtomicBoolean(false));
-
-    // Remove from tracking when complete
-    perPartitionTransferFuture.whenComplete((result, throwable) -> {
-      partitionLevelTransferStatus.remove(replicaId);
-    });
   }
 
   /**
@@ -175,6 +169,12 @@ public class BlobTransferStatusTrackingManager {
   public void clearCancellationRequest(String replicaId) {
     if (partitionLevelCancellationFlag.get(replicaId) != null) {
       partitionLevelCancellationFlag.remove(replicaId);
+    }
+  }
+
+  public void clearTransferStatus(String replicaId) {
+    if (partitionLevelTransferStatus.get(replicaId) != null) {
+      partitionLevelTransferStatus.remove(replicaId);
     }
   }
 }
