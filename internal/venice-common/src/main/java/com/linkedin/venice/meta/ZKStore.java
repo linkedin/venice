@@ -20,6 +20,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import org.apache.avro.util.Utf8;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -52,6 +54,8 @@ import org.apache.avro.util.Utf8;
  * TODO: In the future, we could consider to use avro json serialization directly to make it simpler.
  */
 public class ZKStore extends AbstractStore implements DataModelBackedStructure<StoreProperties> {
+  private static final Logger LOGGER = LogManager.getLogger(ZKStore.class);
+
   /**
    * Internal data model
    */
@@ -443,6 +447,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   public void setEnableWrites(boolean enableWrites) {
     this.storeProperties.enableWrites = enableWrites;
     if (enableWrites) {
+      LOGGER
+          .info("setEnableWrites(true) called for store {}. Will check for PUSHED versions to mark ONLINE.", getName());
       setPushedVersionsOnline();
     }
   }
@@ -1118,6 +1124,11 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     for (StoreVersion storeVersion: this.storeProperties.versions) {
       Version version = new VersionImpl(storeVersion);
       if (version.getStatus().equals(VersionStatus.PUSHED)) {
+        LOGGER.info(
+            "setPushedVersionsOnline: Changing version {} of store {} from {} to ONLINE.",
+            version.getNumber(),
+            getName(),
+            version.getStatus());
         updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
       }
     }
