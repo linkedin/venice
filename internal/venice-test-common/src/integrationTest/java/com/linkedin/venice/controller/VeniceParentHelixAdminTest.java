@@ -1565,4 +1565,164 @@ public class VeniceParentHelixAdminTest {
     return AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
   }
 
+  /**
+   * Test that verifies a bug where the superset schema ID does not update when read/write compute
+   * is disabled on a store, even if a superset schema was previously set.
+   *
+   * Bug scenario:
+   * 1. Store is created with read computation enabled
+   * 2. Multiple schemas are added, causing a superset schema to be generated (e.g., ID 4)
+   * 3. Read/write computation is disabled on the store
+   * 4. New schemas are added that would normally require a new superset schema
+   * 5. Bug: The superset schema ID remains unchanged (stays at 4 instead of updating)
+   *
+   * The root cause is in VeniceParentHelixAdmin.addValueSchema() which checks:
+   * if (store.isReadComputationEnabled() || store.isWriteComputationEnabled())
+   * before updating the superset schema. When both are disabled, the superset schema
+   * is not updated even if one was previously set.
+   */
+  @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
+  public void testSupersetSchemaNotUpdatedWhenComputeDisabled() throws IOException {
+    String storeName = Utils.getUniqueString("test_superset_compute_disabled");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+
+    // Load schemas from test resources
+    // ValueV1: f0, f1
+    // ValueV2: f0, f1, f2
+    // ValueV3: f1, f2, f3, f4
+    Schema valueSchemaV1 =
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV1.avsc"));
+    Schema valueSchemaV2 =
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV2.avsc"));
+    Schema valueSchemaV3 =
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV3.avsc"));
+
+    // Schema with a NEW field f5 that would normally trigger superset schema update
+    // Contains f2, f3, f5 - f5 is not in the current superset (f0, f1, f2, f3, f4)
+    String schemaWithNewFieldStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"namespace\" : \"example.avro\",\n"
+        + "  \"name\" : \"ValueRecordName\",\n" + "  \"fields\" : [\n"
+        + "    { \"name\" : \"f2\", \"type\" : \"int\", \"default\" : -1 },\n"
+        + "    { \"name\" : \"f3\", \"type\" : \"int\", \"default\" : -1 },\n"
+        + "    { \"name\" : \"f5\", \"type\" : \"int\", \"default\" : -1 }\n" + "  ]\n" + "}";
+    Schema schemaWithNewField = AvroCompatibilityHelper.parse(schemaWithNewFieldStr);
+
+    try (ControllerClient parentControllerClient =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {
+
+      // Step 1: Create store with first schema
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaV1.toString());
+      Assert.assertNotNull(newStoreResponse);
+      Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
+
+      // Step 2: Enable read computation to trigger superset schema generation
+      UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+      params.setReadComputationEnabled(true);
+      ControllerResponse updateStoreResponse = parentControllerClient.updateStore(storeName, params);
+      Assert.assertNotNull(updateStoreResponse);
+      Assert.assertFalse(
+          updateStoreResponse.isError(),
+          "error in updateStoreResponse: " + updateStoreResponse.getError());
+
+      // Verify initial superset schema ID is 1 (the first and only schema)
+      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      int initialSupersetSchemaId = storeResponse.getStore().getLatestSuperSetValueSchemaId();
+      Assert
+          .assertEquals(initialSupersetSchemaId, 1, "Initial superset schema ID should be 1 (the first value schema)");
+
+      // Step 3: Add schema V2 (f0, f1, f2) - this is a superset of V1 (f0, f1)
+      SchemaResponse addSchemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaV2.toString());
+      Assert.assertNotNull(addSchemaResponse);
+      Assert.assertFalse(addSchemaResponse.isError(), "error in addSchemaResponse: " + addSchemaResponse.getError());
+
+      // Verify superset schema is now V2 (since V2 is superset of V1)
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      int supersetSchemaIdAfterV2 = storeResponse.getStore().getLatestSuperSetValueSchemaId();
+      Assert.assertEquals(supersetSchemaIdAfterV2, 2, "Superset schema ID should be 2 after adding V2");
+
+      // Step 4: Add schema V3 (f1, f2, f3, f4) - this requires generating a new superset schema
+      // combining fields from V2 (f0, f1, f2) and V3 (f1, f2, f3, f4) = superset (f0, f1, f2, f3, f4)
+      addSchemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaV3.toString());
+      Assert.assertNotNull(addSchemaResponse);
+      Assert.assertFalse(addSchemaResponse.isError(), "error in addSchemaResponse: " + addSchemaResponse.getError());
+
+      // Verify a new superset schema was generated (schema ID 4)
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      int supersetSchemaIdBeforeDisable = storeResponse.getStore().getLatestSuperSetValueSchemaId();
+      Assert.assertEquals(
+          supersetSchemaIdBeforeDisable,
+          4,
+          "Superset schema ID should be 4 after adding V3 (V1=1, V2=2, V3=3, superset=4)");
+
+      // Verify the superset schema contains all fields (f0, f1, f2, f3, f4)
+      SchemaResponse supersetSchemaResponse =
+          parentControllerClient.getValueSchema(storeName, supersetSchemaIdBeforeDisable);
+      Assert.assertFalse(
+          supersetSchemaResponse.isError(),
+          "error in schemaResponse: " + supersetSchemaResponse.getError());
+      Schema supersetSchema = AvroCompatibilityHelper.parse(supersetSchemaResponse.getSchemaStr());
+      Assert.assertNotNull(supersetSchema.getField("f0"), "Superset schema should contain f0");
+      Assert.assertNotNull(supersetSchema.getField("f1"), "Superset schema should contain f1");
+      Assert.assertNotNull(supersetSchema.getField("f2"), "Superset schema should contain f2");
+      Assert.assertNotNull(supersetSchema.getField("f3"), "Superset schema should contain f3");
+      Assert.assertNotNull(supersetSchema.getField("f4"), "Superset schema should contain f4");
+
+      // Step 5: Disable read computation
+      params = new UpdateStoreQueryParams();
+      params.setReadComputationEnabled(false);
+      updateStoreResponse = parentControllerClient.updateStore(storeName, params);
+      Assert.assertNotNull(updateStoreResponse);
+      Assert.assertFalse(
+          updateStoreResponse.isError(),
+          "error in updateStoreResponse: " + updateStoreResponse.getError());
+
+      // Verify read computation is disabled
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      Assert.assertFalse(storeResponse.getStore().isReadComputationEnabled(), "Read computation should be disabled");
+
+      // Step 6: Add schema with NEW field f5 (f2, f3, f5)
+      // This schema introduces f5 which is NOT in the current superset (f0, f1, f2, f3, f4)
+      // With compute enabled, this would trigger a new superset schema containing f0-f5
+      addSchemaResponse = parentControllerClient.addValueSchema(storeName, schemaWithNewField.toString());
+      Assert.assertNotNull(addSchemaResponse);
+      Assert.assertFalse(addSchemaResponse.isError(), "error in addSchemaResponse: " + addSchemaResponse.getError());
+
+      // BUG VERIFICATION: When compute is disabled, the superset schema logic is completely bypassed.
+      // Even though we added a schema with a NEW field (f5), the superset schema is NOT updated.
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      int supersetSchemaIdAfterDisable = storeResponse.getStore().getLatestSuperSetValueSchemaId();
+
+      // The superset schema ID remains unchanged at 4 because compute is disabled.
+      // This documents the current (buggy) behavior where the superset schema is not updated
+      // even when a new field is introduced that SHOULD be added to the superset.
+      Assert.assertEquals(
+          supersetSchemaIdAfterDisable,
+          supersetSchemaIdBeforeDisable,
+          "BUG: Superset schema ID should not change when compute is disabled, "
+              + "even though a schema with NEW field f5 was added.");
+
+      // Verify the superset schema still does NOT contain f5 (proving the bug)
+      supersetSchemaResponse = parentControllerClient.getValueSchema(storeName, supersetSchemaIdAfterDisable);
+      Assert.assertFalse(
+          supersetSchemaResponse.isError(),
+          "error in schemaResponse: " + supersetSchemaResponse.getError());
+      Schema supersetSchemaAfterDisable = AvroCompatibilityHelper.parse(supersetSchemaResponse.getSchemaStr());
+      Assert.assertNull(
+          supersetSchemaAfterDisable.getField("f5"),
+          "BUG: Superset schema should NOT contain f5 because superset update was bypassed when compute is disabled");
+
+      // Verify total schema count: V1=1, V2=2, V3=3, superset=4, schemaWithNewField=5
+      MultiSchemaResponse schemaResponse = parentControllerClient.getAllValueSchema(storeName);
+      Assert.assertNotNull(schemaResponse);
+      Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
+      Assert.assertEquals(schemaResponse.getSchemas().length, 5, "There should be 5 value schemas total");
+    }
+  }
+
 }
