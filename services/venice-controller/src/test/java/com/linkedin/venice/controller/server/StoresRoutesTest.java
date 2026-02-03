@@ -29,13 +29,8 @@ import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.ReadStrategy;
-import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
@@ -311,27 +306,23 @@ public class StoresRoutesTest {
   /** Testing getStore API code paths for code coverage purposes */
   @Test
   public void testGetStore() throws Exception {
-    final Store testStore = new ZKStore(
-        TEST_STORE_NAME,
-        "owner",
-        System.currentTimeMillis(),
-        PersistenceType.IN_MEMORY,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-        1);
-
     final int testMaxRecordSizeBytesValue = 33333;
     final Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
-    doReturn(testStore).when(mockAdmin).getStore(TEST_CLUSTER, TEST_STORE_NAME);
-    doReturn(testMaxRecordSizeBytesValue).when(mockAdmin).getDefaultMaxRecordSizeBytes();
+
+    // Mock handler returning StoreInfo
+    final StoreRequestHandler mockHandler = mock(StoreRequestHandler.class);
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setName(TEST_STORE_NAME);
+    storeInfo.setOwner("owner");
+    storeInfo.setMaxRecordSizeBytes(testMaxRecordSizeBytesValue);
+    doReturn(storeInfo).when(mockHandler).getStore(TEST_CLUSTER, TEST_STORE_NAME);
 
     final Request request = mock(Request.class);
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
     doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
 
-    final StoresRoutes storesRoutes = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository);
+    final StoresRoutes storesRoutes = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockHandler);
     final StoreResponse response = ObjectMapperFactory.getInstance()
         .readValue(
             storesRoutes.getStore(mockAdmin).handle(request, mock(Response.class)).toString(),

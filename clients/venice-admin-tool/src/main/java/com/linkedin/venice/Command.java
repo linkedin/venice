@@ -197,6 +197,7 @@ public enum Command {
       new Arg[] { INCLUDE_SYSTEM_STORES }
   ), DESCRIBE_STORE("describe-store", "Get store details", new Arg[] { URL, STORE }, new Arg[] { CLUSTER }),
   DESCRIBE_STORES("describe-stores", "", new Arg[] { URL, CLUSTER }, new Arg[] { INCLUDE_SYSTEM_STORES }),
+  DISCOVER_CLUSTER("discover-cluster", "Discover which cluster a store belongs to", new Arg[] { URL, STORE }),
   DISABLE_STORE_WRITE(
       "disable-store-write", "Prevent a store from accepting new versions", new Arg[] { URL, STORE },
       new Arg[] { CLUSTER }

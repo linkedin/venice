@@ -1,10 +1,13 @@
-package com.linkedin.venice.stats;
+package com.linkedin.venice.benchmark;
 
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformHttpResponseStatusToHttpResponseStatusEnum;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.stats.LongAdderRateGauge;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -129,8 +132,7 @@ public class VeniceOpenTelemetryPerfTest {
     return new VeniceOpenTelemetryMetricsRepository(config);
   }
 
-  // Marking this as flaky as we don't want to run this test in every build.
-  @Test(groups = "flaky")
+  @Test
   public void testGeneratingAttributes() {
     // config
     boolean createAttributes = true;
