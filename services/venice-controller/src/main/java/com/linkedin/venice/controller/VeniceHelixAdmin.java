@@ -3584,6 +3584,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           false,
           // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
           clusterConfig.getMinInSyncReplicasRealTimeTopics(),
+          clusterConfig.getUncleanLeaderElectionEnableRTTopics(),
           false);
     }
     LOGGER.info(

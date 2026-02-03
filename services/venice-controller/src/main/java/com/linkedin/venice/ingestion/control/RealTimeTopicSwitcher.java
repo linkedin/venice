@@ -3,6 +3,7 @@ package com.linkedin.venice.ingestion.control;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.TOPIC_SWITCH;
 import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_REPLICATION_FACTOR;
@@ -51,6 +52,7 @@ public class RealTimeTopicSwitcher {
   private final int kafkaReplicationFactorForRTTopics;
   private final int kafkaReplicationFactor;
   private final Optional<Integer> minSyncReplicasForRTTopics;
+  private final Optional<Boolean> uncleanLeaderElectionEnableForRTTopics;
 
   private final PubSubTopicRepository pubSubTopicRepository;
 
@@ -71,6 +73,10 @@ public class RealTimeTopicSwitcher {
     this.kafkaReplicationFactorForRTTopics =
         veniceProperties.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
     this.minSyncReplicasForRTTopics = veniceProperties.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
+    this.uncleanLeaderElectionEnableForRTTopics =
+        veniceProperties.containsKey(KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS)
+            ? Optional.of(veniceProperties.getBoolean(KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS))
+            : Optional.empty();
   }
 
   /**
@@ -155,6 +161,8 @@ public class RealTimeTopicSwitcher {
       }
       int replicationFactor = realTimeTopic.isRealTime() ? kafkaReplicationFactorForRTTopics : kafkaReplicationFactor;
       Optional<Integer> minISR = realTimeTopic.isRealTime() ? minSyncReplicasForRTTopics : Optional.empty();
+      Optional<Boolean> uncleanLeaderElection =
+          realTimeTopic.isRealTime() ? uncleanLeaderElectionEnableForRTTopics : Optional.empty();
       getTopicManager().createTopic(
           realTimeTopic,
           partitionCount,
@@ -162,6 +170,7 @@ public class RealTimeTopicSwitcher {
           StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
           false,
           minISR,
+          uncleanLeaderElection,
           false);
     } else {
       /**

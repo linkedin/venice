@@ -311,6 +311,17 @@ public class ConfigKeys {
   public static final String KAFKA_REPLICATION_FACTOR_RT_TOPICS = "kafka.replication.factor.rt.topics";
 
   /**
+   * Disable unclean leader election for real-time buffer topics.
+   *
+   * If set to false, unclean leader election will be disabled for RT topics,
+   * which prevents data loss at the cost of potential unavailability.
+   *
+   * Will use the Kafka cluster's default if not set.
+   */
+  public static final String KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS =
+      "kafka.unclean.leader.election.enable.rt.topics";
+
+  /**
    * Cluster-level config to enable active-active replication for new hybrid stores.
    */
   public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE =
