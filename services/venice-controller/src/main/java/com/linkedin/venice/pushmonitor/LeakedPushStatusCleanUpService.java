@@ -171,7 +171,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
 
         // Get set of currently assigned instance IDs
         Set<String> currentInstanceIds =
-            partition.getAllInstances().stream().map(Instance::getNodeId).collect(Collectors.toSet());
+            partition.getAllInstancesSet().stream().map(Instance::getNodeId).collect(Collectors.toSet());
 
         // Get replica statuses and identify stale ones
         Collection<ReplicaStatus> replicaStatuses = partitionStatus.getReplicaStatuses();
