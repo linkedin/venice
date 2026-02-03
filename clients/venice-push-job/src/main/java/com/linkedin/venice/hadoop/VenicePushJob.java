@@ -390,6 +390,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
     pushJobSettingToReturn.isCompliancePush = props.getBoolean(COMPLIANCE_PUSH, false);
+    pushJobSettingToReturn.allowRegularPushWithTTLRepush = props.getBoolean(ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH, false);
     pushJobSettingToReturn.enableUncompressedRecordSizeLimit =
         props.getBoolean(VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT, false);
 
@@ -549,7 +550,6 @@ public class VenicePushJob implements AutoCloseable {
       Validate.isAssignableFrom(DataWriterComputeJob.class, objectClass);
       pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
     }
-    pushJobSettingToReturn.allowRegularPushWithTTLRepush = props.getBoolean(ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH, false);
     return pushJobSettingToReturn;
   }
 
