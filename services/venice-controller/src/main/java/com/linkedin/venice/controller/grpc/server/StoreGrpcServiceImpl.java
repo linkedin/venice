@@ -16,15 +16,16 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreStatusRequest;
+import com.linkedin.venice.protocols.controller.GetStoreStatusResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceImplBase;
+import com.linkedin.venice.protocols.controller.StoreStatus;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -161,18 +162,21 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
    */
   @Override
   public void getClusterHealthStores(
-      GetClusterHealthStoresGrpcRequest grpcRequest,
-      StreamObserver<GetClusterHealthStoresGrpcResponse> responseObserver) {
+      GetStoreStatusRequest grpcRequest,
+      StreamObserver<GetStoreStatusResponse> responseObserver) {
     LOGGER.debug("Received getClusterHealthStores with args: {}", grpcRequest);
     String clusterName = grpcRequest.getClusterName();
     handleRequest(StoreGrpcServiceGrpc.getGetClusterHealthStoresMethod(), () -> {
       MultiStoreStatusResponse response = storeRequestHandler.getClusterHealthStores(clusterName);
 
-      GetClusterHealthStoresGrpcResponse.Builder responseBuilder =
-          GetClusterHealthStoresGrpcResponse.newBuilder().setClusterName(response.getCluster());
+      // Convert map to repeated StoreStatus entries
+      GetStoreStatusResponse.Builder responseBuilder =
+          GetStoreStatusResponse.newBuilder().setClusterName(response.getCluster());
 
       if (response.getStoreStatusMap() != null) {
-        responseBuilder.putAllStoreStatusMap(response.getStoreStatusMap());
+        response.getStoreStatusMap().forEach((storeName, status) -> {
+          responseBuilder.addStoreStatuses(StoreStatus.newBuilder().setStoreName(storeName).setStatus(status).build());
+        });
       }
 
       return responseBuilder.build();
