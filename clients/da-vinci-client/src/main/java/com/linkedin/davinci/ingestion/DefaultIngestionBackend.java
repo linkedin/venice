@@ -33,7 +33,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -500,11 +499,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
         consumptionLock.unlock();
         LOGGER.info("Released consumption lock for replica {} after setting cancellation flag", replicaId);
       }
-    } catch (TimeoutException e) {
-      LOGGER.warn(
-          "Timeout waiting for blob transfer cancellation for replica {} after {} seconds during OFFLINE transition. Proceeding with state transition.",
-          replicaId,
-          timeoutInSeconds);
     } catch (Exception e) {
       LOGGER.warn(
           "Exception while canceling blob transfer for replica {} during OFFLINE transition. Proceeding with state transition.",
