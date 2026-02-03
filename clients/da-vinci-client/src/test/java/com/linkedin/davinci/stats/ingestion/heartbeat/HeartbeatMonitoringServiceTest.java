@@ -947,13 +947,10 @@ public class HeartbeatMonitoringServiceTest {
     // Heartbeat updated - should be at least 2000
     Assert.assertTrue(entry3.heartbeatTimestamp >= 2000L);
 
-    if (recordLevelTimestampEnabled) {
-      // Record timestamp should be max(2000, previous record ts)
-      Assert.assertTrue(entry3.recordTimestamp >= 2000L);
-    } else {
-      // Both should be updated together
-      Assert.assertTrue(entry3.recordTimestamp >= 2000L);
-    }
+    // Record timestamp should be updated regardless of recordLevelTimestampEnabled flag
+    // When enabled: recordTimestamp = max(heartbeat, previous record ts)
+    // When disabled: recordTimestamp is updated together with heartbeatTimestamp
+    Assert.assertTrue(entry3.recordTimestamp >= 2000L);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
