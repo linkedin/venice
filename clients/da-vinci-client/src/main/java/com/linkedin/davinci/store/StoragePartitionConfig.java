@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store;
 
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.Utils;
 import java.util.Objects;
 
@@ -20,6 +21,10 @@ public class StoragePartitionConfig {
   private boolean readWriteLeaderForDefaultCF;
   private boolean readWriteLeaderForRMDCF;
   private final boolean blobTransferInProgress;
+  /**
+   * Store-level BlobDB config. NOT_SPECIFIED means use cluster-level config.
+   */
+  private ActivationState blobDbEnabled = ActivationState.NOT_SPECIFIED;
 
   public StoragePartitionConfig(String storeName, int partitionId) {
     this(storeName, partitionId, false);
@@ -92,6 +97,14 @@ public class StoragePartitionConfig {
 
   public void setReadWriteLeaderForRMDCF(boolean readWriteLeaderForRMDCF) {
     this.readWriteLeaderForRMDCF = readWriteLeaderForRMDCF;
+  }
+
+  public ActivationState getBlobDbEnabled() {
+    return blobDbEnabled;
+  }
+
+  public void setBlobDbEnabled(ActivationState blobDbEnabled) {
+    this.blobDbEnabled = blobDbEnabled;
   }
 
   @Override

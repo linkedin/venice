@@ -1404,6 +1404,12 @@ public class AdminTool {
         s -> s,
         p -> params.setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.valueOf(p)),
         argSet);
+    genericParam(
+        cmd,
+        Arg.BLOB_DB_ENABLED,
+        s -> s,
+        p -> params.setBlobDbEnabled(ConfigCommonUtils.ActivationState.valueOf(p)),
+        argSet);
     booleanParam(
         cmd,
         Arg.NEARLINE_PRODUCER_COMPRESSION_ENABLED,

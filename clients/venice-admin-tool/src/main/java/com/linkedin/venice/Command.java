@@ -12,6 +12,7 @@ import static com.linkedin.venice.Arg.BACKUP_STRATEGY;
 import static com.linkedin.venice.Arg.BACKUP_VERSION_RETENTION_DAY;
 import static com.linkedin.venice.Arg.BASE_PATH;
 import static com.linkedin.venice.Arg.BATCH_GET_LIMIT;
+import static com.linkedin.venice.Arg.BLOB_DB_ENABLED;
 import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.Arg.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR;
@@ -328,7 +329,7 @@ public enum Command {
           NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER, TARGET_SWAP_REGION,
           TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION, GLOBAL_RT_DIV_ENABLED,
           ENUM_SCHEMA_EVOLUTION_ALLOWED, STORE_LIFECYCLE_HOOKS_LIST, BLOB_TRANSFER_IN_SERVER_ENABLED,
-          KEY_URN_COMPRESSION_EANBLED, KEY_URN_FIELDS, FLINK_VENICE_VIEWS_ENABLED }
+          KEY_URN_COMPRESSION_EANBLED, KEY_URN_FIELDS, FLINK_VENICE_VIEWS_ENABLED, BLOB_DB_ENABLED }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },

@@ -226,6 +226,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setBlobTransferInServerEnabled(String blobTransferInServerEnabled);
 
+  String getBlobDbEnabled();
+
+  void setBlobDbEnabled(String blobDbEnabled);
+
   boolean isUseVersionLevelIncrementalPushEnabled();
 
   void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled);
