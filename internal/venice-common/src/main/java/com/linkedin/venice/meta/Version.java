@@ -43,6 +43,13 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
    * the TTL re-push enabled flag for the corresponding store.
    */
   String VENICE_REGULAR_PUSH_WITH_TTL_RE_PUSH_PREFIX = "venice_regular_push_with_ttl_re_push_";
+
+  /**
+   * Prefix used in push id to indicate a compliance/privacy deletion push. These are system-initiated pushes
+   * that can be killed by user-initiated pushes.
+   */
+  String VENICE_COMPLIANCE_PUSH_ID_PREFIX = "venice_compliance_push_";
+
   int DEFAULT_RT_VERSION_NUMBER = 0;
 
   /**
@@ -548,6 +555,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return VENICE_REGULAR_PUSH_WITH_TTL_RE_PUSH_PREFIX + pushId;
   }
 
+  static String generateCompliancePushId(String pushId) {
+    return VENICE_COMPLIANCE_PUSH_ID_PREFIX + pushId;
+  }
+
   static boolean isPushIdTTLRePush(String pushId) {
     if (pushId == null || pushId.isEmpty()) {
       return false;
@@ -567,6 +578,58 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
       return false;
     }
     return pushId.startsWith(VENICE_REGULAR_PUSH_WITH_TTL_RE_PUSH_PREFIX);
+  }
+
+  static boolean isPushIdCompliancePush(String pushId) {
+    if (pushId == null || pushId.isEmpty()) {
+      return false;
+    }
+    return pushId.startsWith(VENICE_COMPLIANCE_PUSH_ID_PREFIX);
+  }
+
+  /**
+   * Check if the push ID represents a system-initiated push that can be killed by user-initiated pushes.
+   * This includes regular repushes and compliance pushes.
+   *
+   * @param pushId the push job ID to check
+   * @return true if the push is a killable system push
+   */
+  static boolean isKillableSystemPush(String pushId) {
+    return isPushIdRePush(pushId) || isPushIdCompliancePush(pushId);
+  }
+
+  /**
+   * Determine if an existing push job can be killed by an incoming push job.
+   *
+   * An existing push can be killed if:
+   * 1. The existing push is a killable system push (repush or compliance push), AND
+   * 2. The incoming push is NOT an incremental push, AND
+   * 3. The incoming push is NOT itself a killable system push (i.e., it's a user-initiated push)
+   *
+   * This allows user-initiated batch pushes to preempt system-initiated pushes like repushes
+   * and compliance pushes, but prevents system pushes from killing each other.
+   *
+   * @param existingPushJobId the push job ID of the currently running push
+   * @param incomingPushJobId the push job ID of the new push attempting to start
+   * @param incomingPushType the type of the incoming push
+   * @return true if the existing push can be killed to allow the incoming push to proceed
+   */
+  static boolean canIncomingPushKillExistingPush(
+      String existingPushJobId,
+      String incomingPushJobId,
+      PushType incomingPushType) {
+    // Only killable system pushes (repush, compliance push) can be killed
+    if (!isKillableSystemPush(existingPushJobId)) {
+      return false;
+    }
+
+    // Incremental pushes should not kill existing pushes as it can run in parallel
+    if (incomingPushType.isIncremental()) {
+      return false;
+    }
+
+    // System pushes should not kill other system pushes
+    return !isKillableSystemPush(incomingPushJobId);
   }
 
   static boolean containsHybridVersion(List<Version> versions) {

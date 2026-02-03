@@ -91,6 +91,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -1450,5 +1451,76 @@ public abstract class TestBatch {
           .getCurrentVersion(veniceCluster.getClusterName(), storeName);
       Assert.assertEquals(version, 2);
     });
+  }
+
+  /**
+   * End-to-end test to verify that a user-initiated push can kill an ongoing compliance push.
+   * This test:
+   * 1. Creates a store and does an initial push
+   * 2. Starts a compliance push using requestTopicForWrites (simulates compliance push in progress)
+   * 3. Runs a real VPJ user push which should kill the compliance push
+   * 4. Verifies the user push succeeds and creates the expected version
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUserPushKillsCompliancePushEndToEnd() throws Exception {
+    File inputDir = getTempDataDirectory();
+    String storeName = Utils.getUniqueString("compliance-push-kill-store");
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+
+    // Write test data
+    writeSimpleAvroFileWithStringToStringSchema(inputDir);
+
+    // Create store and do initial push
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
+    Schema keySchema = Schema.parse("\"string\"");
+    Schema valueSchema = Schema.parse("\"string\"");
+    createStoreForJob(veniceCluster, keySchema.toString(), valueSchema.toString(), props).close();
+
+    // Run initial push to create version 1
+    IntegrationTestPushUtils.runVPJ(props);
+
+    try (ControllerClient controllerClient =
+        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs())) {
+      // Verify version 1 is current
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+        Assert.assertEquals(currentVersion, 1, "Initial push should create version 1");
+      });
+
+      // Start a compliance push (this simulates an ongoing compliance push)
+      String compliancePushId = Version.generateCompliancePushId("test-compliance-push-" + System.currentTimeMillis());
+      VersionCreationResponse compliancePushResponse = controllerClient.requestTopicForWrites(
+          storeName,
+          1000,
+          Version.PushType.BATCH,
+          compliancePushId,
+          true,
+          true,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
+      Assert.assertFalse(
+          compliancePushResponse.isError(),
+          "Compliance push should start successfully: " + compliancePushResponse.getError());
+      int compliancePushVersion = compliancePushResponse.getVersion();
+      Assert.assertEquals(compliancePushVersion, 2, "Compliance push should create version 2");
+
+      // Now run a user-initiated VPJ push - this should kill the compliance push
+      // Write new data for the user push
+      writeSimpleAvroFileWithStringToStringSchema2(inputDir);
+      Properties userPushProps = defaultVPJProps(veniceCluster, inputDirPath, storeName);
+
+      // Run the user push - this should succeed after killing the compliance push
+      IntegrationTestPushUtils.runVPJ(userPushProps);
+
+      // Verify the user push succeeded and created version 3 (compliance push v2 was killed)
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+        Assert.assertEquals(currentVersion, 3, "User push should create version 3 after killing compliance push v2");
+      });
+    }
   }
 }
