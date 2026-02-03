@@ -136,12 +136,11 @@ public class LeakedPushStatusCleanUpServiceTest {
     doReturn(version).when(mockStore).getCurrentVersion();
     doReturn(true).when(mockStore).containsVersion(version);
 
-    // Create instances - we'll have 5 instances total
+    // Create instances - we'll have 3 current instances and 2 stale instance IDs
     Instance instance1 = new Instance("instance1", "host1", 9000);
     Instance instance2 = new Instance("instance2", "host2", 9000);
     Instance instance3 = new Instance("instance3", "host3", 9000);
-    Instance instance4 = new Instance("instance4", "host4", 9000); // This will be stale
-    Instance instance5 = new Instance("instance5", "host5", 9000); // This will be stale
+    // instance4 and instance5 are stale - we only need their string IDs, not Instance objects
 
     // Create offline push status with partition statuses containing replicas
     OfflinePushStatus offlinePushStatus =
