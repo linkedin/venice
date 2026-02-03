@@ -849,6 +849,57 @@ public class OnlineVeniceProducerTest {
     }
   }
 
+  @Test
+  public void testProducerConfigsAreExtractedToWriterOptions() throws IOException {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
+
+    MetricsRepository metricsRepository = new MetricsRepository();
+    Properties backendConfigs = new Properties();
+    // Set producer configs that should be extracted to VeniceWriterOptions
+    backendConfigs.put(VeniceWriter.PRODUCER_COUNT, "3");
+    backendConfigs.put(VeniceWriter.PRODUCER_THREAD_COUNT, "5");
+    backendConfigs.put(VeniceWriter.PRODUCER_QUEUE_SIZE, "10485760"); // 10MB
+
+    try (TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
+      VeniceWriterOptions writerOptions = producer.getCapturedWriterOptions();
+
+      Assert.assertNotNull(writerOptions, "VeniceWriterOptions should be captured");
+      Assert.assertEquals(writerOptions.getProducerCount(), 3, "Producer count should be extracted from config");
+      Assert.assertEquals(
+          writerOptions.getProducerThreadCount(),
+          5,
+          "Producer thread count should be extracted from config");
+      Assert.assertEquals(
+          writerOptions.getProducerQueueSize(),
+          10485760,
+          "Producer queue size should be extracted from config");
+    }
+  }
+
+  @Test
+  public void testProducerConfigsDefaultsWhenNotSet() throws IOException {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
+
+    MetricsRepository metricsRepository = new MetricsRepository();
+    Properties backendConfigs = new Properties();
+    // Don't set any producer configs - should use defaults
+
+    try (TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
+      VeniceWriterOptions writerOptions = producer.getCapturedWriterOptions();
+
+      Assert.assertNotNull(writerOptions, "VeniceWriterOptions should be captured");
+      // Default values from VeniceWriterOptions.Builder
+      Assert.assertEquals(writerOptions.getProducerCount(), 1, "Producer count should default to 1");
+      Assert.assertEquals(writerOptions.getProducerThreadCount(), 1, "Producer thread count should default to 1");
+      Assert.assertEquals(
+          writerOptions.getProducerQueueSize(),
+          5 * 1024 * 1024,
+          "Producer queue size should default to 5MB");
+    }
+  }
+
   private void configureMockKmeTransportClient(TransportClient transportClient) throws JsonProcessingException {
     doCallRealMethod().when(transportClient).getCopyIfNotUsableInCallback();
     doCallRealMethod().when(transportClient).get(anyString());
@@ -1111,6 +1162,7 @@ public class OnlineVeniceProducerTest {
     // Creating globally to access the same object in tests
     private VeniceWriter<byte[], byte[], byte[]> mockVeniceWriter;
     private boolean failPubSubWrites;
+    private VeniceWriterOptions capturedWriterOptions;
 
     public TestOnlineVeniceProducer(
         ClientConfig storeClientConfig,
@@ -1134,10 +1186,15 @@ public class OnlineVeniceProducerTest {
     protected VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
         Properties properties,
         VeniceWriterOptions writerOptions) {
+      this.capturedWriterOptions = writerOptions;
       if (mockVeniceWriter == null) {
         mockVeniceWriter = Mockito.mock(VeniceWriter.class);
       }
       return mockVeniceWriter;
+    }
+
+    public VeniceWriterOptions getCapturedWriterOptions() {
+      return capturedWriterOptions;
     }
 
     private void configureVeniceWriteMock() {

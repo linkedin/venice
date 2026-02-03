@@ -108,6 +108,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     // Single-threaded executor to ensure write operations maintain order
     this.writerExecutor = ThreadPoolFactory
         .createThreadPool(1, "ClientProducerWriter", Integer.MAX_VALUE, BlockingQueueType.LINKED_BLOCKING_QUEUE);
+    if (metricsRepository != null) {
+      new ThreadPoolStats(metricsRepository, writerExecutor, "client_producer_writer_thread_pool");
+    }
     this.keySerializer = getSerializer(schemaReader.getKeySchema());
 
     VersionCreationResponse versionCreationResponse = requestTopic();
@@ -138,12 +141,27 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
         versionCreationResponse.getPartitionerClass(),
         new VeniceProperties(partitionerProperties));
-    return constructVeniceWriter(
-        veniceWriterProperties,
+
+    VeniceWriterOptions.Builder optionsBuilder =
         new VeniceWriterOptions.Builder(versionCreationResponse.getKafkaTopic()).setPartitioner(venicePartitioner)
             .setPartitionCount(partitionCount)
-            .setChunkingEnabled(false)
-            .build());
+            .setChunkingEnabled(false);
+
+    // Extract concurrent producer configs from properties
+    String producerCountProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_COUNT);
+    if (producerCountProp != null) {
+      optionsBuilder.setProducerCount(Integer.parseInt(producerCountProp));
+    }
+    String producerThreadCountProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_THREAD_COUNT);
+    if (producerThreadCountProp != null) {
+      optionsBuilder.setProducerThreadCount(Integer.parseInt(producerThreadCountProp));
+    }
+    String producerQueueSizeProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_QUEUE_SIZE);
+    if (producerQueueSizeProp != null) {
+      optionsBuilder.setProducerQueueSize(Integer.parseInt(producerQueueSizeProp));
+    }
+
+    return constructVeniceWriter(veniceWriterProperties, optionsBuilder.build());
   }
 
   // Visible for testing
