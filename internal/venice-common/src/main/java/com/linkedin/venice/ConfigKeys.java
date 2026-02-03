@@ -311,10 +311,7 @@ public class ConfigKeys {
   public static final String KAFKA_REPLICATION_FACTOR_RT_TOPICS = "kafka.replication.factor.rt.topics";
 
   /**
-   * Disable unclean leader election for real-time buffer topics.
-   *
-   * If set to false, unclean leader election will be disabled for RT topics,
-   * which prevents data loss at the cost of potential unavailability.
+   * Sets unclean leader election for real-time buffer topics.
    *
    * Will use the Kafka cluster's default if not set.
    */

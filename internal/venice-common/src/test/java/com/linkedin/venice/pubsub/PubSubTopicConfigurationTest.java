@@ -118,4 +118,74 @@ public class PubSubTopicConfigurationTest {
     assertNull(emptyConfig.minLogCompactionLagMs(), "Min log compaction lag ms should be null.");
     assertFalse(emptyConfig.getMaxLogCompactionLagMs().isPresent(), "Max log compaction lag ms should be empty.");
   }
+
+  @Test
+  public void testUncleanLeaderElectionEnableConfiguration() throws CloneNotSupportedException {
+    // Case 1: Verify construction with uncleanLeaderElectionEnable set to false
+    Optional<Long> retentionInMs = Optional.of(3600000L);
+    boolean isLogCompacted = false;
+    Optional<Integer> minInSyncReplicas = Optional.of(2);
+    Long minLogCompactionLagMs = 60000L;
+    Optional<Long> maxLogCompactionLagMs = Optional.empty();
+    Optional<Boolean> uncleanLeaderElectionEnable = Optional.of(false);
+
+    PubSubTopicConfiguration config = new PubSubTopicConfiguration(
+        retentionInMs,
+        isLogCompacted,
+        minInSyncReplicas,
+        minLogCompactionLagMs,
+        maxLogCompactionLagMs,
+        uncleanLeaderElectionEnable);
+
+    assertEquals(
+        config.getUncleanLeaderElectionEnable(),
+        uncleanLeaderElectionEnable,
+        "Unclean leader election enable should match the provided value.");
+
+    // Case 2: Verify setter
+    config.setUncleanLeaderElectionEnable(Optional.of(true));
+    assertEquals(
+        config.getUncleanLeaderElectionEnable(),
+        Optional.of(true),
+        "Unclean leader election enable should be updated.");
+
+    // Case 3: Verify it's included in toString
+    String configString = config.toString();
+    assertEquals(
+        configString.contains("uncleanLeaderElectionEnable"),
+        true,
+        "toString should include uncleanLeaderElectionEnable.");
+
+    // Case 4: Verify cloning preserves the field
+    PubSubTopicConfiguration clonedConfig = config.clone();
+    assertEquals(
+        clonedConfig.getUncleanLeaderElectionEnable(),
+        config.getUncleanLeaderElectionEnable(),
+        "Unclean leader election enable should be identical in the cloned object.");
+
+    // Case 5: Verify backward compatibility - using old constructor defaults to Optional.empty()
+    PubSubTopicConfiguration backwardCompatConfig = new PubSubTopicConfiguration(
+        retentionInMs,
+        isLogCompacted,
+        minInSyncReplicas,
+        minLogCompactionLagMs,
+        maxLogCompactionLagMs);
+
+    assertFalse(
+        backwardCompatConfig.getUncleanLeaderElectionEnable().isPresent(),
+        "Unclean leader election enable should be empty when using old constructor.");
+
+    // Case 6: Verify Optional.empty() works correctly
+    PubSubTopicConfiguration emptyUncleanConfig = new PubSubTopicConfiguration(
+        retentionInMs,
+        isLogCompacted,
+        minInSyncReplicas,
+        minLogCompactionLagMs,
+        maxLogCompactionLagMs,
+        Optional.empty());
+
+    assertFalse(
+        emptyUncleanConfig.getUncleanLeaderElectionEnable().isPresent(),
+        "Unclean leader election enable should be empty.");
+  }
 }

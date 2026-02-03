@@ -243,6 +243,55 @@ public class RealTimeTopicSwitcherTest {
         eq(retentionTime),
         eq(false),
         eq(Optional.of(KAFKA_MIN_ISR_FOR_RT_TOPICS)),
+        any(),
+        eq(false));
+  }
+
+  @Test
+  public void testUncleanLeaderElectionConfigForRTTopics() {
+    // Test that unclean leader election config is properly passed when creating RT topics
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "dummy");
+    properties.put(ConfigKeys.KAFKA_REPLICATION_FACTOR, "3");
+    properties.put(ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS, Integer.toString(KAFKA_RF_FOR_RT_TOPICS));
+    properties.put(ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS, Integer.toString(KAFKA_MIN_ISR_FOR_RT_TOPICS));
+    properties.put(ConfigKeys.KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS, "false");
+
+    RealTimeTopicSwitcher replicatorWithUncleanConfig = new RealTimeTopicSwitcher(
+        mockTopicManager,
+        mockVeniceWriterFactory,
+        new VeniceProperties(properties),
+        pubSubTopicRepository);
+
+    PubSubTopic srcTopic = pubSubTopicRepository.getTopic("testTopic_rt");
+    PubSubTopic destTopic = pubSubTopicRepository.getTopic("testTopic_v1");
+    Store mockStore = mock(Store.class);
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+
+    doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
+    doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
+    doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
+    doReturn(true).when(mockStore).isHybrid();
+
+    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
+    doReturn(version).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
+
+    doReturn(false).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
+    doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
+
+    replicatorWithUncleanConfig.ensurePreconditions(srcTopic, destTopic, mockStore);
+
+    long retentionTime = StoreUtils.getExpectedRetentionTimeInMs(mockStore, mockStore.getHybridStoreConfig());
+
+    // Verify that createTopic is called with uncleanLeaderElectionEnable set to false for RT topics
+    verify(mockTopicManager).createTopic(
+        eq(srcTopic),
+        anyInt(),
+        eq(KAFKA_RF_FOR_RT_TOPICS),
+        eq(retentionTime),
+        eq(false),
+        eq(Optional.of(KAFKA_MIN_ISR_FOR_RT_TOPICS)),
+        eq(Optional.of(false)),
         eq(false));
   }
 }
