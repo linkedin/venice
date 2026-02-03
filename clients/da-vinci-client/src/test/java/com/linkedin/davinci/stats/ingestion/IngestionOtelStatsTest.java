@@ -47,7 +47,7 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceDestinationIngestionComponent;
-import com.linkedin.venice.stats.dimensions.VeniceIngestionComponent;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
@@ -431,7 +431,7 @@ public class IngestionOtelStatsTest {
 
     ingestionOtelStats.recordTimeBetweenComponents(
         CURRENT_VERSION,
-        VeniceIngestionComponent.PRODUCER,
+        VeniceIngestionSourceComponent.PRODUCER,
         VeniceDestinationIngestionComponent.SOURCE_BROKER,
         50.0);
 
@@ -443,7 +443,7 @@ public class IngestionOtelStatsTest {
         50.0,
         buildAttributesWithComponents(
             VersionRole.CURRENT,
-            VeniceIngestionComponent.PRODUCER,
+            VeniceIngestionSourceComponent.PRODUCER,
             VeniceDestinationIngestionComponent.SOURCE_BROKER),
         INGESTION_TIME_BETWEEN_COMPONENTS.getMetricEntity().getMetricName(),
         TEST_PREFIX);
@@ -456,14 +456,14 @@ public class IngestionOtelStatsTest {
     // Producer to source broker
     ingestionOtelStats.recordTimeBetweenComponents(
         CURRENT_VERSION,
-        VeniceIngestionComponent.PRODUCER,
+        VeniceIngestionSourceComponent.PRODUCER,
         VeniceDestinationIngestionComponent.SOURCE_BROKER,
         50.0);
 
     // Source broker to leader consumer
     ingestionOtelStats.recordTimeBetweenComponents(
         CURRENT_VERSION,
-        VeniceIngestionComponent.SOURCE_BROKER,
+        VeniceIngestionSourceComponent.SOURCE_BROKER,
         VeniceDestinationIngestionComponent.LEADER_CONSUMER,
         30.0);
 
@@ -476,7 +476,7 @@ public class IngestionOtelStatsTest {
         50.0,
         buildAttributesWithComponents(
             VersionRole.CURRENT,
-            VeniceIngestionComponent.PRODUCER,
+            VeniceIngestionSourceComponent.PRODUCER,
             VeniceDestinationIngestionComponent.SOURCE_BROKER),
         INGESTION_TIME_BETWEEN_COMPONENTS.getMetricEntity().getMetricName(),
         TEST_PREFIX);
@@ -489,7 +489,7 @@ public class IngestionOtelStatsTest {
         30.0,
         buildAttributesWithComponents(
             VersionRole.CURRENT,
-            VeniceIngestionComponent.SOURCE_BROKER,
+            VeniceIngestionSourceComponent.SOURCE_BROKER,
             VeniceDestinationIngestionComponent.LEADER_CONSUMER),
         INGESTION_TIME_BETWEEN_COMPONENTS.getMetricEntity().getMetricName(),
         TEST_PREFIX);
@@ -609,7 +609,7 @@ public class IngestionOtelStatsTest {
 
   private Attributes buildAttributesWithComponents(
       VersionRole versionRole,
-      VeniceIngestionComponent sourceComponent,
+      VeniceIngestionSourceComponent sourceComponent,
       VeniceDestinationIngestionComponent destComponent) {
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)

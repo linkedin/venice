@@ -38,7 +38,7 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceDestinationIngestionComponent;
-import com.linkedin.venice.stats.dimensions.VeniceIngestionComponent;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateOneEnum;
@@ -115,7 +115,7 @@ public class IngestionOtelStats {
 
   // Other Metrics
   private final MetricEntityStateTwoEnums<VersionRole, VeniceDCREvent> dcrEventCountMetric;
-  private final MetricEntityStateThreeEnums<VersionRole, VeniceIngestionComponent, VeniceDestinationIngestionComponent> timeBetweenComponentsMetric;
+  private final MetricEntityStateThreeEnums<VersionRole, VeniceIngestionSourceComponent, VeniceDestinationIngestionComponent> timeBetweenComponentsMetric;
 
   // Metrics with VersionRole + VeniceRegionLocality + SourceRegion + DestinationRegion dimensions
   private final Map<String, Map<String, MetricEntityStateTwoEnums<VersionRole, VeniceRegionLocality>>> rtRecordsConsumedMetrics;
@@ -207,7 +207,7 @@ public class IngestionOtelStats {
         otelRepository,
         baseDimensionsMap,
         VersionRole.class,
-        VeniceIngestionComponent.class,
+        VeniceIngestionSourceComponent.class,
         VeniceDestinationIngestionComponent.class);
 
     // Initialize nested maps for region-specific metrics
@@ -479,7 +479,7 @@ public class IngestionOtelStats {
 
   public void recordTimeBetweenComponents(
       int version,
-      VeniceIngestionComponent sourceComponent,
+      VeniceIngestionSourceComponent sourceComponent,
       VeniceDestinationIngestionComponent destComponent,
       double latencyMs) {
     timeBetweenComponentsMetric

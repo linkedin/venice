@@ -8,7 +8,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceDestinationIngestionComponent;
-import com.linkedin.venice.stats.dimensions.VeniceIngestionComponent;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.VeniceView;
@@ -302,12 +302,12 @@ public class AggVersionedIngestionStats
     IngestionOtelStats otelStats = getIngestionOtelStats(storeName);
     otelStats.recordTimeBetweenComponents(
         version,
-        VeniceIngestionComponent.PRODUCER,
+        VeniceIngestionSourceComponent.PRODUCER,
         VeniceDestinationIngestionComponent.SOURCE_BROKER,
         producerBrokerLatencyMs);
     otelStats.recordTimeBetweenComponents(
         version,
-        VeniceIngestionComponent.SOURCE_BROKER,
+        VeniceIngestionSourceComponent.SOURCE_BROKER,
         VeniceDestinationIngestionComponent.LEADER_CONSUMER,
         brokerConsumerLatencyMs);
   }
@@ -327,12 +327,12 @@ public class AggVersionedIngestionStats
     IngestionOtelStats otelStats = getIngestionOtelStats(storeName);
     otelStats.recordTimeBetweenComponents(
         version,
-        VeniceIngestionComponent.PRODUCER,
+        VeniceIngestionSourceComponent.PRODUCER,
         VeniceDestinationIngestionComponent.LOCAL_BROKER,
         producerBrokerLatencyMs);
     otelStats.recordTimeBetweenComponents(
         version,
-        VeniceIngestionComponent.LOCAL_BROKER,
+        VeniceIngestionSourceComponent.LOCAL_BROKER,
         VeniceDestinationIngestionComponent.FOLLOWER_CONSUMER,
         brokerConsumerLatencyMs);
   }

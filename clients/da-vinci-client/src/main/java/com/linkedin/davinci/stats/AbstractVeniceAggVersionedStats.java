@@ -82,14 +82,13 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   private VeniceVersionedStats<STATS, STATS_REPORTER> getVersionedStats(String storeName) {
     VeniceVersionedStats<STATS, STATS_REPORTER> stats = aggStats.get(storeName);
     if (stats == null) {
+      Store store = metadataRepository.getStoreOrThrow(storeName);
       // Use computeIfAbsent to atomically add the store and initialize version info.
-      // This prevents duplicate updateStatsVersionInfo calls when multiple threads
-      // try to get stats for a new store concurrently.
+      // This prevents returning partially initialized stats and duplicate initialization
+      // when multiple threads try to get stats for a new store concurrently.
       stats = aggStats.computeIfAbsent(storeName, s -> {
         VeniceVersionedStats<STATS, STATS_REPORTER> newStats =
             new VeniceVersionedStats<>(metricsRepository, s, statsInitiator, reporterSupplier);
-        Store store = metadataRepository.getStoreOrThrow(s);
-        // Initialize version info inside computeIfAbsent to ensure atomicity
         initializeVersionInfo(newStats, store);
         return newStats;
       });
@@ -97,15 +96,9 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     return stats;
   }
 
-  /**
-   * Initializes version info for a newly created VeniceVersionedStats.
-   * This is called within computeIfAbsent to ensure atomic initialization.
-   */
+  /** Initializes version info for a newly created VeniceVersionedStats */
   private void initializeVersionInfo(VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats, Store store) {
-    int newCurrentVersion = store.getCurrentVersion();
-    if (newCurrentVersion != versionedStats.getCurrentVersion()) {
-      versionedStats.setCurrentVersion(newCurrentVersion);
-    }
+    versionedStats.setCurrentVersion(store.getCurrentVersion());
 
     List<Version> existingVersions = store.getVersions();
     int futureVersion = NON_EXISTING_VERSION;
@@ -121,9 +114,8 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       }
     }
 
-    if (futureVersion != versionedStats.getFutureVersion()) {
-      versionedStats.setFutureVersion(futureVersion);
-    }
+    // Set directly without checking - this is a newly created stats object with default values
+    versionedStats.setFutureVersion(futureVersion);
 
     // Notify subclasses that version info has been initialized
     onVersionInfoUpdated(store.getName(), versionedStats.getCurrentVersion(), versionedStats.getFutureVersion());

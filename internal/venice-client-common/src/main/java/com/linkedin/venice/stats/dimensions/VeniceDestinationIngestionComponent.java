@@ -4,7 +4,7 @@ package com.linkedin.venice.stats.dimensions;
  * Dimension enum representing the destination component in the ingestion flow.
  * Used for metrics like ingestion latency between components.
  *
- * Note: This is separate from {@link VeniceIngestionComponent} to provide type safety
+ * <p>Note: This is separate from {@link VeniceIngestionSourceComponent} to provide type safety
  * when recording metrics that have both source and destination component dimensions.
  */
 public enum VeniceDestinationIngestionComponent implements VeniceDimensionInterface {
