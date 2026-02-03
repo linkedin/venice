@@ -20,10 +20,10 @@ import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcRequest;
-import com.linkedin.venice.protocols.controller.GetClusterHealthStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreStatusRequest;
+import com.linkedin.venice.protocols.controller.GetStoreStatusResponse;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
@@ -34,6 +34,7 @@ import com.linkedin.venice.protocols.controller.SchemaGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
 import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreStatus;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
@@ -426,28 +427,26 @@ public class TestControllerGrpcEndpoints {
     assertNotNull(createResponse2, "Response should not be null");
 
     // Step 2: Get cluster health stores
-    GetClusterHealthStoresGrpcRequest healthRequest =
-        GetClusterHealthStoresGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+    GetStoreStatusRequest healthRequest =
+        GetStoreStatusRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
 
-    GetClusterHealthStoresGrpcResponse healthResponse = storeBlockingStub.getClusterHealthStores(healthRequest);
+    GetStoreStatusResponse healthResponse = storeBlockingStub.getClusterHealthStores(healthRequest);
     assertNotNull(healthResponse, "Response should not be null");
     assertEquals(healthResponse.getClusterName(), veniceCluster.getClusterName());
 
+    // Convert repeated StoreStatus to map for easier verification
+    java.util.Map<String, String> storeStatusMap = new java.util.HashMap<>();
+    for (StoreStatus status: healthResponse.getStoreStatusesList()) {
+      storeStatusMap.put(status.getStoreName(), status.getStatus());
+    }
+
     // Verify the stores we created are in the status map
-    assertTrue(
-        healthResponse.getStoreStatusMapMap().containsKey(storeName1),
-        "Store status map should contain " + storeName1);
-    assertTrue(
-        healthResponse.getStoreStatusMapMap().containsKey(storeName2),
-        "Store status map should contain " + storeName2);
+    assertTrue(storeStatusMap.containsKey(storeName1), "Store status map should contain " + storeName1);
+    assertTrue(storeStatusMap.containsKey(storeName2), "Store status map should contain " + storeName2);
 
     // Verify the statuses are not null/empty
-    assertNotNull(
-        healthResponse.getStoreStatusMapMap().get(storeName1),
-        "Status for " + storeName1 + " should not be null");
-    assertNotNull(
-        healthResponse.getStoreStatusMapMap().get(storeName2),
-        "Status for " + storeName2 + " should not be null");
+    assertNotNull(storeStatusMap.get(storeName1), "Status for " + storeName1 + " should not be null");
+    assertNotNull(storeStatusMap.get(storeName2), "Status for " + storeName2 + " should not be null");
   }
 
   @Test(timeOut = TIMEOUT_MS)
