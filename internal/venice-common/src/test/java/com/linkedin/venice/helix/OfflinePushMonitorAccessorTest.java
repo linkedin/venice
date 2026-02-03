@@ -74,7 +74,8 @@ public class OfflinePushMonitorAccessorTest {
 
     // Mock push status exists - note: pushStatusExists() uses partitionStatusAccessor, not offlinePushStatusAccessor
     when(mockPartitionStatusAccessor.exists(anyString(), anyInt())).thenReturn(true);
-    when(mockPartitionStatusAccessor.update(anyString(), any(), anyInt())).thenReturn(true);
+    // Mock set() method since HelixUtils.update() calls dataAccessor.set(), not update()
+    when(mockPartitionStatusAccessor.set(anyString(), any(), anyInt())).thenReturn(true);
 
     // Create a partition status to update
     PartitionStatus partitionStatus = new PartitionStatus(0);
@@ -82,8 +83,8 @@ public class OfflinePushMonitorAccessorTest {
     // Update partition status
     accessor.updatePartitionStatus("test_topic_v1", partitionStatus);
 
-    // Verify that the partition status was updated in ZK
-    Mockito.verify(mockPartitionStatusAccessor, Mockito.times(1)).update(anyString(), any(), anyInt());
+    // Verify that the partition status was set in ZK
+    Mockito.verify(mockPartitionStatusAccessor, Mockito.times(1)).set(anyString(), any(), anyInt());
   }
 
   @Test
@@ -106,7 +107,7 @@ public class OfflinePushMonitorAccessorTest {
     // Update partition status - should be skipped because push status doesn't exist
     accessor.updatePartitionStatus("test_topic_v1", partitionStatus);
 
-    // Verify that the partition status was NOT updated in ZK
-    Mockito.verify(mockPartitionStatusAccessor, Mockito.times(0)).update(anyString(), any(), anyInt());
+    // Verify that the partition status was NOT set in ZK
+    Mockito.verify(mockPartitionStatusAccessor, Mockito.times(0)).set(anyString(), any(), anyInt());
   }
 }
