@@ -91,4 +91,15 @@ public interface OfflinePushAccessor {
    * Unsubscribe a child listener
    */
   void unsubscribePushStatusCreationChange(IZkChildListener childListener);
+
+  /**
+   * Update a specific partition status in persistent storage.
+   * This is useful for bulk updates like cleaning up stale replica statuses.
+   *
+   * @param kafkaTopic version topic
+   * @param partitionStatus the partition status to update
+   */
+  default void updatePartitionStatus(String kafkaTopic, PartitionStatus partitionStatus) {
+    // Default implementation is no-op for backward compatibility
+  }
 }
