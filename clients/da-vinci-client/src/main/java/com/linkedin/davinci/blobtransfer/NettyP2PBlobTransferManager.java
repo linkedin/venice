@@ -108,7 +108,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
     CompletableFuture<InputStream> perPartitionTransferFuture = new CompletableFuture<>();
 
-    // Register the transfer with the cancellation manager
+    // Register the transfer with the status tracking manager
     statusTrackingManager.registerTransfer(replicaId, perPartitionTransferFuture);
 
     // 1. Discover peers for the requested blob

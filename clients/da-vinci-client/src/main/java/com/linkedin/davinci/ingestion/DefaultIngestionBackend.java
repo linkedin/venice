@@ -140,9 +140,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
           // Check 2: Cancellation arrives during transfer
           if (throwable != null && throwable.getCause() instanceof VeniceBlobTransferCancelledException) {
             LOGGER.info(
-                "Blob transfer was cancelled during transfer for store {} partition {}. Skipping consumption startup.",
-                storeVersion,
-                partition);
+                "Blob transfer was cancelled during transfer for replica {}. Skipping consumption startup.",
+                replicaId);
             return;
           }
           try {
@@ -232,10 +231,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
       // Special handling for blob transfer cancellation, so that the outer caller can skip kafka ingestion.
       if (throwable != null && throwable.getCause() instanceof VeniceBlobTransferCancelledException) {
-        LOGGER.info(
-            "Blob transfer was cancelled for partition {} store {}. Propagating cancellation exception.",
-            partitionId,
-            storeName);
+        LOGGER.info("Blob transfer was cancelled for replica {}. Propagating cancellation exception.", replicaId);
         // Post-transfer validation and cleanup
         validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partitionId, false);
         adjustStoragePartitionWhenBlobTransferComplete(storageService.getStorageEngine(kafkaTopic), partitionId);

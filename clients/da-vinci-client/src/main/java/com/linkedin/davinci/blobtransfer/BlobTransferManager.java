@@ -65,9 +65,8 @@ public interface BlobTransferManager<T> extends AutoCloseable {
   /**
    * Cancel an ongoing blob transfer for the given replica.
    * This method always sets the cancellation flag and keeps it set.
-   * - If transfer is in progress: closes channel and waits for completion
-   * - If no transfer in progress: just sets the flag
-   * The flag remains set after this method returns. Caller is responsible for clearing it.
+   * - If transfer is in progress: closes channel and waits for completion, let the bootstrap clean flag
+   * - If no transfer in progress: just sets the flag, then clean flag.
    *
    * @param replicaId the replica ID (format: storeName_vVersion-partition)
    * @param timeoutInSeconds maximum time to wait for cancellation to complete
@@ -86,14 +85,15 @@ public interface BlobTransferManager<T> extends AutoCloseable {
 
   /**
    * Clear the cancellation request flag for a replica.
-   * Should be called after consumption successfully starts or after cancellation completes.
+   * Should be called (1) after consumption start/skip or (2) no ongoing transfer during cancellation
    *
    * @param replicaId the replica ID (format: storeName_vVersion-partition)
    */
   void clearCancellationRequest(String replicaId);
 
   /**
-   * Clear the transfer status for a replica
+   * Clear the transfer status for a replica.
+   * Should be used after transfer is completed.
    * @param replicaId
    */
   void clearTransferStatus(String replicaId);

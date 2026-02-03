@@ -46,9 +46,6 @@ public class BlobTransferStatusTrackingManager {
   /**
    * Register a blob transfer for tracking. This should be called when a new blob transfer starts.
    *
-   * NOTE: We do NOT remove cancellation flags here because we need to check it after transfer completes
-   * to prevent the race where: transfer completes -> cancellation request arrives -> consumption starts
-   * The cancellation boolean flag will be cleaned up later when new consumption starts or cancellation completes
    * @param replicaId the replica ID (format: storeName_vVersion-partition)
    * @param perPartitionTransferFuture the CompletableFuture representing the transfer operation
    */
@@ -162,7 +159,7 @@ public class BlobTransferStatusTrackingManager {
 
   /**
    * Clear the cancellation request flag for a replica.
-   * Should be called after consumption successfully starts or after cancellation completes.
+   * Should be called (1) after consumption start/skip or (2) no ongoing transfer during cancellation
    *
    * @param replicaId the replica ID (format: storeName_vVersion-partition)
    */
@@ -172,6 +169,10 @@ public class BlobTransferStatusTrackingManager {
     }
   }
 
+  /**
+   * Clear the partition level future status
+   * @param replicaId the replica ID
+   */
   public void clearTransferStatus(String replicaId) {
     if (partitionLevelTransferStatus.get(replicaId) != null) {
       partitionLevelTransferStatus.remove(replicaId);
