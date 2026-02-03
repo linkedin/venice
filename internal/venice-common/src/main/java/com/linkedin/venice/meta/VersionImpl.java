@@ -301,6 +301,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public String getBlobDbEnabled() {
+    return this.storeVersion.blobDbEnabled.toString();
+  }
+
+  @Override
+  public void setBlobDbEnabled(String blobDbEnabled) {
+    this.storeVersion.blobDbEnabled = blobDbEnabled;
+  }
+
+  @Override
   public boolean isUseVersionLevelIncrementalPushEnabled() {
     return this.storeVersion.useVersionLevelIncrementalPushEnabled;
   }

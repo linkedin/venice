@@ -539,6 +539,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public String getBlobDbEnabled() {
+      return this.delegate.getBlobDbEnabled();
+    }
+
+    @Override
+    public void setBlobDbEnabled(String blobDbEnabled) {
+      throw new UnsupportedOperationException("BlobDB not supported");
+    }
+
+    @Override
     public boolean isUseVersionLevelIncrementalPushEnabled() {
       return this.delegate.isUseVersionLevelIncrementalPushEnabled();
     }
@@ -1047,6 +1057,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setStorageNodeReadQuotaEnabled(isStorageNodeReadQuotaEnabled());
     storeProperties.setBlobTransferEnabled(isBlobTransferEnabled());
     storeProperties.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
+    storeProperties.setBlobDbEnabled(getBlobDbEnabled());
     storeProperties.setNearlineProducerCompressionEnabled(isNearlineProducerCompressionEnabled());
     storeProperties.setNearlineProducerCountPerWriter(getNearlineProducerCountPerWriter());
     storeProperties.setTargetSwapRegion(getTargetSwapRegion());
@@ -1664,6 +1675,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void setBlobDbEnabled(String blobDbEnabled) {
+    throw new UnsupportedOperationException("BlobDB not supported");
+  }
+
+  @Override
+  public String getBlobDbEnabled() {
+    return this.delegate.getBlobDbEnabled();
+  }
+
+  @Override
   public boolean isNearlineProducerCompressionEnabled() {
     return delegate.isNearlineProducerCompressionEnabled();
   }
@@ -1927,6 +1948,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setSeparateRealTimeTopicEnabled(version.isSeparateRealTimeTopicEnabled());
     storeVersion.setBlobTransferEnabled(version.isBlobTransferEnabled());
     storeVersion.setBlobTransferInServerEnabled(version.getBlobTransferInServerEnabled());
+    storeVersion.setBlobDbEnabled(version.getBlobDbEnabled());
     storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
     storeVersion.setHybridConfig(convertHybridStoreConfig(version.getHybridStoreConfig()));
     storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());

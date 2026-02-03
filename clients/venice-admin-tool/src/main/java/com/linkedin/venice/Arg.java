@@ -307,6 +307,10 @@ public enum Arg {
       "blob-transfer-in-server-enabled", "bts", true,
       "Flag to indicate if the blob transfer is allowed or not in server. Values can be 'NOT_SPECIFIED' as default, 'ENABLED', or 'DISABLED'."
   ),
+  BLOB_DB_ENABLED(
+      "blob-db-enabled", "bdb", true,
+      "Flag to indicate if the RocksDB BlobDB feature is enabled or not. Values can be 'NOT_SPECIFIED' (default, follows cluster level config), 'ENABLED', or 'DISABLED'."
+  ),
   NEARLINE_PRODUCER_COMPRESSION_ENABLED(
       "nearline-producer-compression-enabled", "npce", true,
       "Flag to control whether KafkaProducer will use compression or not for nearline workload"

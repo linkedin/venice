@@ -125,6 +125,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.DiskUsage;
@@ -1124,6 +1125,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     }
+
+    // Set blob-db config from version level config
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    Version version = store.getVersion(versionNumber);
+    if (version != null) {
+      storagePartitionConfig.setBlobDbEnabled(ActivationState.valueOf(version.getBlobDbEnabled()));
+    }
+    // If version not found, leave default NOT_SPECIFIED which falls back to cluster-level config
 
     return storagePartitionConfig;
   }
