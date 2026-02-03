@@ -254,6 +254,14 @@ public class TestVersion {
     String anotherUserPushId = (System.currentTimeMillis() + 1) + "_https://example.com/another-job";
     assertFalse(Version.canIncomingPushKillExistingPush(userPushId, anotherUserPushId, Version.PushType.BATCH));
 
+    // Repush cannot kill user push (system push cannot kill user push)
+    assertFalse(Version.canIncomingPushKillExistingPush(userPushId, rePushId, Version.PushType.BATCH));
+    assertFalse(Version.canIncomingPushKillExistingPush(userPushId, rePushId, Version.PushType.INCREMENTAL));
+
+    // Compliance push cannot kill user push (system push cannot kill user push)
+    assertFalse(Version.canIncomingPushKillExistingPush(userPushId, compliancePushId, Version.PushType.BATCH));
+    assertFalse(Version.canIncomingPushKillExistingPush(userPushId, compliancePushId, Version.PushType.INCREMENTAL));
+
     // Repush cannot kill compliance push (system push cannot kill system push)
     assertFalse(Version.canIncomingPushKillExistingPush(compliancePushId, rePushId, Version.PushType.BATCH));
 

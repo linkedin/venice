@@ -1117,6 +1117,39 @@ public class TestParentControllerWithMultiDataCenter {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCompliancePushCannotKillUserPush() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("testCompliancePushNoKillUser");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      // Create a new store
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+      // Start a user push (regular push ID without any system prefix)
+      String userPushId = System.currentTimeMillis() + "_https://example.com/user-push-job";
+      VersionCreationResponse userPushResponse =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, userPushId);
+      Assert.assertFalse(userPushResponse.isError(), "User push creation failed: " + userPushResponse.getError());
+
+      // Start a compliance push - this should NOT kill the user push (should fail with concurrent push error)
+      String compliancePushId = Version.generateCompliancePushId("test-compliance-push");
+      VersionCreationResponse compliancePushResponse =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, compliancePushId);
+      Assert.assertTrue(
+          compliancePushResponse.isError(),
+          "Compliance push should fail because system pushes cannot kill user pushes");
+      Assert.assertTrue(
+          compliancePushResponse.getError().contains("An ongoing push") && compliancePushResponse.getError()
+              .contains("is found and it must be terminated before another push can be started"),
+          "Error should indicate an ongoing push must be terminated: " + compliancePushResponse.getError());
+    }
+  }
+
   static PubSubTopic getVersionPubsubTopic(String storeName, ControllerResponse response) {
     assertFalse(response.isError(), "Failed to perform empty push on test store");
     String versionTopic = null;
