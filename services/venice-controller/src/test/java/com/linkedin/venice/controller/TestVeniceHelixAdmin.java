@@ -302,6 +302,7 @@ public class TestVeniceHelixAdmin {
         anyLong(),
         anyBoolean(),
         any(Optional.class),
+        any(Optional.class),
         anyBoolean());
 
     // Case 2: Real-time topic does not exist
@@ -315,6 +316,7 @@ public class TestVeniceHelixAdmin {
         anyInt(),
         anyLong(),
         anyBoolean(),
+        any(Optional.class),
         any(Optional.class),
         anyBoolean());
   }
@@ -415,6 +417,7 @@ public class TestVeniceHelixAdmin {
         anyInt(),
         anyLong(),
         anyBoolean(),
+        any(Optional.class),
         any(Optional.class),
         anyBoolean());
 
