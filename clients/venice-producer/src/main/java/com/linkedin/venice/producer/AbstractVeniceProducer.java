@@ -1,6 +1,7 @@
 package com.linkedin.venice.producer;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_WRITER_THREAD_NUM;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
@@ -67,7 +68,12 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
   private SchemaReader schemaReader;
   private ThreadPoolExecutor producerExecutor;
-  private ThreadPoolExecutor writerExecutor; // Single-threaded executor to maintain write order
+  /**
+   * Executor for submitting write operations to VeniceWriter. When configured with 1 thread (default),
+   * write operations are serialized and their order is preserved. When configured with more threads,
+   * writes may be reordered for higher throughput. Controlled by {@link ConfigKeys#CLIENT_PRODUCER_WRITER_THREAD_NUM}.
+   */
+  private ThreadPoolExecutor writerExecutor;
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter;
 
   private RecordSerializer<Object> keySerializer;
@@ -105,9 +111,13 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     if (metricsRepository != null) {
       new ThreadPoolStats(metricsRepository, producerExecutor, "client_producer_thread_pool");
     }
-    // Single-threaded executor to ensure write operations maintain order
-    this.writerExecutor = ThreadPoolFactory
-        .createThreadPool(1, "ClientProducerWriter", Integer.MAX_VALUE, BlockingQueueType.LINKED_BLOCKING_QUEUE);
+    // Default to 1 thread to preserve write operation order; higher values trade ordering for throughput
+    int writerThreadNum = producerConfigs.getInt(CLIENT_PRODUCER_WRITER_THREAD_NUM, 1);
+    this.writerExecutor = ThreadPoolFactory.createThreadPool(
+        writerThreadNum,
+        "ClientProducerWriter",
+        Integer.MAX_VALUE,
+        BlockingQueueType.LINKED_BLOCKING_QUEUE);
     if (metricsRepository != null) {
       new ThreadPoolStats(metricsRepository, writerExecutor, "client_producer_writer_thread_pool");
     }
