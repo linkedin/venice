@@ -1,6 +1,7 @@
 package com.linkedin.venice.producer;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_WRITER_THREAD_NUM;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
@@ -20,6 +21,7 @@ import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.stats.ThreadPoolStats;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -66,7 +68,12 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
   private SchemaReader schemaReader;
   private ThreadPoolExecutor producerExecutor;
-  private ThreadPoolExecutor writerExecutor; // Single-threaded executor to maintain write order
+  /**
+   * Executor for submitting write operations to VeniceWriter. When configured with 1 thread (default),
+   * write operations are serialized and their order is preserved. When configured with more threads,
+   * writes may be reordered for higher throughput. Controlled by {@link ConfigKeys#CLIENT_PRODUCER_WRITER_THREAD_NUM}.
+   */
+  private ThreadPoolExecutor writerExecutor;
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter;
 
   private RecordSerializer<Object> keySerializer;
@@ -104,9 +111,16 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     if (metricsRepository != null) {
       new ThreadPoolStats(metricsRepository, producerExecutor, "client_producer_thread_pool");
     }
-    // Single-threaded executor to ensure write operations maintain order
-    this.writerExecutor = ThreadPoolFactory
-        .createThreadPool(1, "ClientProducerWriter", Integer.MAX_VALUE, BlockingQueueType.LINKED_BLOCKING_QUEUE);
+    // Default to 1 thread to preserve write operation order; higher values trade ordering for throughput
+    int writerThreadNum = producerConfigs.getInt(CLIENT_PRODUCER_WRITER_THREAD_NUM, 1);
+    this.writerExecutor = ThreadPoolFactory.createThreadPool(
+        writerThreadNum,
+        "ClientProducerWriter",
+        Integer.MAX_VALUE,
+        BlockingQueueType.LINKED_BLOCKING_QUEUE);
+    if (metricsRepository != null) {
+      new ThreadPoolStats(metricsRepository, writerExecutor, "client_producer_writer_thread_pool");
+    }
     this.keySerializer = getSerializer(schemaReader.getKeySchema());
 
     VersionCreationResponse versionCreationResponse = requestTopic();
@@ -137,12 +151,27 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
         versionCreationResponse.getPartitionerClass(),
         new VeniceProperties(partitionerProperties));
-    return constructVeniceWriter(
-        veniceWriterProperties,
+
+    VeniceWriterOptions.Builder optionsBuilder =
         new VeniceWriterOptions.Builder(versionCreationResponse.getKafkaTopic()).setPartitioner(venicePartitioner)
             .setPartitionCount(partitionCount)
-            .setChunkingEnabled(false)
-            .build());
+            .setChunkingEnabled(false);
+
+    // Extract concurrent producer configs from properties
+    String producerCountProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_COUNT);
+    if (producerCountProp != null) {
+      optionsBuilder.setProducerCount(Integer.parseInt(producerCountProp));
+    }
+    String producerThreadCountProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_THREAD_COUNT);
+    if (producerThreadCountProp != null) {
+      optionsBuilder.setProducerThreadCount(Integer.parseInt(producerThreadCountProp));
+    }
+    String producerQueueSizeProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_QUEUE_SIZE);
+    if (producerQueueSizeProp != null) {
+      optionsBuilder.setProducerQueueSize(Integer.parseInt(producerQueueSizeProp));
+    }
+
+    return constructVeniceWriter(veniceWriterProperties, optionsBuilder.build());
   }
 
   // Visible for testing
@@ -206,7 +235,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     // Step 1: Pre-process in parallel (schema fetching and serialization)
     // This can happen concurrently across multiple threads for performance
     CompletableFuture<PreparedWriteData> preprocessFuture = CompletableFuture.supplyAsync(() -> {
-      final Instant preProcessingStartTime = Instant.now();
+      final long preProcessingStartTimeNs = System.nanoTime();
       Schema valueSchema;
       try {
         valueSchema = getSchemaFromObject(value);
@@ -235,8 +264,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       byte[] valueBytes = getSerializer(valueSchema).serialize(value);
 
       // Record preprocessing latency
-      Duration preprocessingDuration = Duration.between(preProcessingStartTime, Instant.now());
-      producerMetrics.recordPreprocessingLatency(preprocessingDuration.toMillis());
+      producerMetrics.recordPreprocessingLatency(LatencyUtils.getElapsedTimeFromNSToMS(preProcessingStartTimeNs));
 
       return new PreparedWriteData(keyBytes, valueBytes, valueSchemaId, -1, logicalTime);
     }, producerExecutor);
@@ -303,12 +331,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
     // Step 1: Pre-process in parallel (key serialization)
     CompletableFuture<PreparedWriteData> preprocessFuture = CompletableFuture.supplyAsync(() -> {
-      final Instant preProcessingStartTime = Instant.now();
+      final long preProcessingStartTimeNs = System.nanoTime();
       byte[] keyBytes = keySerializer.serialize(key);
 
       // Record preprocessing latency
-      Duration preprocessingDuration = Duration.between(preProcessingStartTime, Instant.now());
-      producerMetrics.recordPreprocessingLatency(preprocessingDuration.toMillis());
+      producerMetrics.recordPreprocessingLatency(LatencyUtils.getElapsedTimeFromNSToMS(preProcessingStartTimeNs));
 
       return new PreparedWriteData(keyBytes, null, -1, -1, logicalTime);
     }, producerExecutor);
@@ -347,7 +374,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
     // Step 1: Pre-process in parallel (schema fetching, building update record, serialization)
     CompletableFuture<PreparedWriteData> preprocessFuture = CompletableFuture.supplyAsync(() -> {
-      final Instant preProcessingStartTime = Instant.now();
+      final long preProcessingStartTimeNs = System.nanoTime();
       // Caching to avoid race conditions during processing of the function
       DerivedSchemaEntry updateSchemaEntry = schemaReader.getLatestUpdateSchema();
 
@@ -376,8 +403,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       byte[] updateBytes = getSerializer(updateSchema).serialize(updateRecord);
 
       // Record preprocessing latency
-      Duration preprocessingDuration = Duration.between(preProcessingStartTime, Instant.now());
-      producerMetrics.recordPreprocessingLatency(preprocessingDuration.toMillis());
+      producerMetrics.recordPreprocessingLatency(LatencyUtils.getElapsedTimeFromNSToMS(preProcessingStartTimeNs));
 
       return new PreparedWriteData(
           keyBytes,
@@ -474,7 +500,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       final PubSubProducerCallback callback = getPubSubProducerCallback(sendStartTime, writeFuture, errorMessage);
 
       try {
+        long produceEnqueueStartTimeNs = System.nanoTime();
         writeOperation.execute(preparedData, callback);
+        producerMetrics.recordProduceEnqueueLatency(LatencyUtils.getElapsedTimeFromNSToMS(produceEnqueueStartTimeNs));
       } catch (Exception e) {
         callback.onCompletion(null, e);
         throw new VeniceException(errorMessage, e);

@@ -2482,6 +2482,19 @@ public class ConfigKeys {
   public static final String CLIENT_PRODUCER_THREAD_NUM = "client.producer.thread.num";
 
   /**
+   * Number of threads for the online Venice producer's writer executor, controlling how many write operations
+   * can be submitted to the VeniceWriter concurrently.
+   *
+   * <p>Default value is 1, which guarantees that write operations are serialized and their order is preserved
+   * in the order requests were received. When set to a value greater than 1, write operations may be reordered
+   * for higher throughput, but ordering guarantees are lost.
+   *
+   * <p>Use a value of 1 when write ordering matters (e.g., when updates to the same key must be applied in order).
+   * Use a higher value when write ordering is not important and throughput is the priority.
+   */
+  public static final String CLIENT_PRODUCER_WRITER_THREAD_NUM = "client.producer.writer.thread.num";
+
+  /**
    * The refresh interval for online producer to refresh value schemas and update schemas that rely on periodic polling.
    */
   public static final String CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS =
