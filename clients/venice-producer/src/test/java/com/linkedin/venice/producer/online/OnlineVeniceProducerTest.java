@@ -1,7 +1,7 @@
 package com.linkedin.venice.producer.online;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS;
-import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_WORKER_COUNT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsStringQuietlyWithErrorLogged;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
@@ -145,7 +145,7 @@ public class OnlineVeniceProducerTest {
     ClientFactoryTestUtils.resetUnitTestMode();
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testConstructor() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -156,7 +156,7 @@ public class OnlineVeniceProducerTest {
     producer.close();
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testFailRequestTopic() throws IOException {
     VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
     versionCreationResponse.setError("ERROR RESPONSE");
@@ -183,7 +183,7 @@ public class OnlineVeniceProducerTest {
             metricsRepository));
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testPut() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -231,7 +231,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testPutWithLogicalTs() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -291,7 +291,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testPutWithInvalidSchema() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -321,7 +321,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testPutWithFailedWrite() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -344,7 +344,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testDelete() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -378,7 +378,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testDeleteWithLogicalTs() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -419,7 +419,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testDeleteWithFailedWrite() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -442,7 +442,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testUpdate() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, true);
 
@@ -527,7 +527,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testUpdateWithLogicalTs() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, true);
 
@@ -604,7 +604,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testUpdateOnUnsupportedStore() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -646,7 +646,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testUpdateWithFailedWrite() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -675,7 +675,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testOperationsOnClosedProducer() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -699,7 +699,7 @@ public class OnlineVeniceProducerTest {
         () -> producer.asyncUpdate(1000, "KEY1", updateBuilderObj -> {}).get());
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testConcurrentEnsureSchemaRefreshed() throws IOException, ExecutionException, InterruptedException {
     boolean updateEnabled = true;
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, updateEnabled);
@@ -734,7 +734,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testFetchLatestValueAndUpdateSchemas() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, true);
 
@@ -757,7 +757,9 @@ public class OnlineVeniceProducerTest {
           Arrays.asList(UPDATE_SCHEMA_1, UPDATE_SCHEMA_2, UPDATE_SCHEMA_3, UPDATE_SCHEMA_4),
           true,
           0);
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      // Wait for at least one schema refresh cycle to pick up the new schemas
+      Utils.sleep(2000);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         try {
           producer.asyncUpdate(1000, "KEY1", updateBuilderObj -> {
             UpdateBuilder updateBuilder = ((UpdateBuilder) updateBuilderObj);
@@ -765,44 +767,36 @@ public class OnlineVeniceProducerTest {
             Assert.assertEquals(updateBuilder.build().getSchema().toString(), UPDATE_SCHEMA_3.toString());
           }).get();
         } catch (ExecutionException e) {
-          Assert.fail();
+          Assert.fail("asyncUpdate threw ExecutionException: " + e.getCause());
         }
       });
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testWriteOperationsExecuteInOrder() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
     // Use multiple threads for preprocessing to ensure concurrent preprocessing
-    backendConfigs.put(CLIENT_PRODUCER_THREAD_NUM, 4);
+    backendConfigs.put(CLIENT_PRODUCER_WORKER_COUNT, 4);
 
     try (TestOnlineVeniceProducer producer =
         new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
-      // Track the order of write operations by comparing serialized keys
+      // Track the order of write operations for the SAME key
+      // Partition-based workers guarantee per-key ordering, not global ordering
       List<String> writeOrder = Collections.synchronizedList(new java.util.ArrayList<>());
 
-      // Pre-compute expected serialized keys
-      byte[] key1Bytes = keySerializer.serialize("KEY1");
-      byte[] key2Bytes = keySerializer.serialize("KEY2");
-      byte[] key3Bytes = keySerializer.serialize("KEY3");
-      byte[] key4Bytes = keySerializer.serialize("KEY4");
-      byte[] key5Bytes = keySerializer.serialize("KEY5");
+      // Pre-compute expected serialized key - use same key for all operations
+      byte[] keyBytes = keySerializer.serialize("KEY1");
 
       // Configure mock to record the order of writes
       doAnswer(invocation -> {
         Object[] args = invocation.getArguments();
-        byte[] keyBytes = (byte[]) args[0];
-        // Match against expected keys to determine which operation this is
-        if (Arrays.equals(keyBytes, key1Bytes)) {
-          writeOrder.add("PUT:KEY1");
-        } else if (Arrays.equals(keyBytes, key2Bytes)) {
-          writeOrder.add("PUT:KEY2");
-        } else if (Arrays.equals(keyBytes, key4Bytes)) {
-          writeOrder.add("PUT:KEY4");
+        byte[] argKeyBytes = (byte[]) args[0];
+        if (Arrays.equals(argKeyBytes, keyBytes)) {
+          writeOrder.add("PUT:" + writeOrder.size());
         }
         // Simulate some write latency
         Utils.sleep(10);
@@ -812,25 +806,22 @@ public class OnlineVeniceProducerTest {
 
       doAnswer(invocation -> {
         Object[] args = invocation.getArguments();
-        byte[] keyBytes = (byte[]) args[0];
-        // Match against expected keys to determine which operation this is
-        if (Arrays.equals(keyBytes, key3Bytes)) {
-          writeOrder.add("DELETE:KEY3");
-        } else if (Arrays.equals(keyBytes, key5Bytes)) {
-          writeOrder.add("DELETE:KEY5");
+        byte[] argKeyBytes = (byte[]) args[0];
+        if (Arrays.equals(argKeyBytes, keyBytes)) {
+          writeOrder.add("DELETE:" + writeOrder.size());
         }
         Utils.sleep(10);
         ((PubSubProducerCallback) args[2]).onCompletion(null, null);
         return null;
       }).when(producer.mockVeniceWriter).delete(any(), anyLong(), any());
 
-      // Submit multiple operations rapidly
-      // These will be preprocessed concurrently but should write in submission order
+      // Submit multiple operations on the SAME key rapidly
+      // These will be preprocessed concurrently but must write in submission order for the same key
       CompletableFuture<DurableWrite> future1 = producer.asyncPut("KEY1", mockValue1);
-      CompletableFuture<DurableWrite> future2 = producer.asyncPut("KEY2", mockValue2);
-      CompletableFuture<DurableWrite> future3 = producer.asyncDelete(100, "KEY3");
-      CompletableFuture<DurableWrite> future4 = producer.asyncPut("KEY4", mockValue1);
-      CompletableFuture<DurableWrite> future5 = producer.asyncDelete(200, "KEY5");
+      CompletableFuture<DurableWrite> future2 = producer.asyncPut("KEY1", mockValue2);
+      CompletableFuture<DurableWrite> future3 = producer.asyncDelete(100, "KEY1");
+      CompletableFuture<DurableWrite> future4 = producer.asyncPut("KEY1", mockValue1);
+      CompletableFuture<DurableWrite> future5 = producer.asyncDelete(200, "KEY1");
 
       // Wait for all operations to complete
       future1.get();
@@ -839,17 +830,17 @@ public class OnlineVeniceProducerTest {
       future4.get();
       future5.get();
 
-      // Verify operations were executed in submission order
+      // Verify operations on the same key were executed in submission order
       assertEquals(5, writeOrder.size());
-      assertEquals("PUT:KEY1", writeOrder.get(0));
-      assertEquals("PUT:KEY2", writeOrder.get(1));
-      assertEquals("DELETE:KEY3", writeOrder.get(2));
-      assertEquals("PUT:KEY4", writeOrder.get(3));
-      assertEquals("DELETE:KEY5", writeOrder.get(4));
+      assertEquals("PUT:0", writeOrder.get(0));
+      assertEquals("PUT:1", writeOrder.get(1));
+      assertEquals("DELETE:2", writeOrder.get(2));
+      assertEquals("PUT:3", writeOrder.get(3));
+      assertEquals("DELETE:4", writeOrder.get(4));
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testProducerConfigsAreExtractedToWriterOptions() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -877,7 +868,7 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @Test
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testProducerConfigsDefaultsWhenNotSet() throws IOException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
@@ -1071,6 +1062,11 @@ public class OnlineVeniceProducerTest {
     doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaIdResponse), delayInResponseMs))
         .when(transportClient)
         .get(eq("value_schema_ids/" + storeName), anyMap());
+
+    // Also mock the all_value_schema_ids endpoint used by RouterBackedSchemaReader
+    doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaIdResponse), delayInResponseMs))
+        .when(transportClient)
+        .get(eq("all_value_schema_ids/" + storeName), anyMap());
 
     for (int i = 0; i < valueSchemas.size(); i++) {
       SchemaResponse valueSchemaResponse = new SchemaResponse();

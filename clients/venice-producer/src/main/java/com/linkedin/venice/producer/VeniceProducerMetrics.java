@@ -4,13 +4,63 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
+/**
+ * Metrics for Venice Producer operations.
+ *
+ * <h3>Component Flow</h3>
+ * <pre>
+ *                      ┌──────────────── Venice Producer ─────────────────┐
+ *                      │                                                  │
+ * Caller ──► Worker Queue ──► Worker ──► VeniceWriter ──► PubSubProducer ─┴──► Broker
+ *                          (preprocessing)                                      │
+ *                                                                              ack
+ *                                                                               │
+ *                                  CompletableFuture ◄── Callback Executor ◄────┘
+ * </pre>
+ *
+ * <h3>Latency Sensors</h3>
+ * <pre>
+ * Timeline:
+ *   Submit ───► Worker Start ───► Writer Dispatch ───────────────► Broker Ack ───► Future Complete
+ *      │              │                  │                              │                 │
+ *      │              ├─ preprocessing ─►│                              │                 │
+ *      │              │                  ├─ produce_to_durable_buffer ─►│                 │
+ *      ├─ request_dispatch ─────────────►│                              │                 │
+ *      ├─ end_to_end ───────────────────────────────────────────────────────────────────►│
+ * </pre>
+ *
+ * <h3>Latency Definitions</h3>
+ * <ul>
+ *   <li><b>preprocessing_latency</b>: Worker start to writer dispatch (serialization + schema lookup)</li>
+ *   <li><b>produce_to_durable_buffer_latency</b>: Writer dispatch to broker ack</li>
+ *   <li><b>request_dispatch_latency</b>: Caller submit to writer dispatch (includes queue wait + preprocessing)</li>
+ *   <li><b>end_to_end_latency</b>: Caller submit to future completion (full round-trip)</li>
+ * </ul>
+ *
+ * <h3>Operation Counters</h3>
+ * <ul>
+ *   <li><b>write_operation</b>: Total write operations (put + delete + update)</li>
+ *   <li><b>put_operation</b>, <b>delete_operation</b>, <b>update_operation</b>: Per-type counters</li>
+ *   <li><b>success_write_operation</b>, <b>failed_write_operation</b>: Outcome counters</li>
+ *   <li><b>pending_write_operation</b>: Current in-flight operations (gauge)</li>
+ * </ul>
+ *
+ * <h3>Queue Size Gauges</h3>
+ * <ul>
+ *   <li><b>total_worker_queue_size</b>: Sum of all worker queue depths</li>
+ *   <li><b>callback_queue_size</b>: Callback executor queue depth</li>
+ * </ul>
+ */
 public class VeniceProducerMetrics extends AbstractVeniceStats {
   private final boolean enableMetrics;
+
+  // === EXISTING SENSORS ===
   private Sensor operationSensor = null;
   private Sensor putOperationSensor = null;
   private Sensor deleteOperationSensor = null;
@@ -19,10 +69,13 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
   private Sensor failedOperationSensor = null;
   private Sensor produceLatencySensor = null;
   private Sensor preprocessingLatencySensor = null;
-  private Sensor produceEnqueueLatencySensor = null;
+  private Sensor requestDispatchLatencySensor = null;
+  private Sensor endToEndLatencySensor = null; // Total time: submission to future completion
   private Sensor pendingOperationSensor = null;
-
   private final AtomicInteger pendingOperationCounter = new AtomicInteger(0);
+
+  // Executor reference for queue size metrics (set after executor is created)
+  private volatile PartitionedProducerExecutor executor;
 
   public VeniceProducerMetrics(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
@@ -44,15 +97,40 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
       preprocessingLatencySensor = registerSensor(
           preprocessingLatencySensorName,
           TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + preprocessingLatencySensorName));
-      String produceEnqueueLatencySensorName = "produce_enqueue_latency";
-      produceEnqueueLatencySensor = registerSensor(
-          produceEnqueueLatencySensorName,
-          TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + produceEnqueueLatencySensorName));
+      String requestDispatchLatencySensorName = "request_dispatch_latency";
+      requestDispatchLatencySensor = registerSensor(
+          requestDispatchLatencySensorName,
+          TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + requestDispatchLatencySensorName));
 
       pendingOperationSensor = registerSensor("pending_write_operation", new Gauge());
+
+      // NEW: End-to-end latency (submission to completion)
+      String endToEndLatencySensorName = "end_to_end_latency";
+      endToEndLatencySensor = registerSensor(
+          endToEndLatencySensorName,
+          TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + endToEndLatencySensorName));
     } else {
       enableMetrics = false;
     }
+  }
+
+  /**
+   * Called after executor is created to register queue size gauges.
+   *
+   * @param executor the partitioned producer executor
+   */
+  public void registerQueueMetrics(PartitionedProducerExecutor executor) {
+    this.executor = executor;
+    if (!enableMetrics || executor == null) {
+      return;
+    }
+
+    // Register queue size gauges - the sensors are kept alive by the metrics repository
+    // Total worker queue size (sum of all worker queues)
+    registerSensor(new AsyncGauge((config, now) -> this.executor.getTotalWorkerQueueSize(), "total_worker_queue_size"));
+
+    // Callback queue size
+    registerSensor(new AsyncGauge((config, now) -> this.executor.getCallbackQueueSize(), "callback_queue_size"));
   }
 
   private void recordRequest() {
@@ -83,7 +161,7 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
     }
   }
 
-  public void recordSuccessfulRequestWithLatency(long latencyMs) {
+  public void recordSuccessfulRequestWithLatency(double latencyMs) {
     if (enableMetrics) {
       successOperationSensor.record();
       produceLatencySensor.record(latencyMs);
@@ -105,15 +183,26 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
   }
 
   /**
-   * Records the latency of enqueueing a produce request to the PubSub producer.
-   * This measures the synchronous time to submit a write to the VeniceWriter,
-   * before waiting for the asynchronous acknowledgment from the PubSub system.
+   * Record the end-to-end latency (from submission to future completion).
+   *
+   * @param latencyMs end-to-end latency in milliseconds
+   */
+  public void recordEndToEndLatency(double latencyMs) {
+    if (enableMetrics) {
+      endToEndLatencySensor.record(latencyMs);
+    }
+  }
+
+  /**
+   * Records the request dispatch latency - the total time from request submission
+   * to dispatch completion. This includes queue wait time, preprocessing, and
+   * the synchronous time to submit the write to VeniceWriter.
    *
    * @param latencyMs latency in milliseconds (supports sub-millisecond precision as a double)
    */
-  public void recordProduceEnqueueLatency(double latencyMs) {
+  public void recordRequestDispatchLatency(double latencyMs) {
     if (enableMetrics) {
-      produceEnqueueLatencySensor.record(latencyMs);
+      requestDispatchLatencySensor.record(latencyMs);
     }
   }
 }
