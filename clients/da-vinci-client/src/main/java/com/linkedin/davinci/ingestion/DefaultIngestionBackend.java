@@ -11,7 +11,6 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
-import com.linkedin.venice.exceptions.VeniceBlobTransferCancelledException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
@@ -30,7 +29,6 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -129,7 +127,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
         consumptionLock.lock();
 
         try {
-          // Check 1: Cancellation request arrives after successful transfer
+          // Check: Cancellation request arrives after successful transfer
           if (blobTransferManager.isBlobTransferCancelled(replicaId)) {
             LOGGER.info(
                 "Blob transfer cancellation was requested for replica {}. Discarding bootstrap result and skipping consumption startup.",
@@ -137,13 +135,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
             return;
           }
 
-          // Check 2: Cancellation arrives during transfer
-          if (throwable != null && throwable.getCause() instanceof VeniceBlobTransferCancelledException) {
-            LOGGER.info(
-                "Blob transfer was cancelled during transfer for replica {}. Skipping consumption startup.",
-                replicaId);
-            return;
-          }
           try {
             runnable.run();
           } catch (Exception e) {
@@ -228,16 +219,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat).handle((inputStream, ex) -> {
       Throwable throwable = (Throwable) ex;
       updateBlobTransferResponseStats(throwable, storeName, versionNumber);
-
-      // Special handling for blob transfer cancellation, so that the outer caller can skip kafka ingestion.
-      if (throwable != null && throwable.getCause() instanceof VeniceBlobTransferCancelledException) {
-        LOGGER.info("Blob transfer was cancelled for replica {}. Propagating cancellation exception.", replicaId);
-        // Post-transfer validation and cleanup
-        validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partitionId, false);
-        adjustStoragePartitionWhenBlobTransferComplete(storageService.getStorageEngine(kafkaTopic), partitionId);
-        throw new CompletionException(throwable.getCause());
-      }
-
       if (throwable != null) {
         LOGGER.error(
             "Failed to bootstrap replica {} from blobs transfer with exception {}, falling back to kafka ingestion.",
