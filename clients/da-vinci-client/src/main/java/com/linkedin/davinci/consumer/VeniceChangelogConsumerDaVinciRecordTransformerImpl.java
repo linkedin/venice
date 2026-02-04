@@ -103,6 +103,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final boolean includeDeserializedReplicationMetadata;
   private final ReplicationMetadataSchemaRepository replicationMetadataSchemaRepository;
   private final StoreDeserializerCache<GenericRecord> rmdDeserializerCache;
+  private final String viewName;
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -123,6 +124,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.partitionToVersionToServe = new VeniceConcurrentHashMap<>();
     this.isVersionSpecificClient = changelogClientConfig.getStoreVersion() != null;
     this.veniceChangelogConsumerClientFactory = veniceChangelogConsumerClientFactory;
+    this.viewName = changelogClientConfig.getViewName();
 
     recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(DaVinciRecordTransformerChangelogConsumer::new)
@@ -152,14 +154,21 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           "Version specific CDC client is in use. Subscribing to version: {} for store: {}",
           changelogClientConfig.getStoreVersion(),
           storeName);
-      this.daVinciClient = this.daVinciClientFactory
-          .getVersionSpecificGenericAvroClient(this.storeName, changelogClientConfig.getStoreVersion(), daVinciConfig);
+      this.daVinciClient = this.daVinciClientFactory.getVersionSpecificGenericAvroClient(
+          this.storeName,
+          changelogClientConfig.getStoreVersion(),
+          this.viewName,
+          daVinciConfig);
     } else {
       if (innerClientConfig.isSpecificClient()) {
-        this.daVinciClient = this.daVinciClientFactory
-            .getSpecificSeekableAvroClient(this.storeName, daVinciConfig, innerClientConfig.getSpecificValueClass());
+        this.daVinciClient = this.daVinciClientFactory.getSpecificSeekableAvroClient(
+            this.storeName,
+            this.viewName,
+            daVinciConfig,
+            innerClientConfig.getSpecificValueClass());
       } else {
-        this.daVinciClient = this.daVinciClientFactory.getGenericSeekableAvroClient(this.storeName, daVinciConfig);
+        this.daVinciClient =
+            this.daVinciClientFactory.getGenericSeekableAvroClient(this.storeName, this.viewName, daVinciConfig);
       }
     }
 
