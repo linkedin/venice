@@ -90,6 +90,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRE
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY;
+import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_SEPARATE_RT_LEADER_QUOTA_RECORDS_PER_SECOND;
@@ -651,6 +654,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int channelOptionWriteBufferHighBytes;
   private final boolean aaWCWorkloadParallelProcessingEnabled;
   private final int aaWCWorkloadParallelProcessingThreadPoolSize;
+  private final boolean crossTpParallelProcessingEnabled;
+  private final int crossTpParallelProcessingThreadPoolSize;
+  private final boolean crossTpParallelProcessingCurrentVersionAAWCLeaderOnly;
   private final boolean isGlobalRtDivEnabled;
   private final boolean nearlineWorkloadProducerThroughputOptimizationEnabled;
   private final int zstdDictCompressionLevel;
@@ -1118,6 +1124,16 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, false);
     aaWCWorkloadParallelProcessingThreadPoolSize =
         serverProperties.getInt(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE, 8);
+    crossTpParallelProcessingEnabled = serverProperties.getBoolean(SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED, false);
+    crossTpParallelProcessingThreadPoolSize =
+        serverProperties.getInt(SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE, 4);
+    if (crossTpParallelProcessingEnabled && crossTpParallelProcessingThreadPoolSize < 1) {
+      throw new VeniceException(
+          "Invalid cross-TP parallel processing thread pool size: " + crossTpParallelProcessingThreadPoolSize
+              + ". Value must be at least 1.");
+    }
+    crossTpParallelProcessingCurrentVersionAAWCLeaderOnly =
+        serverProperties.getBoolean(SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY, false);
     nearlineWorkloadProducerThroughputOptimizationEnabled =
         serverProperties.getBoolean(SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED, true);
     zstdDictCompressionLevel =
@@ -2001,6 +2017,18 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getAAWCWorkloadParallelProcessingThreadPoolSize() {
     return aaWCWorkloadParallelProcessingThreadPoolSize;
+  }
+
+  public boolean isCrossTpParallelProcessingEnabled() {
+    return crossTpParallelProcessingEnabled;
+  }
+
+  public int getCrossTpParallelProcessingThreadPoolSize() {
+    return crossTpParallelProcessingThreadPoolSize;
+  }
+
+  public boolean isCrossTpParallelProcessingCurrentVersionAAWCLeaderOnly() {
+    return crossTpParallelProcessingCurrentVersionAAWCLeaderOnly;
   }
 
   public boolean isGlobalRtDivEnabled() {

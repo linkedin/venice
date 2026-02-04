@@ -12,11 +12,16 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.stats.Rate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -55,6 +60,7 @@ class ConsumptionTask implements Runnable {
   private final AggKafkaConsumerServiceStats aggStats;
   private final ConsumerSubscriptionCleaner cleaner;
   private final ConsumerPollTracker consumerPollTracker;
+  private final ExecutorService crossTpProcessingPool;
 
   /**
    * Maintain rate counter with default window size to calculate the message and bytes rate at topic partition level.
@@ -85,7 +91,8 @@ class ConsumptionTask implements Runnable {
       final IntConsumer recordsThrottler,
       final AggKafkaConsumerServiceStats aggStats,
       final ConsumerSubscriptionCleaner cleaner,
-      final ConsumerPollTracker consumerPollTracker) {
+      final ConsumerPollTracker consumerPollTracker,
+      final ExecutorService crossTpProcessingPool) {
     this.readCycleDelayMs = readCycleDelayMs;
     this.pollFunction = pollFunction;
     this.bandwidthThrottler = bandwidthThrottler;
@@ -93,6 +100,7 @@ class ConsumptionTask implements Runnable {
     this.aggStats = aggStats;
     this.cleaner = cleaner;
     this.consumerPollTracker = consumerPollTracker;
+    this.crossTpProcessingPool = crossTpProcessingPool;
     this.taskId = taskId;
     this.consumptionTaskIdStr = Utils.getSanitizedStringForLogger(consumerNamePrefix) + " - " + taskId;
     this.LOGGER = LogManager.getLogger(getClass().getSimpleName() + "[ " + consumptionTaskIdStr + " ]");
@@ -101,119 +109,47 @@ class ConsumptionTask implements Runnable {
   @Override
   public void run() {
     boolean addSomeDelay = false;
-
-    // Pre-allocate some variables to clobber in the loop
-    long beforePollingTimeStamp;
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledPubSubMessages;
-    long beforeProducingToWriteBufferTimestamp;
-    ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver;
     Set<PubSubTopicPartition> topicPartitionsToUnsub = new HashSet<>();
-    List<DefaultPubSubMessage> topicPartitionMessages;
-    int msgCount;
-    int payloadBytesConsumedInOnePoll;
-    int polledPubSubMessagesCount;
-    int payloadSizePerTopicPartition;
-    KafkaConsumerServiceStats storeStats;
     Map<String, StorePollCounter> storePollCounterMap = new HashMap<>();
+
     try {
       while (running) {
         try {
           if (addSomeDelay) {
             synchronized (this) {
-              /**
-               * N.B. Using {@link #wait(long)} here so that it can be interrupted by the notification of {@link #stop()}
-               * or {@link #setDataReceiver(TopicPartition, ConsumedDataReceiver)}.
-               */
               wait(readCycleDelayMs);
             }
-            addSomeDelay = false;
           }
-          beforePollingTimeStamp = System.currentTimeMillis();
-          // N.B. cheap call
-          topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub);
-          for (PubSubTopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
-            ConsumedDataReceiver<List<DefaultPubSubMessage>> dataReceiver =
-                dataReceiverMap.remove(topicPartitionToUnSub);
-            if (dataReceiver != null) {
-              dataReceiver.notifyOfTopicDeletion(topicPartitionToUnSub.getPubSubTopic().getName());
-            }
-            consumerPollTracker.removeTopicPartition(topicPartitionToUnSub);
+          if (!running) {
+            break;
           }
-          topicPartitionsToUnsub.clear();
+          long beforePollingTimestamp = System.currentTimeMillis();
+          processAndClearUnsubscriptions(topicPartitionsToUnsub);
 
-          /**
-           * N.B. The poll function could be synchronized here if implementing the idea presented in the top of class
-           * JavaDoc, about how this class could become the sole entry point for all consumer-related interactions,
-           * and thus be capable of operating on a non-threadsafe consumer.
-           */
-          polledPubSubMessages = pollFunction.get();
+          Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledMessages = pollFunction.get();
           lastSuccessfulPollTimestamp = System.currentTimeMillis();
-          aggStats.recordTotalPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
-          if (!polledPubSubMessages.isEmpty()) {
-            payloadBytesConsumedInOnePoll = 0;
-            polledPubSubMessagesCount = 0;
-            beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
-            storePollCounterMap.clear();
-            for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: polledPubSubMessages.entrySet()) {
-              PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-              consumedDataReceiver = dataReceiverMap.get(pubSubTopicPartition);
-              if (consumedDataReceiver == null) {
-                // defensive code
-                LOGGER.error(
-                    "Couldn't find consumed data receiver for topic partition : {} after receiving records from `poll` request",
-                    pubSubTopicPartition);
-                topicPartitionsToUnsub.add(pubSubTopicPartition);
-                continue;
-              }
+          aggStats.recordTotalPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimestamp);
 
-              topicPartitionMessages = entry.getValue();
-
-              // Per-poll bookkeeping
-              consumerPollTracker.recordMessageReceived(pubSubTopicPartition);
-              msgCount = topicPartitionMessages.size();
-              polledPubSubMessagesCount += msgCount;
-              payloadSizePerTopicPartition = 0;
-              for (DefaultPubSubMessage pubSubMessage: topicPartitionMessages) {
-                payloadSizePerTopicPartition += pubSubMessage.getPayloadSize();
-              }
-              payloadBytesConsumedInOnePoll += payloadSizePerTopicPartition;
-              storePollCounterMap
-                  .computeIfAbsent(pubSubTopicPartition.getPubSubTopic().getStoreName(), this::newStorePollCounter)
-                  .record(msgCount, payloadSizePerTopicPartition);
-              this.partitionToStatsMap.computeIfAbsent(pubSubTopicPartition, this::newPartitionStats)
-                  .record(this.lastSuccessfulPollTimestamp, msgCount, payloadSizePerTopicPartition);
-
-              consumedDataReceiver.write(topicPartitionMessages);
-            }
-            aggStats.recordTotalConsumerRecordsProducingToWriterBufferLatency(
-                LatencyUtils.getElapsedTimeFromMsToMs(beforeProducingToWriteBufferTimestamp));
-            aggStats.recordTotalNonZeroPollResultNum(polledPubSubMessagesCount);
-            for (Map.Entry<String, StorePollCounter> entry: storePollCounterMap.entrySet()) {
-              storeStats = aggStats.getStoreStats(entry.getKey());
-              storeStats.recordPollResultNum(entry.getValue().msgCount);
-              storeStats.recordByteSizePerPoll(entry.getValue().byteSize);
-            }
-            bandwidthThrottler.accept(payloadBytesConsumedInOnePoll);
-            recordsThrottler.accept(polledPubSubMessagesCount);
-            cleaner.unsubscribe(topicPartitionsToUnsub);
-            aggStats.recordTotalDetectedNoRunningIngestionTopicPartitionNum(topicPartitionsToUnsub.size());
-          } else {
-            // No result came back, here will add some delay
+          if (polledMessages.isEmpty()) {
             addSomeDelay = true;
+          } else {
+            addSomeDelay = processPollResults(
+                polledMessages,
+                lastSuccessfulPollTimestamp,
+                topicPartitionsToUnsub,
+                storePollCounterMap);
           }
         } catch (Exception e) {
           if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
-            // We sometimes wrap InterruptedExceptions, so not taking any chances...
             LOGGER.error("Received InterruptedException, will exit");
             break;
           }
           LOGGER.error("Received exception while polling, will retry", e);
-          addSomeDelay = true;
           aggStats.recordTotalPollError();
+          addSomeDelay = true;
         }
       }
     } catch (Throwable t) {
-      // This is a catch-all to ensure that the thread doesn't die unexpectedly. If it does, we want to know about it.
       LOGGER.error(
           "Shared consumer thread: {} exited due to an unexpected exception",
           Thread.currentThread().getName(),
@@ -221,6 +157,114 @@ class ConsumptionTask implements Runnable {
     } finally {
       LOGGER.info("Shared consumer thread: {} exited", Thread.currentThread().getName());
     }
+  }
+
+  /**
+  * Processes pending unsubscriptions by removing partitions from data receiver map,
+  * notifying receivers of topic deletion, and updating the poll tracker.
+  * The set is cleared by the cleaner at the start and can be reused for collecting
+  * partitions with missing receivers during poll processing.
+  *
+  * @param topicPartitionsToUnsub reusable set (cleared by cleaner, populated with partitions to unsubscribe)
+  */
+  private void processAndClearUnsubscriptions(Set<PubSubTopicPartition> topicPartitionsToUnsub) {
+    cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub);
+    for (PubSubTopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
+      ConsumedDataReceiver<List<DefaultPubSubMessage>> dataReceiver = dataReceiverMap.remove(topicPartitionToUnSub);
+      if (dataReceiver != null) {
+        dataReceiver.notifyOfTopicDeletion(topicPartitionToUnSub.getPubSubTopic().getName());
+      }
+      consumerPollTracker.removeTopicPartition(topicPartitionToUnSub);
+    }
+    topicPartitionsToUnsub.clear();
+  }
+
+  /**
+   * Processes poll results when messages are available. Aggregates results from all topic-partitions,
+   * records stats, applies throttling, and handles cleanup of partitions with missing receivers.
+   *
+   * @param polledPubSubMessages messages from poll
+   * @param pollTimestamp when poll completed
+   * @param topicPartitionsToUnsub set to collect partitions needing unsubscription
+   * @param storePollCounterMap reusable map for per-store poll counters (cleared at start)
+   * @return true if errors occurred and delay should be added, false otherwise
+   */
+  private boolean processPollResults(
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledPubSubMessages,
+      long pollTimestamp,
+      Set<PubSubTopicPartition> topicPartitionsToUnsub,
+      Map<String, StorePollCounter> storePollCounterMap) {
+
+    int payloadBytesConsumed = 0;
+    int messageCount = 0;
+    long beforeProducingTimestamp = System.currentTimeMillis();
+    storePollCounterMap.clear();
+
+    List<TpProcessingResult> results = processAllTopicPartitions(polledPubSubMessages, pollTimestamp);
+
+    boolean hasError = false;
+    for (TpProcessingResult result: results) {
+      if (result.isMissingReceiver()) {
+        LOGGER.error(
+            "Couldn't find consumed data receiver for topic partition : {} after receiving records from `poll` request",
+            result.getTopicPartition());
+        topicPartitionsToUnsub.add(result.getTopicPartition());
+      } else if (result.getError() != null) {
+        LOGGER.error("Error processing topic partition: {}", result.getTopicPartition(), result.getError());
+        hasError = true;
+      } else {
+        messageCount += result.getMsgCount();
+        payloadBytesConsumed += result.getPayloadSize();
+        storePollCounterMap
+            .computeIfAbsent(result.getTopicPartition().getPubSubTopic().getStoreName(), this::newStorePollCounter)
+            .record(result.getMsgCount(), result.getPayloadSize());
+      }
+    }
+
+    if (hasError) {
+      aggStats.recordTotalPollError();
+    }
+
+    recordAggregateStats(beforeProducingTimestamp, messageCount, storePollCounterMap);
+    applyThrottling(payloadBytesConsumed, messageCount);
+    cleanupUnsubscribedPartitions(topicPartitionsToUnsub);
+
+    return hasError;
+  }
+
+  /**
+   * Records aggregate statistics after processing poll results.
+   */
+  private void recordAggregateStats(
+      long beforeProducingTimestamp,
+      int messageCount,
+      Map<String, StorePollCounter> storePollCounterMap) {
+
+    aggStats.recordTotalConsumerRecordsProducingToWriterBufferLatency(
+        LatencyUtils.getElapsedTimeFromMsToMs(beforeProducingTimestamp));
+    aggStats.recordTotalNonZeroPollResultNum(messageCount);
+
+    for (Map.Entry<String, StorePollCounter> entry: storePollCounterMap.entrySet()) {
+      KafkaConsumerServiceStats storeStats = aggStats.getStoreStats(entry.getKey());
+      storeStats.recordPollResultNum(entry.getValue().msgCount);
+      storeStats.recordByteSizePerPoll(entry.getValue().byteSize);
+    }
+  }
+
+  /**
+   * Applies bandwidth and records throttling.
+   */
+  private void applyThrottling(int payloadBytesConsumed, int messageCount) {
+    bandwidthThrottler.accept(payloadBytesConsumed);
+    recordsThrottler.accept(messageCount);
+  }
+
+  /**
+   * Cleans up partitions that have missing receivers by unsubscribing and recording stats.
+   */
+  private void cleanupUnsubscribedPartitions(Set<PubSubTopicPartition> topicPartitionsToUnsub) {
+    cleaner.unsubscribe(topicPartitionsToUnsub);
+    aggStats.recordTotalDetectedNoRunningIngestionTopicPartitionNum(topicPartitionsToUnsub.size());
   }
 
   void stop() {
@@ -277,6 +321,105 @@ class ConsumptionTask implements Runnable {
 
   private LivePartitionStats newPartitionStats(PubSubTopicPartition pubSubTopicPartition) {
     return new LivePartitionStats(this.lastSuccessfulPollTimestamp);
+  }
+
+  /**
+   * Process all topic-partitions from a poll result. Uses parallel processing if enabled and there are
+   * multiple topic-partitions, otherwise processes sequentially.
+   *
+   * @param polledPubSubMessages the messages polled from PubSub, grouped by topic-partition
+   * @param pollTimestamp the timestamp when the poll completed
+   * @return list of processing results for each topic-partition
+   */
+  private List<TpProcessingResult> processAllTopicPartitions(
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledPubSubMessages,
+      long pollTimestamp) {
+    List<TpProcessingResult> results = new ArrayList<>(polledPubSubMessages.size());
+
+    if (crossTpProcessingPool != null && polledPubSubMessages.size() > 1) {
+      // Parallel processing: submit each TP's processing to the thread pool
+      List<CompletableFuture<TpProcessingResult>> futures = new ArrayList<>(polledPubSubMessages.size());
+      for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: polledPubSubMessages.entrySet()) {
+        final PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+        final List<DefaultPubSubMessage> messages = entry.getValue();
+        final long ts = pollTimestamp;
+        futures.add(
+            CompletableFuture
+                .supplyAsync(() -> processTopicPartition(pubSubTopicPartition, messages, ts), crossTpProcessingPool));
+      }
+
+      // Wait for all TPs to complete and collect results
+      CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+      for (CompletableFuture<TpProcessingResult> future: futures) {
+        results.add(future.join());
+      }
+    } else {
+      // Sequential processing
+      for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: polledPubSubMessages.entrySet()) {
+        results.add(processTopicPartition(entry.getKey(), entry.getValue(), pollTimestamp));
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Process messages for a single topic-partition. This method handles:
+   * - Receiver lookup and missing receiver detection
+   * - Per-poll bookkeeping (message count, payload size, stats recording)
+   * - Writing messages to the receiver
+   * - Exception handling
+   *
+   * <p><b>Exception Handling Contract:</b> This method catches all exceptions internally and stores
+   * them in {@link TpProcessingResult#setError(Exception)}. It is guaranteed to never throw an
+   * exception to the caller. This contract is critical for parallel processing in
+   * {@link #processAllTopicPartitions}, where this method is executed via
+   * {@link CompletableFuture#supplyAsync}. If this method were to throw,
+   * the future would complete exceptionally, causing {@link CompletableFuture#join()}
+   * to throw a {@link CompletionException}. By catching all exceptions here,
+   * we ensure that errors are handled uniformly through the result object rather than through
+   * exception propagation.
+   *
+   * <p>Note: Framework-level exceptions (e.g., {@link RejectedExecutionException}
+   * from the thread pool) are not caught here and would cause the future to complete exceptionally.
+   * Such exceptions indicate a severe system issue and should propagate to fail fast.
+   *
+   * @param pubSubTopicPartition the topic-partition being processed
+   * @param messages the messages to process
+   * @param pollTimestamp the timestamp when the poll completed
+   * @return the processing result containing counts, sizes, and any errors (never null)
+   */
+  private TpProcessingResult processTopicPartition(
+      PubSubTopicPartition pubSubTopicPartition,
+      List<DefaultPubSubMessage> messages,
+      long pollTimestamp) {
+    TpProcessingResult result = new TpProcessingResult(pubSubTopicPartition);
+    ConsumedDataReceiver<List<DefaultPubSubMessage>> receiver = dataReceiverMap.get(pubSubTopicPartition);
+
+    if (receiver == null) {
+      result.setMissingReceiver(true);
+      return result;
+    }
+
+    try {
+      // Per-poll bookkeeping
+      consumerPollTracker.recordMessageReceived(pubSubTopicPartition);
+      int msgCnt = messages.size();
+      int payloadSize = 0;
+      for (DefaultPubSubMessage pubSubMessage: messages) {
+        payloadSize += pubSubMessage.getPayloadSize();
+      }
+      result.setMsgCount(msgCnt);
+      result.setPayloadSize(payloadSize);
+      partitionToStatsMap.computeIfAbsent(pubSubTopicPartition, this::newPartitionStats)
+          .record(pollTimestamp, msgCnt, payloadSize);
+
+      receiver.write(messages);
+    } catch (Exception e) {
+      result.setError(e);
+    }
+
+    return result;
   }
 
   public static class PartitionStats {
@@ -351,6 +494,58 @@ class ConsumptionTask implements Runnable {
     void record(int msgCount, int byteSize) {
       this.msgCount += msgCount;
       this.byteSize += byteSize;
+    }
+  }
+
+  /**
+   * This class holds the result of processing a single topic-partition in the parallel processing path.
+   * It aggregates the processing outcome including message count, payload size, and any errors.
+   */
+  private static class TpProcessingResult {
+    private final PubSubTopicPartition topicPartition;
+    private int msgCount;
+    private int payloadSize;
+    private boolean missingReceiver;
+    private Exception error;
+
+    TpProcessingResult(PubSubTopicPartition topicPartition) {
+      this.topicPartition = topicPartition;
+    }
+
+    PubSubTopicPartition getTopicPartition() {
+      return topicPartition;
+    }
+
+    int getMsgCount() {
+      return msgCount;
+    }
+
+    void setMsgCount(int msgCount) {
+      this.msgCount = msgCount;
+    }
+
+    int getPayloadSize() {
+      return payloadSize;
+    }
+
+    void setPayloadSize(int payloadSize) {
+      this.payloadSize = payloadSize;
+    }
+
+    boolean isMissingReceiver() {
+      return missingReceiver;
+    }
+
+    void setMissingReceiver(boolean missingReceiver) {
+      this.missingReceiver = missingReceiver;
+    }
+
+    Exception getError() {
+      return error;
+    }
+
+    void setError(Exception error) {
+      this.error = error;
     }
   }
 }

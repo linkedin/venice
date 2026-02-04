@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ExecutorService;
 
 
 /**
@@ -50,7 +51,8 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
       final ReadOnlyStoreRepository metadataRepository,
       final boolean isUnregisterMetricForDeletedStoreEnabled,
       final VeniceServerConfig veniceServerConfig,
-      final PubSubContext pubSubContext) {
+      final PubSubContext pubSubContext,
+      final ExecutorService crossTpProcessingPool) {
     super(
         poolType,
         consumerProperties,
@@ -70,7 +72,8 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
         isUnregisterMetricForDeletedStoreEnabled,
         StoreAwarePartitionWiseKafkaConsumerService.class.toString(),
         veniceServerConfig,
-        pubSubContext);
+        pubSubContext,
+        crossTpProcessingPool);
   }
 
   @Override
