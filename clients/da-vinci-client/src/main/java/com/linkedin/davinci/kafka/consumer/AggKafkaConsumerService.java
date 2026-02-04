@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
-import com.linkedin.davinci.stats.CrossTpProcessingStats;
 import com.linkedin.davinci.stats.StuckConsumerRepairStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
@@ -20,6 +19,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext.PubSubPropertiesSupplier;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SystemTime;
@@ -83,7 +83,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   private final StuckConsumerRepairStats stuckConsumerStats;
   private final ThreadPoolExecutor crossTpProcessingPool;
-  private final CrossTpProcessingStats crossTpProcessingStats;
+  private final ThreadPoolStats crossTpProcessingStats;
 
   private final static String STUCK_CONSUMER_MSG =
       "Didn't find any suspicious ingestion task, and please contact developers to investigate it further";
@@ -159,7 +159,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
           TimeUnit.MILLISECONDS,
           new LinkedBlockingQueue<>(),
           new DaemonThreadFactory("cross-tp-parallel-processing", serverConfig.getLogContext()));
-      this.crossTpProcessingStats = new CrossTpProcessingStats(metricsRepository, crossTpProcessingPool);
+      this.crossTpProcessingStats = new ThreadPoolStats(metricsRepository, crossTpProcessingPool, "CrossTpProcessing");
       LOGGER.info("Cross-TP parallel processing enabled with shared thread pool size: {}", poolSize);
     } else {
       this.crossTpProcessingPool = null;
