@@ -53,6 +53,7 @@ public class VeniceDispatcherTest {
     when(mockConfig.getMaxPendingRequest()).thenReturn(1000L);
     when(mockConfig.getLeakedFutureCleanupPollIntervalMs()).thenReturn(60000L);
     when(mockConfig.getLeakedFutureCleanupThresholdMs()).thenReturn(600000L);
+    when(mockConfig.getSlowScatterRequestThresholdMs()).thenReturn(1000L);
     when(mockRouterStats.getStatsByType(any())).thenReturn(mockAggRouterHttpRequestStats);
   }
 

@@ -61,12 +61,6 @@ import org.apache.logging.log4j.Logger;
 public final class VeniceDispatcher implements PartitionDispatchHandler4<Instance, VenicePath, RouterKey> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceDispatcher.class);
   /**
-   * Threshold in milliseconds for logging slow scatter requests.
-   * When a scatter request takes longer than this threshold, detailed information will be logged
-   * to help debug high P99 latency issues.
-   */
-  private static final long SLOW_SCATTER_REQUEST_THRESHOLD_MS = 1000;
-  /**
    * Prefix for slow multiget request log throttling identifier.
    * Combined with store name to create unique throttling keys per store.
    */
@@ -101,6 +95,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
 
   private final AggHostHealthStats aggHostHealthStats;
   private final long routerUnhealthyPendingConnThresholdPerRoute;
+  private final long slowScatterRequestThresholdMs;
 
   private final boolean isStatefulHealthCheckEnabled;
 
@@ -119,6 +114,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
       RouterStats<AggRouterHttpRequestStats> routerStats) {
     this.routerConfig = config;
     this.routerUnhealthyPendingConnThresholdPerRoute = routerConfig.getRouterUnhealthyPendingConnThresholdPerRoute();
+    this.slowScatterRequestThresholdMs = routerConfig.getSlowScatterRequestThresholdMs();
     this.isStatefulHealthCheckEnabled = routerConfig.isStatefulRouterHealthCheckEnabled();
     this.storeRepository = storeRepository;
     this.routeHttpRequestStats = routeHttpRequestStats;
@@ -171,7 +167,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
       try {
         // Log slow scatter requests to help debug high P99 latency (with throttling to prevent log spamming)
         double elapsedTimeMs = LatencyUtils.getElapsedTimeFromNSToMS(dispatchStartTimeNs);
-        if (elapsedTimeMs > SLOW_SCATTER_REQUEST_THRESHOLD_MS && RequestType.isStreaming(requestType)) {
+        if (elapsedTimeMs > slowScatterRequestThresholdMs && RequestType.isStreaming(requestType)) {
           String throttleKey = SLOW_MULTIGET_REQUEST_LOG_PREFIX + storeName;
           if (!REDUNDANT_LOG_FILTER.isRedundantException(throttleKey)) {
             logSlowScatterRequest(path, part, storageNode, elapsedTimeMs, response, throwable);
@@ -389,7 +385,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
 
   /**
    * Logs detailed information about slow scatter requests to help debug high P99 latency issues.
-   * This method is called when a scatter request takes longer than {@link #SLOW_SCATTER_REQUEST_THRESHOLD_MS}.
+   * This method is called when a scatter request takes longer than the configured threshold.
    *
    * @param path the Venice path containing store and version information
    * @param part the scatter gather request part containing partition keys
