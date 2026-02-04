@@ -464,9 +464,8 @@ public class DefaultIngestionBackendTest {
         null,
         veniceServerConfig);
 
-    // Should not throw exception
+    // Should not throw exception, it just no-op.
     backend.cancelBlobTransferIfInProgress(storeConfig, PARTITION, 10);
-    // No further verification needed - we just want to ensure it doesn't throw
   }
 
   @Test

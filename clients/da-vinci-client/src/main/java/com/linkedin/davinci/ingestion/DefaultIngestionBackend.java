@@ -216,23 +216,23 @@ public class DefaultIngestionBackend implements IngestionBackend {
     validateDirectoriesBeforeBlobTransfer(storeName, versionNumber, partitionId);
     addStoragePartitionWhenBlobTransferStart(partitionId, storeConfig, svsSupplier);
 
-    return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat).handle((inputStream, ex) -> {
-      Throwable throwable = (Throwable) ex;
-      updateBlobTransferResponseStats(throwable, storeName, versionNumber);
-      if (throwable != null) {
-        LOGGER.error(
-            "Failed to bootstrap replica {} from blobs transfer with exception {}, falling back to kafka ingestion.",
-            replicaId,
-            throwable);
-      } else {
-        LOGGER.info("Successfully bootstrapped replica {} from blobs transfer", replicaId);
-      }
+    return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
+        .handle((inputStream, throwable) -> {
+          updateBlobTransferResponseStats(throwable, storeName, versionNumber);
+          if (throwable != null) {
+            LOGGER.error(
+                "Failed to bootstrap replica {} via blob transfer due to exception {}; will start Kafka ingestion unless cancelled.",
+                replicaId,
+                throwable);
+          } else {
+            LOGGER.info("Successfully bootstrapped replica {} from blobs transfer.", replicaId);
+          }
 
-      // Post-transfer validation and cleanup
-      validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partitionId, throwable == null);
-      adjustStoragePartitionWhenBlobTransferComplete(storageService.getStorageEngine(kafkaTopic), partitionId);
-      return null;
-    });
+          // Post-transfer validation and cleanup
+          validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partitionId, throwable == null);
+          adjustStoragePartitionWhenBlobTransferComplete(storageService.getStorageEngine(kafkaTopic), partitionId);
+          return null;
+        });
   }
 
   /**

@@ -93,7 +93,7 @@ public class BlobTransferStatusTrackingManager {
           replicaId);
     }
 
-    // Step 3: Wait for transfer future to complete (provides clean synchronization point)
+    // Step 3: Wait for transfer future to complete (synchronization)
     CompletableFuture<InputStream> perPartitionTransferFuture = partitionLevelTransferStatus.get(replicaId);
     if (perPartitionTransferFuture == null) {
       LOGGER.info("Transfer future not in progress for replica {}, clearing cancellation transfer flag.", replicaId);
@@ -107,6 +107,9 @@ public class BlobTransferStatusTrackingManager {
         timeoutInSeconds);
     try {
       perPartitionTransferFuture.get(timeoutInSeconds, TimeUnit.SECONDS);
+      LOGGER.info(
+          "Transfer completed successfully for replica {}. The bootstrap callback will skip submitting the subscribe request.",
+          replicaId);
     } catch (ExecutionException e) {
       if (e.getCause() instanceof VeniceBlobTransferCancelledException) {
         LOGGER.info("Transfer cancelled successfully for replica {}: {}", replicaId, e.getCause().getMessage());
