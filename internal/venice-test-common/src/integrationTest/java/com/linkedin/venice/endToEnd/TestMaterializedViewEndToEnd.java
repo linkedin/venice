@@ -25,6 +25,7 @@ import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
+import com.linkedin.davinci.consumer.StatefulVeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceAfterImageConsumerImpl;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
@@ -209,7 +210,7 @@ public class TestMaterializedViewEndToEnd {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testBatchOnlyMaterializedViewDVCConsumer() throws IOException, ExecutionException, InterruptedException {
+  public void testBatchOnlyMaterializedViewDVCConsumer() throws Exception {
     // Create a batch only store with materialized view and run batch push job with 100 records
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
@@ -360,15 +361,14 @@ public class TestMaterializedViewEndToEnd {
 
     // Consume from version topic
     MetricsRepository metricsRepository = new MetricsRepository();
-    VeniceChangelogConsumerClientFactory newStatelessClientFactory = new VeniceChangelogConsumerClientFactory(
-        changelogClientConfig.setViewName(testViewName).setIsNewStatelessClientEnabled(true),
-        metricsRepository);
+    VeniceChangelogConsumerClientFactory newStatelessClientFactory =
+        new VeniceChangelogConsumerClientFactory(changelogClientConfig.setViewName(testViewName), metricsRepository);
 
     final List<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
-    try (VeniceChangelogConsumer<Integer, Utf8> viewTopicConsumer =
-        newStatelessClientFactory.getChangelogConsumer(storeName)) {
+    try (StatefulVeniceChangelogConsumer<Integer, Utf8> viewTopicConsumer =
+        newStatelessClientFactory.getStatefulChangelogConsumer(storeName)) {
       Assert.assertTrue(viewTopicConsumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
-      viewTopicConsumer.subscribeAll().get();
+      viewTopicConsumer.start().get();
       //
       // pubSubMessages.clear();
       // TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
