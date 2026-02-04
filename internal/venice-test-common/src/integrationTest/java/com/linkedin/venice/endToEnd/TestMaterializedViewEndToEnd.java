@@ -2,12 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
-import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
-import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
@@ -34,6 +29,7 @@ import com.linkedin.davinci.consumer.VeniceAfterImageConsumerImpl;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -41,6 +37,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -48,6 +45,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
@@ -596,6 +594,96 @@ public class TestMaterializedViewEndToEnd {
     rePushProps.setProperty(SOURCE_KAFKA, "true");
     rePushProps.setProperty(KAFKA_INPUT_BROKER_URL, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
     IntegrationTestPushUtils.runVPJ(rePushProps);
+  }
+
+  @Test
+  public void testMaterializedViewWithStatelessCDCClient()
+      throws IOException, ExecutionException, InterruptedException {
+    String storeName = Utils.getUniqueString("batchStore");
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    int numberOfRecords = 100;
+
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        multiRegionMultiClusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
+        .setChunkingEnabled(true)
+        .setRmdChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setNativeReplicationSourceFabric(childDatacenters.get(0).getRegionName())
+        .setPartitionCount(3);
+    String testViewName = "MaterializedViewTest";
+    try (ControllerClient controllerClient =
+        IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms)) {
+      MaterializedViewParameters.Builder viewParamBuilder =
+          new MaterializedViewParameters.Builder(testViewName).setPartitionCount(1);
+      UpdateStoreQueryParams updateViewParam = new UpdateStoreQueryParams().setViewName(testViewName)
+          .setViewClassName(MaterializedView.class.getCanonicalName())
+          .setViewClassParams(viewParamBuilder.build());
+      controllerClient
+          .retryableRequest(5, controllerClient1 -> controllerClient.updateStore(storeName, updateViewParam));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+        Map<String, ViewConfig> viewConfigMap = controllerClient.getStore(storeName).getStore().getViewConfigs();
+        assertEquals(viewConfigMap.size(), 1);
+        assertEquals(viewConfigMap.get(testViewName).getViewClassName(), MaterializedView.class.getCanonicalName());
+      });
+    }
+
+    IntegrationTestPushUtils.runVPJ(props);
+
+    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
+    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
+    Properties consumerProperties = new Properties();
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
+    String localKafkaUrl = localKafka.getAddress();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+    consumerProperties.put(CLUSTER_NAME, clusterName);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    consumerProperties.put(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY, true);
+    ChangelogClientConfig changelogClientConfig = new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+        .setControllerD2ServiceName(D2_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setLocalD2ZkHosts(localZkServer.getAddress())
+        .setControllerRequestRetryCount(3)
+        .setVersionSwapDetectionIntervalTimeInSeconds(3)
+        .setD2Client(
+            IntegrationTestPushUtils
+                .getD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress()))
+        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+
+    // Consume from version topic
+    MetricsRepository metricsRepository = new MetricsRepository();
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(changelogClientConfig, metricsRepository);
+    VeniceChangelogConsumer<Integer, Utf8> versionTopicChangelogConsumer =
+        veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName, "1");
+    versionTopicChangelogConsumer.subscribeAll().get();
+    // Verify we can get the records
+    final List<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+      pubSubMessages.addAll(versionTopicChangelogConsumer.poll(1000));
+      Assert.assertEquals(pubSubMessages.size(), numberOfRecords);
+    });
+    versionTopicChangelogConsumer.close();
+
+    // Consume from view topic
+    ChangelogClientConfig viewChangeLogClientConfig =
+        changelogClientConfig.setViewName(testViewName).setIsNewStatelessClientEnabled(true);
+    VeniceChangelogConsumerClientFactory veniceViewChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(viewChangeLogClientConfig, metricsRepository);
+
+    try (VeniceChangelogConsumer<Integer, Utf8> viewTopicConsumer =
+        veniceViewChangelogConsumerClientFactory.getChangelogConsumer(storeName)) {
+      Assert.assertTrue(viewTopicConsumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
+      viewTopicConsumer.subscribeAll().get();
+      assertEquals(viewTopicConsumer.poll(1000).size(), numberOfRecords); // No data in view topic for batch-only push
+    }
   }
 
   private double getMetric(MetricsRepository metricsRepository, String metricName, String storeName) {
