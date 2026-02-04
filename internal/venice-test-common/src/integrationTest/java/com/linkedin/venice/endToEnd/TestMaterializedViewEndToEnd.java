@@ -682,7 +682,12 @@ public class TestMaterializedViewEndToEnd {
         veniceViewChangelogConsumerClientFactory.getChangelogConsumer(storeName)) {
       Assert.assertTrue(viewTopicConsumer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl);
       viewTopicConsumer.subscribeAll().get();
-      assertEquals(viewTopicConsumer.poll(1000).size(), numberOfRecords); // No data in view topic for batch-only push
+
+      pubSubMessages.clear();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+        pubSubMessages.addAll(versionTopicChangelogConsumer.poll(1000));
+        Assert.assertEquals(pubSubMessages.size(), numberOfRecords);
+      });
     }
   }
 
