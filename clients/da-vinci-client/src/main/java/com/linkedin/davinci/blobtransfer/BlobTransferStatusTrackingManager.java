@@ -95,29 +95,26 @@ public class BlobTransferStatusTrackingManager {
 
     // Step 3: Wait for transfer future to complete (provides clean synchronization point)
     CompletableFuture<InputStream> perPartitionTransferFuture = partitionLevelTransferStatus.get(replicaId);
-    if (perPartitionTransferFuture != null && !perPartitionTransferFuture.isDone()) {
-      LOGGER.info(
-          "Waiting for transfer future to complete for replica {} (timeout: {} seconds)",
-          replicaId,
-          timeoutInSeconds);
-      try {
-        perPartitionTransferFuture.get(timeoutInSeconds, TimeUnit.SECONDS);
-      } catch (ExecutionException e) {
-        if (e.getCause() instanceof VeniceBlobTransferCancelledException) {
-          LOGGER.info("Transfer cancelled successfully for replica {}: {}", replicaId, e.getCause().getMessage());
-        } else {
-          LOGGER.info("Transfer completed with exception for replica {}: {}", replicaId, e.getCause().getMessage());
-        }
-      }
-      // After waiting for transfer to complete, keep flag set for startConsumption#bootstrapFuture callback to check
-    } else {
-      // No ongoing transfer - either never started or already completed
-      // Fast cleanup: Clear the flag immediately to make partition drops complete quickly
-      LOGGER.info(
-          "Transfer future not in progress for replica {}, clearing cancellation flag for fast cleanup",
-          replicaId);
+    if (perPartitionTransferFuture == null) {
+      LOGGER.info("Transfer future not in progress for replica {}, clearing cancellation transfer flag.", replicaId);
       clearCancellationRequest(replicaId);
+      return;
     }
+
+    LOGGER.info(
+        "Waiting for transfer future to complete for replica {} (timeout: {} seconds)",
+        replicaId,
+        timeoutInSeconds);
+    try {
+      perPartitionTransferFuture.get(timeoutInSeconds, TimeUnit.SECONDS);
+    } catch (ExecutionException e) {
+      if (e.getCause() instanceof VeniceBlobTransferCancelledException) {
+        LOGGER.info("Transfer cancelled successfully for replica {}: {}", replicaId, e.getCause().getMessage());
+      } else {
+        LOGGER.info("Transfer completed with exception for replica {}: {}", replicaId, e.getCause().getMessage());
+      }
+    }
+    // After waiting for transfer to complete, keep flag set for startConsumption#bootstrapFuture callback to check
   }
 
   /**
