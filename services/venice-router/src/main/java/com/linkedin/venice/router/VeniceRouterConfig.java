@@ -91,6 +91,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_RETRY_MANAGER_CORE_POOL_SIZE
 import static com.linkedin.venice.ConfigKeys.ROUTER_ROUTING_COMPUTATION_MODE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
+import static com.linkedin.venice.ConfigKeys.ROUTER_SLOW_SCATTER_REQUEST_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SOCKET_TIMEOUT;
@@ -171,6 +172,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final long singleGetTardyLatencyThresholdMs;
   private final long multiGetTardyLatencyThresholdMs;
   private final long computeTardyLatencyThresholdMs;
+  private final long slowScatterRequestThresholdMs;
   private final long maxPendingRequest;
   private final StorageNodeClientType storageNodeClientType;
   private final boolean decompressOnClient;
@@ -303,6 +305,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
           props.getLong(ROUTER_MULTIGET_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
       computeTardyLatencyThresholdMs =
           props.getLong(ROUTER_COMPUTE_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
+      slowScatterRequestThresholdMs = props.getLong(ROUTER_SLOW_SCATTER_REQUEST_THRESHOLD_MS, 1000);
 
       readThrottlingEnabled = props.getBoolean(ROUTER_ENABLE_READ_THROTTLING, true);
       maxPendingRequest = props.getLong(ROUTER_MAX_PENDING_REQUEST, 2500L * 12L);
@@ -571,6 +574,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public long getComputeTardyLatencyThresholdMs() {
     return computeTardyLatencyThresholdMs;
+  }
+
+  public long getSlowScatterRequestThresholdMs() {
+    return slowScatterRequestThresholdMs;
   }
 
   public boolean isReadThrottlingEnabled() {

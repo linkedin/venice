@@ -1729,6 +1729,13 @@ public class ConfigKeys {
   public static final String ROUTER_MULTIGET_TARDY_LATENCY_MS = "router.multiget.tardy.latency.ms";
   public static final String ROUTER_COMPUTE_TARDY_LATENCY_MS = "router.compute.tardy.latency.ms";
 
+  /**
+   * Threshold in milliseconds for logging slow scatter requests.
+   * When a scatter request exceeds this threshold, detailed information will be logged
+   * to help debug high P99 latency issues.
+   */
+  public static final String ROUTER_SLOW_SCATTER_REQUEST_THRESHOLD_MS = "router.slow.scatter.request.threshold.ms";
+
   public static final String ROUTER_ENABLE_READ_THROTTLING = "router.enable.read.throttling";
 
   /**
