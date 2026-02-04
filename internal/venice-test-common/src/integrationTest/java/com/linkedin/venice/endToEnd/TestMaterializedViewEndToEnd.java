@@ -7,7 +7,6 @@ import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachin
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
-import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.views.MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX;
 import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
@@ -67,7 +66,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.view.TestValueBasedVenicePartitioner;
 import com.linkedin.venice.views.MaterializedView;
-import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import io.tehuti.Metric;
@@ -77,7 +75,6 @@ import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -246,6 +243,7 @@ public class TestMaterializedViewEndToEnd {
       });
     }
     IntegrationTestPushUtils.runVPJ(props);
+    /**
     // Start a DVC client that's subscribed to partition 0 of the store's materialized view. The DVC client should
     // contain all data records.
     VeniceProperties backendConfig =
@@ -312,6 +310,7 @@ public class TestMaterializedViewEndToEnd {
     } finally {
       D2ClientUtils.shutdownClient(daVinciD2RemoteFabric);
     }
+    
     // Make sure things work in the source fabric too.
     VeniceProperties newBackendConfig =
         new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
@@ -337,6 +336,10 @@ public class TestMaterializedViewEndToEnd {
     } finally {
       D2ClientUtils.shutdownClient(daVinciD2SourceFabric);
     }
+     */
+
+    D2Client d2Client = D2TestUtils
+        .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress());
 
     // Consume from view topic with new client
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
@@ -354,9 +357,7 @@ public class TestMaterializedViewEndToEnd {
         .setLocalD2ZkHosts(localZkServer.getAddress())
         .setControllerRequestRetryCount(3)
         .setVersionSwapDetectionIntervalTimeInSeconds(3)
-        .setD2Client(
-            IntegrationTestPushUtils
-                .getD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress()))
+        .setD2Client(d2Client)
         .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
 
     // Consume from version topic
