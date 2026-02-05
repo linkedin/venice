@@ -32,7 +32,6 @@ import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
 import com.linkedin.venice.router.throttle.PendingRequestThrottler;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.buffer.ByteBuf;
@@ -60,16 +59,6 @@ import org.apache.logging.log4j.Logger;
 
 public final class VeniceDispatcher implements PartitionDispatchHandler4<Instance, VenicePath, RouterKey> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceDispatcher.class);
-  /**
-   * Prefix for slow multiget request log throttling identifier.
-   * Combined with store name to create unique throttling keys per store.
-   */
-  private static final String SLOW_MULTIGET_REQUEST_LOG_PREFIX = "SLOW_MULTIGET_REQUEST_";
-  /**
-   * Singleton filter for throttling redundant slow request logs to prevent log spamming.
-   */
-  private static final RedundantExceptionFilter REDUNDANT_LOG_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter();
   /**
    * This map is used to capture all the {@link CompletableFuture} returned by {@link #storageNodeClient},
    * and it is used to clean up the leaked futures in {@link LeakedCompletableFutureCleanupService}.
@@ -168,10 +157,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
         // Log slow scatter requests to help debug high P99 latency (with throttling to prevent log spamming)
         double elapsedTimeMs = LatencyUtils.getElapsedTimeFromNSToMS(dispatchStartTimeNs);
         if (elapsedTimeMs > slowScatterRequestThresholdMs && RequestType.isStreaming(requestType)) {
-          String throttleKey = SLOW_MULTIGET_REQUEST_LOG_PREFIX + storeName;
-          if (!REDUNDANT_LOG_FILTER.isRedundantException(throttleKey)) {
-            logSlowScatterRequest(path, part, storageNode, elapsedTimeMs, response, throwable);
-          }
+          logSlowScatterRequest(path, part, storageNode, elapsedTimeMs, response, throwable);
         }
 
         int statusCode = response != null ? response.getStatusCode() : HttpStatus.SC_INTERNAL_SERVER_ERROR;
