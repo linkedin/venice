@@ -145,7 +145,14 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
       }
     }
     if (pendingRequestCount > maxPendingConnectionPerHost) {
-      pendingRequestUnhealthyTimeMap.computeIfAbsent(nodeId, k -> System.currentTimeMillis());
+      pendingRequestUnhealthyTimeMap.computeIfAbsent(nodeId, k -> {
+        LOGGER.warn(
+            "Marking {} as unhealthy due to too many pending requests: {} > threshold {}",
+            nodeId,
+            pendingRequestCount,
+            maxPendingConnectionPerHost);
+        return System.currentTimeMillis();
+      });
       return true;
     }
     return false;
