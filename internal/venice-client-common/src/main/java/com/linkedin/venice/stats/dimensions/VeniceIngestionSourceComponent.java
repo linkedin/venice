@@ -8,7 +8,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
  * Used for metrics like ingestion latency between components.
  *
  * <p>Note: Similar to {@link VeniceIngestionDestinationComponent}. These are
- * 2 different enums to provide type safety when defining and recording metrics.
+ * 2 different enums with same values to provide type safety when defining and
+ * recording metrics.
  */
 public enum VeniceIngestionSourceComponent implements VeniceDimensionInterface {
   /** The original producer that created the message */
