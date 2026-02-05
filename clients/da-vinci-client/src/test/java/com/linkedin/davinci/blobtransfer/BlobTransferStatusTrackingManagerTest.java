@@ -373,7 +373,6 @@ public class BlobTransferStatusTrackingManagerTest {
    * This tests what happens when STANDBY→OFFLINE transition (which calls stopConsumption,
    * which internally cancels blob transfer) happens at different points in the transfer lifecycle.
    */
-
   @Test
   public void testOfflineTransitionAtT1_TransferNotStarted() {
     // Scenario: OFFLINE→STANDBY starts consumption and initializes transfer,
@@ -565,10 +564,8 @@ public class BlobTransferStatusTrackingManagerTest {
     // Verify: cancelTransfer creates the status but immediately skips because it's a final state
     // (In real implementation, cancelTransfer checks isTransferInFinalState which returns true for null)
     BlobTransferStatus status = statusTrackingManager.getTransferStatus(replicaId);
-    // Either null (skipped) or TRANSFER_CANCEL_REQUESTED if computeIfAbsent created it
-    assertTrue(
-        status == null || status == BlobTransferStatus.TRANSFER_CANCEL_REQUESTED,
-        "Status should be null or TRANSFER_CANCEL_REQUESTED when cancelling non-existent transfer");
+    // Either null (skipped)
+    assertTrue(status == null, "Status should be null when cancelling non-existent transfer");
   }
 
   @Test

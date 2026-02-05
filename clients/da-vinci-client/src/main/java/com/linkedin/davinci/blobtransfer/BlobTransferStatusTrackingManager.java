@@ -119,6 +119,11 @@ public class BlobTransferStatusTrackingManager {
   }
 
   public void cancelTransfer(String replicaId) {
+    if (isBlobTransferCancelRequestSentBefore(replicaId)) {
+      LOGGER.warn("Cancellation flag already set for replica {}. No action needed.", replicaId);
+      return;
+    }
+
     if (isTransferInFinalState(replicaId)) {
       LOGGER
           .info("Skipping send cancelling request for replica {}, due to transfer already in final state.", replicaId);

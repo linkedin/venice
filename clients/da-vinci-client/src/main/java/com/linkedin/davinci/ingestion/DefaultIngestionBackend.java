@@ -127,7 +127,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           svsSupplier);
 
       // Status: (normal case) TRANSFER_STARTED -> TRANSFER_COMPLETED
-      // Status: (cancel in half) TRANSFER_STARTED -> TRANSFER_CANCEL_REQUESTED ->TRANSFER_CANCELLED
+      // Status: (cancel in half) TRANSFER_STARTED -> TRANSFER_CANCEL_REQUESTED -> TRANSFER_CANCELLED
       bootstrapFuture.whenComplete((result, throwable) -> {
         Lock consumptionLock = consumptionLocks.computeIfAbsent(replicaId, k -> new ReentrantLock());
         consumptionLock.lock();
@@ -145,7 +145,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           runnable.run();
         } finally {
           consumptionLock.unlock();
-          LOGGER.info("Release transfer complete lock for replica {} completed", replicaId);
+          LOGGER.info("Released consumption lock for replica {} after transfer completion check.", replicaId);
         }
       });
     }
@@ -463,11 +463,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
       Lock consumptionLock = consumptionLocks.computeIfAbsent(replicaId, k -> new ReentrantLock());
       consumptionLock.lock();
+
       try {
-        if (blobTransferManager.getTransferStatusTrackingManager().isBlobTransferCancelRequestSentBefore(replicaId)) {
-          LOGGER.warn("Cancellation flag already set for replica {}. No action needed.", replicaId);
-          return;
-        }
         blobTransferManager.getTransferStatusTrackingManager().cancelTransfer(replicaId);
       } finally {
         consumptionLock.unlock();
@@ -552,7 +549,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
           "Blob transfer for replica {} (final status: {}), proceeding with partition drop",
           replicaId,
           blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId));
-
     } finally {
       blobTransferManager.getTransferStatusTrackingManager().clearTransferStatusEnum(replicaId);
       consumptionLocks.remove(replicaId);

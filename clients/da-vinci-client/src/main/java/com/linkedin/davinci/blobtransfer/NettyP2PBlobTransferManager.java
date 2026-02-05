@@ -69,7 +69,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   // Each replica issues exactly one blob-transfer request at a time.
   // That request tries a chain of peers (one host after another until success or all peers fail).
   private final ExecutorService replicaBlobFetchExecutor;
-  // Cancellation manager is responsible for coordinating blob transfer cancellations
+  // Status tracking manager is responsible for coordinating blob transfer cancellations
   private final BlobTransferStatusTrackingManager statusTrackingManager;
 
   public NettyP2PBlobTransferManager(
