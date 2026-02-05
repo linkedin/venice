@@ -634,7 +634,10 @@ public class DefaultIngestionBackendTest {
     Thread dropThread = new Thread(() -> {
       try {
         // Wait for transfer to be initialized
-        transferInitializedLatch.await(2, TimeUnit.SECONDS);
+        boolean latchCompleted = transferInitializedLatch.await(2, TimeUnit.SECONDS);
+        if (!latchCompleted) {
+          LogManager.getLogger().warn("Latch timed out waiting for transfer initialization");
+        }
         Thread.sleep(50); // Small delay to ensure we're mid-transfer
         testIngestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5);
         completedCount.incrementAndGet();
@@ -733,7 +736,10 @@ public class DefaultIngestionBackendTest {
     Thread dropThread = new Thread(() -> {
       try {
         // Wait for transfer to be initialized
-        transferInitializedLatch.await(2, TimeUnit.SECONDS);
+        boolean latchCompleted = transferInitializedLatch.await(2, TimeUnit.SECONDS);
+        if (!latchCompleted) {
+          LogManager.getLogger().warn("Latch timed out waiting for transfer initialization");
+        }
         Thread.sleep(50); // Small delay
         // Drop immediately (race condition with completion)
         testIngestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5);
