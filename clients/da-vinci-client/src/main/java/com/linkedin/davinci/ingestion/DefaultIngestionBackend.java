@@ -511,56 +511,51 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   private void stopBlobTransferAndWait(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds) {
-    final int waitIntervalInSecond = 1;
-    final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
     if (blobTransferManager == null) {
       return;
     }
 
-    // Wait for blob transfer cancellation to complete by checking status transition
-    // Decision based on status enum, not future state
     String storeVersion = storeConfig.getStoreVersionName();
     String replicaId = Utils.getReplicaId(storeVersion, partition);
 
-    // Poll until the blob transfer reaches final state (TRANSFER_COMPLETED or TRANSFER_CANCELLED)
-    int retries = 0;
-    while (!(blobTransferManager.getTransferStatusTrackingManager().isTransferInFinalState(replicaId)
-        && retries < maxRetry)) {
-      try {
-        Thread.sleep(waitIntervalInSecond * 1000L);
-        retries++;
-        BlobTransferStatus currentStatus =
-            blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId);
-        LOGGER.info(
-            "Waiting for blob transfer to complete for replica {} (attempt {}/{}). Current status: {}",
-            replicaId,
-            retries,
-            maxRetry,
-            currentStatus);
-      } catch (InterruptedException e) {
-        LOGGER.warn("Interrupted while waiting for blob transfer to complete for replica {}", replicaId, e);
-        Thread.currentThread().interrupt();
-        break;
-      }
+    if (blobTransferManager.getTransferStatusTrackingManager().isTransferInFinalState(replicaId)) {
+      return;
     }
 
-    // Final status check
-    BlobTransferStatus finalStatus =
-        blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId);
-    if (!blobTransferManager.getTransferStatusTrackingManager().isTransferInFinalState(replicaId)) {
-      LOGGER.warn(
-          "Blob transfer still in progress for replica {} after {} seconds (status: {}), proceeding with partition drop",
-          replicaId,
-          timeoutInSeconds,
-          finalStatus);
-    } else {
+    try {
+      // Wait for blob transfer cancellation to complete by checking status transition
+      // Poll until the blob transfer reaches final state (null or TRANSFER_COMPLETED or TRANSFER_CANCELLED)
+      final int waitIntervalInSecond = 1;
+      final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
+      int retries = 0;
+      while (!(blobTransferManager.getTransferStatusTrackingManager().isTransferInFinalState(replicaId)
+          && retries < maxRetry)) {
+        try {
+          Thread.sleep(waitIntervalInSecond * 1000L);
+          retries++;
+          BlobTransferStatus currentStatus =
+              blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId);
+          LOGGER.info(
+              "Waiting for blob transfer to complete for replica {} (attempt {}/{}). Current status: {}",
+              replicaId,
+              retries,
+              maxRetry,
+              currentStatus);
+        } catch (InterruptedException e) {
+          LOGGER.warn("Interrupted while waiting for blob transfer to complete for replica {}", replicaId, e);
+          Thread.currentThread().interrupt();
+          break;
+        }
+      }
+
       LOGGER.info(
-          "Blob transfer completed for replica {} (status: {}), proceeding with partition drop",
+          "Blob transfer for replica {} (final status: {}), proceeding with partition drop",
           replicaId,
-          finalStatus);
+          blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId));
+
+    } finally {
+      blobTransferManager.getTransferStatusTrackingManager().clearTransferStatusEnum(replicaId);
     }
-    // clean up
-    blobTransferManager.getTransferStatusTrackingManager().clearTransferStatusEnum(replicaId);
   }
 
   @Override

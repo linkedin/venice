@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
@@ -16,6 +17,8 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferStatusTrackingManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferStatus;
+import com.linkedin.davinci.blobtransfer.client.NettyFileTransferClient;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -25,6 +28,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.venice.exceptions.VeniceBlobTransferCancelledException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -208,6 +212,7 @@ public class DefaultIngestionBackendTest {
       ConfigCommonUtils.ActivationState serverSetting,
       boolean expectEnabled) {
     Mockito.reset(blobTransferManager);
+    when(blobTransferManager.getTransferStatusTrackingManager()).thenReturn(statusTrackingManager);
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(CompletableFuture.completedFuture(null));
     when(store.getBlobTransferInServerEnabled()).thenReturn(storeSetting);
@@ -461,7 +466,6 @@ public class DefaultIngestionBackendTest {
   @Test
   public void testStopConsumption_NoBlobTransferManager() {
     // When blobTransferManager is null, stopConsumption should handle it gracefully
-    // (internally tries to cancel blob transfer but returns early when manager is null)
     DefaultIngestionBackend backend = new DefaultIngestionBackend(
         storageMetadataService,
         storeIngestionService,
@@ -469,7 +473,6 @@ public class DefaultIngestionBackendTest {
         null,
         veniceServerConfig);
 
-    // Should not throw exception - stopConsumption handles null blobTransferManager
     backend.stopConsumption(storeConfig, PARTITION);
     verify(storeIngestionService).stopConsumption(storeConfig, PARTITION);
   }
@@ -504,7 +507,6 @@ public class DefaultIngestionBackendTest {
     when(mockStatusTrackingManager.isBlobTransferCancelRequestSentBefore(eq(replicaId))).thenAnswer(inv -> {
       String threadName = Thread.currentThread().getName();
       if (threadName.startsWith("Stop-")) {
-        // Record the order this thread acquired the lock
         threadToOrder.putIfAbsent(threadName, lockAcquisitionOrder.incrementAndGet());
       }
       return false; // Return false so threads actually call cancelTransfer
@@ -563,5 +565,246 @@ public class DefaultIngestionBackendTest {
 
     // 3. Verify cancelTransfer was called (as part of stopConsumption)
     verify(mockStatusTrackingManager, Mockito.atLeastOnce()).cancelTransfer(eq(replicaId));
+  }
+
+  @Test
+  public void testStartConsumptionAndDropConcurrently_AfterTransferStarts() throws Exception {
+    // Scenario: Blob transfer has started and is in progress (actively transferring data),
+    // drop happens mid-transfer
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
+    when(store.isHybrid()).thenReturn(true);
+    when(veniceServerConfig.isServerAllowlistEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
+
+    RocksDBServerConfig rocksDBServerConfig = mock(RocksDBServerConfig.class);
+    when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    // Use real status tracking manager so map logic proves itself
+    NettyFileTransferClient nettyClient = mock(NettyFileTransferClient.class);
+    BlobTransferStatusTrackingManager realStatusTrackingManager = new BlobTransferStatusTrackingManager(nettyClient);
+
+    // Spy to track when initialTransfer is called while using real implementation
+    BlobTransferStatusTrackingManager spyStatusTrackingManager = Mockito.spy(realStatusTrackingManager);
+    when(blobTransferManager.getTransferStatusTrackingManager()).thenReturn(spyStatusTrackingManager);
+
+    // Blob transfer future that simulates ongoing transfer
+    CompletableFuture<InputStream> blobTransferFuture = new CompletableFuture<>();
+    // Simulate what NettyP2PBlobTransferManager.get() does: call startedTransfer()
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), any())).thenAnswer(inv -> {
+      realStatusTrackingManager.startedTransfer(replicaId);
+      return blobTransferFuture;
+    });
+
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+    when(storeIngestionService.dropStoragePartitionGracefully(any(), anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    // Recreate DefaultIngestionBackend with the real status tracking manager
+    DefaultIngestionBackend testIngestionBackend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        blobTransferManager,
+        veniceServerConfig);
+
+    CountDownLatch transferInitializedLatch = new CountDownLatch(1);
+    Mockito.doAnswer(inv -> {
+      transferInitializedLatch.countDown();
+      return inv.callRealMethod(); // Call real method to update internal map
+    }).when(spyStatusTrackingManager).initialTransfer(eq(replicaId));
+
+    AtomicInteger completedCount = new AtomicInteger(0);
+
+    // Thread 1: Start consumption
+    Thread startThread = new Thread(() -> {
+      try {
+        testIngestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+        completedCount.incrementAndGet();
+      } catch (Exception e) {
+        LogManager.getLogger().error("Start error: {}", e.getMessage(), e);
+      }
+    });
+
+    // Thread 2: Drop partition while transfer is in progress
+    Thread dropThread = new Thread(() -> {
+      try {
+        // Wait for transfer to be initialized
+        transferInitializedLatch.await(2, TimeUnit.SECONDS);
+        Thread.sleep(50); // Small delay to ensure we're mid-transfer
+        testIngestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5);
+        completedCount.incrementAndGet();
+      } catch (Exception e) {
+        LogManager.getLogger().error("Drop error: {}", e.getMessage(), e);
+      }
+    });
+
+    startThread.start();
+    dropThread.start();
+
+    // Wait a bit, then complete the blob transfer with cancellation exception
+    Thread.sleep(100);
+    blobTransferFuture
+        .completeExceptionally(new VeniceBlobTransferCancelledException("Transfer cancelled during drop"));
+
+    startThread.join(5000);
+    dropThread.join(5000);
+
+    // Verify operations completed
+    assertTrue(completedCount.get() >= 1, "At least one operation should complete");
+
+    // Verify status was managed by real map logic
+    // Status should be CANCELLED or null (cleared after cleanup)
+    BlobTransferStatus finalStatus = realStatusTrackingManager.getTransferStatus(replicaId);
+    assertTrue(
+        finalStatus == null || finalStatus == BlobTransferStatus.TRANSFER_CANCELLED
+            || finalStatus == BlobTransferStatus.TRANSFER_CANCEL_REQUESTED,
+        "Expected CANCELLED/CANCEL_REQUESTED/null (cleared), got: " + finalStatus);
+  }
+
+  @Test
+  public void testStartConsumptionAndDropConcurrently_RightWhenTransferCompletes() throws Exception {
+    // Scenario: Race condition - transfer completes successfully on peer chain thread
+    // at the exact moment drop is called from Helix thread
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
+    when(store.isHybrid()).thenReturn(true);
+    when(veniceServerConfig.isServerAllowlistEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
+
+    RocksDBServerConfig rocksDBServerConfig = mock(RocksDBServerConfig.class);
+    when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    // Use real status tracking manager so map logic proves itself
+    NettyFileTransferClient nettyClient = mock(NettyFileTransferClient.class);
+    BlobTransferStatusTrackingManager realStatusTrackingManager = new BlobTransferStatusTrackingManager(nettyClient);
+
+    // Spy to track when initialTransfer is called while using real implementation
+    BlobTransferStatusTrackingManager spyStatusTrackingManager = Mockito.spy(realStatusTrackingManager);
+    when(blobTransferManager.getTransferStatusTrackingManager()).thenReturn(spyStatusTrackingManager);
+
+    // Blob transfer completes successfully
+    CompletableFuture<InputStream> blobTransferFuture = new CompletableFuture<>();
+    // Simulate what NettyP2PBlobTransferManager.get() does: call startedTransfer()
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), any())).thenAnswer(inv -> {
+      realStatusTrackingManager.startedTransfer(replicaId);
+      return blobTransferFuture;
+    });
+
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+    when(storeIngestionService.dropStoragePartitionGracefully(any(), anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    // Recreate DefaultIngestionBackend with the real status tracking manager
+    DefaultIngestionBackend testIngestionBackend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        blobTransferManager,
+        veniceServerConfig);
+
+    CountDownLatch transferInitializedLatch = new CountDownLatch(1);
+    Mockito.doAnswer(inv -> {
+      transferInitializedLatch.countDown();
+      return inv.callRealMethod(); // Call real method to update internal map
+    }).when(spyStatusTrackingManager).initialTransfer(eq(replicaId));
+
+    AtomicInteger completedCount = new AtomicInteger(0);
+
+    // Thread 1: Start consumption (transfer will complete when we complete the future)
+    Thread startThread = new Thread(() -> {
+      try {
+        testIngestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+        completedCount.incrementAndGet();
+      } catch (Exception e) {
+        LogManager.getLogger().error("Start error: {}", e.getMessage(), e);
+      }
+    });
+
+    // Thread 2: Drop partition right as transfer completes
+    Thread dropThread = new Thread(() -> {
+      try {
+        // Wait for transfer to be initialized
+        transferInitializedLatch.await(2, TimeUnit.SECONDS);
+        Thread.sleep(50); // Small delay
+        // Drop immediately (race condition with completion)
+        testIngestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5);
+        completedCount.incrementAndGet();
+      } catch (Exception e) {
+        LogManager.getLogger().error("Drop error: {}", e.getMessage(), e);
+      }
+    });
+
+    startThread.start();
+    dropThread.start();
+
+    // Wait for threads to start, then complete the transfer successfully
+    Thread.sleep(100);
+    blobTransferFuture.complete(mock(InputStream.class));
+
+    startThread.join(5000);
+    dropThread.join(5000);
+
+    // Verify operations completed
+    assertTrue(completedCount.get() >= 1, "At least one operation should complete");
+
+    // Verify status was managed by real map logic
+    // Since transfer completes successfully, status should be COMPLETED or null (if cleared)
+    BlobTransferStatus finalStatus = realStatusTrackingManager.getTransferStatus(replicaId);
+    assertTrue(
+        finalStatus == BlobTransferStatus.TRANSFER_COMPLETED || finalStatus == null,
+        "Expected COMPLETED or null (cleared) status, got: " + finalStatus);
+  }
+
+  @Test
+  public void testStopConsumptionAfterTransferCompletes() throws Exception {
+    // Scenario: Transfer completes successfully, then stopConsumption is called
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    // Mock: Transfer is already completed
+    when(statusTrackingManager.getTransferStatus(eq(replicaId))).thenReturn(BlobTransferStatus.TRANSFER_COMPLETED);
+    when(statusTrackingManager.isTransferInFinalState(eq(replicaId))).thenReturn(true);
+
+    // Call stopConsumption after transfer is done
+    ingestionBackend.stopConsumption(storeConfig, PARTITION);
+
+    // Verify cancellation was attempted (but skipped internally due to final state)
+    verify(statusTrackingManager, Mockito.atLeastOnce()).cancelTransfer(eq(replicaId));
+  }
+
+  @Test
+  public void testMultipleStopConsumptionCalls() throws Exception {
+    // Scenario: Multiple stopConsumption calls (simulates duplicate Helix messages)
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    // Mock: First call sees STARTED, second call sees CANCEL_REQUESTED
+    when(statusTrackingManager.getTransferStatus(eq(replicaId))).thenReturn(BlobTransferStatus.TRANSFER_STARTED)
+        .thenReturn(BlobTransferStatus.TRANSFER_CANCEL_REQUESTED);
+    when(statusTrackingManager.isBlobTransferCancelRequestSentBefore(eq(replicaId))).thenReturn(false).thenReturn(true);
+
+    // First stopConsumption call
+    ingestionBackend.stopConsumption(storeConfig, PARTITION);
+
+    // Second stopConsumption call (duplicate)
+    ingestionBackend.stopConsumption(storeConfig, PARTITION);
+
+    // Verify cancelTransfer was called at least once (may be deduplicated)
+    verify(statusTrackingManager, Mockito.atLeastOnce()).cancelTransfer(eq(replicaId));
   }
 }
