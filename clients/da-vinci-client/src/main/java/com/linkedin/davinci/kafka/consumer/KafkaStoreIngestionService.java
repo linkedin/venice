@@ -100,6 +100,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
@@ -630,8 +631,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private StoreIngestionTask createStoreIngestionTask(
       VeniceStoreVersionConfig veniceStoreVersionConfig,
       int partitionId) {
-    String storeName = Version.parseStoreFromKafkaTopicName(veniceStoreVersionConfig.getStoreVersionName());
-    int versionNumber = Version.parseVersionFromKafkaTopicName(veniceStoreVersionConfig.getStoreVersionName());
+    String topicName = veniceStoreVersionConfig.getStoreVersionName();
+
+    // For view topic, we need to use internal view store name
+    String storeName = VeniceView.isViewTopic(topicName)
+        ? VeniceView.parseStoreAndViewFromViewTopic(topicName)
+        : Version.parseStoreFromKafkaTopicName(topicName);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
 
     StoreVersionInfo storeVersionPair =
         Utils.waitStoreVersionOrThrow(veniceStoreVersionConfig.getStoreVersionName(), metadataRepo);

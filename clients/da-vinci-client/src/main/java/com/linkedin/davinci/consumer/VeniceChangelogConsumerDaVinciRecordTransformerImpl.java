@@ -35,6 +35,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.MaterializedView;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -599,7 +601,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         Schema outputValueSchema,
         DaVinciRecordTransformerConfig recordTransformerConfig) {
       super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
-      this.topicName = Version.composeKafkaTopic(changelogClientConfig.getStoreName(), getStoreVersion());
+      if (viewName != null && !viewName.isEmpty()) {
+        this.topicName = composeViewTopicName(viewName);
+      } else {
+        this.topicName = Version.composeKafkaTopic(changelogClientConfig.getStoreName(), getStoreVersion());
+      }
     }
 
     @Override
@@ -741,6 +747,24 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         LOGGER.error("Thread was interrupted while putting a message into pubSubMessages", e);
         Thread.currentThread().interrupt();
       }
+    }
+
+    /**
+     * Compose view topic name based on view class.
+     */
+    private String composeViewTopicName(String viewName) {
+      String viewClass = veniceChangelogConsumerClientFactory.viewClassGetter.apply(
+          changelogClientConfig.getStoreName(),
+          viewName,
+          changelogClientConfig.getD2ControllerClient(),
+          changelogClientConfig.getControllerRequestRetryCount());
+      if (viewClass.equals(MaterializedView.class.getCanonicalName())) {
+        return MaterializedView.composeViewTopicName(changelogClientConfig.getStoreName(), getStoreVersion(), viewName);
+      } else if (viewClass.equals(ChangeCaptureView.class.getCanonicalName())) {
+        return ChangeCaptureView.composeViewTopicName(changelogClientConfig.getStoreName(), getStoreVersion());
+      }
+
+      return Version.composeKafkaTopic(changelogClientConfig.getStoreName(), getStoreVersion());
     }
 
     private long getNextConsumerSequenceId(int partition) {

@@ -617,6 +617,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
       this.recordTransformerStats = internalRecordTransformerConfig.getRecordTransformerStats();
+
+      // For CDC clients with recordTransformer, skip data validation as they are seekable clients.
+      // This is especially important for view topics where multiple source partitions write to the same
+      // view partition with different producer GUIDs, which would fail DIV validation.
+      if (this.recordTransformer.isCDCRecordTransformer()) {
+        this.skipValidationForSeekableClientEnabled = true;
+      }
     } else {
       this.schemaIdToSchemaMap = null;
       this.recordTransformerConfig = null;
@@ -3483,7 +3490,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       // Only the ConsumptionTask validates messages if Global RT DIV is enabled, so we don't need to validate here
-      if (!isGlobalRtDivEnabled()) {
+      // Also skip validation for seekable clients (CDC clients) as they don't need DIV
+      if (!isGlobalRtDivEnabled() && !skipValidationForSeekableClientEnabled) {
         drainerValidateMessage(consumerRecord, partitionConsumptionState, leaderProducedRecordContext);
       }
 
@@ -3502,6 +3510,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             currentTimeMs);
       }
 
+      // Debug logging for view topic - before routing to control vs data message processing
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (leaderProducedRecordContext == null
             ? (ControlMessage) kafkaValue.payloadUnion
@@ -4112,6 +4121,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                         put.getReplicationMetadataPayload(),
                         put.getReplicationMetadataVersionId())
                     : null;
+
             transformerResult = recordTransformer
                 .transformAndProcessPut(lazyKey, lazyValue, producedPartition, recordTransformerRecordMetadata);
           } catch (Exception e) {
