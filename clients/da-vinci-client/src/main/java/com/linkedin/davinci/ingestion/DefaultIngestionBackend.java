@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferStatus;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -105,11 +106,16 @@ public class DefaultIngestionBackend implements IngestionBackend {
     if (!blobTransferActiveInReceiver || blobTransferManager == null) {
       runnable.run();
     } else {
+      String replicaId = Utils.getReplicaId(storeVersion, partition);
+      // Status: null -> TRANSFER_NOT_STARTED
+      blobTransferManager.getTransferStatusTrackingManager().initialTransfer(replicaId);
+
       BlobTransferTableFormat requestTableFormat =
           serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
               ? BlobTransferTableFormat.PLAIN_TABLE
               : BlobTransferTableFormat.BLOCK_BASED_TABLE;
 
+      // Status: TRANSFER_NOT_STARTED -> TRANSFER_STARTED
       CompletionStage<Void> bootstrapFuture = bootstrapFromBlobs(
           storeAndVersion.getStore(),
           storeAndVersion.getVersion().getNumber(),
@@ -120,33 +126,29 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeConfig,
           svsSupplier);
 
+      // Status: (normal case) TRANSFER_STARTED -> TRANSFER_COMPLETED
+      // Status: (cancel in half) TRANSFER_STARTED -> TRANSFER_CANCEL_REQUESTED ->TRANSFER_CANCELLED
       bootstrapFuture.whenComplete((result, throwable) -> {
-        String replicaId = Utils.getReplicaId(storeVersion, partition);
-
         Lock consumptionLock = consumptionLocks.computeIfAbsent(replicaId, k -> new ReentrantLock());
         consumptionLock.lock();
-
         try {
-          // Check: Cancellation request arrives after successful transfer
-          if (blobTransferManager.isBlobTransferCancelled(replicaId)) {
+          // Check if cancellation is in progress or completed
+          if (blobTransferManager.getTransferStatusTrackingManager().isBlobTransferCancelRequested(replicaId)) {
             LOGGER.info(
                 "Blob transfer cancellation was requested for replica {}. Discarding bootstrap result and skipping consumption startup.",
                 replicaId);
+            blobTransferManager.getTransferStatusTrackingManager().markTransferCancelled(replicaId);
             return;
           }
 
           try {
+            blobTransferManager.getTransferStatusTrackingManager().markTransferCompleted(replicaId);
             runnable.run();
           } catch (Exception e) {
             LOGGER.error("Failed to start consumption for replica {}", replicaId, e);
           }
         } finally {
-          try {
-            blobTransferManager.clearCancellationRequest(replicaId);
-            blobTransferManager.clearTransferStatus(replicaId);
-          } finally {
-            consumptionLock.unlock();
-          }
+          consumptionLock.unlock();
         }
       });
     }
@@ -443,10 +445,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   @Override
-  public void cancelBlobTransferIfInProgress(
-      VeniceStoreVersionConfig storeConfig,
-      int partition,
-      int timeoutInSeconds) {
+  public void cancelBlobTransferIfInProgress(VeniceStoreVersionConfig storeConfig, int partition) {
     if (blobTransferManager == null) {
       return;
     }
@@ -468,14 +467,14 @@ public class DefaultIngestionBackend implements IngestionBackend {
       Lock consumptionLock = consumptionLocks.computeIfAbsent(replicaId, k -> new ReentrantLock());
       consumptionLock.lock();
       try {
-        if (blobTransferManager.isBlobTransferCancelled(replicaId)) {
+        if (blobTransferManager.getTransferStatusTrackingManager().isBlobTransferCancelRequestSentBefore(replicaId)) {
           LOGGER.warn("Cancellation flag already set for replica {}. No action needed.", replicaId);
           return;
         }
-        blobTransferManager.cancelTransfer(replicaId, timeoutInSeconds);
+        blobTransferManager.getTransferStatusTrackingManager().cancelTransfer(replicaId);
       } finally {
         consumptionLock.unlock();
-        LOGGER.info("Released consumption lock for replica {} after setting cancellation flag", replicaId);
+        LOGGER.info("Released consumption lock for replica {} after initiating cancellation", replicaId);
       }
     } catch (Exception e) {
       LOGGER.warn(
@@ -509,8 +508,62 @@ public class DefaultIngestionBackend implements IngestionBackend {
     // Stop consumption of the partition.
     final int waitIntervalInSecond = 1;
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
+    stopBlobTransferAndWait(storeConfig, partition, maxRetry);
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, waitIntervalInSecond, maxRetry, true);
     return getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
+  }
+
+  private void stopBlobTransferAndWait(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds) {
+    final int waitIntervalInSecond = 1;
+    final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
+    if (blobTransferManager == null) {
+      return;
+    }
+
+    // Wait for blob transfer cancellation to complete by checking status transition
+    // Decision based on status enum, not future state
+    String storeVersion = storeConfig.getStoreVersionName();
+    String replicaId = Utils.getReplicaId(storeVersion, partition);
+
+    // Poll until the blob transfer reaches final state (TRANSFER_COMPLETED or TRANSFER_CANCELLED)
+    int retries = 0;
+    while (!(blobTransferManager.getTransferStatusTrackingManager().isTransferInFinalState(replicaId)
+        && retries < maxRetry)) {
+      try {
+        Thread.sleep(waitIntervalInSecond * 1000L);
+        retries++;
+        BlobTransferStatus currentStatus =
+            blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId);
+        LOGGER.info(
+            "Waiting for blob transfer to complete for replica {} (attempt {}/{}). Current status: {}",
+            replicaId,
+            retries,
+            maxRetry,
+            currentStatus);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Interrupted while waiting for blob transfer to complete for replica {}", replicaId, e);
+        Thread.currentThread().interrupt();
+        break;
+      }
+    }
+
+    // Final status check
+    BlobTransferStatus finalStatus =
+        blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId);
+    if (!blobTransferManager.getTransferStatusTrackingManager().isTransferInFinalState(replicaId)) {
+      LOGGER.warn(
+          "Blob transfer still in progress for replica {} after {} seconds (status: {}), proceeding with partition drop",
+          replicaId,
+          timeoutInSeconds,
+          finalStatus);
+    } else {
+      LOGGER.info(
+          "Blob transfer completed for replica {} (status: {}), proceeding with partition drop",
+          replicaId,
+          finalStatus);
+    }
+    // clean up
+    blobTransferManager.getTransferStatusTrackingManager().clearTransferStatusEnum(replicaId);
   }
 
   @Override

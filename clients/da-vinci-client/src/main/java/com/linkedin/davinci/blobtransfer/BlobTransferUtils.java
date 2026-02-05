@@ -41,6 +41,41 @@ public class BlobTransferUtils {
     PLAIN_TABLE, BLOCK_BASED_TABLE
   }
 
+  public enum BlobTransferStatus {
+    /**
+     * Transfer is not started yet.
+     */
+    TRANSFER_NOT_STARTED,
+
+    /**
+     * Transfer has been initiated and is in progress.
+     * This is the initial state when blob transfer starts.
+     */
+    TRANSFER_STARTED,
+
+    /**
+     * Cancellation has been requested.
+     * - Cancellation flag set
+     * - Active channel closed
+     * - Waiting for transfer future to complete with cancellation exception
+     */
+    TRANSFER_CANCEL_REQUESTED,
+
+    /**
+     * Transfer was successfully cancelled.
+     * - Transfer future completed with VeniceBlobTransferCancelledException
+     * - Cancellation is confirmed complete
+     */
+    TRANSFER_CANCELLED,
+
+    /**
+     * Transfer completed successfully without cancellation.
+     * - Transfer future completed normally
+     * - No cancellation was requested
+     */
+    TRANSFER_COMPLETED
+  }
+
   /**
    * Check if the HttpResponse message is for metadata.
    * @param msg the HttpResponse message

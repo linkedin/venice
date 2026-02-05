@@ -7,7 +7,6 @@ import com.linkedin.venice.exceptions.VenicePeersAllFailedException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import java.io.InputStream;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.TimeoutException;
 
 
 /**
@@ -62,39 +61,5 @@ public interface BlobTransferManager<T> extends AutoCloseable {
    */
   AggVersionedBlobTransferStats getAggVersionedBlobTransferStats();
 
-  /**
-   * Cancel an ongoing blob transfer for the given replica.
-   * This method always sets the cancellation flag and keeps it set.
-   * - If transfer is in progress: closes channel and waits for completion, let the bootstrap clean flag
-   * - If no transfer in progress: just sets the flag, then clean flag.
-   *
-   * @param replicaId the replica ID (format: storeName_vVersion-partition)
-   * @param timeoutInSeconds maximum time to wait for cancellation to complete
-   * @throws InterruptedException if interrupted while waiting
-   * @throws TimeoutException if cancellation doesn't complete within timeout
-   */
-  void cancelTransfer(String replicaId, int timeoutInSeconds) throws InterruptedException, TimeoutException;
-
-  /**
-   * Check if blob transfer cancellation was requested for the given replica.
-   *
-   * @param replicaId the replica ID (format: storeName_vVersion-partition)
-   * @return true if blob transfer cancellation was requested for this partition, false otherwise
-   */
-  boolean isBlobTransferCancelled(String replicaId);
-
-  /**
-   * Clear the cancellation request flag for a replica.
-   * Should be called (1) after consumption start/skip or (2) no ongoing transfer during cancellation
-   *
-   * @param replicaId the replica ID (format: storeName_vVersion-partition)
-   */
-  void clearCancellationRequest(String replicaId);
-
-  /**
-   * Clear the transfer status for a replica.
-   * Should be used after transfer is completed.
-   * @param replicaId
-   */
-  void clearTransferStatus(String replicaId);
+  BlobTransferStatusTrackingManager getTransferStatusTrackingManager();
 }

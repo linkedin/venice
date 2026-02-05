@@ -109,7 +109,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     CompletableFuture<InputStream> perPartitionTransferFuture = new CompletableFuture<>();
 
     // Register the transfer with the status tracking manager
-    statusTrackingManager.registerTransfer(replicaId, perPartitionTransferFuture);
+    statusTrackingManager.startedTransfer(replicaId);
 
     // 1. Discover peers for the requested blob
     BlobPeersDiscoveryResponse response = peerFinder.discoverBlobPeers(storeName, version, partition);
@@ -203,7 +203,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       // Chain the next operation to the previous future
       chainOfPeersFuture = chainOfPeersFuture.thenComposeAsync(v -> {
 
-        if (statusTrackingManager.isBlobTransferCancelled(replicaId)) {
+        if (statusTrackingManager.isBlobTransferCancelRequested(replicaId)) {
           // if blob transfer cancellation was requested, skip all remaining hosts
           return CompletableFuture.completedFuture(null);
         }
@@ -242,7 +242,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
     // error case 2: all hosts have been tried and failed for blob transfer
     chainOfPeersFuture.thenRun(() -> {
       if (!perPartitionTransferFuture.isDone()) {
-        if (statusTrackingManager.isBlobTransferCancelled(replicaId)) {
+        if (statusTrackingManager.isBlobTransferCancelRequested(replicaId)) {
           // Receive cancellation request, skip Kafka bootstrapping
           perPartitionTransferFuture.completeExceptionally(
               new VeniceBlobTransferCancelledException(String.format(TRANSFER_CANCELLED_MSG_FORMAT, replicaId)));
@@ -280,27 +280,6 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   }
 
   @Override
-  public void cancelTransfer(String replicaId, int timeoutInSeconds)
-      throws InterruptedException, java.util.concurrent.TimeoutException {
-    statusTrackingManager.cancelTransfer(replicaId, timeoutInSeconds);
-  }
-
-  @Override
-  public boolean isBlobTransferCancelled(String replicaId) {
-    return statusTrackingManager.isBlobTransferCancelled(replicaId);
-  }
-
-  @Override
-  public void clearTransferStatus(String replicaId) {
-    statusTrackingManager.clearTransferStatus(replicaId);
-  }
-
-  @Override
-  public void clearCancellationRequest(String replicaId) {
-    statusTrackingManager.clearCancellationRequest(replicaId);
-  }
-
-  @Override
   public void close() throws Exception {
     blobTransferService.close();
     nettyClient.close();
@@ -315,6 +294,11 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   @Override
   public AggVersionedBlobTransferStats getAggVersionedBlobTransferStats() {
     return aggVersionedBlobTransferStats;
+  }
+
+  @Override
+  public BlobTransferStatusTrackingManager getTransferStatusTrackingManager() {
+    return statusTrackingManager;
   }
 
   /**

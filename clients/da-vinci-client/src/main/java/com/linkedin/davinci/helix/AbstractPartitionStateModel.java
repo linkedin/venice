@@ -404,13 +404,12 @@ public abstract class AbstractPartitionStateModel extends StateModel {
    * Cancel any ongoing blob transfer for this partition.
    * This method is called during STANDBY→OFFLINE transition.
    *
-   * This method blocks until cancellation completes to ensure synchronous state transition.
+   * This method initiates cancellation asynchronously and returns immediately (non-blocking).
+   * The actual waiting for cancellation completion happens in stopConsumptionAndWait/dropStoragePartitionGracefully.
    */
   protected void cancelBlobTransferIfNeeded() {
     try {
-      // TODO: change the cancellation timeout configurable
-      // This method blocks until cancellation completes (synchronous for state transition)
-      ingestionBackend.cancelBlobTransferIfInProgress(storeAndServerConfigs, partition, 180);
+      ingestionBackend.cancelBlobTransferIfInProgress(storeAndServerConfigs, partition);
     } catch (Exception e) {
       logger.warn(
           "Exception while canceling blob transfer for replica: {}. Proceeding with state transition.",

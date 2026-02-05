@@ -18,13 +18,13 @@ public interface IngestionBackend extends Closeable {
 
   /**
    * Cancel any ongoing blob transfer for the given partition.
-   * This method blocks until cancellation completes and cleans up the cancellation flag.
+   * This method initiates cancellation asynchronously and returns immediately.
+   * The actual waiting for cancellation completion happens in stopConsumptionAndWait/dropStoragePartitionGracefully.
    *
    * @param storeConfig Store version config
    * @param partition Partition number to cancel blob transfer for
-   * @param timeoutInSeconds Number of seconds to wait before timeout
    */
-  void cancelBlobTransferIfInProgress(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds);
+  void cancelBlobTransferIfInProgress(VeniceStoreVersionConfig storeConfig, int partition);
 
   void killConsumptionTask(String topicName);
 

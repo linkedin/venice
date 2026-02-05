@@ -15,6 +15,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferStatusTrackingManager;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -68,6 +69,8 @@ public class DefaultIngestionBackendTest {
   @Mock
   private BlobTransferManager blobTransferManager;
   @Mock
+  private BlobTransferStatusTrackingManager statusTrackingManager;
+  @Mock
   private DefaultIngestionBackend ingestionBackend;
   @Mock
   private VeniceStoreVersionConfig storeConfig;
@@ -118,6 +121,7 @@ public class DefaultIngestionBackendTest {
             any(PubSubContext.class))).thenReturn(offsetRecord);
 
     when(blobTransferManager.getAggVersionedBlobTransferStats()).thenReturn(aggVersionedBlobTransferStats);
+    when(blobTransferManager.getTransferStatusTrackingManager()).thenReturn(statusTrackingManager);
 
     // Create the DefaultIngestionBackend instance with mocked dependencies
     ingestionBackend = new DefaultIngestionBackend(
@@ -465,12 +469,14 @@ public class DefaultIngestionBackendTest {
         veniceServerConfig);
 
     // Should not throw exception, it just no-op.
-    backend.cancelBlobTransferIfInProgress(storeConfig, PARTITION, 10);
+    backend.cancelBlobTransferIfInProgress(storeConfig, PARTITION);
   }
 
   @Test
   public void testConcurrentCancelWithLockExecutes() throws Exception {
     // Setup mocks
+    BlobTransferStatusTrackingManager mockStatusTrackingManager = mock(BlobTransferStatusTrackingManager.class);
+    when(blobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockStatusTrackingManager);
     when(metadataRepo.waitVersion(anyString(), anyInt(), any(Duration.class)))
         .thenReturn(new StoreVersionInfo(store, version));
     when(store.isBlobTransferEnabled()).thenReturn(true);
@@ -492,7 +498,7 @@ public class DefaultIngestionBackendTest {
     ConcurrentHashMap<String, Integer> threadToOrder = new ConcurrentHashMap<>();
 
     // Mock: Track when flag is checked (this happens inside the lock)
-    when(blobTransferManager.isBlobTransferCancelled(eq(replicaId))).thenAnswer(inv -> {
+    when(mockStatusTrackingManager.isBlobTransferCancelRequestSentBefore(eq(replicaId))).thenAnswer(inv -> {
       String threadName = Thread.currentThread().getName();
       if (threadName.startsWith("Cancel-")) {
         // Record the order this thread acquired the lock
@@ -505,9 +511,7 @@ public class DefaultIngestionBackendTest {
     Mockito.doAnswer(inv -> {
       Thread.sleep(50); // Simulate work - if no lock, threads would overlap
       return null;
-    }).when(blobTransferManager).cancelTransfer(eq(replicaId), anyInt());
-
-    doNothing().when(blobTransferManager).clearCancellationRequest(replicaId);
+    }).when(mockStatusTrackingManager).cancelTransfer(eq(replicaId));
 
     // Track completions
     AtomicInteger completedCount = new AtomicInteger(0);
@@ -518,7 +522,7 @@ public class DefaultIngestionBackendTest {
     Runnable cancelTask = () -> {
       try {
         startLatch.await(); // Wait for signal to start
-        backend.cancelBlobTransferIfInProgress(storeConfig, PARTITION, 10);
+        backend.cancelBlobTransferIfInProgress(storeConfig, PARTITION);
         completedCount.incrementAndGet();
       } catch (Exception e) {
         LogManager.getLogger().error("{} error: {}", Thread.currentThread().getName(), e.getMessage());
@@ -555,6 +559,6 @@ public class DefaultIngestionBackendTest {
     assertTrue(threadToOrder.size() <= 3, "At most 3 threads acquired lock");
 
     // 3. Verify cancelTransfer was called
-    verify(blobTransferManager, Mockito.atLeastOnce()).cancelTransfer(eq(replicaId), anyInt());
+    verify(mockStatusTrackingManager, Mockito.atLeastOnce()).cancelTransfer(eq(replicaId));
   }
 }
