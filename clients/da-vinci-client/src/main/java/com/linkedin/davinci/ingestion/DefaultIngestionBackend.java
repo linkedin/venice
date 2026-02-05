@@ -555,6 +555,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
     } finally {
       blobTransferManager.getTransferStatusTrackingManager().clearTransferStatusEnum(replicaId);
+      consumptionLocks.remove(replicaId);
     }
   }
 
