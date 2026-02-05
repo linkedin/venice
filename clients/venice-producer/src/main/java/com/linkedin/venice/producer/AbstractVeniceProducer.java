@@ -64,6 +64,8 @@ import org.apache.logging.log4j.Logger;
 public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(AbstractVeniceProducer.class);
   private static final DurableWrite DURABLE_WRITE = new DurableWrite();
+  /** Sentinel value indicating key serialization failed; use reference equality (==) to check. */
+  private static final byte[] SERIALIZATION_FAILED = new byte[0];
 
   // Default configuration values
   private static final int DEFAULT_WORKER_COUNT = 4;
@@ -120,7 +122,8 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     VersionCreationResponse versionCreationResponse = requestTopic();
     this.partitionCount = versionCreationResponse.getPartitions();
 
-    // Cache routing decision: only need partition routing when multiple partitions AND multiple workers
+    // Cache routing decision: only need partition routing when both multiple partitions AND multiple workers exist.
+    // With a single partition or a single worker, all requests go to the same destination regardless of routing.
     this.needsPartitionRouting = partitionCount > 1 && asyncDispatcher.getWorkerCount() > 1;
 
     // Initialize partitioner from response
@@ -148,13 +151,13 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
    * inline on the caller thread. This is useful when the caller is already managing
    * concurrency externally or wants minimal overhead.</p>
    *
-   * @see DefaultPartitionedProducerExecutor
+   * @see PartitionedProducerExecutor
    */
   protected PartitionedProducerExecutor createDispatcher(
       String storeName,
       VeniceProperties configs,
       MetricsRepository metricsRepository) {
-    return new DefaultPartitionedProducerExecutor(
+    return new PartitionedProducerExecutor(
         configs.getInt(CLIENT_PRODUCER_WORKER_COUNT, DEFAULT_WORKER_COUNT),
         configs.getInt(CLIENT_PRODUCER_WORKER_QUEUE_CAPACITY, DEFAULT_WORKER_QUEUE_CAPACITY),
         configs.getInt(CLIENT_PRODUCER_CALLBACK_THREAD_COUNT, DEFAULT_CALLBACK_THREAD_COUNT),
@@ -246,6 +249,25 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     return serializedKeyBytes != null ? serializedKeyBytes : keySerializer.serialize(key);
   }
 
+  /**
+   * Serializes the key for partition routing if needed.
+   *
+   * @return null if no routing needed, {@link #SERIALIZATION_FAILED} on error (use == to check),
+   *         or the serialized key bytes on success
+   */
+  private byte[] serializeKeyForRouting(K key, CompletableFuture<DurableWrite> durableWriteFuture) {
+    if (!needsPartitionRouting) {
+      return null;
+    }
+    try {
+      return keySerializer.serialize(key);
+    } catch (Exception e) {
+      producerMetrics.recordFailedRequest();
+      durableWriteFuture.completeExceptionally(new VeniceException("Key serialization failed", e));
+      return SERIALIZATION_FAILED;
+    }
+  }
+
   @Override
   public CompletableFuture<DurableWrite> asyncPut(K key, V value) {
     return asyncPutInternal(APP_DEFAULT_LOGICAL_TS, key, value);
@@ -268,21 +290,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     producerMetrics.recordPutRequest();
     CompletableFuture<DurableWrite> durableWriteFuture = new CompletableFuture<>();
 
-    // Serialize key for partition routing if multiple workers are configured
-    final byte[] serializedKeyBytes;
-    int partition = 0;
-    if (needsPartitionRouting) {
-      try {
-        serializedKeyBytes = keySerializer.serialize(key);
-        partition = partitioner.getPartitionId(serializedKeyBytes, partitionCount);
-      } catch (Exception e) {
-        producerMetrics.recordFailedRequest();
-        durableWriteFuture.completeExceptionally(new VeniceException("Key serialization failed", e));
-        return durableWriteFuture;
-      }
-    } else {
-      serializedKeyBytes = null; // No routing key bytes for non-partitioned stores
+    byte[] serializedKeyBytes = serializeKeyForRouting(key, durableWriteFuture);
+    if (serializedKeyBytes == SERIALIZATION_FAILED) {
+      return durableWriteFuture;
     }
+    int partition = serializedKeyBytes != null ? partitioner.getPartitionId(serializedKeyBytes, partitionCount) : 0;
 
     // Capture submission time after routing serialization for accurate queue wait measurement
     long submissionTimeNanos = System.nanoTime();
@@ -322,11 +334,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
                   "Failed to write the PUT record to the PubSub system"));
           producerMetrics.recordRequestDispatchLatency(getElapsedTimeFromNSToMS(submissionTimeNanos));
         } catch (Exception e) {
-          completeDurableWriteFutureExceptionally(durableWriteFuture, submissionTimeNanos, e);
+          completeDurableWriteFutureExceptionally(durableWriteFuture, e);
         }
       });
     } catch (RejectedExecutionException e) {
-      completeDurableWriteFutureExceptionally(durableWriteFuture, submissionTimeNanos, e);
+      completeDurableWriteFutureExceptionally(durableWriteFuture, e);
     }
 
     return durableWriteFuture;
@@ -355,21 +367,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     producerMetrics.recordDeleteRequest();
     CompletableFuture<DurableWrite> durableWriteFuture = new CompletableFuture<>();
 
-    // Serialize key for partition routing if multiple workers are configured
-    final byte[] serializedKeyBytes;
-    int partition = 0;
-    if (needsPartitionRouting) {
-      try {
-        serializedKeyBytes = keySerializer.serialize(key);
-        partition = partitioner.getPartitionId(serializedKeyBytes, partitionCount);
-      } catch (Exception e) {
-        producerMetrics.recordFailedRequest();
-        durableWriteFuture.completeExceptionally(new VeniceException("Key serialization failed", e));
-        return durableWriteFuture;
-      }
-    } else {
-      serializedKeyBytes = null; // No routing key bytes for non-partitioned stores
+    byte[] serializedKeyBytes = serializeKeyForRouting(key, durableWriteFuture);
+    if (serializedKeyBytes == SERIALIZATION_FAILED) {
+      return durableWriteFuture;
     }
+    int partition = serializedKeyBytes != null ? partitioner.getPartitionId(serializedKeyBytes, partitionCount) : 0;
 
     // Capture submission time after routing serialization for accurate queue wait measurement
     long submissionTimeNanos = System.nanoTime();
@@ -388,11 +390,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
                   "Failed to write the DELETE record to the PubSub system"));
           producerMetrics.recordRequestDispatchLatency(getElapsedTimeFromNSToMS(submissionTimeNanos));
         } catch (Exception e) {
-          completeDurableWriteFutureExceptionally(durableWriteFuture, submissionTimeNanos, e);
+          completeDurableWriteFutureExceptionally(durableWriteFuture, e);
         }
       });
     } catch (RejectedExecutionException e) {
-      completeDurableWriteFutureExceptionally(durableWriteFuture, submissionTimeNanos, e);
+      completeDurableWriteFutureExceptionally(durableWriteFuture, e);
     }
 
     return durableWriteFuture;
@@ -424,21 +426,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     producerMetrics.recordUpdateRequest();
     CompletableFuture<DurableWrite> durableWriteFuture = new CompletableFuture<>();
 
-    // Serialize key for partition routing if multiple workers are configured
-    final byte[] serializedKeyBytes;
-    int partition = 0;
-    if (needsPartitionRouting) {
-      try {
-        serializedKeyBytes = keySerializer.serialize(key);
-        partition = partitioner.getPartitionId(serializedKeyBytes, partitionCount);
-      } catch (Exception e) {
-        producerMetrics.recordFailedRequest();
-        durableWriteFuture.completeExceptionally(new VeniceException("Key serialization failed", e));
-        return durableWriteFuture;
-      }
-    } else {
-      serializedKeyBytes = null; // No routing key bytes for non-partitioned stores
+    byte[] serializedKeyBytes = serializeKeyForRouting(key, durableWriteFuture);
+    if (serializedKeyBytes == SERIALIZATION_FAILED) {
+      return durableWriteFuture;
     }
+    int partition = serializedKeyBytes != null ? partitioner.getPartitionId(serializedKeyBytes, partitionCount) : 0;
 
     // Capture submission time after routing serialization for accurate queue wait measurement
     long submissionTimeNanos = System.nanoTime();
@@ -485,11 +477,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
               logicalTime);
           producerMetrics.recordRequestDispatchLatency(getElapsedTimeFromNSToMS(submissionTimeNanos));
         } catch (Exception e) {
-          completeDurableWriteFutureExceptionally(durableWriteFuture, submissionTimeNanos, e);
+          completeDurableWriteFutureExceptionally(durableWriteFuture, e);
         }
       });
     } catch (RejectedExecutionException e) {
-      completeDurableWriteFutureExceptionally(durableWriteFuture, submissionTimeNanos, e);
+      completeDurableWriteFutureExceptionally(durableWriteFuture, e);
     }
 
     return durableWriteFuture;
@@ -537,18 +529,15 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
   /**
    * Complete durable write future exceptionally with proper metrics recording.
+   * Note: End-to-end latency is not recorded for failed requests.
    *
    * @param durableWriteFuture the future to complete exceptionally
-   * @param submissionTimeNanos submission time in nanoseconds (from System.nanoTime())
    * @param exception the exception that caused the failure
    */
   private void completeDurableWriteFutureExceptionally(
       CompletableFuture<DurableWrite> durableWriteFuture,
-      long submissionTimeNanos,
       Exception exception) {
     asyncDispatcher.executeCallback(() -> {
-      long completionTimeNanos = System.nanoTime();
-      producerMetrics.recordEndToEndLatency(convertNSToMS(completionTimeNanos - submissionTimeNanos));
       producerMetrics.recordFailedRequest();
       String errorMessage = "Write operation failed: " + exception.getMessage();
       durableWriteFuture.completeExceptionally(new VeniceException(errorMessage, exception));

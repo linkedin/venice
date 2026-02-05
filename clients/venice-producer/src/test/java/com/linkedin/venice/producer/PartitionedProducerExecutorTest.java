@@ -10,12 +10,11 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.Test;
 
 
 /**
- * Unit tests for {@link DefaultPartitionedProducerExecutor} covering all 4 execution modes:
+ * Unit tests for {@link PartitionedProducerExecutor} covering all 4 execution modes:
  * <ul>
  *   <li>Workers=0, Callback=0: Fully inline</li>
  *   <li>Workers>0, Callback=0: Parallel workers, inline callback</li>
@@ -29,10 +28,9 @@ public class PartitionedProducerExecutorTest {
   // ==================== Workers Enabled Tests ====================
 
   @Test
-  public void testWorkersEnabled_SubmitRoutesToCorrectWorker() throws InterruptedException {
+  public void testWorkersEnabledSubmitRoutesToCorrectWorker() throws InterruptedException {
     int workerCount = 4;
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(workerCount, 100, 0, 100, TEST_STORE, null);
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(workerCount, 100, 0, 100, TEST_STORE, null);
 
     try {
       assertTrue(executor.isWorkersEnabled());
@@ -54,10 +52,12 @@ public class PartitionedProducerExecutorTest {
       assertTrue(latch.await(5, TimeUnit.SECONDS), "Tasks should complete");
       assertEquals(workerThreads.size(), workerCount);
 
-      // Verify tasks went to different workers
+      // Verify each partition went to the correct worker (partition i -> worker i)
       for (int i = 0; i < workerCount; i++) {
         String expectedWorkerPrefix = "venice-producer-worker-" + TEST_STORE + "-" + i;
-        boolean found = workerThreads.stream().anyMatch(t -> t.contains(expectedWorkerPrefix));
+        final int partition = i;
+        boolean found =
+            workerThreads.stream().anyMatch(t -> t.contains(expectedWorkerPrefix) && t.endsWith("-p" + partition));
         assertTrue(found, "Partition " + i + " should be handled by worker " + i);
       }
     } finally {
@@ -66,9 +66,8 @@ public class PartitionedProducerExecutorTest {
   }
 
   @Test
-  public void testWorkersEnabled_SamePartitionExecutesInOrder() throws InterruptedException {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(4, 100, 0, 100, TEST_STORE, null);
+  public void testWorkersEnabledSamePartitionExecutesInOrder() throws InterruptedException {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(4, 100, 0, 100, TEST_STORE, null);
 
     try {
       List<Integer> executionOrder = Collections.synchronizedList(new ArrayList<>());
@@ -97,9 +96,8 @@ public class PartitionedProducerExecutorTest {
   }
 
   @Test
-  public void testWorkersEnabled_DifferentPartitionsParallel() throws InterruptedException {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(4, 100, 0, 100, TEST_STORE, null);
+  public void testWorkersEnabledDifferentPartitionsParallel() throws InterruptedException {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(4, 100, 0, 100, TEST_STORE, null);
 
     try {
       CountDownLatch partition0Started = new CountDownLatch(1);
@@ -143,16 +141,16 @@ public class PartitionedProducerExecutorTest {
   }
 
   @Test
-  public void testWorkersEnabled_QueueFullTriggersCallerRuns() throws InterruptedException {
-    // Very small queue to easily trigger CallerRunsPolicy
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(1, 1, 0, 100, TEST_STORE, null);
+  public void testWorkersEnabledQueueFullBlocksCaller() throws InterruptedException {
+    // Very small queue to easily trigger blocking
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(1, 1, 0, 100, TEST_STORE, null);
 
     try {
       CountDownLatch blockingTaskStarted = new CountDownLatch(1);
       CountDownLatch allowBlockingTaskToFinish = new CountDownLatch(1);
-      AtomicBoolean callerThreadUsed = new AtomicBoolean(false);
-      String callerThreadName = Thread.currentThread().getName();
+      AtomicBoolean callerWasBlocked = new AtomicBoolean(false);
+      AtomicBoolean allTasksOnWorkerThread = new AtomicBoolean(true);
+      String workerThreadPrefix = "venice-producer-worker-" + TEST_STORE;
 
       // Submit a blocking task to fill the worker
       executor.submit(0, () -> {
@@ -169,22 +167,45 @@ public class PartitionedProducerExecutorTest {
       // Wait for blocking task to start
       assertTrue(blockingTaskStarted.await(2, TimeUnit.SECONDS), "Blocking task should start");
 
-      // Submit additional tasks to fill queue and trigger CallerRunsPolicy
-      CountDownLatch tasksCompleted = new CountDownLatch(5);
-      for (int i = 0; i < 5; i++) {
-        executor.submit(0, () -> {
-          if (Thread.currentThread().getName().equals(callerThreadName)) {
-            callerThreadUsed.set(true);
-          }
-          tasksCompleted.countDown();
-        });
+      // Submit additional tasks from a separate thread to detect blocking
+      CountDownLatch tasksCompleted = new CountDownLatch(3);
+      CountDownLatch submitterStarted = new CountDownLatch(1);
+      AtomicBoolean submitterFinished = new AtomicBoolean(false);
+
+      Thread submitterThread = new Thread(() -> {
+        submitterStarted.countDown();
+        for (int i = 0; i < 3; i++) {
+          executor.submit(0, () -> {
+            if (!Thread.currentThread().getName().startsWith(workerThreadPrefix)) {
+              allTasksOnWorkerThread.set(false);
+            }
+            tasksCompleted.countDown();
+          });
+        }
+        submitterFinished.set(true);
+      });
+      submitterThread.start();
+
+      // Wait for submitter to start
+      assertTrue(submitterStarted.await(2, TimeUnit.SECONDS), "Submitter should start");
+
+      // Give submitter time to potentially block (queue size is 1, worker is busy)
+      Thread.sleep(200);
+
+      // Submitter should be blocked since queue is full and worker is busy
+      if (!submitterFinished.get()) {
+        callerWasBlocked.set(true);
       }
 
-      // Allow blocking task to finish
+      // Allow blocking task to finish - this should unblock the submitter
       allowBlockingTaskToFinish.countDown();
 
+      // Wait for all tasks to complete
       assertTrue(tasksCompleted.await(5, TimeUnit.SECONDS), "All tasks should complete");
-      assertTrue(callerThreadUsed.get(), "CallerRunsPolicy should have been triggered");
+      submitterThread.join(2000);
+
+      assertTrue(callerWasBlocked.get(), "Caller should have been blocked when queue was full");
+      assertTrue(allTasksOnWorkerThread.get(), "All tasks should run on worker thread, not caller thread");
     } finally {
       executor.shutdown();
     }
@@ -193,9 +214,8 @@ public class PartitionedProducerExecutorTest {
   // ==================== Workers Disabled Tests ====================
 
   @Test
-  public void testWorkersDisabled_ExecutesInlineOnCallerThread() throws InterruptedException {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(0, 100, 0, 100, TEST_STORE, null);
+  public void testWorkersDisabledExecutesInlineOnCallerThread() throws InterruptedException {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(0, 100, 0, 100, TEST_STORE, null);
 
     try {
       assertFalse(executor.isWorkersEnabled());
@@ -217,9 +237,8 @@ public class PartitionedProducerExecutorTest {
   }
 
   @Test
-  public void testWorkersDisabled_OrderPreserved() {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(0, 100, 0, 100, TEST_STORE, null);
+  public void testWorkersDisabledOrderPreserved() {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(0, 100, 0, 100, TEST_STORE, null);
 
     try {
       List<Integer> executionOrder = new ArrayList<>();
@@ -243,9 +262,8 @@ public class PartitionedProducerExecutorTest {
   // ==================== Callback Executor Tests ====================
 
   @Test
-  public void testCallbackEnabled_HandsOffToCallbackThread() throws InterruptedException {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(0, 100, 2, 100, TEST_STORE, null);
+  public void testCallbackEnabledHandsOffToCallbackThread() throws InterruptedException {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(0, 100, 2, 100, TEST_STORE, null);
 
     try {
       assertTrue(executor.isCallbackExecutorEnabled());
@@ -269,9 +287,8 @@ public class PartitionedProducerExecutorTest {
   }
 
   @Test
-  public void testCallbackDisabled_ExecutesOnCallerThread() {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(0, 100, 0, 100, TEST_STORE, null);
+  public void testCallbackDisabledExecutesOnCallerThread() {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(0, 100, 0, 100, TEST_STORE, null);
 
     try {
       assertFalse(executor.isCallbackExecutorEnabled());
@@ -294,9 +311,8 @@ public class PartitionedProducerExecutorTest {
   // ==================== Mode Combination Tests ====================
 
   @Test
-  public void testBothDisabled_FullyInline() {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(0, 100, 0, 100, TEST_STORE, null);
+  public void testBothDisabledFullyInline() {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(0, 100, 0, 100, TEST_STORE, null);
 
     try {
       assertFalse(executor.isWorkersEnabled());
@@ -325,9 +341,8 @@ public class PartitionedProducerExecutorTest {
   }
 
   @Test
-  public void testBothEnabled_FullAsync() throws InterruptedException {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(4, 100, 2, 100, TEST_STORE, null);
+  public void testBothEnabledFullAsync() throws InterruptedException {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(4, 100, 2, 100, TEST_STORE, null);
 
     try {
       assertTrue(executor.isWorkersEnabled());
@@ -366,9 +381,8 @@ public class PartitionedProducerExecutorTest {
   // ==================== Queue Size Metrics Tests ====================
 
   @Test
-  public void testQueueSizeMetrics_ReturnsCorrectValues() throws InterruptedException {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(2, 100, 2, 100, TEST_STORE, null);
+  public void testQueueSizeMetricsReturnsCorrectValues() throws InterruptedException {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(2, 100, 2, 100, TEST_STORE, null);
 
     try {
       // Initially queues should be empty
@@ -413,9 +427,8 @@ public class PartitionedProducerExecutorTest {
   }
 
   @Test
-  public void testQueueSizeMetrics_ReturnsZeroWhenDisabled() {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(0, 100, 0, 100, TEST_STORE, null);
+  public void testQueueSizeMetricsReturnsZeroWhenDisabled() {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(0, 100, 0, 100, TEST_STORE, null);
 
     try {
       assertEquals(executor.getTotalWorkerQueueSize(), 0);
@@ -429,16 +442,12 @@ public class PartitionedProducerExecutorTest {
   // ==================== Shutdown Tests ====================
 
   @Test
-  public void testShutdown_TerminatesAllPools() throws InterruptedException {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(4, 100, 2, 100, TEST_STORE, null);
+  public void testShutdownTerminatesAllPools() throws InterruptedException {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(4, 100, 2, 100, TEST_STORE, null);
 
     // Submit some tasks
-    AtomicInteger completedTasks = new AtomicInteger(0);
     for (int i = 0; i < 10; i++) {
-      executor.submit(i % 4, () -> {
-        completedTasks.incrementAndGet();
-      });
+      executor.submit(i % 4, () -> {});
     }
 
     executor.shutdown();
@@ -448,9 +457,8 @@ public class PartitionedProducerExecutorTest {
   }
 
   @Test
-  public void testAwaitTermination_ReturnsAfterShutdown() throws InterruptedException {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(1, 100, 0, 100, TEST_STORE, null);
+  public void testAwaitTerminationReturnsAfterShutdown() throws InterruptedException {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(1, 100, 0, 100, TEST_STORE, null);
 
     try {
       // Submit a quick task
@@ -474,10 +482,9 @@ public class PartitionedProducerExecutorTest {
   // ==================== Partition Routing Tests ====================
 
   @Test
-  public void testPartitionRouting_ModuloWorkerCount() throws InterruptedException {
+  public void testPartitionRoutingModuloWorkerCount() throws InterruptedException {
     int workerCount = 3;
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(workerCount, 100, 0, 100, TEST_STORE, null);
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(workerCount, 100, 0, 100, TEST_STORE, null);
 
     try {
       List<String> partitionToWorker = Collections.synchronizedList(new ArrayList<>());
@@ -509,9 +516,8 @@ public class PartitionedProducerExecutorTest {
   }
 
   @Test
-  public void testNegativePartition_HandledCorrectly() throws InterruptedException {
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(4, 100, 0, 100, TEST_STORE, null);
+  public void testNegativePartitionHandledCorrectly() throws InterruptedException {
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(4, 100, 0, 100, TEST_STORE, null);
 
     try {
       CountDownLatch latch = new CountDownLatch(1);
@@ -531,11 +537,10 @@ public class PartitionedProducerExecutorTest {
   }
 
   @Test
-  public void testIntegerMinValue_HandledCorrectly() throws InterruptedException {
+  public void testIntegerMinValueHandledCorrectly() throws InterruptedException {
     // Integer.MIN_VALUE is a special case: Math.abs(Integer.MIN_VALUE) returns Integer.MIN_VALUE (negative)
     // This test verifies the fix using bitwise AND instead of Math.abs
-    DefaultPartitionedProducerExecutor executor =
-        new DefaultPartitionedProducerExecutor(4, 100, 0, 100, TEST_STORE, null);
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(4, 100, 0, 100, TEST_STORE, null);
 
     try {
       CountDownLatch latch = new CountDownLatch(1);

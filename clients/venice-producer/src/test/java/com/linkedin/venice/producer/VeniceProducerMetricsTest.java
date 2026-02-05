@@ -108,19 +108,23 @@ public class VeniceProducerMetricsTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     VeniceProducerMetrics metrics = new VeniceProducerMetrics(metricsRepository, TEST_STORE);
 
-    // Create a mock executor
-    MockPartitionedProducerExecutor executor = new MockPartitionedProducerExecutor(true, true);
+    // Create executor
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(4, 100, 2, 100, TEST_STORE, null);
 
-    // Register queue metrics
-    metrics.registerQueueMetrics(executor);
+    try {
+      // Register queue metrics
+      metrics.registerQueueMetrics(executor);
 
-    // Verify queue size gauges are registered (AsyncGauge registers with Gauge suffix)
-    assertNotNull(
-        metricsRepository.getMetric(".test-store--total_worker_queue_size.Gauge"),
-        "Total worker queue size metric should be registered");
-    assertNotNull(
-        metricsRepository.getMetric(".test-store--callback_queue_size.Gauge"),
-        "Callback queue size metric should be registered");
+      // Verify queue size gauges are registered (AsyncGauge registers with Gauge suffix)
+      assertNotNull(
+          metricsRepository.getMetric(".test-store--total_worker_queue_size.Gauge"),
+          "Total worker queue size metric should be registered");
+      assertNotNull(
+          metricsRepository.getMetric(".test-store--callback_queue_size.Gauge"),
+          "Callback queue size metric should be registered");
+    } finally {
+      executor.shutdown();
+    }
   }
 
   @Test

@@ -2486,7 +2486,7 @@ public class ConfigKeys {
 
   /**
    * Queue capacity per worker for backpressure.
-   * When full, CallerRunsPolicy executes on caller thread.
+   * When full, the caller thread blocks until space is available.
    * Default: 100000. Ignored if worker count is 0.
    */
   public static final String CLIENT_PRODUCER_WORKER_QUEUE_CAPACITY = "client.producer.worker.queue.capacity";
