@@ -7,7 +7,14 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
  * Dimension to represent deterministic conflict resolution (DCR) events.
  */
 public enum VeniceDCREvent implements VeniceDimensionInterface {
-  UPDATE_IGNORED, TOMBSTONE_CREATION, TIMESTAMP_REGRESSION_ERROR, OFFSET_REGRESSION_ERROR;
+  /** An update was ignored due to conflict resolution rules */
+  UPDATE_IGNORED,
+  /** A tombstone (delete marker) was created during conflict resolution */
+  TOMBSTONE_CREATION,
+  /** A timestamp regression error occurred during conflict resolution */
+  TIMESTAMP_REGRESSION_ERROR,
+  /** An offset regression error occurred during conflict resolution */
+  OFFSET_REGRESSION_ERROR;
 
   private final String event;
 

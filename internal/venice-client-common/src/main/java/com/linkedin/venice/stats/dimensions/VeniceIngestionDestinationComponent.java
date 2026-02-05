@@ -8,7 +8,13 @@ package com.linkedin.venice.stats.dimensions;
  * 2 different enums to provide type safety when defining and recording metrics.
  */
 public enum VeniceIngestionDestinationComponent implements VeniceDimensionInterface {
-  LOCAL_BROKER("local_broker"), SOURCE_BROKER("source_broker"), LEADER_CONSUMER("leader_consumer"),
+  /** The local Kafka broker in the same region */
+  LOCAL_BROKER("local_broker"),
+  /** The source Kafka broker from a remote region */
+  SOURCE_BROKER("source_broker"),
+  /** The leader replica consumer that processes messages first */
+  LEADER_CONSUMER("leader_consumer"),
+  /** The follower replica consumer that replicates from leader */
   FOLLOWER_CONSUMER("follower_consumer");
 
   private final String dimensionValue;

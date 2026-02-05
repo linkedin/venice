@@ -11,7 +11,16 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
  * 2 different enums to provide type safety when defining and recording metrics.
  */
 public enum VeniceIngestionSourceComponent implements VeniceDimensionInterface {
-  PRODUCER, LOCAL_BROKER, SOURCE_BROKER, LEADER_CONSUMER, FOLLOWER_CONSUMER;
+  /** The original producer that created the message */
+  PRODUCER,
+  /** The local Kafka broker in the same region */
+  LOCAL_BROKER,
+  /** The source Kafka broker from a remote region */
+  SOURCE_BROKER,
+  /** The leader replica consumer that processes messages first */
+  LEADER_CONSUMER,
+  /** The follower replica consumer that replicates from leader */
+  FOLLOWER_CONSUMER;
 
   private final String component;
 
