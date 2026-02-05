@@ -1,10 +1,6 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.venice.stats.StatsErrorCode.INACTIVE_STORE_INGESTION_TASK;
-
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
-import com.linkedin.davinci.kafka.consumer.StorageUtilizationManager;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.utils.RegionUtils;
@@ -260,26 +256,14 @@ public class IngestionStats {
     this.ingestionTask = ingestionTask;
   }
 
-  private boolean hasActiveIngestionTask() {
-    return ingestionTask != null && ingestionTask.isRunning();
-  }
-
   // To prevent this metric being too noisy and align with the PreNotificationCheck of reportError, this metric should
   // only be set if the ingestion task errored after EOP is received for any of the partitions.
   public int getIngestionTaskErroredGauge() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    int totalFailedIngestionPartitions = ingestionTask.getFailedIngestionPartitionCount();
-    boolean anyCompleted = ingestionTask.hasAnyPartitionConsumptionState(PartitionConsumptionState::isComplete);
-    return anyCompleted ? totalFailedIngestionPartitions : 0;
+    return IngestionStatsUtils.getIngestionTaskErroredGauge(ingestionTask);
   }
 
   public int getWriteComputeErrorCode() {
-    if (!hasActiveIngestionTask()) {
-      return INACTIVE_STORE_INGESTION_TASK.code;
-    }
-    return ingestionTask.getWriteComputeErrorCode();
+    return IngestionStatsUtils.getWriteComputeErrorCode(ingestionTask);
   }
 
   public double getSubscribePrepLatencyAvg() {
@@ -589,10 +573,6 @@ public class IngestionStats {
    * @return The disk quota usage as a double value, or 0 if unavailable.
    */
   public double getStorageQuotaUsed() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    StorageUtilizationManager storageManager = ingestionTask.getStorageUtilizationManager();
-    return (storageManager != null) ? storageManager.getDiskQuotaUsage() : 0;
+    return IngestionStatsUtils.getStorageQuotaUsed(ingestionTask);
   }
 }
