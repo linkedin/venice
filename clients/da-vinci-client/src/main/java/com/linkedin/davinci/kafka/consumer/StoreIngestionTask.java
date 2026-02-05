@@ -141,6 +141,7 @@ import com.linkedin.venice.utils.ValueHolder;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.VeniceView;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
 import java.io.IOException;
@@ -618,10 +619,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       this.recordTransformerStats = internalRecordTransformerConfig.getRecordTransformerStats();
 
-      // For CDC clients with recordTransformer, skip data validation as they are seekable clients.
+      // For CDC clients consuming from view topics, skip data validation as they are seekable clients.
       // This is especially important for view topics where multiple source partitions write to the same
       // view partition with different producer GUIDs, which would fail DIV validation.
-      if (this.recordTransformer.isCDCRecordTransformer()) {
+      if (this.recordTransformer.isCDCRecordTransformer() && VeniceView.isViewTopic(kafkaVersionTopic)) {
         this.skipValidationForSeekableClientEnabled = true;
       }
     } else {
