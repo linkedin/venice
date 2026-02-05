@@ -119,4 +119,78 @@ public class VeniceChunkedResponseTest {
     // Buffer should be fully released now
     Assert.assertEquals(buffer.refCnt(), 0, "Buffer should have refCnt=0 after resolveChunk releases");
   }
+
+  /**
+   * Test that when a chunk is skipped (not passed to Netty), the buffer is correctly released
+   * without going through the retain() path.
+   *
+   * This scenario occurs when maybeAddChunk() is called after responseCompleteCalled is true.
+   * In this case:
+   * 1. Buffer starts with refCnt=1
+   * 2. readChunk() is never called, so no retain()
+   * 3. resolveChunk() is called directly in maybeAddChunk() -> releases buffer -> refCnt=0
+   *
+   * This verifies that skipped chunks don't leak memory and don't cause double-release issues.
+   */
+  @Test
+  public void testSkippedChunkReleasesBufferCorrectly() throws Exception {
+    // Setup mocks
+    ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
+    Channel mockChannel = mock(Channel.class);
+    ChannelProgressivePromise mockPromise = mock(ChannelProgressivePromise.class);
+    RouterStats<AggRouterHttpRequestStats> mockRouterStats = mock(RouterStats.class);
+    AggRouterHttpRequestStats mockStats = mock(AggRouterHttpRequestStats.class);
+
+    when(mockCtx.channel()).thenReturn(mockChannel);
+    when(mockChannel.isOpen()).thenReturn(true);
+    when(mockCtx.newProgressivePromise()).thenReturn(mockPromise);
+    when(mockRouterStats.getStatsByType(RequestType.MULTI_GET_STREAMING)).thenReturn(mockStats);
+
+    VeniceChunkedWriteHandler chunkedWriteHandler = new VeniceChunkedWriteHandler();
+    VeniceChunkedResponse response = new VeniceChunkedResponse(
+        "testStore",
+        RequestType.MULTI_GET_STREAMING,
+        mockCtx,
+        chunkedWriteHandler,
+        mockRouterStats,
+        null);
+
+    // Set responseCompleteCalled to true using reflection to simulate the scenario
+    // where the response has already been completed
+    java.lang.reflect.Field responseCompleteField =
+        VeniceChunkedResponse.class.getDeclaredField("responseCompleteCalled");
+    responseCompleteField.setAccessible(true);
+    responseCompleteField.set(response, true);
+
+    // Create a buffer
+    ByteBuf buffer = Unpooled.wrappedBuffer(new byte[] { 1, 2, 3 });
+    Assert.assertEquals(buffer.refCnt(), 1, "Buffer should have refCnt=1 initially");
+
+    // Use reflection to access the private Chunk class and create an instance
+    Class<?> chunkClass = Class.forName("com.linkedin.venice.router.streaming.VeniceChunkedResponse$Chunk");
+    Constructor<?> chunkConstructor = chunkClass
+        .getDeclaredConstructor(VeniceChunkedResponse.class, ByteBuf.class, boolean.class, StreamingCallback.class);
+    chunkConstructor.setAccessible(true);
+    Object chunk = chunkConstructor.newInstance(response, buffer, false, null);
+
+    // Call maybeAddChunk - since responseCompleteCalled is true, it should skip the chunk
+    // and call resolveChunk() directly, which releases the buffer
+    Method maybeAddChunkMethod = VeniceChunkedResponse.class.getDeclaredMethod("maybeAddChunk", chunkClass);
+    maybeAddChunkMethod.setAccessible(true);
+    boolean added = (boolean) maybeAddChunkMethod.invoke(response, chunk);
+
+    // Verify chunk was skipped (not added to queue)
+    Assert.assertFalse(added, "Chunk should be skipped when responseCompleteCalled is true");
+
+    // Buffer should be released by resolveChunk() called in maybeAddChunk()
+    // Since readChunk() was never called, no retain() happened, so only one release is needed
+    Assert.assertEquals(buffer.refCnt(), 0, "Buffer should have refCnt=0 after skipped chunk is resolved");
+
+    // Verify the chunksToWrite queue is empty (chunk was not added)
+    java.lang.reflect.Field chunksToWriteField = VeniceChunkedResponse.class.getDeclaredField("chunksToWrite");
+    chunksToWriteField.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    java.util.Queue<Object> chunksToWrite = (java.util.Queue<Object>) chunksToWriteField.get(response);
+    Assert.assertTrue(chunksToWrite.isEmpty(), "chunksToWrite should be empty when chunk is skipped");
+  }
 }
