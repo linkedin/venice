@@ -35,7 +35,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
-import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.MaterializedView;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -601,8 +600,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         Schema outputValueSchema,
         DaVinciRecordTransformerConfig recordTransformerConfig) {
       super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
-      if (viewName != null && !viewName.isEmpty()) {
-        this.topicName = composeViewTopicName(viewName);
+
+      // Determine the topic name based on whether a view name is provided
+      if (viewName != null && !viewName.isEmpty() && getViewClass().equals(MaterializedView.class.getCanonicalName())) {
+        this.topicName =
+            MaterializedView.composeTopicName(changelogClientConfig.getStoreName(), getStoreVersion(), viewName);
       } else {
         this.topicName = Version.composeKafkaTopic(changelogClientConfig.getStoreName(), getStoreVersion());
       }
@@ -750,21 +752,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
 
     /**
-     * Compose view topic name based on view class.
+     * Helper method to get the view class based on the view name and store configuration.
      */
-    private String composeViewTopicName(String viewName) {
-      String viewClass = veniceChangelogConsumerClientFactory.viewClassGetter.apply(
+    private String getViewClass() {
+      return veniceChangelogConsumerClientFactory.viewClassGetter.apply(
           changelogClientConfig.getStoreName(),
           viewName,
           changelogClientConfig.getD2ControllerClient(),
           changelogClientConfig.getControllerRequestRetryCount());
-      if (viewClass.equals(MaterializedView.class.getCanonicalName())) {
-        return MaterializedView.composeViewTopicName(changelogClientConfig.getStoreName(), getStoreVersion(), viewName);
-      } else if (viewClass.equals(ChangeCaptureView.class.getCanonicalName())) {
-        return ChangeCaptureView.composeViewTopicName(changelogClientConfig.getStoreName(), getStoreVersion());
-      }
-
-      return Version.composeKafkaTopic(changelogClientConfig.getStoreName(), getStoreVersion());
     }
 
     private long getNextConsumerSequenceId(int partition) {

@@ -55,10 +55,6 @@ public class ChangeCaptureView extends VeniceView {
 
   @Override
   public String composeTopicName(int version) {
-    return composeViewTopicName(storeName, version);
-  }
-
-  public static String composeViewTopicName(String storeName, int version) {
     return Version.composeKafkaTopic(storeName, version) + CHANGE_CAPTURE_TOPIC_SUFFIX;
   }
 

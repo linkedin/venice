@@ -6486,4 +6486,95 @@ public abstract class StoreIngestionTaskTest {
         complete ? Optional.of(InMemoryPubSubPosition.of(1000L)) : Optional.of(InMemoryPubSubPosition.of(0L)),
         pubSubContext);
   }
+
+  @Test
+  public void testSkipDIVForCDCClientsConsumingViewTopics() throws Exception {
+    // Test that DIV is skipped for CDC clients consuming from view topics
+    String viewTopic = "testStore_v1_testView_mv";
+    String regularTopic = "testStore_v1";
+
+    // Test with view topic and CDC transformer - should skip DIV
+    testDIVSkippingForCDCAndViewTopic(viewTopic, true, true);
+
+    // Test with regular topic and CDC transformer - should NOT skip DIV
+    testDIVSkippingForCDCAndViewTopic(regularTopic, true, false);
+
+    // Test with view topic but no CDC transformer - should NOT skip DIV
+    testDIVSkippingForCDCAndViewTopic(viewTopic, false, false);
+
+    // Test with regular topic and no CDC transformer - should NOT skip DIV
+    testDIVSkippingForCDCAndViewTopic(regularTopic, false, false);
+  }
+
+  private void testDIVSkippingForCDCAndViewTopic(String topicName, boolean isCDCTransformer, boolean expectedSkipDIV)
+      throws Exception {
+    Store mockStore = mock(Store.class);
+    when(mockStore.isHybrid()).thenReturn(false);
+    when(mockStore.getPartitionCount()).thenReturn(1);
+    when(mockStore.getName()).thenReturn("testStore");
+
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getNumber()).thenReturn(1);
+    when(mockVersion.isChunkingEnabled()).thenReturn(false);
+    when(mockVersion.isNativeReplicationEnabled()).thenReturn(false);
+    when(mockVersion.kafkaTopicName()).thenReturn(topicName);
+    when(mockVersion.getStoreName()).thenReturn("testStore");
+
+    VeniceStoreVersionConfig mockStoreConfig = mock(VeniceStoreVersionConfig.class);
+    when(mockStoreConfig.getStoreVersionName()).thenReturn(topicName);
+    when(mockStoreConfig.getKafkaReadCycleDelayMs()).thenReturn(100L);
+    when(mockStoreConfig.getKafkaEmptyPollSleepMs()).thenReturn(100L);
+    when(mockStoreConfig.getDatabaseSyncBytesIntervalForTransactionalMode()).thenReturn(10L);
+    when(mockStoreConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode()).thenReturn(10L);
+
+    InternalDaVinciRecordTransformerConfig mockTransformerConfig = null;
+    if (isCDCTransformer) {
+      // For CDC test, use a transformer function that returns a mock CDC transformer
+      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
+          .setRecordTransformerFunction(
+              (storeName, version, keySchema, inputSchema, outputSchema, config) -> mock(
+                  com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer.class))
+          .build();
+      mockTransformerConfig =
+          new InternalDaVinciRecordTransformerConfig(recordTransformerConfig, mockDaVinciRecordTransformerStats);
+    }
+
+    StoreIngestionTaskFactory.Builder factoryBuilder = TestUtils.getStoreIngestionTaskBuilder(topicName);
+    factoryBuilder.setServerConfig(veniceServerConfig);
+    factoryBuilder.setStorageMetadataService(mockStorageMetadataService);
+    factoryBuilder.setMetadataRepository(mockMetadataRepo);
+    factoryBuilder.setSchemaRepository(mockSchemaRepo);
+
+    Properties kafkaProps = new Properties();
+
+    StoreIngestionTask task = new LeaderFollowerStoreIngestionTask(
+        mockStorageService,
+        factoryBuilder,
+        mockStore,
+        mockVersion,
+        kafkaProps,
+        () -> true,
+        mockStoreConfig,
+        0,
+        false,
+        Optional.empty(),
+        mockTransformerConfig,
+        mock(Lazy.class));
+
+    // Use reflection to access the private field
+    Field field = task.getClass().getSuperclass().getDeclaredField("skipValidationForSeekableClientEnabled");
+    field.setAccessible(true);
+    boolean actualSkipDIV = field.getBoolean(task);
+
+    assertEquals(
+        actualSkipDIV,
+        expectedSkipDIV,
+        String.format(
+            "Expected skipValidationForSeekableClientEnabled=%s for topicName=%s, isCDCTransformer=%s",
+            expectedSkipDIV,
+            topicName,
+            isCDCTransformer));
+
+    task.close();
+  }
 }

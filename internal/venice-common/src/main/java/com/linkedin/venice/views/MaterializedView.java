@@ -68,7 +68,7 @@ public class MaterializedView extends VeniceView {
 
   @Override
   public String composeTopicName(int version) {
-    return composeViewTopicName(storeName, version, viewName);
+    return composeTopicName(storeName, version, viewName);
   }
 
   /**
@@ -78,7 +78,7 @@ public class MaterializedView extends VeniceView {
    * @param viewName the view name
    * @return the fully composed materialized view topic name
    */
-  public static String composeViewTopicName(String storeName, int version, String viewName) {
+  public static String composeTopicName(String storeName, int version, String viewName) {
     return Version.composeKafkaTopic(storeName, version) + VIEW_NAME_SEPARATOR + viewName
         + MATERIALIZED_VIEW_TOPIC_SUFFIX;
   }
