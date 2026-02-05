@@ -155,6 +155,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
+        Optional.empty(),
         Optional.empty());
     // Start stand by controller
     newLeaderAdmin.initStorageCluster(clusterName);
@@ -2321,5 +2322,152 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(store.getEtlStoreConfig().isFutureVersionETLEnabled());
     Assert.assertEquals(store.getEtlStoreConfig().getETLStrategy(), VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER);
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testETLTriggerOnFirstTimeEnablingExternalWithVeniceTrigger() {
+    // Clear any previous ETL triggers
+    etlTriggeredStoreVersionNames.clear();
+    String storeName = Utils.getUniqueString("test_etl_trigger");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    // Create version 1 and make it current
+    Version version1 =
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version1.getNumber());
+
+    String v1TopicName = version1.kafkaTopicName();
+    // Update store with ETL enabled but with EXTERNAL_SERVICE strategy
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setETLStrategy(VeniceETLStrategy.EXTERNAL_SERVICE));
+    Assert.assertTrue(
+        etlTriggeredStoreVersionNames.isEmpty(),
+        "onboardETL should NOT be triggered when with EXTERNAL_SERVICE strategy");
+
+    // Update store to EXTERNAL_WITH_VENICE_TRIGGER for the first time
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER));
+
+    // Verify onboardETL was triggered for the current version
+    Assert.assertTrue(
+        etlTriggeredStoreVersionNames.contains(v1TopicName),
+        "onboardETL should be triggered for current version when enabling EXTERNAL_WITH_VENICE_TRIGGER for the first time");
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testETLTriggerWithCurrentAndInProgressVersion() {
+    String storeName = Utils.getUniqueString("test_etl_trigger_with_future");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    // Create version 1 and make it current
+    Version version1 =
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version1.getNumber());
+
+    String v1TopicName = version1.kafkaTopicName();
+
+    // Delay participant job completion to keep version 2 in STARTED status
+    delayParticipantJobCompletion(true);
+
+    try {
+      // Create version 2 (in-progress, not yet current)
+      Version version2 =
+          veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+      String v2TopicName = version2.kafkaTopicName();
+
+      // Verify version 2 is not yet current
+      Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version1.getNumber());
+      Assert.assertEquals(version2.getStatus(), VersionStatus.STARTED);
+
+      // Clear any previous ETL triggers
+      etlTriggeredStoreVersionNames.clear();
+
+      // Update store to EXTERNAL_WITH_VENICE_TRIGGER for the first time
+      veniceAdmin.updateStore(
+          clusterName,
+          storeName,
+          new UpdateStoreQueryParams().setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER));
+
+      // Verify onboardETL was triggered for both current and in-progress versions
+      Assert.assertTrue(
+          etlTriggeredStoreVersionNames.contains(v1TopicName),
+          "onboardETL should be triggered for current version");
+      Assert.assertTrue(
+          etlTriggeredStoreVersionNames.contains(v2TopicName),
+          "onboardETL should be triggered for largest in-progress version");
+    } finally {
+      // Re-enable job completion
+      delayParticipantJobCompletion(false);
+    }
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testETLTriggerNotCalledWhenAlreadyConfigured() {
+    String storeName = Utils.getUniqueString("test_etl_no_trigger");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    // Create version 1 and make it current
+    Version version1 =
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version1.getNumber());
+
+    String v1TopicName = version1.kafkaTopicName();
+
+    // Set ETL strategy to EXTERNAL_WITH_VENICE_TRIGGER initially
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER));
+
+    // Clear ETL triggers after initial setup
+    etlTriggeredStoreVersionNames.clear();
+
+    // Update store again with same ETL strategy
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(1000000L)
+            .setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER));
+
+    // Verify onboardETL was NOT triggered again (since it wasn't the first time)
+    Assert.assertFalse(
+        etlTriggeredStoreVersionNames.contains(v1TopicName),
+        "onboardETL should NOT be triggered when EXTERNAL_WITH_VENICE_TRIGGER was already configured");
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)
+  public void testETLTriggerWithNoCurrentVersion() {
+    String storeName = Utils.getUniqueString("test_etl_no_current");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    // Don't create any versions
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 0);
+
+    // Clear any previous ETL triggers
+    etlTriggeredStoreVersionNames.clear();
+
+    // Update store to EXTERNAL_WITH_VENICE_TRIGGER for the first time
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER));
+
+    // Verify no ETL was triggered since there's no current version
+    Assert.assertTrue(
+        etlTriggeredStoreVersionNames.isEmpty(),
+        "onboardETL should NOT be triggered when there is no current version");
   }
 }

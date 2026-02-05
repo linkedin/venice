@@ -44,10 +44,12 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -92,6 +94,7 @@ class AbstractTestVeniceHelixAdmin {
 
   final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   List<VersionLifecycleEvent> versionLifecycleEvents = new ArrayList<>();
+  Set<String> etlTriggeredStoreVersionNames = new HashSet<>();
 
   enum VersionLifecycleEventType {
     CREATED, DELETED, BECOMING_CURRENT_FROM_FUTURE, BECOMING_CURRENT_FROM_BACKUP, BECOMING_BACKUP
@@ -158,6 +161,18 @@ class AbstractTestVeniceHelixAdmin {
     }
   };
 
+  ExternalETLService mockExternalETLService = new ExternalETLService() {
+    @Override
+    public void onboardETL(Store store, Version version) {
+      etlTriggeredStoreVersionNames.add(version.kafkaTopicName());
+    }
+
+    @Override
+    public void offboardETL(Store store, Version version) {
+      etlTriggeredStoreVersionNames.remove(version.kafkaTopicName());
+    }
+  };
+
   public void setupCluster(MetricsRepository metricsRepository) throws Exception {
     Utils.thisIsLocalhost();
     zkServerWrapper = ServiceFactory.getZkServer();
@@ -179,7 +194,8 @@ class AbstractTestVeniceHelixAdmin {
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
-        Optional.of(Collections.singletonList(mockVersionLifecycleEventListener)));
+        Optional.of(Collections.singletonList(mockVersionLifecycleEventListener)),
+        Optional.of(mockExternalETLService));
     veniceAdmin.initStorageCluster(clusterName);
     this.topicCleanupService = new TopicCleanupService(
         veniceAdmin,
