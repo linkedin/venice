@@ -52,6 +52,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -1758,6 +1759,52 @@ public class VeniceParentHelixAdminTest {
       Assert.assertNotNull(supersetSchemaAfterDisable.getField("f3"), "Superset schema should still contain f3");
       Assert.assertNotNull(supersetSchemaAfterDisable.getField("f4"), "Superset schema should still contain f4");
       Assert.assertNotNull(supersetSchemaAfterDisable.getField("f5"), "Superset schema should still contain f5");
+
+      // ==================== PART 3: Clear superset schema via updateStore ====================
+      // Verify that setting latestSupersetSchemaId to INVALID_VALUE_SCHEMA_ID completely removes
+      // the superset schema from the store, and subsequent schema additions don't recreate it
+      // (since compute is still disabled).
+
+      // Step 7: Clear the superset schema by setting it to INVALID_VALUE_SCHEMA_ID
+      params = new UpdateStoreQueryParams();
+      params.setLatestSupersetSchemaId(SchemaData.INVALID_VALUE_SCHEMA_ID);
+      updateStoreResponse = parentControllerClient.updateStore(storeName, params);
+      Assert.assertNotNull(updateStoreResponse);
+      Assert.assertFalse(
+          updateStoreResponse.isError(),
+          "error in updateStoreResponse: " + updateStoreResponse.getError());
+
+      // Verify the superset schema ID is now INVALID (-1)
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      Assert.assertEquals(
+          storeResponse.getStore().getLatestSuperSetValueSchemaId(),
+          SchemaData.INVALID_VALUE_SCHEMA_ID,
+          "Superset schema ID should be INVALID after clearing it via updateStore");
+
+      // Verify compute is still disabled
+      Assert.assertFalse(
+          storeResponse.getStore().isReadComputationEnabled(),
+          "Read computation should still be disabled");
+      Assert.assertFalse(
+          storeResponse.getStore().isWriteComputationEnabled(),
+          "Write computation should still be disabled");
+
+      // Step 8: Add a new schema (ValueV9 with f2, f3, f7) after clearing the superset schema
+      // Since compute is disabled AND the superset schema was cleared, no new superset should be created
+      Schema valueSchemaV9 =
+          AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV9.avsc"));
+      addSchemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaV9.toString());
+      Assert.assertNotNull(addSchemaResponse);
+      Assert.assertFalse(addSchemaResponse.isError(), "error in addSchemaResponse: " + addSchemaResponse.getError());
+
+      // Verify no superset schema was recreated
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      Assert.assertEquals(
+          storeResponse.getStore().getLatestSuperSetValueSchemaId(),
+          SchemaData.INVALID_VALUE_SCHEMA_ID,
+          "No superset schema should be created after clearing it when compute is disabled");
     }
   }
 
