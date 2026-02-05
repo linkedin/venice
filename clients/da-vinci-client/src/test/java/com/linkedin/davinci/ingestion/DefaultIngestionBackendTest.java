@@ -459,8 +459,9 @@ public class DefaultIngestionBackendTest {
   }
 
   @Test
-  public void testCancelBlobTransferIfInProgress_NoBlobTransferManager() {
-    // When blobTransferManager is null, method should return early without exceptions
+  public void testStopConsumption_NoBlobTransferManager() {
+    // When blobTransferManager is null, stopConsumption should handle it gracefully
+    // (internally tries to cancel blob transfer but returns early when manager is null)
     DefaultIngestionBackend backend = new DefaultIngestionBackend(
         storageMetadataService,
         storeIngestionService,
@@ -468,12 +469,13 @@ public class DefaultIngestionBackendTest {
         null,
         veniceServerConfig);
 
-    // Should not throw exception, it just no-op.
-    backend.cancelBlobTransferIfInProgress(storeConfig, PARTITION);
+    // Should not throw exception - stopConsumption handles null blobTransferManager
+    backend.stopConsumption(storeConfig, PARTITION);
+    verify(storeIngestionService).stopConsumption(storeConfig, PARTITION);
   }
 
   @Test
-  public void testConcurrentCancelWithLockExecutes() throws Exception {
+  public void testConcurrentStopConsumptionWithLockExecutes() throws Exception {
     // Setup mocks
     BlobTransferStatusTrackingManager mockStatusTrackingManager = mock(BlobTransferStatusTrackingManager.class);
     when(blobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockStatusTrackingManager);
@@ -482,6 +484,7 @@ public class DefaultIngestionBackendTest {
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(veniceServerConfig.isServerAllowlistEnabled()).thenReturn(false);
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
 
     DefaultIngestionBackend backend = new DefaultIngestionBackend(
         storageMetadataService,
@@ -497,10 +500,10 @@ public class DefaultIngestionBackendTest {
     AtomicInteger lockAcquisitionOrder = new AtomicInteger(0);
     ConcurrentHashMap<String, Integer> threadToOrder = new ConcurrentHashMap<>();
 
-    // Mock: Track when flag is checked (this happens inside the lock)
+    // Mock: Track when flag is checked (this happens inside the lock during blob transfer cancel)
     when(mockStatusTrackingManager.isBlobTransferCancelRequestSentBefore(eq(replicaId))).thenAnswer(inv -> {
       String threadName = Thread.currentThread().getName();
-      if (threadName.startsWith("Cancel-")) {
+      if (threadName.startsWith("Stop-")) {
         // Record the order this thread acquired the lock
         threadToOrder.putIfAbsent(threadName, lockAcquisitionOrder.incrementAndGet());
       }
@@ -518,11 +521,11 @@ public class DefaultIngestionBackendTest {
     CountDownLatch startLatch = new CountDownLatch(1);
     CountDownLatch doneLatch = new CountDownLatch(3);
 
-    // Task: call cancelBlobTransferIfInProgress
-    Runnable cancelTask = () -> {
+    // Task: call stopConsumption (which internally cancels blob transfer)
+    Runnable stopTask = () -> {
       try {
         startLatch.await(); // Wait for signal to start
-        backend.cancelBlobTransferIfInProgress(storeConfig, PARTITION);
+        backend.stopConsumption(storeConfig, PARTITION);
         completedCount.incrementAndGet();
       } catch (Exception e) {
         LogManager.getLogger().error("{} error: {}", Thread.currentThread().getName(), e.getMessage());
@@ -531,10 +534,10 @@ public class DefaultIngestionBackendTest {
       }
     };
 
-    // Launch 3 threads that will try to cancel simultaneously
-    Thread t1 = new Thread(cancelTask, "Cancel-1");
-    Thread t2 = new Thread(cancelTask, "Cancel-2");
-    Thread t3 = new Thread(cancelTask, "Cancel-3");
+    // Launch 3 threads that will try to stop consumption simultaneously
+    Thread t1 = new Thread(stopTask, "Stop-1");
+    Thread t2 = new Thread(stopTask, "Stop-2");
+    Thread t3 = new Thread(stopTask, "Stop-3");
 
     t1.start();
     t2.start();
@@ -558,7 +561,7 @@ public class DefaultIngestionBackendTest {
     // Even though they started simultaneously, the lock made them execute one at a time
     assertTrue(threadToOrder.size() <= 3, "At most 3 threads acquired lock");
 
-    // 3. Verify cancelTransfer was called
+    // 3. Verify cancelTransfer was called (as part of stopConsumption)
     verify(mockStatusTrackingManager, Mockito.atLeastOnce()).cancelTransfer(eq(replicaId));
   }
 }

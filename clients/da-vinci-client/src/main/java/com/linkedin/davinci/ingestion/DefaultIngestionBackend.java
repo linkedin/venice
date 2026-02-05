@@ -141,14 +141,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
             return;
           }
 
-          try {
-            blobTransferManager.getTransferStatusTrackingManager().markTransferCompleted(replicaId);
-            runnable.run();
-          } catch (Exception e) {
-            LOGGER.error("Failed to start consumption for replica {}", replicaId, e);
-          }
+          blobTransferManager.getTransferStatusTrackingManager().markTransferCompleted(replicaId);
+          runnable.run();
         } finally {
           consumptionLock.unlock();
+          LOGGER.info("Release transfer complete lock for replica {} completed", replicaId);
         }
       });
     }
@@ -441,11 +438,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
   @Override
   public CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+    cancelBlobTransferIfInProgressInternal(storeConfig, partition);
     return getStoreIngestionService().stopConsumption(storeConfig, partition);
   }
 
-  @Override
-  public void cancelBlobTransferIfInProgress(VeniceStoreVersionConfig storeConfig, int partition) {
+  private void cancelBlobTransferIfInProgressInternal(VeniceStoreVersionConfig storeConfig, int partition) {
     if (blobTransferManager == null) {
       return;
     }

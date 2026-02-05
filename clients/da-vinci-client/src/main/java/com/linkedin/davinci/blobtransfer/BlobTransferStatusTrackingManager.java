@@ -48,9 +48,7 @@ public class BlobTransferStatusTrackingManager {
   }
 
   public void clearTransferStatusEnum(String replicaId) {
-    if (partitionLevelTransferStatusEnum.get(replicaId) != null) {
-      partitionLevelTransferStatusEnum.remove(replicaId);
-    }
+    partitionLevelTransferStatusEnum.remove(replicaId);
   }
 
   public boolean isBlobTransferInProgress(String replicaId) {
