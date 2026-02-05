@@ -20,6 +20,7 @@ public class StoragePartitionConfig {
   private boolean readWriteLeaderForDefaultCF;
   private boolean readWriteLeaderForRMDCF;
   private final boolean blobTransferInProgress;
+  private boolean disableBlockCache;
 
   public StoragePartitionConfig(String storeName, int partitionId) {
     this(storeName, partitionId, false);
@@ -34,6 +35,7 @@ public class StoragePartitionConfig {
     this.readWriteLeaderForDefaultCF = false;
     this.readWriteLeaderForRMDCF = false;
     this.blobTransferInProgress = isBlobTransferInProgress;
+    this.disableBlockCache = false;
   }
 
   public String getStoreName() {
@@ -94,6 +96,14 @@ public class StoragePartitionConfig {
     this.readWriteLeaderForRMDCF = readWriteLeaderForRMDCF;
   }
 
+  public boolean isDisableBlockCache() {
+    return disableBlockCache;
+  }
+
+  public void setDisableBlockCache(boolean disableBlockCache) {
+    this.disableBlockCache = disableBlockCache;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -106,7 +116,7 @@ public class StoragePartitionConfig {
     return partitionId == that.partitionId && deferredWrite == that.deferredWrite && readOnly == that.readOnly
         && writeOnlyConfig == that.writeOnlyConfig && storeName.equals(that.storeName)
         && readWriteLeaderForDefaultCF == that.readWriteLeaderForDefaultCF
-        && readWriteLeaderForRMDCF == that.readWriteLeaderForRMDCF;
+        && readWriteLeaderForRMDCF == that.readWriteLeaderForRMDCF && disableBlockCache == that.disableBlockCache;
   }
 
   @Override
@@ -118,15 +128,16 @@ public class StoragePartitionConfig {
         readOnly,
         writeOnlyConfig,
         readWriteLeaderForDefaultCF,
-        readWriteLeaderForRMDCF);
+        readWriteLeaderForRMDCF,
+        disableBlockCache);
   }
 
   @Override
   public String toString() {
-    String toStringResult =
-        "Replica: " + Utils.getReplicaId(storeName, partitionId) + ", deferred-write: " + deferredWrite
-            + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", read-write leader for default CF: "
-            + readWriteLeaderForDefaultCF + ", read-write leader for RMD CF: " + readWriteLeaderForRMDCF;
+    String toStringResult = "Replica: " + Utils.getReplicaId(storeName, partitionId) + ", deferred-write: "
+        + deferredWrite + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig
+        + ", read-write leader for default CF: " + readWriteLeaderForDefaultCF + ", read-write leader for RMD CF: "
+        + readWriteLeaderForRMDCF + ", disable-block-cache: " + disableBlockCache;
 
     if (blobTransferInProgress) {
       toStringResult += ", blob transfer in progress: true.";

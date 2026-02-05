@@ -53,6 +53,14 @@ public class DaVinciConfig {
    */
   private boolean useRequestBasedMetaRepository = false;
 
+  /**
+   * Disables RocksDB block cache for this store only. Beneficial for sequential access patterns
+   * where data is read once (e.g., sequential scans). Prevents cache pollution of the shared
+   * block cache used by other DaVinci stores and reduces memory pressure. Not recommended for
+   * random access or repeated reads. Default: false.
+   */
+  private boolean disableBlockCache = false;
+
   public DaVinciConfig() {
   }
 
@@ -76,6 +84,8 @@ public class DaVinciConfig {
         .append(cacheConfig)
         .append(", largeBatchRequestSplitThreshold=")
         .append(largeBatchRequestSplitThreshold)
+        .append(", disableBlockCache=")
+        .append(disableBlockCache)
         .append("}");
     return sb.toString();
   }
@@ -160,6 +170,15 @@ public class DaVinciConfig {
 
   public DaVinciConfig setUseRequestBasedMetaRepository(boolean useRequestBasedMetaRepository) {
     this.useRequestBasedMetaRepository = useRequestBasedMetaRepository;
+    return this;
+  }
+
+  public boolean isDisableBlockCache() {
+    return disableBlockCache;
+  }
+
+  public DaVinciConfig setDisableBlockCache(boolean disableBlockCache) {
+    this.disableBlockCache = disableBlockCache;
     return this;
   }
 }

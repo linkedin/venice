@@ -897,6 +897,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
     try {
       getBackend().registerStoreClient(getStoreName(), storeVersion);
+      getBackend().registerDisableBlockCache(getStoreName(), daVinciConfig.isDisableBlockCache());
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
 
       if (daVinciConfig.isCacheEnabled()) {

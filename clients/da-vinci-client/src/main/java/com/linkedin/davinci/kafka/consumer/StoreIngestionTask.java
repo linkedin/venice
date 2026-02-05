@@ -1107,6 +1107,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
 
+    // Apply per-store disableBlockCache setting from VeniceStoreVersionConfig
+    storagePartitionConfig.setDisableBlockCache(storeVersionConfig.isDisableBlockCache());
+
     return storagePartitionConfig;
   }
 
