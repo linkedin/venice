@@ -525,8 +525,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
       final int waitIntervalInSecond = 1;
       final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
       int retries = 0;
-      while (!(blobTransferManager.getTransferStatusTrackingManager().isTransferInFinalState(replicaId)
-          && retries < maxRetry)) {
+      while (!blobTransferManager.getTransferStatusTrackingManager().isTransferInFinalState(replicaId)
+          && retries < maxRetry) {
         try {
           Thread.sleep(waitIntervalInSecond * 1000L);
           retries++;

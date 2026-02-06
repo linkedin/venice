@@ -564,7 +564,7 @@ public class BlobTransferStatusTrackingManagerTest {
     // Verify: cancelTransfer creates the status but immediately skips because it's a final state
     // (In real implementation, cancelTransfer checks isTransferInFinalState which returns true for null)
     BlobTransferStatus status = statusTrackingManager.getTransferStatus(replicaId);
-    // Either null (skipped)
+    // skipped
     assertTrue(status == null, "Status should be null when cancelling non-existent transfer");
   }
 

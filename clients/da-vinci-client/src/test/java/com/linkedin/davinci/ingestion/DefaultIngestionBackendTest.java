@@ -670,6 +670,106 @@ public class DefaultIngestionBackendTest {
   }
 
   @Test
+  public void testStartConsumptionAndDropConcurrently_VerifyCancelTransition() throws Exception {
+    // Scenario: Explicitly verify the CANCEL_REQUESTED → CANCELLED transition
+    // This test verifies that when stopConsumption is called mid-transfer,
+    // the status transitions through: STARTED → CANCEL_REQUESTED → CANCELLED
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
+    when(store.isHybrid()).thenReturn(true);
+    when(veniceServerConfig.isServerAllowlistEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
+
+    RocksDBServerConfig rocksDBServerConfig = mock(RocksDBServerConfig.class);
+    when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    // Use real status tracking manager
+    NettyFileTransferClient nettyClient = mock(NettyFileTransferClient.class);
+    BlobTransferStatusTrackingManager realStatusTrackingManager = new BlobTransferStatusTrackingManager(nettyClient);
+
+    // Spy to track method calls
+    BlobTransferStatusTrackingManager spyStatusTrackingManager = Mockito.spy(realStatusTrackingManager);
+    when(blobTransferManager.getTransferStatusTrackingManager()).thenReturn(spyStatusTrackingManager);
+
+    // Blob transfer future that will complete with cancellation exception
+    CompletableFuture<InputStream> blobTransferFuture = new CompletableFuture<>();
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), any())).thenAnswer(inv -> {
+      realStatusTrackingManager.startedTransfer(replicaId);
+      return blobTransferFuture;
+    });
+
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+    when(storeIngestionService.dropStoragePartitionGracefully(any(), anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    // Recreate DefaultIngestionBackend with real status tracking manager
+    DefaultIngestionBackend testIngestionBackend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        blobTransferManager,
+        veniceServerConfig);
+
+    CountDownLatch transferInitializedLatch = new CountDownLatch(1);
+    Mockito.doAnswer(inv -> {
+      transferInitializedLatch.countDown();
+      return inv.callRealMethod();
+    }).when(spyStatusTrackingManager).initialTransfer(eq(replicaId));
+
+    // Thread 1: Start consumption
+    Thread startThread = new Thread(() -> {
+      try {
+        testIngestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+      } catch (Exception e) {
+        LogManager.getLogger().error("Start error: {}", e.getMessage(), e);
+      }
+    });
+
+    // Thread 2: Stop consumption (which calls cancelTransfer)
+    Thread stopThread = new Thread(() -> {
+      try {
+        boolean latchCompleted = transferInitializedLatch.await(2, TimeUnit.SECONDS);
+        if (!latchCompleted) {
+          LogManager.getLogger().warn("Latch timed out waiting for transfer initialization");
+        }
+        Thread.sleep(50); // Ensure transfer started
+        testIngestionBackend.stopConsumption(storeConfig, PARTITION);
+      } catch (Exception e) {
+        LogManager.getLogger().error("Stop error: {}", e.getMessage(), e);
+      }
+    });
+
+    startThread.start();
+    stopThread.start();
+
+    // Wait then complete with cancellation exception
+    Thread.sleep(100);
+    blobTransferFuture
+        .completeExceptionally(new VeniceBlobTransferCancelledException("Transfer cancelled during test"));
+
+    startThread.join(5000);
+    stopThread.join(5000);
+
+    // KEY VERIFICATIONS: Prove CANCEL_REQUESTED → CANCELLED transition happened
+
+    // 1. cancelTransfer() was called (sets status to CANCEL_REQUESTED)
+    verify(spyStatusTrackingManager, Mockito.atLeastOnce()).cancelTransfer(eq(replicaId));
+
+    // 2. markTransferCancelled() was called (transitions CANCEL_REQUESTED → CANCELLED)
+    verify(spyStatusTrackingManager, Mockito.atLeastOnce()).markTransferCancelled(eq(replicaId));
+
+    // 3. Final status is CANCELLED (or null if dropStoragePartitionGracefully was called later)
+    BlobTransferStatus finalStatus = realStatusTrackingManager.getTransferStatus(replicaId);
+    assertTrue(
+        finalStatus == BlobTransferStatus.TRANSFER_CANCELLED || finalStatus == null,
+        "Expected CANCELLED or null (cleaned up), got: " + finalStatus);
+  }
+
+  @Test
   public void testStartConsumptionAndDropConcurrently_RightWhenTransferCompletes() throws Exception {
     // Scenario: Race condition - transfer completes successfully on peer chain thread
     // at the exact moment drop is called from Helix thread
