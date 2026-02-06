@@ -313,8 +313,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
-    // ToDo: Start at beginning of topic
-    return this.start(partitions);
+    return this.seekToBeginningOfPush(partitions);
   }
 
   public CompletableFuture<Void> subscribeAll() {
@@ -332,11 +331,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
-    return this.subscribe(partitions);
+    return initializeAndSubscribe(
+        partitions,
+        subscribedPartitions -> daVinciClient.seekToBeginningOfPush(subscribedPartitions));
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush() {
-    return this.subscribe(Collections.emptySet());
+    return this.seekToBeginningOfPush(Collections.emptySet());
   }
 
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {

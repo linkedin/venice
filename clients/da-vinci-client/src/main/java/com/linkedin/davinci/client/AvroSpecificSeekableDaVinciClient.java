@@ -51,7 +51,7 @@ public class AvroSpecificSeekableDaVinciClient<K, V extends SpecificRecord> exte
 
   @Override
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
-    return super.subscribe(partitions);
+    return super.seekToBeginningOfPush(partitions);
   }
 
   @Override

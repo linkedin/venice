@@ -141,6 +141,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     daVinciClientSubscribeFuture = new CompletableFuture<>();
     when(mockDaVinciClient.getPartitionCount()).thenReturn(PARTITION_COUNT);
     when(mockDaVinciClient.subscribe(any())).thenReturn(daVinciClientSubscribeFuture);
+    when(mockDaVinciClient.seekToBeginningOfPush(any())).thenReturn(daVinciClientSubscribeFuture);
 
     AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
       try {
@@ -645,6 +646,54 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertEquals(veniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 0, "Buffer should be empty");
     verify(changeCaptureStats).emitRecordsConsumedCountMetrics(0);
     verify(changeCaptureStats).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+  }
+
+  @Test
+  public void testSeekToBeginningOfPush() {
+    Set<Integer> specificPartitions = Collections.singleton(1);
+
+    veniceChangelogConsumer.seekToBeginningOfPush(specificPartitions);
+
+    assertTrue(veniceChangelogConsumer.isStarted(), "isStarted should be true");
+    verify(mockDaVinciClient).start();
+    assertTrue(veniceChangelogConsumer.getSubscribedPartitions().contains(1));
+    verify(mockDaVinciClient).seekToBeginningOfPush(any());
+    verify(mockDaVinciClient, never()).subscribe(any());
+  }
+
+  @Test
+  public void testSeekToBeginningOfPushAllPartitions() {
+    veniceChangelogConsumer.seekToBeginningOfPush();
+
+    assertTrue(veniceChangelogConsumer.isStarted(), "isStarted should be true");
+    verify(mockDaVinciClient).start();
+    assertEquals(veniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
+    verify(mockDaVinciClient).seekToBeginningOfPush(any());
+    verify(mockDaVinciClient, never()).subscribe(any());
+  }
+
+  @Test
+  public void testSubscribeDelegatesToSeekToBeginningOfPush() {
+    Set<Integer> specificPartitions = Collections.singleton(1);
+
+    veniceChangelogConsumer.subscribe(specificPartitions);
+
+    assertTrue(veniceChangelogConsumer.isStarted(), "isStarted should be true");
+    verify(mockDaVinciClient).start();
+    assertTrue(veniceChangelogConsumer.getSubscribedPartitions().contains(1));
+    verify(mockDaVinciClient).seekToBeginningOfPush(any());
+    verify(mockDaVinciClient, never()).subscribe(any());
+  }
+
+  @Test
+  public void testSubscribeAllDelegatesToSeekToBeginningOfPush() {
+    veniceChangelogConsumer.subscribeAll();
+
+    assertTrue(veniceChangelogConsumer.isStarted(), "isStarted should be true");
+    verify(mockDaVinciClient).start();
+    assertEquals(veniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
+    verify(mockDaVinciClient).seekToBeginningOfPush(any());
+    verify(mockDaVinciClient, never()).subscribe(any());
   }
 
   private void onStartVersionIngestionHelper(boolean currentRecordTransformer, boolean isCurrentVersion) {

@@ -1152,6 +1152,21 @@ public class TestChangelogConsumer {
       Assert.assertEquals(polledChangeEventsMap.size(), 101);
     });
     Assert.assertNotNull(polledChangeEventsMap.get(Integer.toString(10000)));
+
+    // After unsubscribing and seeking to beginning, we should get all records from the start.
+    changeLogConsumer.unsubscribeAll();
+    polledChangeEventsMap.clear();
+
+    changeLogConsumer.seekToBeginningOfPush().get();
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEventsMap, changeLogConsumer);
+      // Should get all 101 records from the beginning (100 batch + 1 nearline)
+      Assert.assertEquals(polledChangeEventsMap.size(), 101);
+    });
+    // Verify batch push records are present (proves we started from the beginning)
+    Assert.assertNotNull(polledChangeEventsMap.get(Integer.toString(1)));
+    Assert.assertNotNull(polledChangeEventsMap.get(Integer.toString(10000)));
+
     parentControllerClient.disableAndDeleteStore(storeName);
   }
 
