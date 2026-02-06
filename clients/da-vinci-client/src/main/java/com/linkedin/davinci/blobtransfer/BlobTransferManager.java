@@ -60,4 +60,6 @@ public interface BlobTransferManager<T> extends AutoCloseable {
    * @return the blob transfer stats
    */
   AggVersionedBlobTransferStats getAggVersionedBlobTransferStats();
+
+  BlobTransferStatusTrackingManager getTransferStatusTrackingManager();
 }
