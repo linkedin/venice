@@ -2477,22 +2477,33 @@ public class ConfigKeys {
   public static final String SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY = "server.ssl.handshake.queue.capacity";
 
   /**
-   * Number of threads for online Venice producer controlling the number of concurrent processing operations.
+   * Number of partition workers for parallel processing.
+   * Each worker handles preprocessing + dispatch for assigned partitions.
+   * Default: 4.
+   * Set to 0 to DISABLE worker threads (execute inline on caller thread).
    */
-  public static final String CLIENT_PRODUCER_THREAD_NUM = "client.producer.thread.num";
+  public static final String CLIENT_PRODUCER_WORKER_COUNT = "client.producer.worker.count";
 
   /**
-   * Number of threads for the online Venice producer's writer executor, controlling how many write operations
-   * can be submitted to the VeniceWriter concurrently.
-   *
-   * <p>Default value is 1, which guarantees that write operations are serialized and their order is preserved
-   * in the order requests were received. When set to a value greater than 1, write operations may be reordered
-   * for higher throughput, but ordering guarantees are lost.
-   *
-   * <p>Use a value of 1 when write ordering matters (e.g., when updates to the same key must be applied in order).
-   * Use a higher value when write ordering is not important and throughput is the priority.
+   * Queue capacity per worker for backpressure.
+   * When full, the caller thread blocks until space is available.
+   * Default: 100000. Ignored if worker count is 0.
    */
-  public static final String CLIENT_PRODUCER_WRITER_THREAD_NUM = "client.producer.writer.thread.num";
+  public static final String CLIENT_PRODUCER_WORKER_QUEUE_CAPACITY = "client.producer.worker.queue.capacity";
+
+  /**
+   * Number of threads for callback executor (optional).
+   * Isolates user code from Kafka callback thread.
+   * Default: 0 (DISABLED - callbacks run on Kafka thread).
+   * Set to >0 to enable callback thread pool.
+   */
+  public static final String CLIENT_PRODUCER_CALLBACK_THREAD_COUNT = "client.producer.callback.thread.count";
+
+  /**
+   * Queue capacity for callback executor.
+   * Default: 100000. Ignored if callback thread count is 0.
+   */
+  public static final String CLIENT_PRODUCER_CALLBACK_QUEUE_CAPACITY = "client.producer.callback.queue.capacity";
 
   /**
    * The refresh interval for online producer to refresh value schemas and update schemas that rely on periodic polling.
