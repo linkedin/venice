@@ -120,10 +120,10 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
    * @param executor the partitioned producer executor
    */
   public void registerQueueMetrics(PartitionedProducerExecutor executor) {
-    this.executor = executor;
-    if (!enableMetrics || executor == null) {
+    if (!enableMetrics || executor == null || this.executor != null) {
       return;
     }
+    this.executor = executor;
 
     // Register queue size gauges - the sensors are kept alive by the metrics repository
     // Total worker queue size (sum of all worker queues)

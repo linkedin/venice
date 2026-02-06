@@ -189,12 +189,15 @@ public class PartitionedProducerExecutorTest {
       // Wait for submitter to start
       assertTrue(submitterStarted.await(2, TimeUnit.SECONDS), "Submitter should start");
 
-      // Give submitter time to potentially block (queue size is 1, worker is busy)
-      Thread.sleep(200);
-
-      // Submitter should be blocked since queue is full and worker is busy
-      if (!submitterFinished.get()) {
-        callerWasBlocked.set(true);
+      // Wait for submitter to become blocked (WAITING or TIMED_WAITING state)
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while (System.nanoTime() < deadline && !submitterFinished.get()) {
+        Thread.State state = submitterThread.getState();
+        if (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING) {
+          callerWasBlocked.set(true);
+          break;
+        }
+        Thread.yield();
       }
 
       // Allow blocking task to finish - this should unblock the submitter
@@ -418,11 +421,9 @@ public class PartitionedProducerExecutorTest {
 
       // Release blocking task
       blockingLatch.countDown();
-
-      // Wait for queue to drain
-      Thread.sleep(100);
     } finally {
       executor.shutdown();
+      executor.awaitTermination(5, TimeUnit.SECONDS);
     }
   }
 

@@ -773,32 +773,47 @@ public class OnlineVeniceProducerTest {
     }
   }
 
+  /**
+   * Verifies that operations on the SAME key are executed in submission order,
+   * which is the core guarantee of partition-based workers. Operations on
+   * DIFFERENT keys may execute in any order (parallel workers).
+   *
+   * <p>This test uses multiple keys to validate that:
+   * <ul>
+   *   <li>Per-key ordering is maintained (operations on same key execute in submission order)</li>
+   *   <li>Cross-key operations can execute concurrently (different keys go to different workers)</li>
+   * </ul>
+   */
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testWriteOperationsExecuteInOrder() throws IOException, ExecutionException, InterruptedException {
+  public void testWriteOperationsExecuteInOrderPerKey() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
-    // Use multiple threads for preprocessing to ensure concurrent preprocessing
+    // Use multiple workers to enable parallel processing of different keys
     backendConfigs.put(CLIENT_PRODUCER_WORKER_COUNT, 4);
 
     try (TestOnlineVeniceProducer producer =
         new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
-      // Track the order of write operations for the SAME key
+      // Track the order of write operations PER KEY
       // Partition-based workers guarantee per-key ordering, not global ordering
-      List<String> writeOrder = Collections.synchronizedList(new java.util.ArrayList<>());
+      Map<String, List<String>> writeOrderByKey = new java.util.concurrent.ConcurrentHashMap<>();
 
-      // Pre-compute expected serialized key - use same key for all operations
-      byte[] keyBytes = keySerializer.serialize("KEY1");
+      // Pre-compute expected serialized keys
+      byte[] key1Bytes = keySerializer.serialize("KEY1");
+      byte[] key2Bytes = keySerializer.serialize("KEY2");
+      byte[] key3Bytes = keySerializer.serialize("KEY3");
 
-      // Configure mock to record the order of writes
+      // Configure mock to record the order of writes per key
       doAnswer(invocation -> {
         Object[] args = invocation.getArguments();
         byte[] argKeyBytes = (byte[]) args[0];
-        if (Arrays.equals(argKeyBytes, keyBytes)) {
-          writeOrder.add("PUT:" + writeOrder.size());
+        String key = getKeyName(argKeyBytes, key1Bytes, key2Bytes, key3Bytes);
+        if (key != null) {
+          writeOrderByKey.computeIfAbsent(key, k -> Collections.synchronizedList(new java.util.ArrayList<>()))
+              .add("PUT");
         }
-        // Simulate some write latency
+        // Simulate some write latency to increase chance of concurrent execution
         Utils.sleep(10);
         ((PubSubProducerCallback) args[4]).onCompletion(null, null);
         return null;
@@ -807,37 +822,77 @@ public class OnlineVeniceProducerTest {
       doAnswer(invocation -> {
         Object[] args = invocation.getArguments();
         byte[] argKeyBytes = (byte[]) args[0];
-        if (Arrays.equals(argKeyBytes, keyBytes)) {
-          writeOrder.add("DELETE:" + writeOrder.size());
+        String key = getKeyName(argKeyBytes, key1Bytes, key2Bytes, key3Bytes);
+        if (key != null) {
+          writeOrderByKey.computeIfAbsent(key, k -> Collections.synchronizedList(new java.util.ArrayList<>()))
+              .add("DELETE");
         }
         Utils.sleep(10);
         ((PubSubProducerCallback) args[2]).onCompletion(null, null);
         return null;
       }).when(producer.mockVeniceWriter).delete(any(), anyLong(), any());
 
-      // Submit multiple operations on the SAME key rapidly
-      // These will be preprocessed concurrently but must write in submission order for the same key
-      CompletableFuture<DurableWrite> future1 = producer.asyncPut("KEY1", mockValue1);
-      CompletableFuture<DurableWrite> future2 = producer.asyncPut("KEY1", mockValue2);
-      CompletableFuture<DurableWrite> future3 = producer.asyncDelete(100, "KEY1");
-      CompletableFuture<DurableWrite> future4 = producer.asyncPut("KEY1", mockValue1);
-      CompletableFuture<DurableWrite> future5 = producer.asyncDelete(200, "KEY1");
+      // Submit operations on MULTIPLE keys - each key should maintain its own order
+      // KEY1: PUT, PUT, DELETE
+      // KEY2: DELETE, PUT, PUT
+      // KEY3: PUT, DELETE, PUT
+      List<CompletableFuture<DurableWrite>> futures = new java.util.ArrayList<>();
+
+      // Interleave operations across keys to maximize concurrent execution
+      futures.add(producer.asyncPut("KEY1", mockValue1)); // KEY1: op 0
+      futures.add(producer.asyncDelete(100, "KEY2")); // KEY2: op 0
+      futures.add(producer.asyncPut("KEY3", mockValue1)); // KEY3: op 0
+      futures.add(producer.asyncPut("KEY1", mockValue2)); // KEY1: op 1
+      futures.add(producer.asyncPut("KEY2", mockValue1)); // KEY2: op 1
+      futures.add(producer.asyncDelete(200, "KEY3")); // KEY3: op 1
+      futures.add(producer.asyncDelete(300, "KEY1")); // KEY1: op 2
+      futures.add(producer.asyncPut("KEY2", mockValue2)); // KEY2: op 2
+      futures.add(producer.asyncPut("KEY3", mockValue2)); // KEY3: op 2
 
       // Wait for all operations to complete
-      future1.get();
-      future2.get();
-      future3.get();
-      future4.get();
-      future5.get();
+      for (CompletableFuture<DurableWrite> future: futures) {
+        future.get();
+      }
 
-      // Verify operations on the same key were executed in submission order
-      assertEquals(5, writeOrder.size());
-      assertEquals("PUT:0", writeOrder.get(0));
-      assertEquals("PUT:1", writeOrder.get(1));
-      assertEquals("DELETE:2", writeOrder.get(2));
-      assertEquals("PUT:3", writeOrder.get(3));
-      assertEquals("DELETE:4", writeOrder.get(4));
+      // Verify per-key ordering is maintained
+      // KEY1: PUT, PUT, DELETE (in that order)
+      List<String> key1Order = writeOrderByKey.get("KEY1");
+      assertEquals(3, key1Order.size(), "KEY1 should have 3 operations");
+      assertEquals("PUT", key1Order.get(0), "KEY1 op 0 should be PUT");
+      assertEquals("PUT", key1Order.get(1), "KEY1 op 1 should be PUT");
+      assertEquals("DELETE", key1Order.get(2), "KEY1 op 2 should be DELETE");
+
+      // KEY2: DELETE, PUT, PUT (in that order)
+      List<String> key2Order = writeOrderByKey.get("KEY2");
+      assertEquals(3, key2Order.size(), "KEY2 should have 3 operations");
+      assertEquals("DELETE", key2Order.get(0), "KEY2 op 0 should be DELETE");
+      assertEquals("PUT", key2Order.get(1), "KEY2 op 1 should be PUT");
+      assertEquals("PUT", key2Order.get(2), "KEY2 op 2 should be PUT");
+
+      // KEY3: PUT, DELETE, PUT (in that order)
+      List<String> key3Order = writeOrderByKey.get("KEY3");
+      assertEquals(3, key3Order.size(), "KEY3 should have 3 operations");
+      assertEquals("PUT", key3Order.get(0), "KEY3 op 0 should be PUT");
+      assertEquals("DELETE", key3Order.get(1), "KEY3 op 1 should be DELETE");
+      assertEquals("PUT", key3Order.get(2), "KEY3 op 2 should be PUT");
+
+      // Note: We intentionally do NOT assert anything about the global order across keys.
+      // Different keys can execute in any order depending on worker scheduling.
     }
+  }
+
+  /**
+   * Helper to identify which key the bytes correspond to.
+   */
+  private String getKeyName(byte[] argKeyBytes, byte[] key1Bytes, byte[] key2Bytes, byte[] key3Bytes) {
+    if (Arrays.equals(argKeyBytes, key1Bytes)) {
+      return "KEY1";
+    } else if (Arrays.equals(argKeyBytes, key2Bytes)) {
+      return "KEY2";
+    } else if (Arrays.equals(argKeyBytes, key3Bytes)) {
+      return "KEY3";
+    }
+    return null;
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

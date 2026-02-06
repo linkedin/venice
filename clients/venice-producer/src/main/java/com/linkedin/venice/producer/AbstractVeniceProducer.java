@@ -288,6 +288,8 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       return getFutureCompletedExceptionally(error);
     }
     producerMetrics.recordPutRequest();
+    // Capture submission time at method entry for consistent end-to-end latency measurement
+    long submissionTimeNanos = System.nanoTime();
     CompletableFuture<DurableWrite> durableWriteFuture = new CompletableFuture<>();
 
     byte[] serializedKeyBytes = serializeKeyForRouting(key, durableWriteFuture);
@@ -295,9 +297,6 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       return durableWriteFuture;
     }
     int partition = serializedKeyBytes != null ? partitioner.getPartitionId(serializedKeyBytes, partitionCount) : 0;
-
-    // Capture submission time after routing serialization for accurate queue wait measurement
-    long submissionTimeNanos = System.nanoTime();
     try {
       asyncDispatcher.submit(partition, () -> {
         long preprocessStartNanos = System.nanoTime();
@@ -365,6 +364,8 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     }
 
     producerMetrics.recordDeleteRequest();
+    // Capture submission time at method entry for consistent end-to-end latency measurement
+    long submissionTimeNanos = System.nanoTime();
     CompletableFuture<DurableWrite> durableWriteFuture = new CompletableFuture<>();
 
     byte[] serializedKeyBytes = serializeKeyForRouting(key, durableWriteFuture);
@@ -372,9 +373,6 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       return durableWriteFuture;
     }
     int partition = serializedKeyBytes != null ? partitioner.getPartitionId(serializedKeyBytes, partitionCount) : 0;
-
-    // Capture submission time after routing serialization for accurate queue wait measurement
-    long submissionTimeNanos = System.nanoTime();
     try {
       asyncDispatcher.submit(partition, () -> {
         try {
@@ -424,6 +422,8 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     }
 
     producerMetrics.recordUpdateRequest();
+    // Capture submission time at method entry for consistent end-to-end latency measurement
+    long submissionTimeNanos = System.nanoTime();
     CompletableFuture<DurableWrite> durableWriteFuture = new CompletableFuture<>();
 
     byte[] serializedKeyBytes = serializeKeyForRouting(key, durableWriteFuture);
@@ -431,9 +431,6 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       return durableWriteFuture;
     }
     int partition = serializedKeyBytes != null ? partitioner.getPartitionId(serializedKeyBytes, partitionCount) : 0;
-
-    // Capture submission time after routing serialization for accurate queue wait measurement
-    long submissionTimeNanos = System.nanoTime();
     try {
       asyncDispatcher.submit(partition, () -> {
         long preprocessStartNanos = System.nanoTime();
@@ -572,11 +569,17 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   public void close() throws IOException {
     closed = true;
     if (asyncDispatcher != null) {
+      // Graceful shutdown: stop accepting new tasks and allow pending tasks to complete
       asyncDispatcher.shutdown();
       try {
-        asyncDispatcher.awaitTermination(60, TimeUnit.SECONDS);
+        if (!asyncDispatcher.awaitTermination(60, TimeUnit.SECONDS)) {
+          // Force shutdown if tasks did not complete within timeout
+          LOGGER.warn("Async dispatcher did not terminate gracefully, forcing shutdown");
+          asyncDispatcher.shutdownNow();
+        }
       } catch (InterruptedException e) {
-        LOGGER.warn("Interrupted while closing async dispatcher", e);
+        LOGGER.warn("Interrupted while closing async dispatcher, forcing shutdown", e);
+        asyncDispatcher.shutdownNow();
         Thread.currentThread().interrupt();
       }
     }

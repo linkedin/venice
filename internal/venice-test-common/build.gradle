@@ -156,7 +156,7 @@ def integrationTestBuckets = [
     ],
     "3": [
         "com.linkedin.venice.consumer.StatefulVeniceChangelogConsumerTest",
-        "com.linkedin.venice.endToEnd.TestActiveActiveVersionSwapMessage ",
+        "com.linkedin.venice.endToEnd.TestActiveActiveVersionSwapMessage",
         "com.linkedin.venice.endToEnd.OnlineVeniceProducerOrderingIntegrationTest"
     ],
     "4": [

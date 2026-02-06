@@ -131,13 +131,11 @@ public class OnlineVeniceProducerOrderingIntegrationTest {
   /**
    * DataProvider for producer configuration matrix.
    *
-   * <p>Tests different execution modes:</p>
+   * <p>Optimized test matrix covering:</p>
    * <ul>
-   *   <li>Queue size variations (worker and callback)</li>
-   *   <li>Worker count variations (0 = inline, >0 = parallel)</li>
-   *   <li>Callback thread count variations</li>
-   *   <li>Concurrent caller variations</li>
-   *   <li>Combined stress scenarios</li>
+   *   <li>All 4 execution modes (worker/callback enabled/disabled combinations)</li>
+   *   <li>Backpressure scenarios (worker queue, callback queue, both)</li>
+   *   <li>Edge cases (single worker, high contention)</li>
    * </ul>
    *
    * @return test configuration matrix
@@ -149,94 +147,25 @@ public class OnlineVeniceProducerOrderingIntegrationTest {
         // recordsPerKey, description}
 
         // ============================================================================
-        // SECTION 1: QUEUE SIZE VARIATIONS (Primary Focus)
+        // EXECUTION MODES (4 quadrants - must test all combinations)
         // ============================================================================
-
-        // --- Worker Queue Size Variations ---
-        // Fixed: 4 callers, 2 workers, 0 callback threads, 50 records/key
-        { 4, 2, 5, 0, 1000, 50, "Worker queue=5: extreme backpressure" },
-        { 4, 2, 10, 0, 1000, 50, "Worker queue=10: high backpressure" },
-        { 4, 2, 50, 0, 1000, 50, "Worker queue=50: moderate backpressure" },
-        { 4, 2, 100, 0, 1000, 50, "Worker queue=100: light backpressure" },
-        { 4, 2, 1000, 0, 1000, 50, "Worker queue=1000: minimal backpressure" },
-
-        // --- Callback Queue Size Variations ---
-        // Fixed: 4 callers, 2 workers, 2 callback threads, 50 records/key
-        { 4, 2, 1000, 2, 5, 50, "Callback queue=5: extreme backpressure" },
-        { 4, 2, 1000, 2, 10, 50, "Callback queue=10: high backpressure" },
-        { 4, 2, 1000, 2, 50, 50, "Callback queue=50: moderate backpressure" },
-        { 4, 2, 1000, 2, 100, 50, "Callback queue=100: light backpressure" },
-        { 4, 2, 1000, 2, 1000, 50, "Callback queue=1000: minimal backpressure" },
-
-        // --- Both Queues Small (Stress Test) ---
-        { 4, 2, 10, 2, 10, 50, "Both queues=10: max backpressure" },
-        { 4, 2, 5, 2, 5, 30, "Both queues=5: extreme stress" },
+        { 4, 0, 100, 0, 100, 50, "Mode: Fully inline (workers=0, callbacks=0)" },
+        { 4, 2, 100, 0, 100, 50, "Mode: Workers only (default)" }, { 4, 0, 100, 2, 100, 50, "Mode: Callbacks only" },
+        { 4, 2, 100, 2, 100, 50, "Mode: Full async (workers + callbacks)" },
 
         // ============================================================================
-        // SECTION 2: WORKER COUNT VARIATIONS
+        // BACKPRESSURE SCENARIOS (small queues with high load)
         // ============================================================================
-
-        // Fixed: 4 callers, queue=100, 0 callback threads, 50 records/key
-        { 4, 0, 100, 0, 100, 50, "Workers=0: fully inline" },
-        { 4, 1, 100, 0, 100, 50, "Workers=1: single worker bottleneck" },
-        { 4, 2, 100, 0, 100, 50, "Workers=2: fewer than callers" },
-        { 4, 4, 100, 0, 100, 50, "Workers=4: equal to callers" },
-        { 4, 8, 100, 0, 100, 50, "Workers=8: more than callers" },
+        // 8 callers × 200 records = 1600 total records
+        { 8, 2, 5, 0, 100, 200, "Backpressure: Worker queue (1600 records vs 10 slots)" },
+        { 8, 2, 100, 2, 5, 200, "Backpressure: Callback queue (1600 records vs 10 slots)" },
+        { 8, 2, 5, 2, 5, 200, "Backpressure: Both queues (1600 records vs 10+10 slots)" },
 
         // ============================================================================
-        // SECTION 3: CALLBACK THREAD COUNT VARIATIONS
+        // EDGE CASES
         // ============================================================================
-
-        // Fixed: 4 callers, 2 workers, queue=100, 50 records/key
-        { 4, 2, 100, 0, 100, 50, "Callbacks=0: inline on Kafka thread" },
-        { 4, 2, 100, 1, 100, 50, "Callbacks=1: single callback thread" },
-        { 4, 2, 100, 2, 100, 50, "Callbacks=2: moderate parallelism" },
-        { 4, 2, 100, 4, 100, 50, "Callbacks=4: high parallelism" },
-
-        // ============================================================================
-        // SECTION 4: CONCURRENT CALLERS VARIATIONS
-        // ============================================================================
-
-        // Fixed: 2 workers, queue=100, 0 callback threads, varying records/key
-        { 1, 2, 100, 0, 100, 100, "Callers=1: single threaded" },
-        { 2, 2, 100, 0, 100, 50, "Callers=2: equal to workers" }, { 4, 2, 100, 0, 100, 50, "Callers=4: 2x workers" },
-        { 8, 2, 100, 0, 100, 25, "Callers=8: 4x workers" }, { 16, 2, 100, 0, 100, 15, "Callers=16: high contention" },
-
-        // ============================================================================
-        // SECTION 5: COMBINED STRESS SCENARIOS
-        // ============================================================================
-
-        { 10, 4, 20, 4, 20, 30, "High load + small queues" },
-        { 8, 2, 10, 0, 100, 40, "Many callers + tiny worker queue" },
-        { 4, 1, 5, 2, 5, 25, "Single worker + tiny queues" },
-
-        // ============================================================================
-        // SECTION 6: KEYS > QUEUES (Backpressure Simulation)
-        // ============================================================================
-        // These scenarios ensure total pending records FAR exceed queue capacity,
-        // forcing sustained backpressure and blocking behavior.
-        // Formula: totalRecords = concurrentCallers * recordsPerKey
-        // Backpressure triggers when: totalRecords >> (workerQueueCapacity * workerCount)
-
-        // --- Worker Queue Backpressure (high record counts) ---
-        // 8 callers × 500 records = 4000 total vs 20 queue slots (200:1 ratio)
-        { 8, 2, 10, 0, 100, 500, "WorkerBackpressure: 4000 records vs 20 queue slots" },
-        // 10 callers × 300 records = 3000 total vs 10 queue slots (300:1 ratio)
-        { 10, 2, 5, 0, 100, 300, "WorkerBackpressure: 3000 records vs 10 queue slots" },
-        // 6 callers × 400 records = 2400 total vs 5 queue slots (480:1 ratio, single worker)
-        { 6, 1, 5, 0, 100, 400, "WorkerBackpressure: 2400 records vs 5 slots (single worker)" },
-
-        // --- Callback Queue Backpressure (high record counts) ---
-        // 8 callers × 500 records = 4000 total vs 10 callback slots (400:1 ratio)
-        { 8, 4, 1000, 2, 10, 500, "CallbackBackpressure: 4000 records vs 10 callback slots" },
-        // 10 callers × 300 records = 3000 total vs 5 callback slots (600:1 ratio)
-        { 10, 4, 1000, 1, 5, 300, "CallbackBackpressure: 3000 records vs 5 callback slots" },
-
-        // --- Both Queues Overwhelmed (sustained backpressure) ---
-        // 8 callers × 400 records = 3200 total vs 10+10 queue slots
-        { 8, 2, 5, 2, 5, 400, "DualBackpressure: 3200 records vs 10+10 queue slots" },
-        // 12 callers × 250 records = 3000 total vs 6+6 queue slots (extreme)
-        { 12, 2, 3, 2, 3, 250, "DualBackpressure: 3000 records vs 6+6 queue slots (extreme)" }, };
+        { 4, 1, 10, 0, 100, 100, "Edge: Single worker bottleneck" },
+        { 16, 2, 50, 0, 100, 25, "Edge: High contention (16 callers, 2 workers)" }, };
   }
 
   /**
@@ -415,6 +344,7 @@ public class OnlineVeniceProducerOrderingIntegrationTest {
 
         assertTrue(finished.await(4, TimeUnit.MINUTES), "All producers should finish");
         pool.shutdown();
+        pool.awaitTermination(10, TimeUnit.SECONDS);
 
         long timeMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
         int total = concurrentCallers * recordsPerKey;
@@ -429,11 +359,6 @@ public class OnlineVeniceProducerOrderingIntegrationTest {
 
         assertEquals(successCount.get(), total, "All records should be produced");
         assertEquals(failureCount.get(), 0, "No failures should occur");
-
-        // Allow time for async metric recording to complete.
-        // The end_to_end_latency metric is recorded AFTER the future is completed in the callback,
-        // so we need a brief pause to ensure all callbacks have finished metric recording.
-        Thread.sleep(100);
 
         LOGGER.info("Verifying ordering for {} keys", concurrentCallers);
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {

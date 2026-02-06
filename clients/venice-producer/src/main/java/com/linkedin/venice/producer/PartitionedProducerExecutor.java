@@ -286,6 +286,22 @@ public class PartitionedProducerExecutor {
   public void shutdown() {
     if (workers != null) {
       for (ThreadPoolExecutor worker: workers) {
+        worker.shutdown();
+      }
+    }
+    if (callbackExecutor != null) {
+      callbackExecutor.shutdown();
+    }
+  }
+
+  /**
+   * Attempts to stop all actively executing tasks and halts the processing of waiting tasks.
+   * This method should be called after {@link #shutdown()} and {@link #awaitTermination(long, TimeUnit)}
+   * if tasks did not complete within the timeout.
+   */
+  public void shutdownNow() {
+    if (workers != null) {
+      for (ThreadPoolExecutor worker: workers) {
         worker.shutdownNow();
       }
     }

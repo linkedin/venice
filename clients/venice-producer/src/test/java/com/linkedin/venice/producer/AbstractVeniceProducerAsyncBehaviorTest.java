@@ -252,17 +252,22 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
 
     try {
       List<CompletableFuture<DurableWrite>> futures = new ArrayList<>();
+      CountDownLatch allDispatched = new CountDownLatch(recordCount);
+
+      // Update mock to count down latch when put is called
+      doAnswer(invocation -> {
+        PubSubProducerCallback callback = invocation.getArgument(4);
+        pendingCallbacks.add(callback);
+        putCallCount.incrementAndGet();
+        allDispatched.countDown();
+        return null;
+      }).when(mockVeniceWriter).put(any(byte[].class), any(byte[].class), anyInt(), anyLong(), any());
+
       for (int i = 0; i < recordCount; i++) {
         futures.add(producer.asyncPut(i, "value-" + i));
       }
 
-      int maxWaitMs = 5000;
-      int waitedMs = 0;
-      while (putCallCount.get() < recordCount && waitedMs < maxWaitMs) {
-        Thread.sleep(10);
-        waitedMs += 10;
-      }
-
+      assertTrue(allDispatched.await(5, TimeUnit.SECONDS), "All records should be dispatched to VeniceWriter");
       assertEquals(putCallCount.get(), recordCount, "All records should be dispatched to VeniceWriter");
 
       int completedCount = 0;
@@ -337,10 +342,16 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
       submitterThread.start();
 
       assertTrue(submitterStarted.await(2, TimeUnit.SECONDS), "Submitter should start");
-      Thread.sleep(500);
 
-      if (!submitterFinished.get()) {
-        callerWasBlocked.set(true);
+      // Wait for submitter to become blocked (WAITING or TIMED_WAITING state)
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while (System.nanoTime() < deadline && !submitterFinished.get()) {
+        Thread.State state = submitterThread.getState();
+        if (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING) {
+          callerWasBlocked.set(true);
+          break;
+        }
+        Thread.yield();
       }
 
       allowBlockingTaskToFinish.countDown();
@@ -399,7 +410,16 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
       additionalSubmitter.start();
 
       assertTrue(additionalSubmitStarted.await(2, TimeUnit.SECONDS));
-      Thread.sleep(200);
+
+      // Wait for additional submitter to become blocked (WAITING or TIMED_WAITING state)
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while (System.nanoTime() < deadline && !additionalSubmitCompleted.get()) {
+        Thread.State state = additionalSubmitter.getState();
+        if (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING) {
+          break;
+        }
+        Thread.yield();
+      }
 
       assertFalse(additionalSubmitCompleted.get(), "Additional submit should be blocked");
 
