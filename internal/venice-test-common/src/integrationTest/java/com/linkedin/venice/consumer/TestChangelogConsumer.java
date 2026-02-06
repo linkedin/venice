@@ -191,6 +191,7 @@ public class TestChangelogConsumer {
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, localZkAddress);
+    consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
   }
 
   @AfterClass(alwaysRun = true)
@@ -1106,13 +1107,11 @@ public class TestChangelogConsumer {
     ControllerClient setupControllerClient =
         createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
     IntegrationTestPushUtils.runVPJ(props);
-    Properties testConsumerProperties = new Properties();
-    testConsumerProperties.putAll(consumerProperties);
-    testConsumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
+
     // setVersionSwapDetectionIntervalTimeInSeconds also controls native metadata repository refresh interval, setting
     // it to a large value to reproduce the scenario where the newly added schema is yet to be fetched.
     ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(testConsumerProperties)
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setLocalD2ZkHosts(localZkAddress)
