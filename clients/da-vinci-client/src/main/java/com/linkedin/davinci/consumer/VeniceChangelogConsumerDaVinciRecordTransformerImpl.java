@@ -504,7 +504,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   @VisibleForTesting
-  public VeniceProperties buildVeniceConfig() {
+  public final VeniceProperties buildVeniceConfig() {
     return new PropertyBuilder().put(changelogClientConfig.getConsumerProperties())
         .put(DATA_BASE_PATH, changelogClientConfig.getBootstrapFileSystemPath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
