@@ -370,8 +370,14 @@ public class OnlineVeniceProducerOrderingIntegrationTest {
 
         // === METRIC VALIDATION ===
         // Capture latency metrics to validate backpressure behavior
-        double maxDispatchLatency = getMaxLatency(metricsRepository, storeName, "request_dispatch_latency");
-        double avgDispatchLatency = getAvgLatency(metricsRepository, storeName, "request_dispatch_latency");
+        double maxQueueWaitLatency = getMaxLatency(metricsRepository, storeName, "queue_wait_latency");
+        double avgQueueWaitLatency = getAvgLatency(metricsRepository, storeName, "queue_wait_latency");
+        double maxPreprocessingLatency = getMaxLatency(metricsRepository, storeName, "preprocessing_latency");
+        double avgPreprocessingLatency = getAvgLatency(metricsRepository, storeName, "preprocessing_latency");
+        double maxBufferLatency =
+            getMaxLatency(metricsRepository, storeName, "caller_to_pubsub_producer_buffer_latency");
+        double avgBufferLatency =
+            getAvgLatency(metricsRepository, storeName, "caller_to_pubsub_producer_buffer_latency");
         double maxEndToEndLatency = getMaxLatency(metricsRepository, storeName, "end_to_end_latency");
         double avgEndToEndLatency = getAvgLatency(metricsRepository, storeName, "end_to_end_latency");
 
@@ -382,13 +388,19 @@ public class OnlineVeniceProducerOrderingIntegrationTest {
         boolean expectBackpressure = queuePressureRatio > 10; // Expect backpressure when ratio > 10:1
 
         LOGGER.info(
-            "=== LATENCY METRICS for {} ===" + "\n  Request Dispatch Latency: avg={}ms, max={}ms"
+            "=== LATENCY METRICS for {} ===" + "\n  Queue Wait Latency: avg={}ms, max={}ms"
+                + "\n  Preprocessing Latency: avg={}ms, max={}ms"
+                + "\n  Caller to PubSub Buffer Latency: avg={}ms, max={}ms"
                 + "\n  End-to-End Latency: avg={}ms, max={}ms"
                 + "\n  Queue Pressure Ratio: {}:1 (totalRecords={}, queueCapacity={})"
                 + "\n  Backpressure Expected: {}",
             testDescription,
-            String.format("%.2f", avgDispatchLatency),
-            String.format("%.2f", maxDispatchLatency),
+            String.format("%.2f", avgQueueWaitLatency),
+            String.format("%.2f", maxQueueWaitLatency),
+            String.format("%.2f", avgPreprocessingLatency),
+            String.format("%.2f", maxPreprocessingLatency),
+            String.format("%.2f", avgBufferLatency),
+            String.format("%.2f", maxBufferLatency),
             String.format("%.2f", avgEndToEndLatency),
             String.format("%.2f", maxEndToEndLatency),
             String.format("%.1f", queuePressureRatio),
@@ -401,17 +413,17 @@ public class OnlineVeniceProducerOrderingIntegrationTest {
         // can vary significantly in CI environments. The primary test goal is ordering
         // correctness, not latency measurement accuracy.
         if (expectBackpressure && workerCount > 0) {
-          if (maxDispatchLatency > 1.0) {
+          if (maxQueueWaitLatency > 1.0) {
             LOGGER.info(
-                "Backpressure observed: max dispatch latency {}ms > 1ms threshold (ratio {}:1)",
-                String.format("%.2f", maxDispatchLatency),
+                "Backpressure observed: max queue wait latency {}ms > 1ms threshold (ratio {}:1)",
+                String.format("%.2f", maxQueueWaitLatency),
                 String.format("%.1f", queuePressureRatio));
           } else {
             // Log but don't fail - backpressure timing is non-deterministic in integration tests
             LOGGER.info(
-                "Backpressure not observed in metrics (max dispatch latency {}ms, ratio {}:1). "
+                "Backpressure not observed in metrics (max queue wait latency {}ms, ratio {}:1). "
                     + "This is expected in fast CI environments where queue blocking may not occur.",
-                String.format("%.2f", maxDispatchLatency),
+                String.format("%.2f", maxQueueWaitLatency),
                 String.format("%.1f", queuePressureRatio));
           }
         }

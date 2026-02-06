@@ -13,33 +13,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Metrics for Venice Producer operations.
  *
- * <h3>Component Flow</h3>
- * <pre>
- *                      ┌──────────────── Venice Producer ─────────────────┐
- *                      │                                                  │
- * Caller ──► Worker Queue ──► Worker ──► VeniceWriter ──► PubSubProducer ─┴──► Broker
- *                          (preprocessing)                                      │
- *                                                                              ack
- *                                                                               │
- *                                  CompletableFuture ◄── Callback Executor ◄────┘
- * </pre>
- *
- * <h3>Latency Sensors</h3>
- * <pre>
- * Timeline:
- *   Submit ───► Worker Start ───► Writer Dispatch ───────────────► Broker Ack ───► Future Complete
- *      │              │                  │                              │                 │
- *      │              ├─ preprocessing ─►│                              │                 │
- *      │              │                  ├─ produce_to_durable_buffer ─►│                 │
- *      ├─ request_dispatch ─────────────►│                              │                 │
- *      ├─ end_to_end ───────────────────────────────────────────────────────────────────►│
- * </pre>
- *
- * <h3>Latency Definitions</h3>
+ * <h3>Latency Metrics</h3>
  * <ul>
- *   <li><b>preprocessing_latency</b>: Worker start to writer dispatch (serialization + schema lookup)</li>
- *   <li><b>produce_to_durable_buffer_latency</b>: Writer dispatch to broker ack</li>
- *   <li><b>request_dispatch_latency</b>: Caller submit to writer dispatch (includes queue wait + preprocessing)</li>
+ *   <li><b>queue_wait_latency</b>: Time waiting in worker queue (submit to worker start)</li>
+ *   <li><b>preprocessing_latency</b>: Worker start to preprocess end (serialization + schema lookup)</li>
+ *   <li><b>produce_to_durable_buffer_latency</b>: Preprocess end to broker ack</li>
+ *   <li><b>caller_to_pubsub_producer_buffer_latency</b>: Caller submit to PubSub producer buffer</li>
  *   <li><b>end_to_end_latency</b>: Caller submit to future completion (full round-trip)</li>
  * </ul>
  *
@@ -69,7 +48,8 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
   private Sensor failedOperationSensor = null;
   private Sensor produceLatencySensor = null;
   private Sensor preprocessingLatencySensor = null;
-  private Sensor requestDispatchLatencySensor = null;
+  private Sensor queueWaitLatencySensor = null;
+  private Sensor callerToPubSubBufferLatencySensor = null;
   private Sensor endToEndLatencySensor = null; // Total time: submission to future completion
   private Sensor pendingOperationSensor = null;
   private final AtomicInteger pendingOperationCounter = new AtomicInteger(0);
@@ -97,10 +77,15 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
       preprocessingLatencySensor = registerSensor(
           preprocessingLatencySensorName,
           TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + preprocessingLatencySensorName));
-      String requestDispatchLatencySensorName = "request_dispatch_latency";
-      requestDispatchLatencySensor = registerSensor(
-          requestDispatchLatencySensorName,
-          TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + requestDispatchLatencySensorName));
+      String queueWaitLatencySensorName = "queue_wait_latency";
+      queueWaitLatencySensor = registerSensor(
+          queueWaitLatencySensorName,
+          TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + queueWaitLatencySensorName));
+      String callerToPubSubBufferLatencySensorName = "caller_to_pubsub_producer_buffer_latency";
+      callerToPubSubBufferLatencySensor = registerSensor(
+          callerToPubSubBufferLatencySensorName,
+          TehutiUtils
+              .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + callerToPubSubBufferLatencySensorName));
 
       pendingOperationSensor = registerSensor("pending_write_operation", new Gauge());
 
@@ -194,15 +179,27 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
   }
 
   /**
-   * Records the request dispatch latency - the total time from request submission
-   * to dispatch completion. This includes queue wait time, preprocessing, and
-   * the synchronous time to submit the write to VeniceWriter.
+   * Records the queue wait latency - the time a task spent waiting in the worker queue
+   * before being picked up by a worker thread.
+   *
+   * @param latencyMs latency in milliseconds
+   */
+  public void recordQueueWaitLatency(double latencyMs) {
+    if (enableMetrics) {
+      queueWaitLatencySensor.record(latencyMs);
+    }
+  }
+
+  /**
+   * Records the caller to PubSub producer buffer latency - the total time from caller
+   * submission to when the write is queued to the PubSub producer's buffer. This includes
+   * queue wait time, preprocessing, and the synchronous time to submit to VeniceWriter.
    *
    * @param latencyMs latency in milliseconds (supports sub-millisecond precision as a double)
    */
-  public void recordRequestDispatchLatency(double latencyMs) {
+  public void recordCallerToPubSubBufferLatency(double latencyMs) {
     if (enableMetrics) {
-      requestDispatchLatencySensor.record(latencyMs);
+      callerToPubSubBufferLatencySensor.record(latencyMs);
     }
   }
 }

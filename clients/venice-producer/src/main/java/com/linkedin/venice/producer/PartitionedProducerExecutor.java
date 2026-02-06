@@ -3,7 +3,10 @@ package com.linkedin.venice.producer;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.RejectedExecutionHandler;
@@ -210,9 +213,9 @@ public class PartitionedProducerExecutor {
     try {
       callbackExecutor.execute(callback);
     } catch (RejectedExecutionException e) {
-      // Fallback: execute inline to ensure future completes
-      LOGGER.warn("Callback executor rejected task, executing inline", e);
-      callback.run();
+      // Fail fast rather than risk blocking Kafka I/O thread with user callback code
+      LOGGER.error("Callback executor rejected task during shutdown", e);
+      throw e;
     }
   }
 
@@ -320,27 +323,47 @@ public class PartitionedProducerExecutor {
    * @throws InterruptedException if interrupted while waiting
    */
   public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
-    boolean terminated = true;
     long deadlineNanos = System.nanoTime() + unit.toNanos(timeout);
 
+    // Wait for all workers in parallel
+    boolean workersTerminated = true;
     if (workers != null) {
+      List<CompletableFuture<Boolean>> futures = new ArrayList<>(workers.length);
       for (ThreadPoolExecutor worker: workers) {
-        long remainingNanos = deadlineNanos - System.nanoTime();
-        if (remainingNanos <= 0) {
-          return false;
+        futures.add(CompletableFuture.supplyAsync(() -> {
+          try {
+            long remainingNanos = deadlineNanos - System.nanoTime();
+            if (remainingNanos <= 0) {
+              return false;
+            }
+            return worker.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+          }
+        }));
+      }
+
+      // Wait for all futures and combine results
+      for (CompletableFuture<Boolean> future: futures) {
+        try {
+          workersTerminated &= future.join();
+        } catch (Exception e) {
+          workersTerminated = false;
         }
-        terminated &= worker.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS);
       }
     }
 
+    // Wait for callback executor (single executor, no parallelization needed)
+    boolean callbackTerminated = true;
     if (callbackExecutor != null) {
       long remainingNanos = deadlineNanos - System.nanoTime();
       if (remainingNanos <= 0) {
         return false;
       }
-      terminated &= callbackExecutor.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS);
+      callbackTerminated = callbackExecutor.awaitTermination(remainingNanos, TimeUnit.NANOSECONDS);
     }
 
-    return terminated;
+    return workersTerminated && callbackTerminated;
   }
 }
