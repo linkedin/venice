@@ -212,6 +212,8 @@ public class RouterServer extends AbstractVeniceService {
   private final AggHostHealthStats aggHostHealthStats;
 
   private ScheduledExecutorService retryManagerExecutorService;
+  private ThreadPoolExecutor responseAggregationExecutor;
+  private ThreadPoolExecutor dnsResolveExecutor;
 
   private InFlightRequestStat inFlightRequestStat;
 
@@ -614,11 +616,10 @@ public class RouterServer extends AbstractVeniceService {
      */
     // Create dedicated thread pool for response aggregation if enabled (size > 0), to move work off the Netty EventLoop
     // (stageExecutor(ctx)) and isolate it from slow client I/O.
-    ThreadPoolExecutor responseAggregationExecutor = null;
     int responseAggregationThreadPoolSize = config.getResponseAggregationThreadPoolSize();
     if (responseAggregationThreadPoolSize > 0) {
       int responseAggregationQueueCapacity = config.getResponseAggregationQueueCapacity();
-      responseAggregationExecutor = ThreadPoolFactory.createThreadPool(
+      this.responseAggregationExecutor = ThreadPoolFactory.createThreadPool(
           responseAggregationThreadPoolSize,
           "ResponseAggregationThread",
           config.getLogContext(),
@@ -712,13 +713,13 @@ public class RouterServer extends AbstractVeniceService {
     if (sslFactory.isPresent()) {
       sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
       if (config.getResolveThreads() > 0) {
-        ThreadPoolExecutor dnsResolveExecutor = ThreadPoolFactory.createThreadPool(
+        this.dnsResolveExecutor = ThreadPoolFactory.createThreadPool(
             config.getResolveThreads(),
             "DNSResolveThread",
             config.getLogContext(),
             config.getResolveQueueCapacity(),
             LINKED_BLOCKING_QUEUE);
-        new ThreadPoolStats(metricsRepository, dnsResolveExecutor, "dns_resolution_thread_pool");
+        new ThreadPoolStats(metricsRepository, this.dnsResolveExecutor, "dns_resolution_thread_pool");
         int resolveThreads = config.getResolveThreads();
         int maxConcurrentSslHandshakes = config.getMaxConcurrentSslHandshakes();
         int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
@@ -934,6 +935,12 @@ public class RouterServer extends AbstractVeniceService {
     }
     if (retryManagerExecutorService != null) {
       retryManagerExecutorService.shutdownNow();
+    }
+    if (responseAggregationExecutor != null) {
+      responseAggregationExecutor.shutdownNow();
+    }
+    if (dnsResolveExecutor != null) {
+      dnsResolveExecutor.shutdownNow();
     }
   }
 

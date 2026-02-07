@@ -2738,8 +2738,9 @@ public class ConfigKeys {
   public static final String ROUTER_PARALLEL_ROUTING_CHUNK_SIZE = "router.parallel.routing.chunk.size";
   /**
    * Thread pool size for response aggregation in Router. Response aggregation happens after scatter-gather
-   * completes and all sub-responses are collected. Uses a dedicated thread pool instead of ForkJoinPool.commonPool()
-   * to avoid contention with other JVM components.
+   * completes and all sub-responses are collected. Previously this work ran on the Netty EventLoop
+   * (stageExecutor(ctx) in ScatterGatherRequestHandlerImpl); it now uses a dedicated thread pool to reduce
+   * contention and isolate aggregation load from I/O processing and other JVM components.
    */
   public static final String ROUTER_RESPONSE_AGGREGATION_THREAD_POOL_SIZE =
       "router.response.aggregation.thread.pool.size";
