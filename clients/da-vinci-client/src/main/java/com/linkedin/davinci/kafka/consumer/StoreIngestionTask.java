@@ -5302,7 +5302,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
-    String consumedHostId = leaderMetadata.getHostName().toString();
+    CharSequence hostNameCharSeq = leaderMetadata.getHostName();
+    String consumedHostId = hostNameCharSeq != null ? hostNameCharSeq.toString() : null;
     // Extract term information from the consumed message
     long consumedTermId = leaderMetadata.getTermId();
     long messageTimestamp =
@@ -5338,8 +5339,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long expectedTermId = currentDolStamp.getLeadershipTerm();
     String expectedHostId = currentDolStamp.getHostId();
 
-    // Ignore DoL from different host
-    if (!expectedHostId.equals(consumedHostId)) {
+    // Ignore DoL from different host (use Objects.equals for null-safety)
+    if (!Objects.equals(expectedHostId, consumedHostId)) {
       LOGGER.debug(
           "Replica: {} ignoring DoL from different host. Expected: {}, received: {}",
           replicaId,

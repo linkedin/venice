@@ -947,7 +947,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         LOGGER.info(
             "DoL message produce confirmed for replica: {} at position: {} (term: {}) - dolStamp: {}",
             pcs.getReplicaId(),
-            produceResult.getPubSubPosition(),
+            produceResult != null ? produceResult.getPubSubPosition() : "null",
             leadershipTerm,
             dolStamp);
       } else {
@@ -1023,10 +1023,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       // Use legacy time-based mechanism
       // If DoL mechanism is enabled but dolStamp is null, this means DoL produce failed and state was cleared.
-      // Log a warning for observability before falling back to legacy mechanism.
+      // Log at debug level to avoid log spam - this will be called repeatedly until legacy check passes.
       if (shouldUseDolMechanism() && dolStamp == null) {
-        LOGGER.warn(
-            "Falling back to legacy leader topic switch mechanism for replica: {} due to missing DoL state (likely DoL produce failure).",
+        LOGGER.debug(
+            "Using legacy leader topic switch mechanism for replica: {} due to missing DoL state (likely DoL produce failure).",
             pcs.getReplicaId());
       }
       return canSwitchToLeaderTopicLegacy(pcs);

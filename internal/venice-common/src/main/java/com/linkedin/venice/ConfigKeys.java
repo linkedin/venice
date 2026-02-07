@@ -781,8 +781,8 @@ public class ConfigKeys {
    * 
    * <p>System stores typically benefit more from fast handover due to their critical role in
    * cluster operations. Having a separate config allows independent rollout strategy.
-   * 
-   * Default: false (uses legacy time-based mechanism)
+   *
+   * Default: true (DoL mechanism enabled for system stores)
    */
   public static final String SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES =
       "server.leader.handover.use.dol.mechanism.for.system.stores";
@@ -804,8 +804,8 @@ public class ConfigKeys {
    * <p>Having a separate config from system stores allows independent rollout - typically you
    * would enable DoL for system stores first, validate it works correctly, then roll out to
    * user stores.
-   * 
-   * Default: false (uses legacy time-based mechanism)
+   *
+   * Default: true (DoL mechanism enabled for user stores)
    */
   public static final String SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES =
       "server.leader.handover.use.dol.mechanism.for.user.stores";
