@@ -43,6 +43,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 
 /**
@@ -74,7 +75,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
   });
 
   private final @Nonnull SCATTER_GATHER_HELPER _scatterGatherHelper;
-  private final Executor _responseAggregationExecutor;
+  private final @Nullable Executor _responseAggregationExecutor;
 
   protected ScatterGatherRequestHandlerImpl(
       @Nonnull SCATTER_GATHER_HELPER scatterGatherHelper,

@@ -612,16 +612,26 @@ public class RouterServer extends AbstractVeniceService {
      * No need to setup {@link com.linkedin.alpini.router.api.HostHealthMonitor} here since
      * {@link VeniceHostFinder} will always do health check.
      */
-    // Create dedicated thread pool for response aggregation to avoid contention with ForkJoinPool.commonPool()
+    // Create dedicated thread pool for response aggregation if enabled (size > 0), to move work off the Netty EventLoop
+    // (stageExecutor(ctx)) and isolate it from slow client I/O.
+    ThreadPoolExecutor responseAggregationExecutor = null;
     int responseAggregationThreadPoolSize = config.getResponseAggregationThreadPoolSize();
-    int responseAggregationQueueCapacity = config.getResponseAggregationQueueCapacity();
-    ThreadPoolExecutor responseAggregationExecutor = ThreadPoolFactory.createThreadPool(
-        responseAggregationThreadPoolSize,
-        "ResponseAggregationThread",
-        config.getLogContext(),
-        responseAggregationQueueCapacity,
-        LINKED_BLOCKING_QUEUE);
-    new ThreadPoolStats(metricsRepository, responseAggregationExecutor, "response_aggregation_thread_pool");
+    if (responseAggregationThreadPoolSize > 0) {
+      int responseAggregationQueueCapacity = config.getResponseAggregationQueueCapacity();
+      responseAggregationExecutor = ThreadPoolFactory.createThreadPool(
+          responseAggregationThreadPoolSize,
+          "ResponseAggregationThread",
+          config.getLogContext(),
+          responseAggregationQueueCapacity,
+          LINKED_BLOCKING_QUEUE);
+      new ThreadPoolStats(metricsRepository, responseAggregationExecutor, "response_aggregation_thread_pool");
+      LOGGER.info(
+          "Response aggregation thread pool enabled with size: {}, queue capacity: {}",
+          responseAggregationThreadPoolSize,
+          responseAggregationQueueCapacity);
+    } else {
+      LOGGER.info("Response aggregation thread pool disabled (size <= 0), using Netty EventLoop for aggregation");
+    }
 
     ScatterGatherHelper scatterGather = ScatterGatherHelper
         .<Instance, VenicePath, RouterKey, VeniceRole, BasicFullHttpRequest, FullHttpResponse, HttpResponseStatus>builder()
