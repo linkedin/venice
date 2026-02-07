@@ -3727,7 +3727,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaKey key = consumerRecord.getKey();
     if (key.isControlMessage() && (Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())
         || Arrays.equals(KafkaKey.DOL_STAMP.getKey(), key.getKey()))) {
-      return; // Skip validation for ingestion heartbeat records.
+      return; // Skip validation for ingestion heartbeat and DoL stamp records.
     } else if (isGlobalRtDivEnabled() && isRecordSelfProduced(consumerRecord)) {
       // Skip validation for self-produced records. If there were any issues, the followers would've reported it already
       // e.g. Leader->Follower, resubscribe to local VT, consume messages produced by itself (when it was leader)
