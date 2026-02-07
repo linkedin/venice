@@ -2736,6 +2736,19 @@ public class ConfigKeys {
    * Chunk size (number of partitions) for parallel routing within one multi-key request in Router.
    */
   public static final String ROUTER_PARALLEL_ROUTING_CHUNK_SIZE = "router.parallel.routing.chunk.size";
+  /**
+   * Thread pool size for response aggregation in Router. Response aggregation happens after scatter-gather
+   * completes and all sub-responses are collected. Previously this work ran on the Netty EventLoop
+   * (stageExecutor(ctx) in ScatterGatherRequestHandlerImpl); it now uses a dedicated thread pool to reduce
+   * contention and isolate aggregation load from I/O processing and other JVM components.
+   */
+  public static final String ROUTER_RESPONSE_AGGREGATION_THREAD_POOL_SIZE =
+      "router.response.aggregation.thread.pool.size";
+  /**
+   * Task queue capacity for response aggregation thread pool. Higher values allow more pending aggregation
+   * tasks but consume more memory. Lower values provide back-pressure during extreme load.
+   */
+  public static final String ROUTER_RESPONSE_AGGREGATION_QUEUE_CAPACITY = "router.response.aggregation.queue.capacity";
 
   /**
    * Server configs to enable the topic partition re-subscription during ingestion to let bottom ingestion service aware

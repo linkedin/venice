@@ -212,6 +212,8 @@ public class RouterServer extends AbstractVeniceService {
   private final AggHostHealthStats aggHostHealthStats;
 
   private ScheduledExecutorService retryManagerExecutorService;
+  private ThreadPoolExecutor responseAggregationExecutor;
+  private ThreadPoolExecutor dnsResolveExecutor;
 
   private InFlightRequestStat inFlightRequestStat;
 
@@ -612,6 +614,26 @@ public class RouterServer extends AbstractVeniceService {
      * No need to setup {@link com.linkedin.alpini.router.api.HostHealthMonitor} here since
      * {@link VeniceHostFinder} will always do health check.
      */
+    // Create dedicated thread pool for response aggregation if enabled (size > 0), to move work off the Netty EventLoop
+    // (stageExecutor(ctx)) and isolate it from slow client I/O.
+    int responseAggregationThreadPoolSize = config.getResponseAggregationThreadPoolSize();
+    if (responseAggregationThreadPoolSize > 0) {
+      int responseAggregationQueueCapacity = config.getResponseAggregationQueueCapacity();
+      this.responseAggregationExecutor = ThreadPoolFactory.createThreadPool(
+          responseAggregationThreadPoolSize,
+          "ResponseAggregationThread",
+          config.getLogContext(),
+          responseAggregationQueueCapacity,
+          LINKED_BLOCKING_QUEUE);
+      new ThreadPoolStats(metricsRepository, responseAggregationExecutor, "response_aggregation_thread_pool");
+      LOGGER.info(
+          "Response aggregation thread pool enabled with size: {}, queue capacity: {}",
+          responseAggregationThreadPoolSize,
+          responseAggregationQueueCapacity);
+    } else {
+      LOGGER.info("Response aggregation thread pool disabled (size <= 0), using Netty EventLoop for aggregation");
+    }
+
     ScatterGatherHelper scatterGather = ScatterGatherHelper
         .<Instance, VenicePath, RouterKey, VeniceRole, BasicFullHttpRequest, FullHttpResponse, HttpResponseStatus>builder()
         .roleFinder(new VeniceRoleFinder())
@@ -630,6 +652,7 @@ public class RouterServer extends AbstractVeniceService {
         .scatterGatherStatsProvider(new LongTailRetryStatsProvider(routerStats))
         .enableStackTraceResponseForException(true)
         .enableRetryRequestAlwaysUseADifferentHost(true)
+        .responseAggregationExecutor(responseAggregationExecutor)
         .build();
 
     SecurityStats securityStats = new SecurityStats(this.metricsRepository, "security");
@@ -690,13 +713,13 @@ public class RouterServer extends AbstractVeniceService {
     if (sslFactory.isPresent()) {
       sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
       if (config.getResolveThreads() > 0) {
-        ThreadPoolExecutor dnsResolveExecutor = ThreadPoolFactory.createThreadPool(
+        this.dnsResolveExecutor = ThreadPoolFactory.createThreadPool(
             config.getResolveThreads(),
             "DNSResolveThread",
             config.getLogContext(),
             config.getResolveQueueCapacity(),
             LINKED_BLOCKING_QUEUE);
-        new ThreadPoolStats(metricsRepository, dnsResolveExecutor, "dns_resolution_thread_pool");
+        new ThreadPoolStats(metricsRepository, this.dnsResolveExecutor, "dns_resolution_thread_pool");
         int resolveThreads = config.getResolveThreads();
         int maxConcurrentSslHandshakes = config.getMaxConcurrentSslHandshakes();
         int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
@@ -912,6 +935,12 @@ public class RouterServer extends AbstractVeniceService {
     }
     if (retryManagerExecutorService != null) {
       retryManagerExecutorService.shutdownNow();
+    }
+    if (responseAggregationExecutor != null) {
+      responseAggregationExecutor.shutdownNow();
+    }
+    if (dnsResolveExecutor != null) {
+      dnsResolveExecutor.shutdownNow();
     }
   }
 

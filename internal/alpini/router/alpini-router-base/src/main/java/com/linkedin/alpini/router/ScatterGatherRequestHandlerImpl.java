@@ -43,6 +43,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 
 /**
@@ -74,19 +75,36 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
   });
 
   private final @Nonnull SCATTER_GATHER_HELPER _scatterGatherHelper;
+  private final @Nullable Executor _responseAggregationExecutor;
 
   protected ScatterGatherRequestHandlerImpl(
       @Nonnull SCATTER_GATHER_HELPER scatterGatherHelper,
       @Nonnull TimeoutProcessor timeoutProcessor) {
-    super(timeoutProcessor);
-    _scatterGatherHelper = Objects.requireNonNull(scatterGatherHelper, "scatterGatherHelper");
+    this(scatterGatherHelper, timeoutProcessor, null);
   }
 
   protected ScatterGatherRequestHandlerImpl(
       @Nonnull SCATTER_GATHER_HELPER scatterGatherHelper,
       @Nonnull RouterTimeoutProcessor timeoutProcessor) {
+    this(scatterGatherHelper, timeoutProcessor, null);
+  }
+
+  protected ScatterGatherRequestHandlerImpl(
+      @Nonnull SCATTER_GATHER_HELPER scatterGatherHelper,
+      @Nonnull TimeoutProcessor timeoutProcessor,
+      Executor responseAggregationExecutor) {
     super(timeoutProcessor);
     _scatterGatherHelper = Objects.requireNonNull(scatterGatherHelper, "scatterGatherHelper");
+    _responseAggregationExecutor = responseAggregationExecutor;
+  }
+
+  protected ScatterGatherRequestHandlerImpl(
+      @Nonnull SCATTER_GATHER_HELPER scatterGatherHelper,
+      @Nonnull RouterTimeoutProcessor timeoutProcessor,
+      Executor responseAggregationExecutor) {
+    super(timeoutProcessor);
+    _scatterGatherHelper = Objects.requireNonNull(scatterGatherHelper, "scatterGatherHelper");
+    _responseAggregationExecutor = responseAggregationExecutor;
   }
 
   public final @Nonnull SCATTER_GATHER_HELPER getScatterGatherHelper() {
@@ -471,6 +489,8 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
 
     // BHS req = retainRequest(request); -- request will have refCnt of 0 at this point!
     BHS req = request;
+    // Use dedicated response aggregation executor if provided, otherwise use stageExecutor(ctx)
+    Executor executor = _responseAggregationExecutor != null ? _responseAggregationExecutor : stageExecutor(ctx);
     gatheredResponses.whenCompleteAsync((responseList, throwable) -> {
       // LOG.debug("[{}] respond", req.getRequestId());
       try {
@@ -510,7 +530,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
         // releaseRequest(req);
         stats.apply();
       }
-    }, stageExecutor(ctx));
+    }, executor);
 
     return response;
   }
