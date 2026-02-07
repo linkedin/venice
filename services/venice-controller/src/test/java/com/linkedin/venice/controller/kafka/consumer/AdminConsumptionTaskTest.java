@@ -1104,6 +1104,7 @@ public class AdminConsumptionTaskTest {
     setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
     setStore.storeLifecycleHooks = Collections.emptyList();
     setStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.ENABLED.name();
+    setStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     setStore.keyUrnFields = Collections.emptyList();
     setStore.blobDbEnabled = "NOT_SPECIFIED";
 
