@@ -87,6 +87,8 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_QUOTA_CHECK_WINDOW;
 import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_THREADS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_RESPONSE_AGGREGATION_QUEUE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.ROUTER_RESPONSE_AGGREGATION_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_RETRY_MANAGER_CORE_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_ROUTING_COMPUTATION_MODE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
@@ -241,7 +243,9 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final LogContext logContext;
   private final RoutingComputationMode routingComputationMode;
   private final int parallelRoutingThreadCount;
-  private final int parallelRoutingChunkSize;;
+  private final int parallelRoutingChunkSize;
+  private final int responseAggregationThreadPoolSize;
+  private final int responseAggregationQueueCapacity;
 
   // MUTABLE CONFIGS
 
@@ -444,6 +448,8 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       parallelRoutingThreadCount =
           props.getInt(ROUTER_PARALLEL_ROUTING_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors());
       parallelRoutingChunkSize = props.getInt(ROUTER_PARALLEL_ROUTING_CHUNK_SIZE, 100);
+      responseAggregationThreadPoolSize = props.getInt(ROUTER_RESPONSE_AGGREGATION_THREAD_POOL_SIZE, 10);
+      responseAggregationQueueCapacity = props.getInt(ROUTER_RESPONSE_AGGREGATION_QUEUE_CAPACITY, 500000);
       LOGGER.info("Loaded configuration");
     } catch (Exception e) {
       String errorMessage = "Can not load properties.";
@@ -882,5 +888,13 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public int getParallelRoutingChunkSize() {
     return parallelRoutingChunkSize;
+  }
+
+  public int getResponseAggregationThreadPoolSize() {
+    return responseAggregationThreadPoolSize;
+  }
+
+  public int getResponseAggregationQueueCapacity() {
+    return responseAggregationQueueCapacity;
   }
 }

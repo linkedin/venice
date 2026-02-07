@@ -577,4 +577,113 @@ public class TestStreaming {
       }
     }
   }
+
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testResponseAggregationThreadPool() throws Exception {
+    // Clear existing routers first
+    veniceCluster.getVeniceRouters().forEach(router -> veniceCluster.removeVeniceRouter(router.getPort()));
+
+    // Start a router with custom response aggregation thread pool config
+    Properties routerProperties = getRouterProperties(false, true, false, 1000);
+    routerProperties.put(ConfigKeys.ROUTER_RESPONSE_AGGREGATION_THREAD_POOL_SIZE, "3");
+    routerProperties.put(ConfigKeys.ROUTER_RESPONSE_AGGREGATION_QUEUE_CAPACITY, "1000");
+    VeniceRouterWrapper veniceRouter = veniceCluster.addVeniceRouter(routerProperties);
+    MetricsRepository routerMetricsRepository = veniceRouter.getMetricsRepository();
+
+    D2Client d2Client = null;
+    AvroGenericStoreClient<String, GenericRecord> d2StoreClient = null;
+
+    try {
+      // Setup D2 client for multiget streaming
+      d2Client = D2TestUtils.getD2Client(veniceCluster.getZk().getAddress(), false, HttpProtocolVersion.HTTP_1_1);
+      D2TestUtils.startD2Client(d2Client);
+      MetricsRepository clientMetrics = new MetricsRepository();
+      d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+              .setD2Client(d2Client)
+              .setMetricsRepository(clientMetrics)
+              .setUseFastAvro(false));
+
+      // Prepare keys for multiget streaming
+      Set<String> keySet = new TreeSet<>();
+      for (int i = 0; i < 100; i++) {
+        keySet.add(KEY_PREFIX + i);
+      }
+
+      StatTrackingStoreClient trackingStoreClient = (StatTrackingStoreClient) d2StoreClient;
+
+      // Execute multiple multiget streaming requests to exercise the thread pool
+      for (int iteration = 0; iteration < 10; iteration++) {
+        final Map<String, Object> resultMap = new VeniceConcurrentHashMap<>();
+        final AtomicInteger totalResultCnt = new AtomicInteger(0);
+
+        CountDownLatch latch = new CountDownLatch(1);
+        trackingStoreClient.streamingBatchGet(keySet, new StreamingCallback<String, Object>() {
+          @Override
+          public void onRecordReceived(String key, Object value) {
+            if (value != null) {
+              resultMap.put(key, value);
+            }
+            totalResultCnt.getAndIncrement();
+          }
+
+          @Override
+          public void onCompletion(Optional<Exception> exception) {
+            latch.countDown();
+            if (exception.isPresent()) {
+              LOGGER.error("MultiGet onCompletion invoked with exception", exception.get());
+              fail("Exception during multiget: " + exception.get());
+            }
+          }
+        });
+        latch.await();
+
+        // Verify we got expected count
+        Assert.assertEquals(totalResultCnt.get(), 100, "Should receive 100 records");
+
+        // Verify we got expected data
+        for (int i = 0; i < LAST_KEY_INDEX_WITH_NON_NULL_VALUE; i++) {
+          String key = KEY_PREFIX + i;
+          GenericRecord record = (GenericRecord) resultMap.get(key);
+          Assert.assertNotNull(record, "Record for key " + key + " should not be null");
+          Assert.assertEquals(record.get("int_field"), i);
+        }
+      }
+
+      // Verify response aggregation thread pool metrics exist and show activity
+      Map<String, ? extends Metric> routerMetrics = routerMetricsRepository.metrics();
+
+      // Verify thread pool stats are present
+      Assert.assertNotNull(
+          routerMetrics.get(".response_aggregation_thread_pool--active_threads.Gauge"),
+          "Response aggregation thread pool active_threads metric should exist");
+      Assert.assertNotNull(
+          routerMetrics.get(".response_aggregation_thread_pool--pool_size.Gauge"),
+          "Response aggregation thread pool pool_size metric should exist");
+      Assert.assertNotNull(
+          routerMetrics.get(".response_aggregation_thread_pool--queue_size.Gauge"),
+          "Response aggregation thread pool queue_size metric should exist");
+
+      // Verify pool size matches config
+      double poolSize = routerMetrics.get(".response_aggregation_thread_pool--pool_size.Gauge").value();
+      Assert.assertEquals(poolSize, 3.0, "Thread pool size should match configured value");
+
+      // Verify the thread pool has processed tasks (task count should be > 0)
+      Metric taskCountMetric = routerMetrics.get(".response_aggregation_thread_pool--task_count.Gauge");
+      if (taskCountMetric != null) {
+        double taskCount = taskCountMetric.value();
+        Assert.assertTrue(taskCount > 0, "Thread pool should have processed tasks, task_count: " + taskCount);
+      }
+
+      LOGGER.info("Response aggregation thread pool metrics verified successfully");
+
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(d2StoreClient);
+      if (d2Client != null) {
+        D2ClientUtils.shutdownClient(d2Client);
+      }
+      veniceCluster.getVeniceRouters().forEach(router -> veniceCluster.removeVeniceRouter(router.getPort()));
+    }
+  }
 }

@@ -65,7 +65,7 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
       @Nonnull ScatterGatherHelper<H, P, K, R, BasicFullHttpRequest, FullHttpResponse, HttpResponseStatus> scatterGatherHelper,
       @Nonnull RouterTimeoutProcessor timeoutProcessor,
       @Nonnull Executor executor) {
-    super(scatterGatherHelper, timeoutProcessor);
+    super(scatterGatherHelper, timeoutProcessor, scatterGatherHelper.getResponseAggregationExecutor());
   }
 
   @Deprecated
@@ -73,7 +73,7 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
       @Nonnull ScatterGatherHelper<H, P, K, R, BasicFullHttpRequest, FullHttpResponse, HttpResponseStatus> scatterGatherHelper,
       @Nonnull TimeoutProcessor timeoutProcessor,
       @Nonnull Executor executor) {
-    super(scatterGatherHelper, timeoutProcessor);
+    super(scatterGatherHelper, timeoutProcessor, scatterGatherHelper.getResponseAggregationExecutor());
   }
 
   protected @Override @Nonnull BasicFullHttpRequest retainRequest(@Nonnull BasicFullHttpRequest request) {

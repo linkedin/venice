@@ -612,6 +612,17 @@ public class RouterServer extends AbstractVeniceService {
      * No need to setup {@link com.linkedin.alpini.router.api.HostHealthMonitor} here since
      * {@link VeniceHostFinder} will always do health check.
      */
+    // Create dedicated thread pool for response aggregation to avoid contention with ForkJoinPool.commonPool()
+    int responseAggregationThreadPoolSize = config.getResponseAggregationThreadPoolSize();
+    int responseAggregationQueueCapacity = config.getResponseAggregationQueueCapacity();
+    ThreadPoolExecutor responseAggregationExecutor = ThreadPoolFactory.createThreadPool(
+        responseAggregationThreadPoolSize,
+        "ResponseAggregationThread",
+        config.getLogContext(),
+        responseAggregationQueueCapacity,
+        LINKED_BLOCKING_QUEUE);
+    new ThreadPoolStats(metricsRepository, responseAggregationExecutor, "response_aggregation_thread_pool");
+
     ScatterGatherHelper scatterGather = ScatterGatherHelper
         .<Instance, VenicePath, RouterKey, VeniceRole, BasicFullHttpRequest, FullHttpResponse, HttpResponseStatus>builder()
         .roleFinder(new VeniceRoleFinder())
@@ -630,6 +641,7 @@ public class RouterServer extends AbstractVeniceService {
         .scatterGatherStatsProvider(new LongTailRetryStatsProvider(routerStats))
         .enableStackTraceResponseForException(true)
         .enableRetryRequestAlwaysUseADifferentHost(true)
+        .responseAggregationExecutor(responseAggregationExecutor)
         .build();
 
     SecurityStats securityStats = new SecurityStats(this.metricsRepository, "security");
