@@ -49,6 +49,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.participant.protocol.enums.PushJobKillTrigger;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -913,7 +914,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Now we have two participants blocked on ST from BOOTSTRAP to ONLINE.
     Map<PubSubTopicPartition, PubSubPosition> participantTopicOffsets =
         veniceAdmin.getTopicManager().getEndPositionsForTopicWithRetries(participantStoreRTTopic);
-    veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName(), false);
+    veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName(), PushJobKillTrigger.USER_REQUEST, null, false);
     // Verify the kill offline push message have been written to the participant message store RT topic.
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       Map<PubSubTopicPartition, PubSubPosition> newPartitionTopicOffsets =
@@ -2056,10 +2057,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     if (isKillOfflinePush) {
       // Verify that duplicate and parallel kills can be handled correctly.
       CompletableFuture<Void> future1 = CompletableFuture.runAsync(() -> {
-        veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName(), false);
+        veniceAdmin
+            .killOfflinePush(clusterName, version.kafkaTopicName(), PushJobKillTrigger.USER_REQUEST, null, false);
       });
       CompletableFuture<Void> future2 = CompletableFuture.runAsync(() -> {
-        veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName(), false);
+        veniceAdmin
+            .killOfflinePush(clusterName, version.kafkaTopicName(), PushJobKillTrigger.USER_REQUEST, null, false);
       });
       CompletableFuture.allOf(future1, future2).get();
     }

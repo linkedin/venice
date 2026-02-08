@@ -64,6 +64,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_S
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_DURATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_KILL_DETAILS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_KILL_TRIGGER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_STATUS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
@@ -158,8 +160,10 @@ public enum ControllerRoute implements VeniceDimensionInterface {
   UPDATE_DARK_CLUSTER_CONFIG(
       "/update_dark_cluster_config", HttpMethod.POST, Collections.singletonList(CLUSTER), STORES_TO_REPLICATE
   ), JOB("/job", HttpMethod.GET, Arrays.asList(NAME, VERSION)),
-  KILL_OFFLINE_PUSH_JOB("/kill_offline_push_job", HttpMethod.POST, Collections.singletonList(TOPIC)),
-  LIST_STORES("/list_stores", HttpMethod.GET, Collections.emptyList(), INCLUDE_SYSTEM_STORES),
+  KILL_OFFLINE_PUSH_JOB(
+      "/kill_offline_push_job", HttpMethod.POST, Collections.singletonList(TOPIC), PUSH_JOB_KILL_TRIGGER,
+      PUSH_JOB_KILL_DETAILS
+  ), LIST_STORES("/list_stores", HttpMethod.GET, Collections.emptyList(), INCLUDE_SYSTEM_STORES),
   CLEAN_EXECUTION_IDS("/clean_execution_ids", HttpMethod.GET, Collections.emptyList(), CLUSTER),
   LIST_CHILD_CLUSTERS("/list_child_clusters", HttpMethod.GET, Collections.emptyList()),
   LIST_NODES("/list_instances", HttpMethod.GET, Collections.emptyList()),

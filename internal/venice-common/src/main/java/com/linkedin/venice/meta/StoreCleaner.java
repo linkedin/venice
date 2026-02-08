@@ -1,7 +1,12 @@
 package com.linkedin.venice.meta;
 
 public interface StoreCleaner {
-  void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber);
+  void deleteOneStoreVersion(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean isForcedDelete,
+      boolean deleteDueToError);
 
   void retireOldStoreVersions(
       String clusterName,

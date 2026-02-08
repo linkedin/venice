@@ -237,6 +237,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.participant.protocol.enums.PushJobKillTrigger;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -1455,7 +1456,12 @@ public class VeniceParentHelixAdmin implements Admin {
                 "Failed to get version information but the topic exists and has been created recently. Try again after some time.");
           }
 
-          killOfflinePush(clusterName, latestTopicName, true);
+          killOfflinePush(
+              clusterName,
+              latestTopicName,
+              PushJobKillTrigger.LINGERING_VERSION_TOPIC,
+              "Topic exists without corresponding version",
+              true);
           LOGGER.info("Found topic: {} without the corresponding version, will kill it", latestTopicName);
           return Optional.empty();
         }
@@ -1832,7 +1838,12 @@ public class VeniceParentHelixAdmin implements Admin {
               currentPushTopic.get(),
               existingPushJobId,
               version.getCreatedTime());
-          killOfflinePush(clusterName, currentPushTopic.get(), true);
+          killOfflinePush(
+              clusterName,
+              currentPushTopic.get(),
+              PushJobKillTrigger.LINGERING_VERSION_TOPIC,
+              "Lingering version topic from push id: " + existingPushJobId,
+              true);
         }
       } else if (Version.canIncomingPushKillExistingPush(existingPushJobId, pushJobId, pushType)) {
         // Kill the existing system push (repush or compliance push) if incoming push is a user-initiated push.
@@ -1843,7 +1854,12 @@ public class VeniceParentHelixAdmin implements Admin {
             existingPushJobId,
             pushJobId,
             storeName);
-        killOfflinePush(clusterName, currentPushTopic.get(), true);
+        killOfflinePush(
+            clusterName,
+            currentPushTopic.get(),
+            PushJobKillTrigger.PREEMPTED_BY_FULL_PUSH,
+            "Preempted by new push with id: " + pushJobId,
+            true);
       } else if (pushType.isIncremental()) {
         // No op. Allow concurrent inc push to RT to continue when there is an ongoing batch push
         LOGGER.info(
@@ -3078,6 +3094,9 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.blobTransferInServerEnabled = params.getBlobTransferInServerEnabled()
           .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_IN_SERVER_ENABLED))
           .orElseGet(currStore::getBlobTransferInServerEnabled);
+
+      // blobDbEnabled is a new field added in v95, initialize to default value until feature is fully implemented
+      setStore.blobDbEnabled = "NOT_SPECIFIED";
 
       setStore.separateRealTimeTopicEnabled =
           separateRealTimeTopicEnabled.map(addToUpdatedConfigList(updatedConfigsList, SEPARATE_REAL_TIME_TOPIC_ENABLED))
@@ -4806,10 +4825,15 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#killOfflinePush(String, String, boolean)
+   * @see Admin#killOfflinePush(String, String, PushJobKillTrigger, String, boolean)
    */
   @Override
-  public void killOfflinePush(String clusterName, String kafkaTopic, boolean isForcedKill) {
+  public void killOfflinePush(
+      String clusterName,
+      String kafkaTopic,
+      PushJobKillTrigger trigger,
+      String details,
+      boolean isForcedKill) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     if (getStore(clusterName, storeName) == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
@@ -4817,7 +4841,12 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       getVeniceHelixAdmin().checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
-      LOGGER.info("Killing offline push job for topic: {} in cluster: {}", kafkaTopic, clusterName);
+      LOGGER.info(
+          "Killing offline push job for topic: {} in cluster: {} with trigger: {} and details: {}",
+          kafkaTopic,
+          clusterName,
+          trigger,
+          details);
       /**
        * When parent controller wants to keep some errored topics, this function won't remove topic,
        * but relying on the next push to clean up this topic if it hasn't been removed by {@link #getOffLineJobStatus}.
@@ -4852,6 +4881,8 @@ public class VeniceParentHelixAdmin implements Admin {
       KillOfflinePushJob killJob = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();
       killJob.clusterName = clusterName;
       killJob.kafkaTopic = kafkaTopic;
+      killJob.trigger = trigger != null ? trigger.name() : PushJobKillTrigger.UNKNOWN.name();
+      killJob.details = details;
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.KILL_OFFLINE_PUSH_JOB.getValue();
       message.payloadUnion = killJob;

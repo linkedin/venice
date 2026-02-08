@@ -63,7 +63,7 @@ public class TestDataRecoveryManager {
     doReturn(partitionerConfig).when(store).getPartitionerConfig();
     doReturn(store).when(veniceAdmin).getStore(clusterName, storeName);
     dataRecoveryManager.prepareStoreVersionForDataRecovery(clusterName, storeName, destFabric, version);
-    verify(veniceAdmin, times(1)).deleteOneStoreVersion(clusterName, storeName, version);
+    verify(veniceAdmin, times(1)).deleteOneStoreVersion(clusterName, storeName, version, false, false);
     verify(veniceAdmin, times(1)).deleteParticipantStoreKillMessage(clusterName, topic);
     doReturn(1).when(store).getCurrentVersion();
     doReturn(true).when(veniceAdmin).isClusterWipeAllowed(clusterName);

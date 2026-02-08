@@ -82,6 +82,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.participant.protocol.enums.PushJobKillTrigger;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
 import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -852,7 +853,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
 
     parentAdmin.initStorageCluster(clusterName);
-    parentAdmin.killOfflinePush(clusterName, pubSubTopic.getName(), false);
+    parentAdmin.killOfflinePush(clusterName, pubSubTopic.getName(), PushJobKillTrigger.USER_REQUEST, "", false);
 
     verify(internalAdmin).checkPreConditionForKillOfflinePush(clusterName, pubSubTopic.getName());
     verify(internalAdmin).truncateKafkaTopic(pubSubTopic.getName());
@@ -981,7 +982,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
 
     @Override
-    public void killOfflinePush(String clusterName, String kafkaTopic, boolean isForcedKill) {
+    public void killOfflinePush(
+        String clusterName,
+        String kafkaTopic,
+        PushJobKillTrigger trigger,
+        String details,
+        boolean isForcedKill) {
       storeVersionToKillJobStatus.put(kafkaTopic, true);
     }
 
@@ -1403,7 +1409,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         -1,
         -1);
 
-    verify(mockParentAdmin, times(1)).killOfflinePush(clusterName, version.kafkaTopicName(), true);
+    verify(mockParentAdmin, times(1)).killOfflinePush(
+        eq(clusterName),
+        eq(version.kafkaTopicName()),
+        any(PushJobKillTrigger.class),
+        anyString(),
+        eq(true));
   }
 
   @Test
@@ -1514,7 +1525,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             -1,
             -1));
 
-    verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
+    verify(mockParentAdmin, never()).killOfflinePush(
+        eq(clusterName),
+        eq(version.kafkaTopicName()),
+        any(PushJobKillTrigger.class),
+        anyString(),
+        eq(true));
   }
 
   @Test
@@ -1599,7 +1615,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         -1,
         -1);
 
-    verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
+    verify(mockParentAdmin, never()).killOfflinePush(
+        eq(clusterName),
+        eq(version.kafkaTopicName()),
+        any(PushJobKillTrigger.class),
+        anyString(),
+        eq(true));
   }
 
   @Test
@@ -1711,7 +1732,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         -1);
 
     // Verify that the compliance push was killed
-    verify(mockParentAdmin, times(1)).killOfflinePush(clusterName, version.kafkaTopicName(), true);
+    verify(mockParentAdmin, times(1)).killOfflinePush(
+        eq(clusterName),
+        eq(version.kafkaTopicName()),
+        any(PushJobKillTrigger.class),
+        anyString(),
+        eq(true));
   }
 
   @Test
@@ -1802,7 +1828,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             -1));
 
     // Verify that killOfflinePush was never called
-    verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
+    verify(mockParentAdmin, never()).killOfflinePush(
+        eq(clusterName),
+        eq(version.kafkaTopicName()),
+        any(PushJobKillTrigger.class),
+        anyString(),
+        eq(true));
   }
 
   @Test
@@ -1897,7 +1928,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
 
     // Verify that killOfflinePush was never called
-    verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
+    verify(mockParentAdmin, never()).killOfflinePush(
+        eq(clusterName),
+        eq(version.kafkaTopicName()),
+        any(PushJobKillTrigger.class),
+        anyString(),
+        eq(true));
   }
 
   @Test

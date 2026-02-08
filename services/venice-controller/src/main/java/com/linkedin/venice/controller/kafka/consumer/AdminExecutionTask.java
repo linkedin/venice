@@ -54,6 +54,7 @@ import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.participant.protocol.enums.PushJobKillTrigger;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
@@ -466,9 +467,21 @@ public class AdminExecutionTask implements Callable<Void> {
     }
     String clusterName = message.clusterName.toString();
     String kafkaTopic = message.kafkaTopic.toString();
-    admin.killOfflinePush(clusterName, kafkaTopic, false);
+    String triggerStr = message.trigger != null ? message.trigger.toString() : null;
+    PushJobKillTrigger trigger =
+        triggerStr != null ? PushJobKillTrigger.fromString(triggerStr) : PushJobKillTrigger.UNKNOWN;
+    if (trigger == null) {
+      trigger = PushJobKillTrigger.UNKNOWN;
+    }
+    String details = message.details != null ? message.details.toString() : null;
+    admin.killOfflinePush(clusterName, kafkaTopic, trigger, details, false);
 
-    LOGGER.info("Killed job with topic: {} in cluster: {}", kafkaTopic, clusterName);
+    LOGGER.info(
+        "Killed job with topic: {} in cluster: {} with trigger: {} and details: {}",
+        kafkaTopic,
+        clusterName,
+        trigger,
+        details);
   }
 
   private void handleDeleteAllVersions(DeleteAllVersions message) {

@@ -292,4 +292,10 @@ public class ControllerApiConstants {
    * Params for dark cluster
    */
   public static final String STORES_TO_REPLICATE = "stores_to_replicate";
+
+  /**
+   * Params for KILL push job
+   */
+  public static final String PUSH_JOB_KILL_TRIGGER = "push_job_kill_trigger";
+  public static final String PUSH_JOB_KILL_DETAILS = "push_job_kill_details";
 }

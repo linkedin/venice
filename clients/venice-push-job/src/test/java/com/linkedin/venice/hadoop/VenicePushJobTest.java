@@ -90,6 +90,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.participant.protocol.enums.PushJobKillTrigger;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -537,7 +538,8 @@ public class VenicePushJobTest {
       } catch (VeniceException e) {
         Assert.assertTrue(e.getMessage().contains("push job is still in unknown state."), e.getMessage());
       }
-      verify(pushJob, times(1)).cancel();
+      // The error handling path calls killJob directly with PUSH_JOB_FAILED trigger
+      verify(pushJob, times(1)).killJob(any(), any(), eq(PushJobKillTrigger.PUSH_JOB_FAILED), any());
       verify(pushJob.getDataWriterComputeJob(), times(1)).kill();
     }
   }
@@ -601,14 +603,14 @@ public class VenicePushJobTest {
         doNothing().when(dataWriterJob).validateJob();
         doNothing().when(dataWriterJob).configure(any(), any()); // the spark job takes a long time to configure
         doAnswer(stallDataWriterJob).when(dataWriterJob).runComputeJob();
-        doAnswer(killDataWriterJob).when(pushJob).killJob(any(), any());
+        doAnswer(killDataWriterJob).when(pushJob).killJob(any(), any(), any(PushJobKillTrigger.class), any());
         pushJob.run(); // data writer job will run in this main test thread
       } catch (VeniceException e) {
         // Expected, because the data writer job is not configured to run successfully in this unit test environment
       }
       assertEquals(runningJobLatch.getCount(), 0); // killDataWriterJob() does not occur in the main test thread
       assertEquals(killedJobLatch.getCount(), 0);
-      verify(pushJob, times(1)).cancel();
+      verify(pushJob, times(1)).cancel(eq(PushJobKillTrigger.SLA_VIOLATION), anyString());
       verify(dataWriterJob, times(1)).kill();
       assertEquals(pushJob.getDataWriterComputeJob().getStatus(), DataWriterComputeJob.Status.KILLED);
     }

@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.participant.protocol.enums.PushJobKillTrigger;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -613,9 +614,16 @@ public interface Admin extends AutoCloseable, Closeable {
    * Kill an offline push if it ran into errors or the corresponding version is being retired.
    * @param clusterName
    * @param kafkaTopic
+   * @param trigger the trigger that caused the push job to be killed
+   * @param details additional details about the kill trigger
    * @param isForcedKill should be set to true when killing the push job for retiring the corresponding version.
    */
-  void killOfflinePush(String clusterName, String kafkaTopic, boolean isForcedKill);
+  void killOfflinePush(
+      String clusterName,
+      String kafkaTopic,
+      PushJobKillTrigger trigger,
+      String details,
+      boolean isForcedKill);
 
   /**
    * Query and return the current status of the given storage node. The "storage node status" is composed by "status" of all

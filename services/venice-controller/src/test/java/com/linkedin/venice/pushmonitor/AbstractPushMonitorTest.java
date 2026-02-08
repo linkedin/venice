@@ -883,7 +883,12 @@ public abstract class AbstractPushMonitorTest {
     }
 
     @Override
-    public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
+    public void deleteOneStoreVersion(
+        String clusterName,
+        String storeName,
+        int versionNumber,
+        boolean isForcedDelete,
+        boolean deleteDueToError) {
       try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
         try {
           Thread.sleep(1000);

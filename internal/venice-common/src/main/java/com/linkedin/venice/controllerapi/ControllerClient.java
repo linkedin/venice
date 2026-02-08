@@ -45,6 +45,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_S
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_IN_SORTED_ORDER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_ID;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_KILL_DETAILS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_KILL_TRIGGER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_OPERATION;
@@ -704,12 +706,22 @@ public class ControllerClient implements Closeable {
   }
 
   public ControllerResponse killOfflinePushJob(String kafkaTopic) {
+    return killOfflinePushJob(kafkaTopic, null, null);
+  }
+
+  public ControllerResponse killOfflinePushJob(String kafkaTopic, String trigger, String details) {
     String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     QueryParams params = newParams().add(TOPIC, kafkaTopic) // TODO: remove once the controller is deployed to handle
                                                             // store and version instead
         .add(NAME, store)
         .add(VERSION, versionNumber);
+    if (trigger != null) {
+      params.add(PUSH_JOB_KILL_TRIGGER, trigger);
+    }
+    if (details != null) {
+      params.add(PUSH_JOB_KILL_DETAILS, details);
+    }
     return request(ControllerRoute.KILL_OFFLINE_PUSH_JOB, params, ControllerResponse.class);
   }
 
