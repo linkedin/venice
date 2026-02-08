@@ -106,7 +106,7 @@ public class TestMaterializedViewEndToEnd {
   private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-
+  private static final String DEFAULT_VIEW_NAME = "MaterializedViewTest";
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
@@ -165,10 +165,9 @@ public class TestMaterializedViewEndToEnd {
         .setPartitionCount(3);
     try (ControllerClient controllerClient =
         IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms)) {
-      String testViewName = "MaterializedViewTest";
       MaterializedViewParameters.Builder viewParamBuilder =
-          new MaterializedViewParameters.Builder(testViewName).setPartitionCount(6);
-      UpdateStoreQueryParams updateViewParam = new UpdateStoreQueryParams().setViewName(testViewName)
+          new MaterializedViewParameters.Builder(DEFAULT_VIEW_NAME).setPartitionCount(6);
+      UpdateStoreQueryParams updateViewParam = new UpdateStoreQueryParams().setViewName(DEFAULT_VIEW_NAME)
           .setViewClassName(MaterializedView.class.getCanonicalName())
           .setViewClassParams(viewParamBuilder.build());
       controllerClient
@@ -176,15 +175,16 @@ public class TestMaterializedViewEndToEnd {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
         Map<String, ViewConfig> viewConfigMap = controllerClient.getStore(storeName).getStore().getViewConfigs();
         assertEquals(viewConfigMap.size(), 1);
-        assertEquals(viewConfigMap.get(testViewName).getViewClassName(), MaterializedView.class.getCanonicalName());
-        assertEquals(viewConfigMap.get(testViewName).getViewParameters().size(), 3);
+        assertEquals(
+            viewConfigMap.get(DEFAULT_VIEW_NAME).getViewClassName(),
+            MaterializedView.class.getCanonicalName());
+        assertEquals(viewConfigMap.get(DEFAULT_VIEW_NAME).getViewParameters().size(), 3);
       });
 
       IntegrationTestPushUtils.runVPJ(props);
       // TODO we will verify the actual content once the DVC consumption part of the view topic is completed.
       // For now just check for topic existence and that they contain some records.
-      String viewTopicName =
-          Version.composeKafkaTopic(storeName, 1) + VIEW_NAME_SEPARATOR + testViewName + MATERIALIZED_VIEW_TOPIC_SUFFIX;
+      String viewTopicName = MaterializedView.composeTopicName(storeName, 1, DEFAULT_VIEW_NAME);
       String versionTopicName = Version.composeKafkaTopic(storeName, 1);
       validateViewTopicAndVersionTopic(viewTopicName, versionTopicName, 6, 3, 100);
 
@@ -211,8 +211,7 @@ public class TestMaterializedViewEndToEnd {
           });
         }
       }
-      String rePushViewTopicName =
-          Version.composeKafkaTopic(storeName, 2) + VIEW_NAME_SEPARATOR + testViewName + MATERIALIZED_VIEW_TOPIC_SUFFIX;
+      String rePushViewTopicName = MaterializedView.composeTopicName(storeName, 2, DEFAULT_VIEW_NAME);
       String rePushVersionTopicName = Version.composeKafkaTopic(storeName, 2);
       validateViewTopicAndVersionTopic(rePushViewTopicName, rePushVersionTopicName, 6, 3, 100);
     }
@@ -608,14 +607,35 @@ public class TestMaterializedViewEndToEnd {
     IntegrationTestPushUtils.runVPJ(rePushProps);
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testBatchOnlyMaterializedViewStatelessCDCConsumer() throws Exception {
     testBatchOnlyMaterializedViewCDCConsumer(false);
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testBatchOnlyMaterializedViewStatefulCDCConsumer() throws Exception {
     testBatchOnlyMaterializedViewCDCConsumer(true);
+  }
+
+  /**
+   * This test has comparable setup to {@link #testBatchOnlyMaterializedViewStatelessCDCConsumer}
+   * and {@link #testBatchOnlyMaterializedViewStatefulCDCConsumer}
+   * but verifies DVC consumer instead of CDC consumer.
+   * The main purpose is to verify DVC can consume from materialized view topic
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBatchOnlyMaterializedViewDVCConsumerWithOnePush() throws Exception {
+    // Create a batch only store with materialized view and run batch push job with 100 records
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("batchStore");
+
+    // Setup store and materialized view
+    setupStoreAndMaterializedView(inputDirPath, storeName, DEFAULT_VIEW_NAME, recordSchema);
+
+    // Verify DVC consumer can consume from materialized view topic and get all the records.
+    testDVCConsumer(storeName, 100);
   }
 
   private void testBatchOnlyMaterializedViewCDCConsumer(boolean useStatefulConsumer) throws Exception {
@@ -624,20 +644,50 @@ public class TestMaterializedViewEndToEnd {
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("batchStore");
-    String testViewName = "MaterializedViewTest";
 
     // Setup store and materialized view
-    setupStoreAndMaterializedView(inputDirPath, storeName, testViewName, recordSchema);
+    setupStoreAndMaterializedView(inputDirPath, storeName, DEFAULT_VIEW_NAME, recordSchema);
 
     // Setup D2Client and ChangelogClientConfig
     D2Client d2Client = D2TestUtils
         .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress());
 
     try {
-      ChangelogClientConfig changelogClientConfig = createChangelogClientConfig(d2Client, inputDirPath, testViewName);
+      ChangelogClientConfig changelogClientConfig =
+          createChangelogClientConfig(d2Client, inputDirPath, DEFAULT_VIEW_NAME);
 
       // Test CDC consumer
       testCDCConsumer(storeName, changelogClientConfig, useStatefulConsumer);
+    } finally {
+      D2ClientUtils.shutdownClient(d2Client);
+    }
+  }
+
+  private void testDVCConsumer(String storeName, int recordCount) throws Exception {
+    // Start a DVC client that's subscribed to partition 0 of the store's materialized view. The DVC client should
+    // contain all data records.
+    D2Client d2Client = D2TestUtils
+        .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress());
+
+    VeniceProperties backendConfig =
+        new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+            .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+            .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+            .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+            .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+            .build();
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        backendConfig,
+        multiRegionMultiClusterWrapper)) {
+      DaVinciClient<String, Object> viewClient =
+          factory.getAndStartGenericAvroClient(storeName, DEFAULT_VIEW_NAME, new DaVinciConfig());
+      viewClient.subscribe(Collections.singleton(0)).get();
+      for (int i = 1; i <= recordCount; i++) {
+        assertEquals(viewClient.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
+      }
     } finally {
       D2ClientUtils.shutdownClient(d2Client);
     }
