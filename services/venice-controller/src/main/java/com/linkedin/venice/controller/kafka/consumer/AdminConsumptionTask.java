@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.kafka.consumer;
 
 import static com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
@@ -1087,28 +1088,39 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         adminMetadata.setPubSubPosition(localPositionCheckpointAtStartTime);
         adminMetadata.setUpstreamPubSubPosition(lastDelegatedPosition);
         // Set numeric offsets to keep them in sync with positions
-        if (localPositionCheckpointAtStartTime instanceof ApacheKafkaOffsetPosition) {
-          adminMetadata.setOffset(((ApacheKafkaOffsetPosition) localPositionCheckpointAtStartTime).getNumericOffset());
-        }
-        if (lastDelegatedPosition instanceof ApacheKafkaOffsetPosition) {
-          adminMetadata.setUpstreamOffset(((ApacheKafkaOffsetPosition) lastDelegatedPosition).getNumericOffset());
-        }
+        syncNumericOffsetFromPosition(adminMetadata, localPositionCheckpointAtStartTime, false);
+        syncNumericOffsetFromPosition(adminMetadata, lastDelegatedPosition, true);
       } else {
         adminMetadata.setPubSubPosition(lastDelegatedPosition);
         adminMetadata.setUpstreamPubSubPosition(upstreamPositionCheckpointAtStartTime);
         // Set numeric offsets to keep them in sync with positions
-        if (lastDelegatedPosition instanceof ApacheKafkaOffsetPosition) {
-          adminMetadata.setOffset(((ApacheKafkaOffsetPosition) lastDelegatedPosition).getNumericOffset());
-        }
-        if (upstreamPositionCheckpointAtStartTime instanceof ApacheKafkaOffsetPosition) {
-          adminMetadata.setUpstreamOffset(
-              ((ApacheKafkaOffsetPosition) upstreamPositionCheckpointAtStartTime).getNumericOffset());
-        }
+        syncNumericOffsetFromPosition(adminMetadata, lastDelegatedPosition, false);
+        syncNumericOffsetFromPosition(adminMetadata, upstreamPositionCheckpointAtStartTime, true);
       }
       adminTopicMetadataAccessor.updateMetadata(clusterName, adminMetadata);
       lastPersistedPosition = lastDelegatedPosition;
       lastPersistedExecutionId = lastDelegatedExecutionId;
       LOGGER.info("Updated lastPersistedPosition to {}", lastPersistedPosition);
+    }
+  }
+
+  /**
+   * Synchronizes numeric offset in AdminMetadata from a PubSubPosition if it's a Kafka position.
+   * This is needed to maintain backward compatibility with systems that may still read numeric offsets.
+   *
+   * @param metadata the metadata to update
+   * @param position the position to extract numeric offset from
+   * @param isUpstream if true, sets upstream offset; otherwise sets local offset
+   */
+  @VisibleForTesting
+  static void syncNumericOffsetFromPosition(AdminMetadata metadata, PubSubPosition position, boolean isUpstream) {
+    if (position instanceof ApacheKafkaOffsetPosition) {
+      long numericOffset = ((ApacheKafkaOffsetPosition) position).getNumericOffset();
+      if (isUpstream) {
+        metadata.setUpstreamOffset(numericOffset);
+      } else {
+        metadata.setOffset(numericOffset);
+      }
     }
   }
 

@@ -360,26 +360,54 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test
-  public void testNumericOffsetSyncWithApacheKafkaOffsetPosition() {
-    // Test that when an ApacheKafkaOffsetPosition is used, numeric offsets are extracted correctly
-    // This covers the instanceof check branches in persistAdminTopicMetadata
+  public void testSyncNumericOffsetFromPositionWithKafkaPosition() {
+    // Test that syncNumericOffsetFromPosition correctly extracts and sets numeric offsets
+    // from ApacheKafkaOffsetPosition instances
     ApacheKafkaOffsetPosition kafkaPosition = new ApacheKafkaOffsetPosition(42L);
-
-    // Create metadata and verify the position can be used
     AdminMetadata metadata = new AdminMetadata();
-    metadata.setPubSubPosition(kafkaPosition);
-    metadata.setUpstreamPubSubPosition(kafkaPosition);
 
-    // Verify we can extract numeric offsets from ApacheKafkaOffsetPosition
-    if (metadata.getPosition() instanceof ApacheKafkaOffsetPosition) {
-      long offset = ((ApacheKafkaOffsetPosition) metadata.getPosition()).getNumericOffset();
-      Assert.assertEquals(offset, 42L, "Should extract correct numeric offset");
-    }
+    // Test setting local offset
+    AdminConsumptionTask.syncNumericOffsetFromPosition(metadata, kafkaPosition, false);
+    Assert.assertEquals(Long.valueOf(42L), metadata.getOffset(), "Should set local offset from Kafka position");
 
-    if (metadata.getUpstreamPosition() instanceof ApacheKafkaOffsetPosition) {
-      long upstreamOffset = ((ApacheKafkaOffsetPosition) metadata.getUpstreamPosition()).getNumericOffset();
-      Assert.assertEquals(upstreamOffset, 42L, "Should extract correct upstream numeric offset");
-    }
+    // Test setting upstream offset
+    ApacheKafkaOffsetPosition upstreamKafkaPosition = new ApacheKafkaOffsetPosition(100L);
+    AdminConsumptionTask.syncNumericOffsetFromPosition(metadata, upstreamKafkaPosition, true);
+    Assert.assertEquals(
+        Long.valueOf(100L),
+        metadata.getUpstreamOffset(),
+        "Should set upstream offset from Kafka position");
+  }
+
+  @Test
+  public void testSyncNumericOffsetFromPositionWithNonKafkaPosition() {
+    // Test that syncNumericOffsetFromPosition does not modify offsets for non-Kafka positions
+    InMemoryPubSubPosition inMemoryPosition = InMemoryPubSubPosition.of(50L);
+    AdminMetadata metadata = new AdminMetadata();
+    metadata.setOffset(-1L);
+    metadata.setUpstreamOffset(-1L);
+
+    // Should not modify offset for InMemoryPubSubPosition
+    AdminConsumptionTask.syncNumericOffsetFromPosition(metadata, inMemoryPosition, false);
+    Assert
+        .assertEquals(Long.valueOf(-1L), metadata.getOffset(), "Should not modify local offset for non-Kafka position");
+
+    AdminConsumptionTask.syncNumericOffsetFromPosition(metadata, inMemoryPosition, true);
+    Assert.assertEquals(
+        Long.valueOf(-1L),
+        metadata.getUpstreamOffset(),
+        "Should not modify upstream offset for non-Kafka position");
+  }
+
+  @Test
+  public void testSyncNumericOffsetFromPositionWithNullPosition() {
+    // Test that syncNumericOffsetFromPosition handles null position gracefully
+    AdminMetadata metadata = new AdminMetadata();
+    metadata.setOffset(-1L);
+
+    // Should not throw or modify for null position
+    AdminConsumptionTask.syncNumericOffsetFromPosition(metadata, null, false);
+    Assert.assertEquals(Long.valueOf(-1L), metadata.getOffset(), "Should not modify offset for null position");
   }
 
   @Test(timeOut = TIMEOUT)
