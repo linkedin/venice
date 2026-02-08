@@ -852,7 +852,7 @@ public class StorageReadRequestHandlerTest {
     doNothing().when(mockNextHandler).processRequest(any());
     grpcReadRequestHandler.processRequest(ctx); // will cause np exception
 
-    assertEquals(builder.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR);
+    assertEquals(builder.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR.getCode());
     assertTrue(builder.getErrorMessage().contains("Internal Error"));
   }
 

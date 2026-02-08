@@ -52,18 +52,18 @@ public class GrpcStorageReadRequestHandler extends VeniceServerGrpcHandler {
         default:
           ctx.setError();
           ctx.getVeniceServerResponseBuilder()
-              .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
+              .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST.getCode())
               .setErrorMessage("Unknown request type: " + request.getRequestType());
       }
     } catch (VeniceNoStoreException e) {
       ctx.setError();
       ctx.getVeniceServerResponseBuilder()
-          .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
+          .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST.getCode())
           .setErrorMessage("No storage exists for: " + e.getStoreName());
     } catch (Exception e) {
       ctx.setError();
       ctx.getVeniceServerResponseBuilder()
-          .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
+          .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR.getCode())
           .setErrorMessage(String.format("Internal Error: %s", e.getMessage()));
     }
 

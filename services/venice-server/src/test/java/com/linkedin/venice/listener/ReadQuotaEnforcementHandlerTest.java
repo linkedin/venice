@@ -171,7 +171,7 @@ public class ReadQuotaEnforcementHandlerTest {
     when(grpcCtx.getRouterRequest()).thenReturn(routerRequest);
     when(grpcCtx.getVeniceServerResponseBuilder()).thenReturn(builder);
     grpcQuotaEnforcementHandler.processRequest(grpcCtx);
-    assertEquals(builder.getErrorCode(), BAD_REQUEST);
+    assertEquals(builder.getErrorCode(), BAD_REQUEST.getCode());
     assertNotNull(builder.getErrorMessage());
   }
 
@@ -278,7 +278,7 @@ public class ReadQuotaEnforcementHandlerTest {
     when(grpcCtx.getRouterRequest()).thenReturn(routerRequest);
     when(grpcCtx.getVeniceServerResponseBuilder()).thenReturn(builder);
     grpcQuotaEnforcementHandler.processRequest(grpcCtx);
-    assertEquals(builder.getErrorCode(), VeniceReadResponseStatus.TOO_MANY_REQUESTS);
+    assertEquals(builder.getErrorCode(), VeniceReadResponseStatus.TOO_MANY_REQUESTS.getCode());
     assertNotNull(builder.getErrorMessage());
 
     // Case 2: If request is a retry request, it should be allowed
@@ -324,7 +324,7 @@ public class ReadQuotaEnforcementHandlerTest {
     when(grpcCtx.getRouterRequest()).thenReturn(routerRequest);
     when(grpcCtx.getVeniceServerResponseBuilder()).thenReturn(builder);
     grpcQuotaEnforcementHandler.processRequest(grpcCtx);
-    assertEquals(builder.getErrorCode(), VeniceReadResponseStatus.SERVICE_UNAVAILABLE);
+    assertEquals(builder.getErrorCode(), VeniceReadResponseStatus.SERVICE_UNAVAILABLE.getCode());
     assertNotNull(builder.getErrorMessage());
   }
 
