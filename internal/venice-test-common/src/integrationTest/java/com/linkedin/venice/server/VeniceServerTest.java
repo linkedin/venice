@@ -28,6 +28,10 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.protocols.VeniceMetadataRequest;
+import com.linkedin.venice.protocols.VeniceMetadataResponse;
+import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
+import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -37,14 +41,19 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import io.grpc.Grpc;
+import io.grpc.InsecureChannelCredentials;
+import io.grpc.ManagedChannel;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -391,6 +400,161 @@ public class VeniceServerTest {
               .updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
       RestResponse response = d2Client.restRequest(request).get();
       Assert.assertEquals(response.getStatus(), HttpStatus.SC_OK);
+    }
+  }
+
+  /**
+   * gRPC variant of {@link #testMetadataFetchRequest()}. Uses the gRPC {@code getMetadata} RPC instead of the HTTP
+   * {@code /metadata/{storeName}} endpoint and verifies the same response content.
+   */
+  @Test
+  public void testGrpcMetadataFetchRequest() throws ExecutionException, InterruptedException, IOException {
+    Utils.thisIsLocalhost();
+    int servers = 6;
+    int replicationFactor = 2;
+
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(servers)
+        .numberOfRouters(0)
+        .replicationFactor(replicationFactor)
+        .enableGrpc(true)
+        .build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
+
+      HelixAdmin admin = new ZKHelixAdmin(cluster.getZk().getAddress());
+
+      HelixConfigScope configScope =
+          new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(cluster.getClusterName())
+              .build();
+      Map<String, String> clusterProperties = new HashMap<String, String>() {
+        {
+          put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/zone/instance");
+          put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), "TRUE");
+          put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), "zone");
+        }
+      };
+
+      admin.setConfig(configScope, clusterProperties);
+
+      for (int i = 0; i < servers; i++) {
+        VeniceServerWrapper server = cluster.getVeniceServers().get(i);
+        String instanceName = server.getHost() + "_" + server.getPort();
+        String domain = "zone=zone_" + (char) (i % replicationFactor + 65) + ",instance=" + instanceName;
+
+        InstanceConfig instanceConfig = new InstanceConfig(instanceName);
+        instanceConfig.setDomain(domain);
+        instanceConfig.setHostName(server.getHost());
+        instanceConfig.setPort(String.valueOf(server.getPort()));
+
+        admin.setInstanceConfig(cluster.getClusterName(), instanceName, instanceConfig);
+      }
+
+      String storeName = cluster.createStore(1);
+      cluster.useControllerClient(
+          controllerClient -> Assert.assertFalse(
+              controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true))
+                  .isError()));
+
+      List<ManagedChannel> channels = new ArrayList<>();
+      try {
+        for (int i = 0; i < servers; i++) {
+          VeniceServerWrapper server = cluster.getVeniceServers().get(i);
+          String grpcAddress = server.getGrpcAddress();
+
+          ManagedChannel channel = Grpc.newChannelBuilder(grpcAddress, InsecureChannelCredentials.create()).build();
+          channels.add(channel);
+
+          VeniceReadServiceGrpc.VeniceReadServiceBlockingStub blockingStub =
+              VeniceReadServiceGrpc.newBlockingStub(channel);
+
+          VeniceMetadataRequest grpcRequest = VeniceMetadataRequest.newBuilder().setStoreName(storeName).build();
+          VeniceMetadataResponse grpcResponse = blockingStub.getMetadata(grpcRequest);
+
+          Assert.assertEquals(
+              grpcResponse.getErrorCode(),
+              VeniceReadResponseStatus.OK,
+              "gRPC metadata request failed for server " + i + ": " + grpcResponse.getErrorMessage());
+
+          Assert.assertFalse(
+              grpcResponse.getMetadata().isEmpty(),
+              "Metadata response body should not be empty for server " + i);
+
+          // Deserialize the Avro metadata response record
+          RecordDeserializer<MetadataResponseRecord> deserializer =
+              SerializerDeserializerFactory.getAvroGenericDeserializer(MetadataResponseRecord.SCHEMA$);
+          byte[] metadataBytes = grpcResponse.getMetadata().toByteArray();
+          GenericRecord metadataResponse = deserializer.deserialize(metadataBytes);
+
+          try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(MetadataResponseRecord.SCHEMA$);
+            Encoder jsonEncoder = AvroCompatibilityHelper.newJsonEncoder(MetadataResponseRecord.SCHEMA$, output, true);
+            avroDatumWriter.write(metadataResponse, jsonEncoder);
+            jsonEncoder.flush();
+            output.flush();
+
+            LOGGER.info("Got gRPC metadata response from server {} : {}", i, output);
+          } catch (IOException e) {
+            throw new VeniceException(e);
+          }
+
+          // Verify key schema
+          Assert.assertEquals(
+              ((HashMap<Utf8, Utf8>) metadataResponse.get("keySchema")).get(new Utf8("1")),
+              new Utf8("\"int\""));
+
+          // Verify the property that no replicas of the same partition are in the same helix group
+          Map<Utf8, Integer> helixGroupInfo = (HashMap<Utf8, Integer>) metadataResponse.get("helixGroupInfo");
+          Map<Utf8, Collection<Utf8>> routingInfo =
+              (HashMap<Utf8, Collection<Utf8>>) metadataResponse.get("routingInfo");
+
+          for (Map.Entry<Utf8, Collection<Utf8>> entry: routingInfo.entrySet()) {
+            Set<Integer> zonesSeen = new HashSet<>();
+            for (Utf8 instance: entry.getValue()) {
+              Assert.assertFalse(
+                  zonesSeen.contains(helixGroupInfo.get(instance)),
+                  instance + " is in the same helix zone as another replica of the partition");
+              zonesSeen.add(helixGroupInfo.get(instance));
+            }
+          }
+        }
+      } finally {
+        for (ManagedChannel channel: channels) {
+          channel.shutdownNow();
+        }
+      }
+    }
+  }
+
+  /**
+   * Verifies that the gRPC {@code getMetadata} RPC returns the correct error when the store has read quota disabled.
+   */
+  @Test
+  public void testGrpcMetadataFetchRequestWithQuotaDisabled() {
+    Utils.thisIsLocalhost();
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(1)
+        .numberOfRouters(0)
+        .enableGrpc(true)
+        .build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
+      String storeName = cluster.createStore(1);
+      // StorageNodeReadQuotaEnabled is false by default, so the metadata endpoint should return an error
+
+      VeniceServerWrapper server = cluster.getVeniceServers().get(0);
+      ManagedChannel channel =
+          Grpc.newChannelBuilder(server.getGrpcAddress(), InsecureChannelCredentials.create()).build();
+      try {
+        VeniceReadServiceGrpc.VeniceReadServiceBlockingStub blockingStub =
+            VeniceReadServiceGrpc.newBlockingStub(channel);
+
+        VeniceMetadataRequest grpcRequest = VeniceMetadataRequest.newBuilder().setStoreName(storeName).build();
+        VeniceMetadataResponse grpcResponse = blockingStub.getMetadata(grpcRequest);
+
+        Assert.assertEquals(grpcResponse.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+        Assert.assertFalse(grpcResponse.getErrorMessage().isEmpty(), "Error message should not be empty");
+      } finally {
+        channel.shutdownNow();
+      }
     }
   }
 
