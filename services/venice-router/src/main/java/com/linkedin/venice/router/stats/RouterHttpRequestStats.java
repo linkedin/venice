@@ -120,6 +120,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor requestCallCountSensor;
   private final Sensor requestParsingLatencySensor;
   private final Sensor requestRoutingLatencySensor;
+  private final Sensor pipelineLatencySensor;
+  private final Sensor scatterLatencySensor;
+  private final Sensor queueLatencySensor;
+  private final Sensor dispatchLatencySensor;
   private final Sensor unAvailableRequestSensor;
   private final Sensor readQuotaUsageSensor;
   private final Sensor inFlightRequestSensor;
@@ -442,6 +446,18 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     requestParsingLatencySensor = registerSensor("request_parse_latency", new Avg());
     requestRoutingLatencySensor = registerSensor("request_route_latency", new Avg());
 
+    pipelineLatencySensor = registerSensor(
+        "pipeline_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("pipeline_latency")));
+    scatterLatencySensor = registerSensor(
+        "scatter_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("scatter_latency")));
+    queueLatencySensor =
+        registerSensor("queue_latency", TehutiUtils.getPercentileStat(getName(), getFullMetricName("queue_latency")));
+    dispatchLatencySensor = registerSensor(
+        "dispatch_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("dispatch_latency")));
+
     unAvailableRequestSensor = registerSensor("unavailable_request", new Count());
 
     readQuotaUsageSensor =
@@ -715,6 +731,22 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordRequestRoutingLatency(double latency) {
     requestRoutingLatencySensor.record(latency);
+  }
+
+  public void recordPipelineLatency(double latency) {
+    pipelineLatencySensor.record(latency);
+  }
+
+  public void recordScatterLatency(double latency) {
+    scatterLatencySensor.record(latency);
+  }
+
+  public void recordQueueLatency(double latency) {
+    queueLatencySensor.record(latency);
+  }
+
+  public void recordDispatchLatency(double latency) {
+    dispatchLatencySensor.record(latency);
   }
 
   public void recordUnavailableRequest() {
