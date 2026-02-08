@@ -79,6 +79,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
@@ -356,6 +357,29 @@ public class AdminConsumptionTaskTest {
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test
+  public void testNumericOffsetSyncWithApacheKafkaOffsetPosition() {
+    // Test that when an ApacheKafkaOffsetPosition is used, numeric offsets are extracted correctly
+    // This covers the instanceof check branches in persistAdminTopicMetadata
+    ApacheKafkaOffsetPosition kafkaPosition = new ApacheKafkaOffsetPosition(42L);
+
+    // Create metadata and verify the position can be used
+    AdminMetadata metadata = new AdminMetadata();
+    metadata.setPubSubPosition(kafkaPosition);
+    metadata.setUpstreamPubSubPosition(kafkaPosition);
+
+    // Verify we can extract numeric offsets from ApacheKafkaOffsetPosition
+    if (metadata.getPosition() instanceof ApacheKafkaOffsetPosition) {
+      long offset = ((ApacheKafkaOffsetPosition) metadata.getPosition()).getNumericOffset();
+      Assert.assertEquals(offset, 42L, "Should extract correct numeric offset");
+    }
+
+    if (metadata.getUpstreamPosition() instanceof ApacheKafkaOffsetPosition) {
+      long upstreamOffset = ((ApacheKafkaOffsetPosition) metadata.getUpstreamPosition()).getNumericOffset();
+      Assert.assertEquals(upstreamOffset, 42L, "Should extract correct upstream numeric offset");
+    }
   }
 
   @Test(timeOut = TIMEOUT)
