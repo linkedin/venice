@@ -5275,4 +5275,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   PriorityBlockingQueue<Integer> getResubscribeRequestQueue() {
     return resubscribeRequestQueue;
   }
+
+  boolean shouldSkipValidationForSeekableClientEnabled() {
+    return skipValidationForSeekableClientEnabled;
+  }
 }

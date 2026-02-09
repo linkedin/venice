@@ -127,7 +127,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
 
     consumer = veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME);
     Assert.assertTrue(consumer instanceof VeniceChangelogConsumerImpl);
-
   }
 
   @Test

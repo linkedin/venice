@@ -81,10 +81,12 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.helix.StateModelIngestionProgressNotifier;
 import com.linkedin.davinci.ingestion.LagType;
@@ -225,6 +227,8 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -545,6 +549,8 @@ public abstract class StoreIngestionTaskTest {
     when(storeInfo.getName()).thenReturn(storeNameWithoutVersionInfo);
     when(storeInfo.getHybridStoreConfig().getRealTimeTopicName())
         .thenReturn(Utils.composeRealTimeTopic(storeNameWithoutVersionInfo));
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(mockStorageService)
+        .getRefCountedStorageEngine(anyString());
 
     mockLogNotifier = mock(LogNotifier.class);
     mockNotifierProgress = new ArrayList<>();
@@ -6431,6 +6437,48 @@ public abstract class StoreIngestionTaskTest {
     shutdownExecutor.shutdown();
   }
 
+  @Test
+  public void testSkipValidationForSeekableClientEnabled() throws Exception {
+    // Test 1: Non-CDC client with non-view topic should NOT skip validation
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      assertFalse(
+          storeIngestionTaskUnderTest.shouldSkipValidationForSeekableClientEnabled(),
+          "Non-CDC client with regular topic should not skip validation");
+    }, AA_OFF);
+
+    // Test 2: CDC client with non-view topic should NOT skip validation
+    StoreIngestionTaskTestConfig cdcNonViewConfig =
+        new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+          assertFalse(
+              storeIngestionTaskUnderTest.shouldSkipValidationForSeekableClientEnabled(),
+              "CDC client with non-view topic should not skip validation");
+        }, AA_OFF);
+
+    DaVinciRecordTransformerConfig cdcRecordTransformerConfig = buildCdcRecordTransformerConfig();
+    cdcNonViewConfig.setRecordTransformerConfig(cdcRecordTransformerConfig);
+
+    runTest(cdcNonViewConfig);
+
+    // Test 3: CDC client with materialized view topic SHOULD skip validation
+    // This test uses a real materialized view topic name by overriding the store version name in config
+    StoreIngestionTaskTestConfig cdcMaterializedViewConfig =
+        new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+          assertTrue(
+              storeIngestionTaskUnderTest.shouldSkipValidationForSeekableClientEnabled(),
+              "CDC client with materialized view topic should skip validation");
+        }, AA_OFF);
+
+    cdcMaterializedViewConfig.setRecordTransformerConfig(cdcRecordTransformerConfig);
+    // Override the store version config to use a materialized view topic name
+    cdcMaterializedViewConfig.setStoreVersionConfigOverride(storeVersionConfig -> {
+      String materializedViewTopicName = storeNameWithoutVersionInfo + "_v1" + VeniceView.VIEW_NAME_SEPARATOR
+          + "testView" + MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX;
+      doReturn(materializedViewTopicName).when(storeVersionConfig).getStoreVersionName();
+    });
+
+    runTest(cdcMaterializedViewConfig);
+  }
+
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
     // mock the store config
@@ -6474,6 +6522,35 @@ public abstract class StoreIngestionTaskTest {
         .setOutputValueClass(String.class)
         .setOutputValueSchema(myValueSchema)
         .setRecordTransformationEnabled(isRecordTransformationEnabled)
+        .build();
+  }
+
+  /**
+   * Builds a CDC record transformer config that returns a mock CDC transformer.
+   * This is used to test logic that depends on isCDCRecordTransformer() returning true.
+   */
+  private DaVinciRecordTransformerConfig buildCdcRecordTransformerConfig() {
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = new SchemaEntry(SCHEMA_ID, myKeySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry valueSchemaEntry = new SchemaEntry(SCHEMA_ID, myValueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
+
+    // Create a mock CDC transformer that will return true for isCDCRecordTransformer()
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer mockCdcTransformer =
+        mock(VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer.class);
+
+    // Mock the function to return the CDC transformer
+    DaVinciRecordTransformerFunctionalInterface cdcTransformerFunction =
+        (storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> mockCdcTransformer;
+
+    return new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(cdcTransformerFunction)
+        .setOutputValueClass(String.class)
+        .setOutputValueSchema(myValueSchema)
+        .setRecordTransformationEnabled(false)
         .build();
   }
 
