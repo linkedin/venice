@@ -417,7 +417,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean skipAfterBatchPushUnsubEnabled = false;
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
   private final Version version;
-  private boolean skipValidationForSeekableClientEnabled = false;
+  private boolean skipValidationsForDaVinciClientEnabled = false;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
 
   public StoreIngestionTask(
@@ -626,7 +626,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // which causes data loss;
       // 2. DIV will fail with CORRUPT error due to checksum failure due to problematic segments with the same id.
       if (this.isDaVinciClient && VeniceView.isViewTopic(kafkaVersionTopic)) {
-        this.skipValidationForSeekableClientEnabled = true;
+        this.skipValidationsForDaVinciClientEnabled = true;
       }
     } else {
       this.schemaIdToSchemaMap = null;
@@ -1122,8 +1122,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   // TEST ONLY
-  void setSkipValidationForSeekableClientEnabled() {
-    this.skipValidationForSeekableClientEnabled = true;
+  void setSkipValidationsForDaVinciClientEnabled() {
+    this.skipValidationsForDaVinciClientEnabled = true;
   }
 
   protected abstract boolean isHybridFollower(PartitionConsumptionState partitionConsumptionState);
@@ -1146,7 +1146,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
     // For da-vinci client with ignoreFatalDivError enabled, we don't need to check for lag.
     // TODO: Implement proper way to check ready to serve for seekable da-vinci client
-    if (skipValidationForSeekableClientEnabled) {
+    if (skipValidationsForDaVinciClientEnabled) {
       partitionConsumptionState.lagHasCaughtUp();
       return true;
     }
@@ -2347,7 +2347,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (recordTransformer == null) {
             throw new VeniceException("seekToCheckpoint will not be supported for non-transformed client");
           }
-          skipValidationForSeekableClientEnabled = true;
           subscribePosition = consumerAction.getPubSubPosition();
           LOGGER.info("Subscribed to user given partition: {} position: {}", topicPartition, subscribePosition);
           // report completion immediately for user seek subscription
@@ -2747,13 +2746,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore)
       // during re-balancing
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
-      if (needToUnsub && !skipValidationForSeekableClientEnabled) {
+      if (needToUnsub && !skipValidationsForDaVinciClientEnabled) {
         errorMessage += ". Consumption will be halted.";
         ingestionNotificationDispatcher
             .reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
         unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition), false);
       } else {
-        String message = skipValidationForSeekableClientEnabled
+        String message = skipValidationsForDaVinciClientEnabled
             ? "{} Ignoring FATAL DIV first time for user provided position subscription. {}"
             : "{}. Consumption will continue because it is either a current version replica or EOP has already been received. {}";
         if (skipAfterBatchPushUnsubEnabled) {
@@ -3090,7 +3089,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Sync latest store version level metadata to disk
         return previousStoreVersionState;
       } else {
-        if (skipValidationForSeekableClientEnabled) {
+        if (skipValidationsForDaVinciClientEnabled) {
           StoreVersionState storeVersionState = getNewStoreVersionState(kafkaMessageEnvelope, !isHybridMode(), null);
           return storeVersionState;
         } else {
@@ -3495,7 +3494,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // Only the ConsumptionTask validates messages if Global RT DIV is enabled, so we don't need to validate here
       // Also skip validation for seekable clients (CDC clients) as they don't need DIV
-      if (!isGlobalRtDivEnabled() && !skipValidationForSeekableClientEnabled) {
+      if (!isGlobalRtDivEnabled() && !skipValidationsForDaVinciClientEnabled) {
         drainerValidateMessage(consumerRecord, partitionConsumptionState, leaderProducedRecordContext);
       }
 
@@ -3658,7 +3657,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       }
     } catch (FatalDataValidationException fatalException) {
-      if (skipValidationForSeekableClientEnabled) {
+      if (skipValidationsForDaVinciClientEnabled || skipValidationsForDaVinciClientEnabled) {
         String msg = "Ignoring FatalDataValidationException in seeking client for replica: "
             + consumerRecord.getTopicPartition();
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
@@ -3985,7 +3984,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         this,
         partitionReplicaIngestionContext,
         startPosition,
-        skipValidationForSeekableClientEnabled);
+        skipValidationsForDaVinciClientEnabled);
 
     // If the record transformer is enabled, consumption should be paused until RocksDB scan for all partitions
     // has completed. Otherwise, there will be resource contention.
@@ -5278,7 +5277,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return resubscribeRequestQueue;
   }
 
-  boolean shouldSkipValidationForSeekableClientEnabled() {
-    return skipValidationForSeekableClientEnabled;
+  boolean shouldSkipValidationsForDaVinciClientEnabled() {
+    return skipValidationsForDaVinciClientEnabled;
   }
 }
