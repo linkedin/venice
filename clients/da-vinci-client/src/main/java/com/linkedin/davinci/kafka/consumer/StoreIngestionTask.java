@@ -2347,6 +2347,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (recordTransformer == null) {
             throw new VeniceException("seekToCheckpoint will not be supported for non-transformed client");
           }
+          skipValidationsForDaVinciClientEnabled = true;
           subscribePosition = consumerAction.getPubSubPosition();
           LOGGER.info("Subscribed to user given partition: {} position: {}", topicPartition, subscribePosition);
           // report completion immediately for user seek subscription
