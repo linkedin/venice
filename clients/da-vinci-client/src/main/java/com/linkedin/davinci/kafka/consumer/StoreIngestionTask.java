@@ -3511,7 +3511,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             currentTimeMs);
       }
 
-      // Debug logging for view topic - before routing to control vs data message processing
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (leaderProducedRecordContext == null
             ? (ControlMessage) kafkaValue.payloadUnion
