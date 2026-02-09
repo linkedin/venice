@@ -92,6 +92,7 @@ import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -115,6 +116,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     super.cleanUp();
+  }
+
+  @BeforeMethod(alwaysRun = true)
+  public void clearETLTriggers() {
+    resetVersionLifecycleEvents();
+    etlTriggeredStoreVersionNames.clear();
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)
@@ -2233,7 +2240,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
   @Test
   public void testVersionLifecycleEvents() {
-    resetVersionLifecycleEvents();
     Assert.assertEquals(versionLifecycleEvents.size(), 0);
     String storeName = Utils.getUniqueString("test_version_lifecycle_events");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
@@ -2253,6 +2259,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(becomeCurrentFromFutureEvent.version.kafkaTopicName(), v1TopicName);
     Assert.assertEquals(becomeCurrentFromFutureEvent.type, VersionLifecycleEventType.BECOMING_CURRENT_FROM_FUTURE);
     Assert.assertTrue(becomeCurrentFromFutureEvent.isSourceCluster);
+    // Reset after initialization for ease of validation
     resetVersionLifecycleEvents();
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     TestUtils.waitForNonDeterministicCompletion(
@@ -2326,8 +2333,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testETLTriggerOnFirstTimeEnablingExternalWithVeniceTrigger() {
-    // Clear any previous ETL triggers
-    etlTriggeredStoreVersionNames.clear();
     String storeName = Utils.getUniqueString("test_etl_trigger");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
 
@@ -2389,9 +2394,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version1.getNumber());
       Assert.assertEquals(version2.getStatus(), VersionStatus.STARTED);
 
-      // Clear any previous ETL triggers
-      etlTriggeredStoreVersionNames.clear();
-
       // Update store to EXTERNAL_WITH_VENICE_TRIGGER for the first time
       veniceAdmin.updateStore(
           clusterName,
@@ -2409,6 +2411,17 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       // Re-enable job completion
       delayParticipantJobCompletion(false);
     }
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
+    // Ensure version 1 becoming backup event is captured when version 2 becomes current
+    VersionLifecycleEvent becomeBackupEvent = versionLifecycleEvents.stream()
+        .filter(event -> event.version.kafkaTopicName().equals(v1TopicName))
+        .filter(event -> event.type == VersionLifecycleEventType.BECOMING_BACKUP)
+        .findFirst()
+        .orElse(null);
+    Assert.assertNotNull(becomeBackupEvent, "Version 1 should have become backup event");
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
@@ -2432,7 +2445,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         storeName,
         new UpdateStoreQueryParams().setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER));
 
-    // Clear ETL triggers after initial setup
+    // Clear ETL triggers after initial setup to verify no re-triggering
     etlTriggeredStoreVersionNames.clear();
 
     // Update store again with same ETL strategy
@@ -2455,9 +2468,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     // Don't create any versions
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 0);
-
-    // Clear any previous ETL triggers
-    etlTriggeredStoreVersionNames.clear();
 
     // Update store to EXTERNAL_WITH_VENICE_TRIGGER for the first time
     veniceAdmin.updateStore(

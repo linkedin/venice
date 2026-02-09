@@ -6286,7 +6286,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private void triggerETLForExistingStoreVersion(Store store) {
     if (!externalETLService.isPresent()) {
       // Defensive coding
-      return;
+      throw new VeniceException("External ETL service is not initialized");
     }
     int currentVersion = store.getCurrentVersion();
     // Find the largest in-progress version greater than current version
