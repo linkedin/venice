@@ -7,7 +7,6 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -125,6 +124,9 @@ public class TestReadPathChaos {
   // Chaos is enabled for CHAOS_ON_SECONDS, then disabled for CHAOS_OFF_SECONDS, repeating.
   private static final int CHAOS_ON_SECONDS = 3;
   private static final int CHAOS_OFF_SECONDS = 7;
+
+  // Seeded Random for reproducible client RPS distribution across test runs
+  private static final Random RPS_RANDOM = new Random(42);
 
   private VeniceClusterWrapper veniceCluster;
   private String storeVersionName;
@@ -333,9 +335,9 @@ public class TestReadPathChaos {
         for (int k = 0; k < 10; k++) {
           warmupKeys.add(k);
         }
-        StatTrackingStoreClient<Integer, Object> warmupClient =
-            (StatTrackingStoreClient<Integer, Object>) clients.get(0);
+        AvroGenericStoreClient<Integer, Object> warmupClient = clients.get(0);
         CountDownLatch warmupLatch = new CountDownLatch(1);
+        AtomicReference<Exception> warmupException = new AtomicReference<>();
         warmupClient.streamingBatchGet(warmupKeys, new StreamingCallback<Integer, Object>() {
           @Override
           public void onRecordReceived(Integer key, Object value) {
@@ -343,291 +345,332 @@ public class TestReadPathChaos {
 
           @Override
           public void onCompletion(Optional<Exception> exception) {
+            exception.ifPresent(warmupException::set);
             warmupLatch.countDown();
           }
         });
-        warmupLatch.await(30, TimeUnit.SECONDS);
+        if (!warmupLatch.await(30, TimeUnit.SECONDS)) {
+          throw new RuntimeException("Warmup streaming request timed out");
+        }
+        if (warmupException.get() != null) {
+          throw new RuntimeException("Warmup streaming request failed", warmupException.get());
+        }
         LOGGER.info("Warmup streaming request succeeded");
       }
 
       // Start traffic threads
-      Random rng = new Random(42);
       ScheduledExecutorService trafficScheduler = Executors.newScheduledThreadPool(NUM_CLIENTS);
       ExecutorService requestExecutor = Executors.newFixedThreadPool(NUM_CLIENTS * 2);
+      ScheduledExecutorService metricsSampler = null;
 
-      for (int clientIdx = 0; clientIdx < NUM_CLIENTS; clientIdx++) {
-        final StatTrackingStoreClient<Integer, Object> trackingClient =
-            (StatTrackingStoreClient<Integer, Object>) clients.get(clientIdx);
-        final int cIdx = clientIdx;
-        int rps = MIN_REQUESTS_PER_SECOND + rng.nextInt(MAX_REQUESTS_PER_SECOND - MIN_REQUESTS_PER_SECOND + 1);
-        long intervalMs = 1000L / rps;
+      try {
+        for (int clientIdx = 0; clientIdx < NUM_CLIENTS; clientIdx++) {
+          final AvroGenericStoreClient<Integer, Object> trackingClient = clients.get(clientIdx);
+          final int cIdx = clientIdx;
+          int rps = MIN_REQUESTS_PER_SECOND + RPS_RANDOM.nextInt(MAX_REQUESTS_PER_SECOND - MIN_REQUESTS_PER_SECOND + 1);
+          long intervalMs = 1000L / rps;
 
-        trafficScheduler.scheduleAtFixedRate(() -> {
-          if (!trafficRunning.get()) {
-            return;
-          }
-          requestExecutor.submit(() -> {
-            try {
-              Set<Integer> keys = generateRandomKeys(KEYS_PER_REQUEST, TOTAL_RECORDS, ThreadLocalRandom.current());
-              final int keyCount = keys.size();
-              final long startNs = System.nanoTime();
-              final AtomicLong recordCount = new AtomicLong(0);
-              CountDownLatch latch = new CountDownLatch(1);
+          trafficScheduler.scheduleAtFixedRate(() -> {
+            if (!trafficRunning.get()) {
+              return;
+            }
+            requestExecutor.submit(() -> {
+              try {
+                Set<Integer> keys = generateRandomKeys(KEYS_PER_REQUEST, TOTAL_RECORDS, ThreadLocalRandom.current());
+                final int keyCount = keys.size();
+                final long startNs = System.nanoTime();
+                final AtomicLong recordCount = new AtomicLong(0);
+                CountDownLatch latch = new CountDownLatch(1);
 
-              trackingClient.streamingBatchGet(keys, new StreamingCallback<Integer, Object>() {
-                @Override
-                public void onRecordReceived(Integer key, Object value) {
-                  recordCount.incrementAndGet();
-                }
+                trackingClient.streamingBatchGet(keys, new StreamingCallback<Integer, Object>() {
+                  @Override
+                  public void onRecordReceived(Integer key, Object value) {
+                    recordCount.incrementAndGet();
+                  }
 
-                @Override
-                public void onCompletion(Optional<Exception> exception) {
-                  long latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNs);
-                  clientLatenciesMs.add(latencyMs);
+                  @Override
+                  public void onCompletion(Optional<Exception> exception) {
+                    long latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNs);
+                    clientLatenciesMs.add(latencyMs);
+                    totalClientRequests.incrementAndGet();
+
+                    if (exception.isPresent() || recordCount.get() < keyCount) {
+                      totalClientUnhealthyRequests.incrementAndGet();
+                    }
+                    if (exception.isPresent()) {
+                      LOGGER.warn("Client {} request completed with exception: {}", cIdx, exception.get().getMessage());
+                    }
+                    latch.countDown();
+                  }
+                });
+                if (!latch.await(60, TimeUnit.SECONDS)) {
+                  totalClientUnhealthyRequests.incrementAndGet();
                   totalClientRequests.incrementAndGet();
-
-                  if (exception.isPresent() || recordCount.get() < keyCount) {
-                    totalClientUnhealthyRequests.incrementAndGet();
-                  }
-                  if (exception.isPresent()) {
-                    LOGGER.warn("Client {} request completed with exception: {}", cIdx, exception.get().getMessage());
-                  }
-                  latch.countDown();
+                  LOGGER.warn("Client {} request timed out after 60s", cIdx);
                 }
-              });
-              if (!latch.await(60, TimeUnit.SECONDS)) {
+              } catch (Exception e) {
                 totalClientUnhealthyRequests.incrementAndGet();
                 totalClientRequests.incrementAndGet();
-                LOGGER.warn("Client {} request timed out after 60s", cIdx);
+                LOGGER.warn("Client {} request failed: {}", cIdx, e.getMessage());
               }
-            } catch (Exception e) {
-              totalClientUnhealthyRequests.incrementAndGet();
-              totalClientRequests.incrementAndGet();
-              LOGGER.warn("Client {} request failed: {}", cIdx, e.getMessage());
-            }
-          });
-        }, 0, intervalMs, TimeUnit.MILLISECONDS);
-      }
-      LOGGER.info(
-          "Traffic started from {} clients ({}-{} rps each), running for {} seconds",
-          NUM_CLIENTS,
-          MIN_REQUESTS_PER_SECOND,
-          MAX_REQUESTS_PER_SECOND,
-          TRAFFIC_DURATION_SECONDS);
+            });
+          }, 0, intervalMs, TimeUnit.MILLISECONDS);
+        }
+        LOGGER.info(
+            "Traffic started from {} clients ({}-{} rps each), running for {} seconds",
+            NUM_CLIENTS,
+            MIN_REQUESTS_PER_SECOND,
+            MAX_REQUESTS_PER_SECOND,
+            TRAFFIC_DURATION_SECONDS);
 
-      // ------ Periodic P99 metrics sampling (every second) ------
-      final AtomicReference<Double> maxRouterP99Latency = new AtomicReference<>(0.0);
-      final AtomicReference<Double> maxRouterP99ResponseWaitingTime = new AtomicReference<>(0.0);
-      final AtomicReference<Double> maxRouterP99PipelineLatency = new AtomicReference<>(0.0);
-      final AtomicReference<Double> maxRouterP99ScatterLatency = new AtomicReference<>(0.0);
-      final AtomicReference<Double> maxRouterP99QueueLatency = new AtomicReference<>(0.0);
-      final AtomicReference<Double> maxRouterP99DispatchLatency = new AtomicReference<>(0.0);
-      final String storeLatencyP99Key = "." + STORE_NAME + "--multiget_streaming_latency.99thPercentile";
-      final String totalLatencyP99Key = ".total--multiget_streaming_latency.99thPercentile";
-      final String storeWaitingP99Key = "." + STORE_NAME + "--multiget_streaming_response_waiting_time.99thPercentile";
-      final String totalWaitingP99Key = ".total--multiget_streaming_response_waiting_time.99thPercentile";
-      final String storePipelineP99Key = "." + STORE_NAME + "--multiget_streaming_pipeline_latency.99thPercentile";
-      final String storeScatterP99Key = "." + STORE_NAME + "--multiget_streaming_scatter_latency.99thPercentile";
-      final String storeQueueP99Key = "." + STORE_NAME + "--multiget_streaming_queue_latency.99thPercentile";
-      final String storeDispatchP99Key = "." + STORE_NAME + "--multiget_streaming_dispatch_latency.99thPercentile";
-      ScheduledExecutorService metricsSampler = Executors.newSingleThreadScheduledExecutor();
-      metricsSampler.scheduleAtFixedRate(() -> {
-        try {
-          for (VeniceRouterWrapper router: veniceCluster.getVeniceRouters()) {
-            if (!router.isRunning()) {
-              continue;
-            }
-            MetricsRepository routerMetrics = router.getMetricsRepository();
-            Map<String, ? extends Metric> metrics = routerMetrics.metrics();
+        // ------ Periodic P99 metrics sampling (every second) ------
+        final AtomicReference<Double> maxRouterP99Latency = new AtomicReference<>(0.0);
+        final AtomicReference<Double> maxRouterP99ResponseWaitingTime = new AtomicReference<>(0.0);
+        final AtomicReference<Double> maxRouterP99PipelineLatency = new AtomicReference<>(0.0);
+        final AtomicReference<Double> maxRouterP99ScatterLatency = new AtomicReference<>(0.0);
+        final AtomicReference<Double> maxRouterP99QueueLatency = new AtomicReference<>(0.0);
+        final AtomicReference<Double> maxRouterP99DispatchLatency = new AtomicReference<>(0.0);
+        final String storeLatencyP99Key = "." + STORE_NAME + "--multiget_streaming_latency.99thPercentile";
+        final String totalLatencyP99Key = ".total--multiget_streaming_latency.99thPercentile";
+        final String storeWaitingP99Key =
+            "." + STORE_NAME + "--multiget_streaming_response_waiting_time.99thPercentile";
+        final String totalWaitingP99Key = ".total--multiget_streaming_response_waiting_time.99thPercentile";
+        final String storePipelineP99Key = "." + STORE_NAME + "--multiget_streaming_pipeline_latency.99thPercentile";
+        final String storeScatterP99Key = "." + STORE_NAME + "--multiget_streaming_scatter_latency.99thPercentile";
+        final String storeQueueP99Key = "." + STORE_NAME + "--multiget_streaming_queue_latency.99thPercentile";
+        final String storeDispatchP99Key = "." + STORE_NAME + "--multiget_streaming_dispatch_latency.99thPercentile";
+        metricsSampler = Executors.newSingleThreadScheduledExecutor();
+        metricsSampler.scheduleAtFixedRate(() -> {
+          try {
+            for (VeniceRouterWrapper router: veniceCluster.getVeniceRouters()) {
+              if (!router.isRunning()) {
+                continue;
+              }
+              MetricsRepository routerMetrics = router.getMetricsRepository();
+              Map<String, ? extends Metric> metrics = routerMetrics.metrics();
 
-            Metric storeLatencyP99 = metrics.get(storeLatencyP99Key);
-            double latencyVal = storeLatencyP99 != null ? storeLatencyP99.value() : 0.0;
-            double waitVal = metrics.get(storeWaitingP99Key) != null ? metrics.get(storeWaitingP99Key).value() : 0.0;
-            double pipelineVal =
-                metrics.get(storePipelineP99Key) != null ? metrics.get(storePipelineP99Key).value() : 0.0;
-            double scatterVal = metrics.get(storeScatterP99Key) != null ? metrics.get(storeScatterP99Key).value() : 0.0;
-            double queueVal = metrics.get(storeQueueP99Key) != null ? metrics.get(storeQueueP99Key).value() : 0.0;
-            double dispatchVal =
-                metrics.get(storeDispatchP99Key) != null ? metrics.get(storeDispatchP99Key).value() : 0.0;
+              Metric storeLatencyP99 = metrics.get(storeLatencyP99Key);
+              double latencyVal = storeLatencyP99 != null ? storeLatencyP99.value() : 0.0;
+              double waitVal = metrics.get(storeWaitingP99Key) != null ? metrics.get(storeWaitingP99Key).value() : 0.0;
+              double pipelineVal =
+                  metrics.get(storePipelineP99Key) != null ? metrics.get(storePipelineP99Key).value() : 0.0;
+              double scatterVal =
+                  metrics.get(storeScatterP99Key) != null ? metrics.get(storeScatterP99Key).value() : 0.0;
+              double queueVal = metrics.get(storeQueueP99Key) != null ? metrics.get(storeQueueP99Key).value() : 0.0;
+              double dispatchVal =
+                  metrics.get(storeDispatchP99Key) != null ? metrics.get(storeDispatchP99Key).value() : 0.0;
 
-            if (storeLatencyP99 != null) {
-              maxRouterP99Latency.updateAndGet(current -> Math.max(current, latencyVal));
-              maxRouterP99ResponseWaitingTime.updateAndGet(current -> Math.max(current, waitVal));
-              maxRouterP99PipelineLatency.updateAndGet(current -> Math.max(current, pipelineVal));
-              maxRouterP99ScatterLatency.updateAndGet(current -> Math.max(current, scatterVal));
-              maxRouterP99QueueLatency.updateAndGet(current -> Math.max(current, queueVal));
-              maxRouterP99DispatchLatency.updateAndGet(current -> Math.max(current, dispatchVal));
-              LOGGER.info(
-                  "METRICS SAMPLE: Router {} chaos:{} | latency:{} wait:{} pipeline:{} scatter:{} queue:{} dispatch:{}",
-                  router.getPort(),
-                  chaosHandler.isEnabled() ? "ON" : "OFF",
-                  String.format("%.1f", latencyVal),
-                  String.format("%.1f", waitVal),
-                  String.format("%.1f", pipelineVal),
-                  String.format("%.1f", scatterVal),
-                  String.format("%.1f", queueVal),
-                  String.format("%.1f", dispatchVal));
-            }
+              if (storeLatencyP99 != null) {
+                maxRouterP99Latency.updateAndGet(current -> Math.max(current, latencyVal));
+                maxRouterP99ResponseWaitingTime.updateAndGet(current -> Math.max(current, waitVal));
+                maxRouterP99PipelineLatency.updateAndGet(current -> Math.max(current, pipelineVal));
+                maxRouterP99ScatterLatency.updateAndGet(current -> Math.max(current, scatterVal));
+                maxRouterP99QueueLatency.updateAndGet(current -> Math.max(current, queueVal));
+                maxRouterP99DispatchLatency.updateAndGet(current -> Math.max(current, dispatchVal));
+                LOGGER.info(
+                    "METRICS SAMPLE: Router {} chaos:{} | latency:{} wait:{} pipeline:{} scatter:{} queue:{} dispatch:{}",
+                    router.getPort(),
+                    chaosHandler.isEnabled() ? "ON" : "OFF",
+                    String.format("%.1f", latencyVal),
+                    String.format("%.1f", waitVal),
+                    String.format("%.1f", pipelineVal),
+                    String.format("%.1f", scatterVal),
+                    String.format("%.1f", queueVal),
+                    String.format("%.1f", dispatchVal));
+              }
 
-            Metric totalLatencyP99 = metrics.get(totalLatencyP99Key);
-            if (totalLatencyP99 != null) {
-              double val = totalLatencyP99.value();
-              maxRouterP99Latency.updateAndGet(current -> Math.max(current, val));
-            }
+              Metric totalLatencyP99 = metrics.get(totalLatencyP99Key);
+              if (totalLatencyP99 != null) {
+                double val = totalLatencyP99.value();
+                maxRouterP99Latency.updateAndGet(current -> Math.max(current, val));
+              }
 
-            Metric totalWaitingP99 = metrics.get(totalWaitingP99Key);
-            if (totalWaitingP99 != null) {
-              double val = totalWaitingP99.value();
-              maxRouterP99ResponseWaitingTime.updateAndGet(current -> Math.max(current, val));
+              Metric totalWaitingP99 = metrics.get(totalWaitingP99Key);
+              if (totalWaitingP99 != null) {
+                double val = totalWaitingP99.value();
+                maxRouterP99ResponseWaitingTime.updateAndGet(current -> Math.max(current, val));
+              }
             }
+          } catch (Exception e) {
+            LOGGER.warn("Error sampling metrics", e);
           }
-        } catch (Exception e) {
-          LOGGER.warn("Error sampling metrics", e);
+        }, 1, 1, TimeUnit.SECONDS);
+
+        // ------ Pipeline delay chaos injection ------
+        // After 30s of warmup traffic, start toggling the ChaosDelayHandler on and off.
+        Thread.sleep(30 * Time.MS_PER_SECOND);
+        LOGGER.info(
+            "CHAOS: Starting pipeline delay injection - {}ms delay, {}s on / {}s off",
+            CHAOS_DELAY_MS,
+            CHAOS_ON_SECONDS,
+            CHAOS_OFF_SECONDS);
+
+        long chaosStartTime = System.currentTimeMillis();
+        long chaosEndTime = chaosStartTime + (TRAFFIC_DURATION_SECONDS - 30) * Time.MS_PER_SECOND;
+        int chaosCycleMs = (CHAOS_ON_SECONDS + CHAOS_OFF_SECONDS) * 1000;
+
+        while (System.currentTimeMillis() < chaosEndTime) {
+          // Enable chaos
+          chaosHandler.setEnabled(true);
+          LOGGER.info("CHAOS: Pipeline delay ENABLED");
+          Thread.sleep(CHAOS_ON_SECONDS * Time.MS_PER_SECOND);
+
+          // Disable chaos
+          chaosHandler.setEnabled(false);
+          LOGGER.info("CHAOS: Pipeline delay DISABLED");
+          long sleepMs = Math.min(CHAOS_OFF_SECONDS * Time.MS_PER_SECOND, chaosEndTime - System.currentTimeMillis());
+          if (sleepMs > 0) {
+            Thread.sleep(sleepMs);
+          }
         }
-      }, 1, 1, TimeUnit.SECONDS);
 
-      // ------ Pipeline delay chaos injection ------
-      // After 30s of warmup traffic, start toggling the ChaosDelayHandler on and off.
-      Thread.sleep(30 * Time.MS_PER_SECOND);
-      LOGGER.info(
-          "CHAOS: Starting pipeline delay injection - {}ms delay, {}s on / {}s off",
-          CHAOS_DELAY_MS,
-          CHAOS_ON_SECONDS,
-          CHAOS_OFF_SECONDS);
-
-      long chaosStartTime = System.currentTimeMillis();
-      long chaosEndTime = chaosStartTime + (TRAFFIC_DURATION_SECONDS - 30) * Time.MS_PER_SECOND;
-      int chaosCycleMs = (CHAOS_ON_SECONDS + CHAOS_OFF_SECONDS) * 1000;
-
-      while (System.currentTimeMillis() < chaosEndTime) {
-        // Enable chaos
-        chaosHandler.setEnabled(true);
-        LOGGER.info("CHAOS: Pipeline delay ENABLED");
-        Thread.sleep(CHAOS_ON_SECONDS * Time.MS_PER_SECOND);
-
-        // Disable chaos
         chaosHandler.setEnabled(false);
-        LOGGER.info("CHAOS: Pipeline delay DISABLED");
-        long sleepMs = Math.min(CHAOS_OFF_SECONDS * Time.MS_PER_SECOND, chaosEndTime - System.currentTimeMillis());
-        if (sleepMs > 0) {
-          Thread.sleep(sleepMs);
+        LOGGER.info("CHAOS: Pipeline delay injection stopped");
+
+        // ------ Collect and log final metrics ------
+        for (VeniceRouterWrapper router: veniceCluster.getVeniceRouters()) {
+          if (!router.isRunning()) {
+            continue;
+          }
+          MetricsRepository routerMetrics = router.getMetricsRepository();
+          Map<String, ? extends Metric> metrics = routerMetrics.metrics();
+
+          Metric storeLatencyP99 = metrics.get(storeLatencyP99Key);
+          if (storeLatencyP99 != null) {
+            double val = storeLatencyP99.value();
+            maxRouterP99Latency.updateAndGet(current -> Math.max(current, val));
+            LOGGER.info("FINAL: Router {} store latency P99: {} ms", router.getPort(), val);
+          }
+          Metric totalLatencyP99 = metrics.get(totalLatencyP99Key);
+          if (totalLatencyP99 != null) {
+            double val = totalLatencyP99.value();
+            maxRouterP99Latency.updateAndGet(current -> Math.max(current, val));
+          }
+          Metric storeWaitingP99 = metrics.get(storeWaitingP99Key);
+          if (storeWaitingP99 != null) {
+            double val = storeWaitingP99.value();
+            maxRouterP99ResponseWaitingTime.updateAndGet(current -> Math.max(current, val));
+            LOGGER.info("FINAL: Router {} store response_waiting_time P99: {} ms", router.getPort(), val);
+          }
+          Metric totalWaitingP99 = metrics.get(totalWaitingP99Key);
+          if (totalWaitingP99 != null) {
+            double val = totalWaitingP99.value();
+            maxRouterP99ResponseWaitingTime.updateAndGet(current -> Math.max(current, val));
+          }
+
+          // Collect new step-by-step metrics
+          Metric pipelineP99 = metrics.get(storePipelineP99Key);
+          if (pipelineP99 != null) {
+            double val = pipelineP99.value();
+            maxRouterP99PipelineLatency.updateAndGet(current -> Math.max(current, val));
+            LOGGER.info("FINAL: Router {} pipeline_latency P99: {} ms", router.getPort(), val);
+          }
+          Metric scatterP99 = metrics.get(storeScatterP99Key);
+          if (scatterP99 != null) {
+            double val = scatterP99.value();
+            maxRouterP99ScatterLatency.updateAndGet(current -> Math.max(current, val));
+            LOGGER.info("FINAL: Router {} scatter_latency P99: {} ms", router.getPort(), val);
+          }
+          Metric queueP99 = metrics.get(storeQueueP99Key);
+          if (queueP99 != null) {
+            double val = queueP99.value();
+            maxRouterP99QueueLatency.updateAndGet(current -> Math.max(current, val));
+            LOGGER.info("FINAL: Router {} queue_latency P99: {} ms", router.getPort(), val);
+          }
+          Metric dispatchP99 = metrics.get(storeDispatchP99Key);
+          if (dispatchP99 != null) {
+            double val = dispatchP99.value();
+            maxRouterP99DispatchLatency.updateAndGet(current -> Math.max(current, val));
+            LOGGER.info("FINAL: Router {} dispatch_latency P99: {} ms", router.getPort(), val);
+          }
         }
+
+        long clientP99Latency = computePercentile(clientLatenciesMs, 99);
+
+        LOGGER.info("======== PIPELINE DELAY CHAOS TEST RESULTS ========");
+        LOGGER.info(
+            "Max router P99 multiget_streaming latency (across entire test): {} ms",
+            String.format("%.2f", maxRouterP99Latency.get()));
+        LOGGER.info(
+            "Max router P99 multiget_streaming response_waiting_time (across entire test): {} ms",
+            String.format("%.2f", maxRouterP99ResponseWaitingTime.get()));
+        LOGGER.info("--- Step-by-step latency breakdown (max P99 across test) ---");
+        LOGGER.info(
+            "  Step 1->2  pipeline_latency (Netty handlers before scatter-gather): {} ms",
+            String.format("%.2f", maxRouterP99PipelineLatency.get()));
+        LOGGER.info(
+            "  Step 2->3  scatter_latency (scatter() call duration): {} ms",
+            String.format("%.2f", maxRouterP99ScatterLatency.get()));
+        LOGGER.info(
+            "  Step 3->4  queue_latency (EventLoop queue wait): {} ms",
+            String.format("%.2f", maxRouterP99QueueLatency.get()));
+        LOGGER.info(
+            "  Step 4->5  dispatch_latency (handler1 dispatch to gatherResponses): {} ms",
+            String.format("%.2f", maxRouterP99DispatchLatency.get()));
+        LOGGER.info("--- Client metrics ---");
+        LOGGER.info("Total client requests: {}", totalClientRequests.get());
+        LOGGER.info("Total client unhealthy requests: {}", totalClientUnhealthyRequests.get());
+        LOGGER.info("Client-side P99 latency: {} ms", clientP99Latency);
+        LOGGER.info("Client latency sample count: {}", clientLatenciesMs.size());
+        if (totalClientRequests.get() > 0) {
+          double unhealthyRate = (double) totalClientUnhealthyRequests.get() / totalClientRequests.get() * 100.0;
+          LOGGER.info("Client unhealthy request rate: {}%", String.format("%.2f", unhealthyRate));
+        }
+        double latencyToWaitRatio = maxRouterP99ResponseWaitingTime.get() > 0
+            ? maxRouterP99Latency.get() / maxRouterP99ResponseWaitingTime.get()
+            : Double.POSITIVE_INFINITY;
+        LOGGER.info(
+            "Latency / response_waiting_time ratio: {} (target: >> 1, production sees 100-900x)",
+            String.format("%.1f", latencyToWaitRatio));
+        LOGGER.info("====================================================");
+
+        Assert.assertTrue(totalClientRequests.get() > 0, "Should have sent at least some requests");
+        Assert.assertTrue(clientLatenciesMs.size() > 0, "Should have recorded at least some latencies");
+      } finally {
+        // Stop traffic and shut down executors
+        trafficRunning.set(false);
+        LOGGER.info("Shutting down executors...");
+
+        trafficScheduler.shutdown();
+        try {
+          if (!trafficScheduler.awaitTermination(30, TimeUnit.SECONDS)) {
+            LOGGER.warn("trafficScheduler did not terminate in time, forcing shutdown");
+            trafficScheduler.shutdownNow();
+          }
+        } catch (InterruptedException e) {
+          LOGGER.warn("Interrupted while waiting for trafficScheduler termination", e);
+          trafficScheduler.shutdownNow();
+          Thread.currentThread().interrupt();
+        }
+
+        requestExecutor.shutdown();
+        try {
+          if (!requestExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+            LOGGER.warn("requestExecutor did not terminate in time, forcing shutdown");
+            requestExecutor.shutdownNow();
+          }
+        } catch (InterruptedException e) {
+          LOGGER.warn("Interrupted while waiting for requestExecutor termination", e);
+          requestExecutor.shutdownNow();
+          Thread.currentThread().interrupt();
+        }
+
+        if (metricsSampler != null) {
+          metricsSampler.shutdown();
+          try {
+            if (!metricsSampler.awaitTermination(10, TimeUnit.SECONDS)) {
+              LOGGER.warn("metricsSampler did not terminate in time, forcing shutdown");
+              metricsSampler.shutdownNow();
+            }
+          } catch (InterruptedException e) {
+            LOGGER.warn("Interrupted while waiting for metricsSampler termination", e);
+            metricsSampler.shutdownNow();
+            Thread.currentThread().interrupt();
+          }
+        }
+
+        LOGGER.info("Executors shut down complete");
       }
-
-      chaosHandler.setEnabled(false);
-      LOGGER.info("CHAOS: Pipeline delay injection stopped");
-
-      // Stop traffic
-      trafficRunning.set(false);
-      trafficScheduler.shutdown();
-      trafficScheduler.awaitTermination(30, TimeUnit.SECONDS);
-      requestExecutor.shutdown();
-      requestExecutor.awaitTermination(30, TimeUnit.SECONDS);
-      LOGGER.info("Traffic stopped");
-
-      // Stop periodic metrics sampling
-      metricsSampler.shutdown();
-      metricsSampler.awaitTermination(10, TimeUnit.SECONDS);
-
-      // ------ Collect and log final metrics ------
-      for (VeniceRouterWrapper router: veniceCluster.getVeniceRouters()) {
-        if (!router.isRunning()) {
-          continue;
-        }
-        MetricsRepository routerMetrics = router.getMetricsRepository();
-        Map<String, ? extends Metric> metrics = routerMetrics.metrics();
-
-        Metric storeLatencyP99 = metrics.get(storeLatencyP99Key);
-        if (storeLatencyP99 != null) {
-          double val = storeLatencyP99.value();
-          maxRouterP99Latency.updateAndGet(current -> Math.max(current, val));
-          LOGGER.info("FINAL: Router {} store latency P99: {} ms", router.getPort(), val);
-        }
-        Metric totalLatencyP99 = metrics.get(totalLatencyP99Key);
-        if (totalLatencyP99 != null) {
-          double val = totalLatencyP99.value();
-          maxRouterP99Latency.updateAndGet(current -> Math.max(current, val));
-        }
-        Metric storeWaitingP99 = metrics.get(storeWaitingP99Key);
-        if (storeWaitingP99 != null) {
-          double val = storeWaitingP99.value();
-          maxRouterP99ResponseWaitingTime.updateAndGet(current -> Math.max(current, val));
-          LOGGER.info("FINAL: Router {} store response_waiting_time P99: {} ms", router.getPort(), val);
-        }
-        Metric totalWaitingP99 = metrics.get(totalWaitingP99Key);
-        if (totalWaitingP99 != null) {
-          double val = totalWaitingP99.value();
-          maxRouterP99ResponseWaitingTime.updateAndGet(current -> Math.max(current, val));
-        }
-
-        // Collect new step-by-step metrics
-        Metric pipelineP99 = metrics.get(storePipelineP99Key);
-        if (pipelineP99 != null) {
-          double val = pipelineP99.value();
-          maxRouterP99PipelineLatency.updateAndGet(current -> Math.max(current, val));
-          LOGGER.info("FINAL: Router {} pipeline_latency P99: {} ms", router.getPort(), val);
-        }
-        Metric scatterP99 = metrics.get(storeScatterP99Key);
-        if (scatterP99 != null) {
-          double val = scatterP99.value();
-          maxRouterP99ScatterLatency.updateAndGet(current -> Math.max(current, val));
-          LOGGER.info("FINAL: Router {} scatter_latency P99: {} ms", router.getPort(), val);
-        }
-        Metric queueP99 = metrics.get(storeQueueP99Key);
-        if (queueP99 != null) {
-          double val = queueP99.value();
-          maxRouterP99QueueLatency.updateAndGet(current -> Math.max(current, val));
-          LOGGER.info("FINAL: Router {} queue_latency P99: {} ms", router.getPort(), val);
-        }
-        Metric dispatchP99 = metrics.get(storeDispatchP99Key);
-        if (dispatchP99 != null) {
-          double val = dispatchP99.value();
-          maxRouterP99DispatchLatency.updateAndGet(current -> Math.max(current, val));
-          LOGGER.info("FINAL: Router {} dispatch_latency P99: {} ms", router.getPort(), val);
-        }
-      }
-
-      long clientP99Latency = computePercentile(clientLatenciesMs, 99);
-
-      LOGGER.info("======== PIPELINE DELAY CHAOS TEST RESULTS ========");
-      LOGGER.info(
-          "Max router P99 multiget_streaming latency (across entire test): {} ms",
-          String.format("%.2f", maxRouterP99Latency.get()));
-      LOGGER.info(
-          "Max router P99 multiget_streaming response_waiting_time (across entire test): {} ms",
-          String.format("%.2f", maxRouterP99ResponseWaitingTime.get()));
-      LOGGER.info("--- Step-by-step latency breakdown (max P99 across test) ---");
-      LOGGER.info(
-          "  Step 1->2  pipeline_latency (Netty handlers before scatter-gather): {} ms",
-          String.format("%.2f", maxRouterP99PipelineLatency.get()));
-      LOGGER.info(
-          "  Step 2->3  scatter_latency (scatter() call duration): {} ms",
-          String.format("%.2f", maxRouterP99ScatterLatency.get()));
-      LOGGER.info(
-          "  Step 3->4  queue_latency (EventLoop queue wait): {} ms",
-          String.format("%.2f", maxRouterP99QueueLatency.get()));
-      LOGGER.info(
-          "  Step 4->5  dispatch_latency (handler1 dispatch to gatherResponses): {} ms",
-          String.format("%.2f", maxRouterP99DispatchLatency.get()));
-      LOGGER.info("--- Client metrics ---");
-      LOGGER.info("Total client requests: {}", totalClientRequests.get());
-      LOGGER.info("Total client unhealthy requests: {}", totalClientUnhealthyRequests.get());
-      LOGGER.info("Client-side P99 latency: {} ms", clientP99Latency);
-      LOGGER.info("Client latency sample count: {}", clientLatenciesMs.size());
-      if (totalClientRequests.get() > 0) {
-        double unhealthyRate = (double) totalClientUnhealthyRequests.get() / totalClientRequests.get() * 100.0;
-        LOGGER.info("Client unhealthy request rate: {}%", String.format("%.2f", unhealthyRate));
-      }
-      double latencyToWaitRatio = maxRouterP99ResponseWaitingTime.get() > 0
-          ? maxRouterP99Latency.get() / maxRouterP99ResponseWaitingTime.get()
-          : Double.POSITIVE_INFINITY;
-      LOGGER.info(
-          "Latency / response_waiting_time ratio: {} (target: >> 1, production sees 100-900x)",
-          String.format("%.1f", latencyToWaitRatio));
-      LOGGER.info("====================================================");
-
-      Assert.assertTrue(totalClientRequests.get() > 0, "Should have sent at least some requests");
-      Assert.assertTrue(clientLatenciesMs.size() > 0, "Should have recorded at least some latencies");
 
     } finally {
       for (AvroGenericStoreClient<Integer, Object> client: clients) {
