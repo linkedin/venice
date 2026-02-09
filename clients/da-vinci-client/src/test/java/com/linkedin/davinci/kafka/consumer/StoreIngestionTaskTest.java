@@ -6468,7 +6468,7 @@ public abstract class StoreIngestionTaskTest {
               "CDC client with materialized view topic should skip validation");
         }, AA_OFF);
 
-    cdcMaterializedViewConfig.setRecordTransformerConfig(cdcRecordTransformerConfig);
+    cdcMaterializedViewConfig.setRecordTransformerConfig(cdcRecordTransformerConfig).setDaVinci(true);
     // Override the store version config to use a materialized view topic name
     cdcMaterializedViewConfig.setStoreVersionConfigOverride(storeVersionConfig -> {
       String materializedViewTopicName = storeNameWithoutVersionInfo + "_v1" + VeniceView.VIEW_NAME_SEPARATOR
