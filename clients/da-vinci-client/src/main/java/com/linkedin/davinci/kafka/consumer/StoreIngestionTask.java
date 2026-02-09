@@ -3657,7 +3657,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       }
     } catch (FatalDataValidationException fatalException) {
-      if (skipValidationsForDaVinciClientEnabled || skipValidationsForDaVinciClientEnabled) {
+      if (skipValidationsForDaVinciClientEnabled) {
         String msg = "Ignoring FatalDataValidationException in seeking client for replica: "
             + consumerRecord.getTopicPartition();
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
