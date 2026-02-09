@@ -10,6 +10,7 @@ import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusListener;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
+import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PathResourceRegistry;
@@ -19,6 +20,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -356,7 +358,45 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
         kafkaTopic,
         partitionId,
         clusterName);
-    HelixUtils.update(partitionStatusAccessor, partitionStatusPath, partitionStatus);
+
+    // Use compareAndUpdate instead of update to handle concurrent modifications
+    // This prevents lost updates when servers are updating replica statuses concurrently
+    HelixUtils.compareAndUpdate(partitionStatusAccessor, partitionStatusPath, currentData -> {
+      // If no current data exists, just use the provided partition status
+      if (currentData == null) {
+        return partitionStatus;
+      }
+
+      // Merge logic: preserve any replica updates that happened concurrently
+      // For stale replica cleanup: only keep replicas that are in the provided partitionStatus,
+      // but use currentData's version of those replicas to preserve concurrent updates
+      PartitionStatus merged = new PartitionStatus(partitionId);
+      Set<String> instanceIdsToKeep = partitionStatus.getReplicaStatuses()
+          .stream()
+          .map(rs -> rs.getInstanceId())
+          .collect(java.util.stream.Collectors.toSet());
+
+      // Keep replicas from current data if they're in our keep list
+      for (ReplicaStatus currentReplica: currentData.getReplicaStatuses()) {
+        if (instanceIdsToKeep.contains(currentReplica.getInstanceId())) {
+          // Use current data to preserve any concurrent updates
+          merged.updateReplicaStatus(
+              currentReplica.getInstanceId(),
+              currentReplica.getCurrentStatus(),
+              currentReplica.getIncrementalPushVersion());
+
+          // Copy status history to preserve full history
+          merged.getReplicaStatuses()
+              .stream()
+              .filter(rs -> rs.getInstanceId().equals(currentReplica.getInstanceId()))
+              .findFirst()
+              .ifPresent(rs -> rs.setStatusHistory(new ArrayList<>(currentReplica.getStatusHistory())));
+        }
+      }
+
+      return merged;
+    });
+
     LOGGER.debug(
         "Updated partition status for topic {} partition {} in cluster {}",
         kafkaTopic,
