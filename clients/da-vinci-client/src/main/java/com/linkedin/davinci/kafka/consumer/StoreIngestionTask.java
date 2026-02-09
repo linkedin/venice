@@ -619,13 +619,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       this.recordTransformerStats = internalRecordTransformerConfig.getRecordTransformerStats();
 
-      // TODO: Skipping DIV for CDC client consuming from view topic.
+      // TODO: Skipping DIV for CDC client + DVC client consuming from view topic.
       // Bug: Currently view writer is writing multiple segments with the same segment id to view topic, causing 2 DIV
       // failures:
       // 1. duplicated records due to same segment id and same sequence number, DIV silently drops the second record,
       // which causes data loss;
       // 2. DIV will fail with CORRUPT error due to checksum failure due to problematic segments with the same id.
-      if (this.recordTransformer.isCDCRecordTransformer() && VeniceView.isViewTopic(kafkaVersionTopic)) {
+      if (this.isDaVinciClient && VeniceView.isViewTopic(kafkaVersionTopic)) {
         this.skipValidationForSeekableClientEnabled = true;
       }
     } else {
