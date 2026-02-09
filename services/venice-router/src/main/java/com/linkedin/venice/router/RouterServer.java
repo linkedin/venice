@@ -21,6 +21,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.d2.D2ConfigUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
@@ -251,7 +252,32 @@ public class RouterServer extends AbstractVeniceService {
       sslFactory = Optional.empty();
     }
 
-    RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory);
+    List<ServiceDiscoveryAnnouncer> d2Servers = new ArrayList<>();
+
+    if (props.getBoolean("router.d2.announce.enabled", false)) {
+      String zkAddress = props.getString(ConfigKeys.ZOOKEEPER_ADDRESS);
+      String announceHost = props.getString("router.d2.announce.host", "localhost");
+      int port = props.getInt(ConfigKeys.LISTENER_PORT);
+      String localUri = "http://" + announceHost + ":" + port;
+      Map<String, String> clusterToD2 = props.getMap(ConfigKeys.CLUSTER_TO_D2);
+
+      for (Map.Entry<String, String> entry: clusterToD2.entrySet()) {
+        String d2ServiceName = entry.getValue();
+        String d2ClusterName = d2ServiceName + "_d2_cluster";
+        D2ConfigUtils.setupD2Config(zkAddress, false, d2ClusterName, d2ServiceName);
+        d2Servers.addAll(D2ConfigUtils.getD2Servers(zkAddress, d2ClusterName, localUri));
+      }
+
+      // Always announce the global cluster discovery service (separate from per-cluster D2)
+      String discoveryServiceName = DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME;
+      String discoveryClusterName = discoveryServiceName + "_d2_cluster";
+      D2ConfigUtils.setupD2Config(zkAddress, false, discoveryClusterName, discoveryServiceName);
+      d2Servers.addAll(D2ConfigUtils.getD2Servers(zkAddress, discoveryClusterName, localUri));
+
+      LOGGER.info("D2 announcement enabled with {} announcers for router URI: {}", d2Servers.size(), localUri);
+    }
+
+    RouterServer server = new RouterServer(props, d2Servers, Optional.empty(), sslFactory);
     server.start();
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
