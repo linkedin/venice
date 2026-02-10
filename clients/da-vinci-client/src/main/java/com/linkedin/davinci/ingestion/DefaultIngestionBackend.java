@@ -769,7 +769,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   static class ReplicaConsumptionContext {
-    private ReplicaIntendedState state = ReplicaIntendedState.NOT_EXIST;
-    private final Object stateLock = new Object(); // guards reads/writes of state
+    ReplicaIntendedState state = ReplicaIntendedState.NOT_EXIST;
+    final Object stateLock = new Object(); // guards reads/writes of state
   }
 }
