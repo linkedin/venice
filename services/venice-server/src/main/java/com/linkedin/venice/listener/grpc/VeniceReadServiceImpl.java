@@ -10,6 +10,7 @@ import com.linkedin.venice.protocols.VeniceMetadataResponse;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.grpc.stub.StreamObserver;
 import io.netty.buffer.ByteBuf;
 import org.apache.logging.log4j.LogManager;
@@ -18,6 +19,9 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServiceImplBase {
   private static final Logger LOGGER = LogManager.getLogger(VeniceReadServiceImpl.class);
+  private static final String GRPC_METADATA_ERROR_PREFIX = "GRPC_METADATA_ERROR:";
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final VeniceServerGrpcRequestProcessor requestProcessor;
   private final ReadMetadataRetriever readMetadataRetriever;
@@ -61,11 +65,14 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
             .setErrorCode(VeniceReadResponseStatus.OK);
       }
     } catch (UnsupportedOperationException e) {
-      LOGGER
-          .warn("Metadata requested for a storage node with read quota not enabled, store: {}", request.getStoreName());
+      // This happens when storageNodeReadQuotaEnabled is false for the store. The metadata endpoint is
+      // designed for the fast client, which requires read quota enforcement on storage nodes.
       responseBuilder.setErrorCode(VeniceReadResponseStatus.BAD_REQUEST).setErrorMessage(e.getMessage());
     } catch (Exception e) {
-      LOGGER.error("Error handling metadata request for store: {}", request.getStoreName(), e);
+      String filterKey = GRPC_METADATA_ERROR_PREFIX + request.getStoreName();
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(filterKey)) {
+        LOGGER.error("Error handling gRPC metadata request for store: {}", request.getStoreName(), e);
+      }
       responseBuilder.setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
           .setErrorMessage("Internal error: " + e.getMessage());
     }
