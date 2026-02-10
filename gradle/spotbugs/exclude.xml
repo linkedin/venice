@@ -408,6 +408,8 @@
     <Or>
       <Class name="~.*?Stats.*"/>
       <Class name="com.linkedin.venice.kafka.KafkaClientFactory$MetricsParameters"/>
+      <!--Fields will be used in upcoming behavioral changes for start/stop/drop lifecycle coordination-->
+      <Class name="com.linkedin.davinci.ingestion.DefaultIngestionBackend$ReplicaConsumptionContext"/>
     </Or>
   </Match>
   <Match>
