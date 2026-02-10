@@ -177,8 +177,9 @@ message CompressionDictionaryResponse {
 }
 
 // Enum corresponding to com.linkedin.venice.meta.ServerAdminAction.
-// Values are offset by 1 from Java enum to accommodate proto3's required UNSPECIFIED = 0.
-// Server must map: proto value - 1 = Java enum ordinal (when proto value > 0).
+// Non-zero values must match the integer values returned by ServerAdminAction.getValue()
+// in Java. SERVER_ADMIN_ACTION_UNSPECIFIED = 0 indicates "no action specified" and must
+// not be mapped to any Java enum value.
 enum ServerAdminAction {
   SERVER_ADMIN_ACTION_UNSPECIFIED = 0;
   DUMP_INGESTION_STATE = 1;
