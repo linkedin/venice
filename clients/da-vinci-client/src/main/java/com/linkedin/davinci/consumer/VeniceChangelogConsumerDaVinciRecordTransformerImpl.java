@@ -125,7 +125,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.partitionToVersionToServe = new VeniceConcurrentHashMap<>();
     this.isVersionSpecificClient = changelogClientConfig.getStoreVersion() != null;
     this.veniceChangelogConsumerClientFactory = veniceChangelogConsumerClientFactory;
-    this.viewName = changelogClientConfig.getViewName();
+    this.viewName = (changelogClientConfig.getViewName() == null || changelogClientConfig.getViewName().isEmpty())
+        ? null
+        : changelogClientConfig.getViewName();
 
     recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(DaVinciRecordTransformerChangelogConsumer::new)

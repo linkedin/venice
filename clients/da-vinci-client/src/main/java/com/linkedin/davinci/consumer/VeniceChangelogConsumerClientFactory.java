@@ -109,7 +109,7 @@ public class VeniceChangelogConsumerClientFactory {
       ChangelogClientConfig newStoreChangelogClientConfig =
           getNewStoreChangelogClientConfig(storeName).setSpecificValue(valueClass)
               .setConsumerName(name)
-              .setViewName(viewNameOverride)
+              .setViewName(StringUtils.isEmpty(viewNameOverride) ? null : viewNameOverride)
               .setIsStateful(false);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
       String consumerName =

@@ -638,6 +638,16 @@ public class TestMaterializedViewEndToEnd {
     testDVCConsumer(storeName, 100);
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBatchOnlyNoViewWithStatelessCDCConsumer() throws Exception {
+    testBatchOnlyNoViewWithCDCConsumer(false);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBatchOnlyNoViewWithStatefulCDCConsumer() throws Exception {
+    testBatchOnlyNoViewWithCDCConsumer(true);
+  }
+
   private void testBatchOnlyMaterializedViewCDCConsumer(boolean useStatefulConsumer) throws Exception {
     // Create a batch only store with materialized view and run batch push job with 100 records
     File inputDir = getTempDataDirectory();
@@ -658,6 +668,44 @@ public class TestMaterializedViewEndToEnd {
 
       // Test CDC consumer
       testCDCConsumer(storeName, changelogClientConfig, useStatefulConsumer);
+    } finally {
+      D2ClientUtils.shutdownClient(d2Client);
+    }
+  }
+
+  public void testBatchOnlyNoViewWithCDCConsumer(boolean isStatefulClient) throws Exception {
+    // Create a batch only store with materialized view and run batch push job with 100 records
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("batchStore");
+
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        multiRegionMultiClusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
+        .setChunkingEnabled(true)
+        .setRmdChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setNativeReplicationSourceFabric(childDatacenters.get(0).getRegionName())
+        .setPartitionCount(3);
+
+    ControllerClient controllerClient =
+        IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    IntegrationTestPushUtils.runVPJ(props);
+    // Setup D2Client and ChangelogClientConfig
+    D2Client d2Client = D2TestUtils
+        .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress());
+
+    try {
+      ChangelogClientConfig changelogClientConfig = createChangelogClientConfig(d2Client, inputDirPath, "");
+
+      // Test CDC consumer
+      testCDCConsumer(storeName, changelogClientConfig, isStatefulClient);
     } finally {
       D2ClientUtils.shutdownClient(d2Client);
     }
