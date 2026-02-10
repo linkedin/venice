@@ -4,9 +4,13 @@ package com.linkedin.venice.protocols;
 option java_multiple_files = true;
 
 service VeniceReadService {
+  // Existing RPCs (implemented)
   rpc get (VeniceClientRequest) returns (VeniceServerResponse) {}
   rpc batchGet(VeniceClientRequest) returns (VeniceServerResponse) {}
   rpc countByValue(CountByValueRequest) returns (CountByValueResponse) {}
+
+  // New RPCs below are defined for future implementation.
+  // Server-side implementation will be added in subsequent PRs.
 
   rpc singleGet(SingleGetRequest) returns (SingleGetResponse) {}
 
