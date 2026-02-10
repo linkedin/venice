@@ -100,7 +100,8 @@ public class BlobTransferStatusTrackingManager {
     AtomicReference<BlobTransferStatus> statusRef = partitionLevelTransferStatusEnum.get(replicaId);
     if (statusRef != null) {
       BlobTransferStatus currentStatus = statusRef.get();
-      if (currentStatus == BlobTransferStatus.TRANSFER_STARTED) {
+      if (currentStatus == BlobTransferStatus.TRANSFER_STARTED
+          || currentStatus == BlobTransferStatus.TRANSFER_NOT_STARTED) {
         statusRef.set(BlobTransferStatus.TRANSFER_COMPLETED);
         LOGGER.info("Marked transfer status as TRANSFER_COMPLETED for replica {} (was {})", replicaId, currentStatus);
       } else {
