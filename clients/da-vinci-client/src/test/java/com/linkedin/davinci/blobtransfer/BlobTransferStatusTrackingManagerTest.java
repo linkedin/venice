@@ -222,6 +222,42 @@ public class BlobTransferStatusTrackingManagerTest {
   }
 
   @Test
+  public void testMarkTransferCompletedFromNotStarted() {
+    // Test the scenario where transfer is marked complete from TRANSFER_NOT_STARTED state
+    // This can happen when the transfer completes very quickly before startedTransfer is called
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic("testStore", 1), 0);
+    statusTrackingManager.initialTransfer(replicaId);
+
+    assertEquals(statusTrackingManager.getTransferStatus(replicaId), BlobTransferStatus.TRANSFER_NOT_STARTED);
+    assertTrue(statusTrackingManager.isBlobTransferInProgress(replicaId));
+
+    // Mark as completed directly from TRANSFER_NOT_STARTED
+    statusTrackingManager.markTransferCompleted(replicaId);
+    assertEquals(statusTrackingManager.getTransferStatus(replicaId), BlobTransferStatus.TRANSFER_COMPLETED);
+    assertFalse(statusTrackingManager.isBlobTransferCancelRequested(replicaId));
+    assertFalse(statusTrackingManager.isBlobTransferInProgress(replicaId));
+    assertTrue(statusTrackingManager.isTransferInFinalState(replicaId));
+  }
+
+  @Test
+  public void testMarkTransferCompletedFromCancelRequested() {
+    // Test that markTransferCompleted does not transition from TRANSFER_CANCEL_REQUESTED
+    // Only TRANSFER_STARTED and TRANSFER_NOT_STARTED should transition to TRANSFER_COMPLETED
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic("testStore", 1), 0);
+    statusTrackingManager.startedTransfer(replicaId);
+    statusTrackingManager.cancelTransfer(replicaId);
+
+    assertEquals(statusTrackingManager.getTransferStatus(replicaId), BlobTransferStatus.TRANSFER_CANCEL_REQUESTED);
+
+    // Attempt to mark as completed from TRANSFER_CANCEL_REQUESTED (should be ignored)
+    statusTrackingManager.markTransferCompleted(replicaId);
+
+    // Status should remain TRANSFER_CANCEL_REQUESTED (not transitioned to TRANSFER_COMPLETED)
+    assertEquals(statusTrackingManager.getTransferStatus(replicaId), BlobTransferStatus.TRANSFER_CANCEL_REQUESTED);
+    assertTrue(statusTrackingManager.isBlobTransferCancelRequested(replicaId));
+  }
+
+  @Test
   public void testMarkTransferCancelled() {
     String replicaId = Utils.getReplicaId(Version.composeKafkaTopic("testStore", 1), 0);
     statusTrackingManager.startedTransfer(replicaId);
