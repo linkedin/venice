@@ -5,8 +5,8 @@ import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -29,7 +29,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final RealTimeTopicSwitcher realTimeTopicSwitcher;
   private final Optional<DynamicAccessController> accessController;
   private final HelixAdminClient helixAdminClient;
-  private final Optional<ArrayList<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
+  private final Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
 
   public VeniceDistClusterControllerStateModelFactory(
       ZkClient zkClient,
@@ -41,7 +41,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       Optional<DynamicAccessController> accessController,
       HelixAdminClient helixAdminClient,
-      Optional<ArrayList<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners) {
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterConfigs = clusterConfigs;

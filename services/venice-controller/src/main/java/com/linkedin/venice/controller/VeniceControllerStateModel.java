@@ -11,7 +11,7 @@ import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -62,7 +62,7 @@ public class VeniceControllerStateModel extends StateModel {
   private HelixVeniceClusterResources clusterResources;
 
   private final ExecutorService workerService;
-  private final Optional<ArrayList<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
+  private final Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
 
   // Configurable timeout for testing purposes
   private long stateTransitionTimeoutMs = TimeUnit.MINUTES.toMillis(DEFAULT_STANDBY_TO_LEADER_ST_TIMEOUT_IN_MIN);
@@ -78,7 +78,7 @@ public class VeniceControllerStateModel extends StateModel {
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       Optional<DynamicAccessController> accessController,
       HelixAdminClient helixAdminClient,
-      Optional<ArrayList<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners) {
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners) {
     this._currentState = new StateModelParser().getInitialState(VeniceControllerStateModel.class);
     this.clusterName = clusterName;
     this.zkClient = zkClient;

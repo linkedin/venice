@@ -179,7 +179,7 @@ class AbstractTestVeniceHelixAdmin {
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
-        Optional.of(mockVersionLifecycleEventListener));
+        Optional.of(Collections.singletonList(mockVersionLifecycleEventListener)));
     veniceAdmin.initStorageCluster(clusterName);
     this.topicCleanupService = new TopicCleanupService(
         veniceAdmin,

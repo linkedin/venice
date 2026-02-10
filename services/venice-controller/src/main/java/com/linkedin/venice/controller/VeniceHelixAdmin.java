@@ -500,7 +500,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubTopicRepository pubSubTopicRepository,
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
-      Optional<ArrayList<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners) {
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners) {
     this(
         multiClusterConfigs,
         metricsRepository,
@@ -533,7 +533,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines,
-      Optional<ArrayList<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners) {
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
     this.logContext = multiClusterConfigs.getLogContext();
