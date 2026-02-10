@@ -148,7 +148,9 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   }
 
   public ChangelogClientConfig<T> setViewName(String viewName) {
-    this.viewName = viewName;
+    if (viewName != null && !viewName.isEmpty()) {
+      this.viewName = viewName;
+    }
     return this;
   }
 
