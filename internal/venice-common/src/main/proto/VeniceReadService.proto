@@ -173,10 +173,19 @@ message CompressionDictionaryResponse {
   optional string errorMessage = 5;
 }
 
+// Enum corresponding to com.linkedin.venice.meta.ServerAdminAction.
+// Values are offset by 1 from Java enum to accommodate proto3's required UNSPECIFIED = 0.
+// Server must map: proto value - 1 = Java enum ordinal (when proto value > 0).
+enum ServerAdminAction {
+  SERVER_ADMIN_ACTION_UNSPECIFIED = 0;
+  DUMP_INGESTION_STATE = 1;
+  DUMP_SERVER_CONFIGS = 2;
+}
+
 message AdminRequest {
   string resourceName = 1;
   optional uint32 partition = 2;
-  string serverAdminAction = 3;
+  ServerAdminAction serverAdminAction = 3;
 }
 
 message AdminResponse {
