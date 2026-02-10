@@ -11,6 +11,8 @@ service VeniceReadService {
 
   // New RPCs below are defined for future implementation.
   // Server-side implementation will be added in subsequent PRs.
+  // TODO: gRPC interceptors (e.g., ACL) currently assume VeniceClientRequest as the inbound
+  // message type. They must be updated to handle these new request types before enabling these RPCs.
 
   rpc singleGet(SingleGetRequest) returns (SingleGetResponse) {}
 
@@ -97,7 +99,7 @@ message SingleGetResponse {
   uint32 compressionStrategy = 4;
   string contentType = 5;
   uint32 contentLength = 6;
-  uint32 rcu = 7;
+  uint32 responseRCU = 7;
 }
 
 message MultiGetRequest {
@@ -137,7 +139,7 @@ message MultiKeyResponse {
   uint32 compressionStrategy = 4;
   string contentType = 5;
   uint32 contentLength = 6;
-  uint32 rcu = 7;
+  uint32 responseRCU = 7;
 }
 
 message MultiKeyStreamingResponse {
@@ -148,7 +150,7 @@ message MultiKeyStreamingResponse {
   uint32 compressionStrategy = 5;
   string contentType = 6;
   uint32 contentLength = 7;
-  uint32 rcu = 8;
+  uint32 responseRCU = 8;
 }
 
 message RpcRequestHeader {
@@ -177,9 +179,9 @@ message CompressionDictionaryResponse {
 }
 
 // Enum corresponding to com.linkedin.venice.meta.ServerAdminAction.
-// Non-zero values must match the integer values returned by ServerAdminAction.getValue()
-// in Java. SERVER_ADMIN_ACTION_UNSPECIFIED = 0 indicates "no action specified" and must
-// not be mapped to any Java enum value.
+// Proto values are offset by +1 from the Java enum's getValue() to accommodate proto3's
+// required UNSPECIFIED = 0 default. Mapping: proto_value = java_getValue() + 1.
+// SERVER_ADMIN_ACTION_UNSPECIFIED = 0 has no Java equivalent and should be treated as an error.
 enum ServerAdminAction {
   SERVER_ADMIN_ACTION_UNSPECIFIED = 0;
   DUMP_INGESTION_STATE = 1;
