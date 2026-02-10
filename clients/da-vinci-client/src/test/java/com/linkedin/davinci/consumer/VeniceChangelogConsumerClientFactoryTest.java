@@ -179,8 +179,8 @@ public class VeniceChangelogConsumerClientFactoryTest {
     globalChangelogClientConfig.setViewName(VIEW_NAME);
     Assert.assertEquals(globalChangelogClientConfig.getViewName(), VIEW_NAME);
 
-    // reset view name to null
-    globalChangelogClientConfig.setViewName(null);
+    // reset view name to null through empty string
+    globalChangelogClientConfig.setViewName("");
     Assert.assertNull(globalChangelogClientConfig.getViewName());
   }
 
