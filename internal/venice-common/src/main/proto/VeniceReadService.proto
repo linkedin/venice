@@ -78,6 +78,9 @@ message ValueCount {
 /*
  * Note: The following message formats will be evolved in the future. The current format is used
  * for the initial implementation and helps refactor the existing code.
+ *
+ * Error handling: Errors are sent via gRPC's onError() mechanism using StatusRuntimeException
+ * with google.rpc.Status. Response messages do not contain errorMessage fields.
  */
 message SingleGetRequest {
   string resourceName = 1;
@@ -92,10 +95,9 @@ message SingleGetResponse {
   bytes value = 2;
   sint32 schemaId = 3;
   uint32 compressionStrategy = 4;
-  optional string errorMessage = 5;
-  string contentType = 6;
-  uint32 contentLength = 7;
-  uint32 rcu = 8;
+  string contentType = 5;
+  uint32 contentLength = 6;
+  uint32 rcu = 7;
 }
 
 message MultiGetRequest {
@@ -133,10 +135,9 @@ message MultiKeyResponse {
   bytes value = 2;
   sint32 schemaId = 3;
   uint32 compressionStrategy = 4;
-  optional string errorMessage = 5;
-  string contentType = 6;
-  uint32 contentLength = 7;
-  uint32 rcu = 8;
+  string contentType = 5;
+  uint32 contentLength = 6;
+  uint32 rcu = 7;
 }
 
 message MultiKeyStreamingResponse {
@@ -145,10 +146,9 @@ message MultiKeyStreamingResponse {
   bytes value = 3;
   sint32 schemaId = 4;
   uint32 compressionStrategy = 5;
-  optional string errorMessage = 6;
-  string contentType = 7;
-  uint32 contentLength = 8;
-  uint32 rcu = 9;
+  string contentType = 6;
+  uint32 contentLength = 7;
+  uint32 rcu = 8;
 }
 
 message RpcRequestHeader {
@@ -174,7 +174,6 @@ message CompressionDictionaryResponse {
   bytes value = 2;
   string contentType = 3;
   uint32 contentLength = 4;
-  optional string errorMessage = 5;
 }
 
 // Enum corresponding to com.linkedin.venice.meta.ServerAdminAction.
@@ -198,7 +197,6 @@ message AdminResponse {
   sint32 schemaId = 3;
   string contentType = 4;
   uint32 contentLength = 5;
-  optional string errorMessage = 6;
 }
 
 message CurrentVersionInfoRequest {
@@ -208,8 +206,7 @@ message CurrentVersionInfoRequest {
 message CurrentVersionInfoResponse {
   int32 statusCode = 1;
   sint32 currentVersion = 2;
-  optional string errorMessage = 3;
-  string contentType = 4;
+  string contentType = 3;
 }
 
 message MetadataRequest {
@@ -222,7 +219,6 @@ message MetadataResponse {
   sint32 schemaId = 3;
   string contentType = 4;
   uint32 contentLength = 5;
-  optional string errorMessage = 6;
 }
 
 message IngestionContextRequest {
@@ -236,5 +232,4 @@ message IngestionContextResponse {
   bytes value = 2;
   string contentType = 3;
   uint32 contentLength = 4;
-  optional string errorMessage = 5;
 }
