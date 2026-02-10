@@ -404,13 +404,13 @@ public class VeniceServerTest {
   }
 
   /**
-   * gRPC variant of {@link #testMetadataFetchRequest()}. Uses the gRPC {@code getMetadata} RPC instead of the HTTP
-   * {@code /metadata/{storeName}} endpoint and verifies the same response content.
+   * Verifies feature parity between the HTTP {@code /metadata/{storeName}} endpoint and the gRPC
+   * {@code getMetadata} RPC by sending both requests to each server and comparing the raw Avro response bytes.
    */
   @Test
   public void testGrpcMetadataFetchRequest() throws ExecutionException, InterruptedException, IOException {
     Utils.thisIsLocalhost();
-    int servers = 6;
+    int servers = 3;
     int replicationFactor = 2;
 
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
@@ -419,7 +419,9 @@ public class VeniceServerTest {
         .replicationFactor(replicationFactor)
         .enableGrpc(true)
         .build();
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options);
+        CloseableHttpAsyncClient httpClient =
+            HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
 
       HelixAdmin admin = new ZKHelixAdmin(cluster.getZk().getAddress());
 
@@ -455,49 +457,49 @@ public class VeniceServerTest {
               controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true))
                   .isError()));
 
+      httpClient.start();
+
       List<ManagedChannel> channels = new ArrayList<>();
       try {
         for (int i = 0; i < servers; i++) {
           VeniceServerWrapper server = cluster.getVeniceServers().get(i);
-          String grpcAddress = server.getGrpcAddress();
 
-          ManagedChannel channel = Grpc.newChannelBuilder(grpcAddress, InsecureChannelCredentials.create()).build();
+          // --- HTTP request ---
+          HttpGet httpRequest = new HttpGet(
+              "http://" + server.getAddress() + "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName);
+          HttpResponse httpResponse = httpClient.execute(httpRequest, null).get();
+          Assert.assertEquals(httpResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK);
+
+          byte[] httpBody;
+          try (InputStream bodyStream = httpResponse.getEntity().getContent()) {
+            httpBody = IOUtils.toByteArray(bodyStream);
+          }
+
+          // --- gRPC request ---
+          ManagedChannel channel =
+              Grpc.newChannelBuilder(server.getGrpcAddress(), InsecureChannelCredentials.create()).build();
           channels.add(channel);
 
           VeniceReadServiceGrpc.VeniceReadServiceBlockingStub blockingStub =
               VeniceReadServiceGrpc.newBlockingStub(channel);
-
-          VeniceMetadataRequest grpcRequest = VeniceMetadataRequest.newBuilder().setStoreName(storeName).build();
-          VeniceMetadataResponse grpcResponse = blockingStub.getMetadata(grpcRequest);
+          VeniceMetadataResponse grpcResponse =
+              blockingStub.getMetadata(VeniceMetadataRequest.newBuilder().setStoreName(storeName).build());
 
           Assert.assertEquals(
               grpcResponse.getErrorCode(),
               VeniceReadResponseStatus.OK,
               "gRPC metadata request failed for server " + i + ": " + grpcResponse.getErrorMessage());
 
-          Assert.assertFalse(
-              grpcResponse.getMetadata().isEmpty(),
-              "Metadata response body should not be empty for server " + i);
+          byte[] grpcBody = grpcResponse.getMetadata().toByteArray();
 
-          // Deserialize the Avro metadata response record
+          // --- Verify HTTP and gRPC return identical Avro bytes ---
+          Assert.assertEquals(grpcBody, httpBody, "HTTP and gRPC metadata responses differ for server " + i);
+
+          // Deserialize and verify content
           RecordDeserializer<MetadataResponseRecord> deserializer =
               SerializerDeserializerFactory.getAvroGenericDeserializer(MetadataResponseRecord.SCHEMA$);
-          byte[] metadataBytes = grpcResponse.getMetadata().toByteArray();
-          GenericRecord metadataResponse = deserializer.deserialize(metadataBytes);
+          GenericRecord metadataResponse = deserializer.deserialize(grpcBody);
 
-          try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(MetadataResponseRecord.SCHEMA$);
-            Encoder jsonEncoder = AvroCompatibilityHelper.newJsonEncoder(MetadataResponseRecord.SCHEMA$, output, true);
-            avroDatumWriter.write(metadataResponse, jsonEncoder);
-            jsonEncoder.flush();
-            output.flush();
-
-            LOGGER.info("Got gRPC metadata response from server {} : {}", i, output);
-          } catch (IOException e) {
-            throw new VeniceException(e);
-          }
-
-          // Verify key schema
           Assert.assertEquals(
               ((HashMap<Utf8, Utf8>) metadataResponse.get("keySchema")).get(new Utf8("1")),
               new Utf8("\"int\""));
