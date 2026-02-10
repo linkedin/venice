@@ -652,7 +652,7 @@ public class TestMaterializedViewEndToEnd {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testBatchOnlyNoViewWithDVCConsumer() throws Exception {
-    // Create a batch only store with materialized view and run batch push job with 100 records
+    // Create a batch only store with no view and run batch push job with 100 records
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
@@ -661,7 +661,7 @@ public class TestMaterializedViewEndToEnd {
     setupStoreWithNoView(inputDirPath, storeName, recordSchema);
 
     // Verify DVC consumer when there is no view.
-    // Start a DVC client that's subscribed to partition 0 of the store's materialized view. The DVC client should
+    // Start a DVC client that's subscribed to partition 0, 1, 3 of the store. The DVC client should
     // contain all data records.
     D2Client d2Client = D2TestUtils
         .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress());
