@@ -88,16 +88,14 @@ public class DefaultIngestionBackend implements IngestionBackend {
     String replicaId = Utils.getReplicaId(storeVersion, partition);
     ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
 
-    synchronized (replicaContext.stateLock) {
-      if (replicaContext.state == ReplicaIntendedState.RUNNING) {
-        LOGGER.info("startConsumption called for replica {} but it is already RUNNING. Ignoring duplicate.", replicaId);
-        return;
-      }
-      if (replicaContext.state == ReplicaIntendedState.STOPPED) {
-        LOGGER.info(
-            "startConsumption called for replica {} while STOPPED. Will wait for stop to complete then proceed.",
-            replicaId);
-      }
+    if (replicaContext.state == ReplicaIntendedState.RUNNING) {
+      LOGGER.info("startConsumption called for replica {} but it is already RUNNING. Ignoring duplicate.", replicaId);
+      return;
+    }
+    if (replicaContext.state == ReplicaIntendedState.STOPPED) {
+      LOGGER.info(
+          "startConsumption called for replica {} while STOPPED. Will wait for stop to complete then proceed.",
+          replicaId);
     }
 
     if (replicaContext.state == ReplicaIntendedState.STOPPED) {
@@ -107,9 +105,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
       getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, 30, true);
     }
 
-    synchronized (replicaContext.stateLock) {
-      replicaContext.state = ReplicaIntendedState.RUNNING;
-    }
+    replicaContext.state = ReplicaIntendedState.RUNNING;
     LOGGER.info("Replica {} state set to RUNNING.", replicaId);
 
     Runnable runnable = () -> {
@@ -471,16 +467,14 @@ public class DefaultIngestionBackend implements IngestionBackend {
     String replicaId = Utils.getReplicaId(storeVersion, partition);
     ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
 
-    synchronized (replicaContext.stateLock) {
-      if (replicaContext.state != ReplicaIntendedState.RUNNING) {
-        LOGGER.info(
-            "stopConsumption called for replica {} but state is {} (not RUNNING). Skipping.",
-            replicaId,
-            replicaContext.state);
-        return CompletableFuture.completedFuture(null);
-      }
-      replicaContext.state = ReplicaIntendedState.STOPPED;
+    if (replicaContext.state != ReplicaIntendedState.RUNNING) {
+      LOGGER.info(
+          "stopConsumption called for replica {} but state is {} (not RUNNING). Skipping.",
+          replicaId,
+          replicaContext.state);
+      return CompletableFuture.completedFuture(null);
     }
+    replicaContext.state = ReplicaIntendedState.STOPPED;
     LOGGER.info("Replica {} state set to STOPPED.", replicaId);
 
     cancelBlobTransferIfInProgressInternal(storeConfig, partition);
@@ -558,9 +552,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     try {
       return getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
     } finally {
-      synchronized (replicaContext.stateLock) {
-        replicaContext.state = ReplicaIntendedState.NOT_EXIST;
-      }
+      replicaContext.state = ReplicaIntendedState.NOT_EXIST;
       replicaContexts.remove(replicaId);
       LOGGER.info("dropStoragePartitionGracefully: Replica {} state set to NOT_EXIST and context removed.", replicaId);
     }
@@ -770,6 +762,5 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
   static class ReplicaConsumptionContext {
     ReplicaIntendedState state = ReplicaIntendedState.NOT_EXIST;
-    final Object stateLock = new Object(); // guards reads/writes of state
   }
 }
