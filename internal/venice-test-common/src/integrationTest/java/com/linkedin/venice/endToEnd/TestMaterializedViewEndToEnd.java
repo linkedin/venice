@@ -87,9 +87,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
@@ -648,6 +650,49 @@ public class TestMaterializedViewEndToEnd {
     testBatchOnlyNoViewWithCDCConsumer(true);
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBatchOnlyNoViewWithDVCConsumer() throws Exception {
+    // Create a batch only store with materialized view and run batch push job with 100 records
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("batchStore");
+
+    setupStoreWithNoView(inputDirPath, storeName, recordSchema);
+
+    // Verify DVC consumer when there is no view.
+    // Start a DVC client that's subscribed to partition 0 of the store's materialized view. The DVC client should
+    // contain all data records.
+    D2Client d2Client = D2TestUtils
+        .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress());
+
+    VeniceProperties backendConfig =
+        new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+            .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+            .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+            .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+            .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+            .build();
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        backendConfig,
+        multiRegionMultiClusterWrapper)) {
+      DaVinciClient<String, Object> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
+      Set<Integer> partitions = new HashSet<>();
+      partitions.add(0);
+      partitions.add(1);
+      partitions.add(2);
+      client.subscribe(partitions).get();
+      for (int i = 1; i <= 100; i++) {
+        assertEquals(client.get(Integer.toString(i)).get().toString(), DEFAULT_USER_DATA_VALUE_PREFIX + i);
+      }
+    } finally {
+      D2ClientUtils.shutdownClient(d2Client);
+    }
+  }
+
   private void testBatchOnlyMaterializedViewCDCConsumer(boolean useStatefulConsumer) throws Exception {
     // Create a batch only store with materialized view and run batch push job with 100 records
     File inputDir = getTempDataDirectory();
@@ -680,23 +725,8 @@ public class TestMaterializedViewEndToEnd {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("batchStore");
 
-    Properties props = TestWriteUtils.defaultVPJProps(
-        parentControllers.get(0).getControllerUrl(),
-        inputDirPath,
-        storeName,
-        multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
-        .setChunkingEnabled(true)
-        .setRmdChunkingEnabled(true)
-        .setNativeReplicationEnabled(true)
-        .setNativeReplicationSourceFabric(childDatacenters.get(0).getRegionName())
-        .setPartitionCount(3);
+    setupStoreWithNoView(inputDirPath, storeName, recordSchema);
 
-    ControllerClient controllerClient =
-        IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
-    IntegrationTestPushUtils.runVPJ(props);
     // Setup D2Client and ChangelogClientConfig
     D2Client d2Client = D2TestUtils
         .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress());
@@ -739,6 +769,25 @@ public class TestMaterializedViewEndToEnd {
     } finally {
       D2ClientUtils.shutdownClient(d2Client);
     }
+  }
+
+  private void setupStoreWithNoView(String inputDirPath, String storeName, Schema recordSchema) {
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        multiRegionMultiClusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
+        .setChunkingEnabled(true)
+        .setRmdChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setNativeReplicationSourceFabric(childDatacenters.get(0).getRegionName())
+        .setPartitionCount(3);
+
+    IntegrationTestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
+    IntegrationTestPushUtils.runVPJ(props);
   }
 
   private void setupStoreAndMaterializedView(
