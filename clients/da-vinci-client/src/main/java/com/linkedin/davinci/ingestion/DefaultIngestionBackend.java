@@ -14,6 +14,7 @@ import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
@@ -52,6 +53,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private final Map<String, AtomicReference<StorageEngine>> topicStorageEngineReferenceMap =
       new VeniceConcurrentHashMap<>();
   private final BlobTransferManager blobTransferManager;
+  private final boolean isIsolatedIngestion;
 
   // Per-replica locks to ensure mutual exclusion between blob transfer triggerred consumption start and cancel
   // operations
@@ -71,6 +73,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     this.storageService = storageService;
     this.blobTransferManager = blobTransferManager;
     this.serverConfig = serverConfig;
+    this.isIsolatedIngestion = serverConfig != null && IngestionMode.ISOLATED.equals(serverConfig.getIngestionMode());
   }
 
   @Override
@@ -86,27 +89,27 @@ public class DefaultIngestionBackend implements IngestionBackend {
     syncStoreVersionConfig(storeAndVersion.getStore(), storeConfig);
 
     String replicaId = Utils.getReplicaId(storeVersion, partition);
-    ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
 
-    if (replicaContext.state == ReplicaIntendedState.RUNNING) {
-      LOGGER.info("startConsumption called for replica {} but it is already RUNNING. Ignoring duplicate.", replicaId);
-      return;
-    }
-    if (replicaContext.state == ReplicaIntendedState.STOPPED) {
-      LOGGER.info(
-          "startConsumption called for replica {} while STOPPED. Will wait for stop to complete then proceed.",
-          replicaId);
-    }
+    if (!isIsolatedIngestion) {
+      ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
 
-    if (replicaContext.state == ReplicaIntendedState.STOPPED) {
-      LOGGER.info("startConsumption: Waiting for blob transfer and consumption to stop for replica {}.", replicaId);
-      // TODO: Refactor the ingestion service to take in blob ingestion/transfer, pubsub ingestion logic.
-      stopBlobTransferAndWait(storeConfig, partition, 30);
-      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, 30, true);
-    }
+      if (replicaContext.state == ReplicaIntendedState.RUNNING) {
+        LOGGER.info("startConsumption called for replica {} but it is already RUNNING. Ignoring duplicate.", replicaId);
+        return;
+      }
 
-    replicaContext.state = ReplicaIntendedState.RUNNING;
-    LOGGER.info("Replica {} state set to RUNNING.", replicaId);
+      if (replicaContext.state == ReplicaIntendedState.STOPPED) {
+        LOGGER.info(
+            "startConsumption: Waiting for blob transfer and PubSub consumption to stop for replica {}.",
+            replicaId);
+        // TODO: Refactor the ingestion service to take in blob ingestion/transfer, pubsub ingestion logic.
+        stopBlobTransferAndWait(storeConfig, partition, 30);
+        getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, 30, true);
+      }
+
+      replicaContext.state = ReplicaIntendedState.RUNNING;
+      LOGGER.info("Replica {} state set to RUNNING.", replicaId);
+    }
 
     Runnable runnable = () -> {
       StorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
@@ -463,19 +466,21 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
   @Override
   public CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
-    String storeVersion = storeConfig.getStoreVersionName();
-    String replicaId = Utils.getReplicaId(storeVersion, partition);
-    ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
+    if (!isIsolatedIngestion) {
+      String storeVersion = storeConfig.getStoreVersionName();
+      String replicaId = Utils.getReplicaId(storeVersion, partition);
+      ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
 
-    if (replicaContext.state != ReplicaIntendedState.RUNNING) {
-      LOGGER.info(
-          "stopConsumption called for replica {} but state is {} (not RUNNING). Skipping.",
-          replicaId,
-          replicaContext.state);
-      return CompletableFuture.completedFuture(null);
+      if (replicaContext.state != ReplicaIntendedState.RUNNING) {
+        LOGGER.info(
+            "stopConsumption called for replica {} but state is {} (not RUNNING). Skipping.",
+            replicaId,
+            replicaContext.state);
+        return CompletableFuture.completedFuture(null);
+      }
+      replicaContext.state = ReplicaIntendedState.STOPPED;
+      LOGGER.info("Replica {} state set to STOPPED.", replicaId);
     }
-    replicaContext.state = ReplicaIntendedState.STOPPED;
-    LOGGER.info("Replica {} state set to STOPPED.", replicaId);
 
     cancelBlobTransferIfInProgressInternal(storeConfig, partition);
     return getStoreIngestionService().stopConsumption(storeConfig, partition);
@@ -540,8 +545,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
       boolean removeEmptyStorageEngine) {
     String storeVersion = storeConfig.getStoreVersionName();
     String replicaId = Utils.getReplicaId(storeVersion, partition);
-    ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
-    LOGGER.info("dropStoragePartitionGracefully: Replica {} state before gracefully dropping", replicaId);
+    if (!isIsolatedIngestion) {
+      LOGGER.info(
+          "dropStoragePartitionGracefully: Replica {} state {} before gracefully dropping",
+          replicaId,
+          getOrCreateReplicaContext(replicaId));
+    }
 
     // Stop consumption of the partition.
     final int waitIntervalInSecond = 1;
@@ -552,9 +561,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
     try {
       return getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
     } finally {
-      replicaContext.state = ReplicaIntendedState.NOT_EXIST;
-      replicaContexts.remove(replicaId);
-      LOGGER.info("dropStoragePartitionGracefully: Replica {} state set to NOT_EXIST and context removed.", replicaId);
+      if (!isIsolatedIngestion) {
+        replicaContexts.remove(replicaId);
+        LOGGER.info("dropStoragePartitionGracefully: Replica {} context removed.", replicaId);
+      }
     }
   }
 
@@ -649,7 +659,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
     return context == null ? ReplicaIntendedState.NOT_EXIST : context.state;
   }
 
-  // For test cleanup between iterations
   void removeReplicaConsumptionContext(String replicaId) {
     replicaContexts.remove(replicaId);
   }
