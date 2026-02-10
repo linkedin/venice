@@ -97,13 +97,16 @@ message SingleGetResponse {
 message MultiGetRequest {
   string resourceName = 1;
   bool isRetryRequest = 2;
+  // keyCount allows pre-allocating buffers without iterating the repeated keys field.
+  // Servers should validate keyCount == keys.size() if both are set.
   uint32 keyCount = 3;
   repeated MultiKeyRequestKey keys = 4;
   repeated RpcRequestHeader headers = 5;
 }
 
 message MultiKeyRequestKey {
-  uint32 keyIndex = 1;
+  // Using int32 for consistency with MultiKeyStreamingResponse.keyIndex (sint32)
+  int32 keyIndex = 1;
   uint32 partition = 2;
   bytes keyBytes = 3;
 }
@@ -114,6 +117,8 @@ message ComputeRequest {
   sint32 computeValueSchemaId = 3;
   bool isRetryRequest = 4;
   uint32 apiVersion = 5;
+  // keyCount allows pre-allocating buffers without iterating the repeated keys field.
+  // Servers should validate keyCount == keys.size() if both are set.
   uint32 keyCount = 6;
   repeated MultiKeyRequestKey keys = 7;
   repeated RpcRequestHeader headers = 8;
@@ -165,7 +170,7 @@ message CompressionDictionaryResponse {
   bytes value = 2;
   string contentType = 3;
   uint32 contentLength = 4;
-  string errorMessage = 5;
+  optional string errorMessage = 5;
 }
 
 message AdminRequest {
@@ -180,7 +185,7 @@ message AdminResponse {
   sint32 schemaId = 3;
   string contentType = 4;
   uint32 contentLength = 5;
-  string errorMessage = 6;
+  optional string errorMessage = 6;
 }
 
 message CurrentVersionInfoRequest {
@@ -190,7 +195,7 @@ message CurrentVersionInfoRequest {
 message CurrentVersionInfoResponse {
   int32 statusCode = 1;
   sint32 currentVersion = 2;
-  string errorMessage = 3;
+  optional string errorMessage = 3;
   string contentType = 4;
 }
 
@@ -204,7 +209,7 @@ message MetadataResponse {
   sint32 schemaId = 3;
   string contentType = 4;
   uint32 contentLength = 5;
-  string errorMessage = 6;
+  optional string errorMessage = 6;
 }
 
 message IngestionContextRequest {
@@ -218,5 +223,5 @@ message IngestionContextResponse {
   bytes value = 2;
   string contentType = 3;
   uint32 contentLength = 4;
-  string errorMessage = 5;
+  optional string errorMessage = 5;
 }
