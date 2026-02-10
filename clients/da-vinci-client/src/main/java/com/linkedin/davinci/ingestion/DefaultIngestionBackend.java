@@ -103,8 +103,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
             "startConsumption: Waiting for blob transfer and PubSub consumption to stop for replica {}.",
             replicaId);
         // TODO: Refactor the ingestion service to take in blob ingestion/transfer, pubsub ingestion logic.
-        stopBlobTransferAndWait(storeConfig, partition, 30);
-        getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, 30, true);
+        int stopConsumptionTimeout = serverConfig.getStopConsumptionTimeoutInSeconds();
+        stopBlobTransferAndWait(storeConfig, partition, stopConsumptionTimeout);
+        getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, stopConsumptionTimeout, false);
       }
 
       replicaContext.state = ReplicaIntendedState.RUNNING;
