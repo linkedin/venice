@@ -51,10 +51,12 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
         responseBuilder.setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR).setErrorMessage(errorMessage);
       } else {
         ByteBuf body = metadataResponse.getResponseBody();
-        byte[] bytes = new byte[body.readableBytes()];
-        body.getBytes(body.readerIndex(), bytes);
-
-        responseBuilder.setMetadata(ByteString.copyFrom(bytes))
+        // nioBuffer() is zero-copy for heap-backed ByteBufs (which MetadataResponse produces via
+        // Unpooled.wrappedBuffer). copyFrom() performs a single copy into ByteString's internal array.
+        // If this becomes a bottleneck, UnsafeByteOperations.unsafeWrap(body.nioBuffer()) can eliminate
+        // that copy entirely, but it bypasses ByteString's immutability guarantee — the caller must
+        // ensure the underlying buffer is not modified or released while the ByteString is in use.
+        responseBuilder.setMetadata(ByteString.copyFrom(body.nioBuffer()))
             .setResponseSchemaId(metadataResponse.getResponseSchemaIdHeader())
             .setErrorCode(VeniceReadResponseStatus.OK);
       }

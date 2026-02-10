@@ -59,6 +59,11 @@ public class VeniceReadServiceImplTest {
 
     doReturn(expectedResponse).when(readMetadataRetriever).getMetadata(storeName);
 
+    // Verify that getResponseBody() returns a heap-backed ByteBuf so that nioBuffer() is zero-copy
+    assertTrue(
+        expectedResponse.getResponseBody().hasArray(),
+        "ByteBuf should be heap-backed for zero-copy nioBuffer()");
+
     VeniceMetadataRequest request = VeniceMetadataRequest.newBuilder().setStoreName(storeName).build();
 
     ArgumentCaptor<VeniceMetadataResponse> responseCaptor = ArgumentCaptor.forClass(VeniceMetadataResponse.class);
