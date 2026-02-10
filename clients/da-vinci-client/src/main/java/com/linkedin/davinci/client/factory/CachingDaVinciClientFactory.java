@@ -470,7 +470,8 @@ public class CachingDaVinciClientFactory
       DaVinciClientConstructor clientConstructor,
       Class clientClass,
       boolean startClient) {
-    String internalStoreName = viewName == null ? storeName : VeniceView.getViewStoreName(storeName, viewName);
+    String internalStoreName =
+        (viewName == null || viewName.isEmpty()) ? storeName : VeniceView.getViewStoreName(storeName, viewName);
     if (closed) {
       throw new VeniceException("Unable to get a client from a closed factory, storeName=" + internalStoreName);
     }
