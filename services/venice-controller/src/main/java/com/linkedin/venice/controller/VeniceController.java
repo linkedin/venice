@@ -109,7 +109,7 @@ public class VeniceController {
   private final PubSubClientsFactory pubSubClientsFactory;
   private final LogContext logContext;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
-  private final Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener;
+  private final Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
 
   /**
    * Allocates a new {@code VeniceController} object.
@@ -177,7 +177,7 @@ public class VeniceController {
     this.asyncRetryingServiceDiscoveryAnnouncer =
         new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
     this.pubSubTopicRepository = multiClusterConfigs.getPubSubTopicRepository();
-    this.versionLifecycleEventListener = Optional.ofNullable(ctx.getVersionLifecycleEventListener());
+    this.versionLifecycleEventListeners = Optional.ofNullable(ctx.getVersionLifecycleEventListeners());
     this.controllerService = createControllerService();
     this.adminServer = createAdminServer(false);
     this.secureAdminServer = sslEnabled ? createAdminServer(true) : null;
@@ -212,7 +212,7 @@ public class VeniceController {
         pubSubTopicRepository,
         pubSubClientsFactory,
         pubSubPositionTypeRegistry,
-        versionLifecycleEventListener);
+        versionLifecycleEventListeners);
     Admin admin = veniceControllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent() && !(admin instanceof VeniceParentHelixAdmin)) {
       throw new VeniceException(
