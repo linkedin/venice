@@ -33,6 +33,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
@@ -68,7 +69,7 @@ public class VeniceControllerService extends AbstractVeniceService {
       PubSubTopicRepository pubSubTopicRepository,
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
-      Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener) {
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners) {
     this.multiClusterConfigs = multiClusterConfigs;
 
     DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore =
@@ -106,7 +107,7 @@ public class VeniceControllerService extends AbstractVeniceService {
             initRoutineForPushJobDetailsSystemStore,
             initRoutineForHeartbeatSystemStore,
             initRoutineForParentControllerMetadataSystemStore),
-        versionLifecycleEventListener);
+        versionLifecycleEventListeners);
 
     if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(
