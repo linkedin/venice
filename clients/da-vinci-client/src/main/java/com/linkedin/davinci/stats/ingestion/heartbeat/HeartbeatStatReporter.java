@@ -14,11 +14,6 @@ public class HeartbeatStatReporter extends AbstractVeniceStatsReporter<Heartbeat
   static final String FOLLOWER_METRIC_PREFIX = "heartbeat_delay_ms_follower-";
   static final String CATCHUP_UP_FOLLOWER_METRIC_PREFIX = "catching_up_heartbeat_delay_ms_follower-";
 
-  // Record-level delay metric prefixes
-  static final String LEADER_RECORD_METRIC_PREFIX = "record_delay_ms_leader-";
-  static final String FOLLOWER_RECORD_METRIC_PREFIX = "record_delay_ms_follower-";
-  static final String CATCHUP_UP_FOLLOWER_RECORD_METRIC_PREFIX = "catching_up_record_delay_ms_follower-";
-
   static final String MAX = "-Max";
   static final String AVG = "-Avg";
 
@@ -39,21 +34,6 @@ public class HeartbeatStatReporter extends AbstractVeniceStatsReporter<Heartbeat
         }
         return getStats().getReadyToServeLeaderLag(region).getAvg();
       }, LEADER_METRIC_PREFIX + region + AVG));
-
-      // Record-level delay metrics for leader
-      registerSensor(new AsyncGauge((ignored, ignored2) -> {
-        if (getStats() == null) {
-          return NULL_INGESTION_STATS.code;
-        }
-        return getStats().getReadyToServeLeaderRecordLag(region).getMax();
-      }, LEADER_RECORD_METRIC_PREFIX + region + MAX));
-
-      registerSensor(new AsyncGauge((ignored, ignored2) -> {
-        if (getStats() == null) {
-          return NULL_INGESTION_STATS.code;
-        }
-        return getStats().getReadyToServeLeaderRecordLag(region).getAvg();
-      }, LEADER_RECORD_METRIC_PREFIX + region + AVG));
 
       // Do not register follower heartbeat metrics for separate RT region.
       if (Utils.isSeparateTopicRegion(region)) {
@@ -88,35 +68,6 @@ public class HeartbeatStatReporter extends AbstractVeniceStatsReporter<Heartbeat
         }
         return getStats().getCatchingUpFollowerLag(region).getAvg();
       }, CATCHUP_UP_FOLLOWER_METRIC_PREFIX + region + AVG));
-
-      // Record-level delay metrics for follower
-      registerSensor(new AsyncGauge((ignored, ignored2) -> {
-        if (getStats() == null) {
-          return NULL_INGESTION_STATS.code;
-        }
-        return getStats().getReadyToServeFollowerRecordLag(region).getMax();
-      }, FOLLOWER_RECORD_METRIC_PREFIX + region + MAX));
-
-      registerSensor(new AsyncGauge((ignored, ignored2) -> {
-        if (getStats() == null) {
-          return NULL_INGESTION_STATS.code;
-        }
-        return getStats().getReadyToServeFollowerRecordLag(region).getAvg();
-      }, FOLLOWER_RECORD_METRIC_PREFIX + region + AVG));
-
-      registerSensor(new AsyncGauge((ignored, ignored2) -> {
-        if (getStats() == null) {
-          return NULL_INGESTION_STATS.code;
-        }
-        return getStats().getCatchingUpFollowerRecordLag(region).getMax();
-      }, CATCHUP_UP_FOLLOWER_RECORD_METRIC_PREFIX + region + MAX));
-
-      registerSensor(new AsyncGauge((ignored, ignored2) -> {
-        if (getStats() == null) {
-          return NULL_INGESTION_STATS.code;
-        }
-        return getStats().getCatchingUpFollowerRecordLag(region).getAvg();
-      }, CATCHUP_UP_FOLLOWER_RECORD_METRIC_PREFIX + region + AVG));
     }
   }
 

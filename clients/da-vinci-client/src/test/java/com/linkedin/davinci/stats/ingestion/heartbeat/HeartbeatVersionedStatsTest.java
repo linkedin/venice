@@ -42,8 +42,8 @@ import org.testng.annotations.Test;
 
 
 /**
- * Unit tests for HeartbeatVersionedStats that verify both Tehuti and OTel metrics
- * receive consistent data when recording heartbeat delays.
+ * Unit tests for HeartbeatVersionedStats that verify Tehuti heartbeat metrics and
+ * OTel metrics (heartbeat + record-level) receive consistent data when recording delays.
  */
 public class HeartbeatVersionedStatsTest {
   private static final String STORE_NAME = "test_store";
@@ -58,8 +58,8 @@ public class HeartbeatVersionedStatsTest {
   private VeniceMetricsRepository metricsRepository;
   private ReadOnlyStoreRepository mockMetadataRepository;
   private HeartbeatVersionedStats heartbeatVersionedStats;
-  private Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> leaderMonitors;
-  private Map<String, Map<Integer, Map<Integer, Map<String, IngestionTimestampEntry>>>> followerMonitors;
+  private Map<HeartbeatKey, IngestionTimestampEntry> leaderMonitors;
+  private Map<HeartbeatKey, IngestionTimestampEntry> followerMonitors;
   private Set<String> regions;
 
   @BeforeMethod
@@ -93,7 +93,9 @@ public class HeartbeatVersionedStatsTest {
 
     leaderMonitors = new VeniceConcurrentHashMap<>();
     followerMonitors = new VeniceConcurrentHashMap<>();
-    leaderMonitors.put(STORE_NAME, new VeniceConcurrentHashMap<>());
+    // Add a dummy entry so isStoreAssignedToThisNode returns true for STORE_NAME
+    leaderMonitors
+        .put(new HeartbeatKey(STORE_NAME, CURRENT_VERSION, 0, REGION), new IngestionTimestampEntry(0, false, false));
 
     regions = new HashSet<>();
     regions.add(REGION);
@@ -206,10 +208,6 @@ public class HeartbeatVersionedStatsTest {
     heartbeatVersionedStats.recordLeaderRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 200);
     heartbeatVersionedStats.recordLeaderRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 150);
 
-    // Verify Tehuti accumulated correctly
-    HeartbeatStat tehutiStats = heartbeatVersionedStats.getStatsForTesting(STORE_NAME, CURRENT_VERSION);
-    assertEquals(tehutiStats.getReadyToServeLeaderRecordLag(REGION).getMax(), 200.0, "Tehuti max should be 200ms");
-
     // Verify OTel accumulated correctly (min=100, max=200, count=3, sum=450)
     validateRecordOtelHistogram(ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, 100.0, 200.0, 3, 450.0);
   }
@@ -225,15 +223,6 @@ public class HeartbeatVersionedStatsTest {
         .recordFollowerRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 200, isReadyToServe);
     heartbeatVersionedStats
         .recordFollowerRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 150, isReadyToServe);
-
-    // Verify Tehuti metrics
-    HeartbeatStat tehutiStats = heartbeatVersionedStats.getStatsForTesting(STORE_NAME, CURRENT_VERSION);
-    double readyToServeMax = tehutiStats.getReadyToServeFollowerRecordLag(REGION).getMax();
-    double catchingUpMax = tehutiStats.getCatchingUpFollowerRecordLag(REGION).getMax();
-
-    // Active metric should have max=200ms, squelched metric should be 0
-    assertEquals(readyToServeMax, isReadyToServe ? 200.0 : 0.0);
-    assertEquals(catchingUpMax, isReadyToServe ? 0.0 : 200.0);
 
     // Verify OTel metrics: active has min=100, max=200, count=3, sum=450; squelched has all 0s
     validateRecordOtelHistogram(

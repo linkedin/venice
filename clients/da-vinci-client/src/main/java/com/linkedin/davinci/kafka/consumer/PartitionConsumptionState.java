@@ -5,6 +5,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import com.linkedin.davinci.compression.KeyUrnCompressor;
 import com.linkedin.davinci.compression.UrnDictV1;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -31,6 +32,7 @@ import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -279,6 +281,12 @@ public class PartitionConsumptionState {
    * In a replica's lifetime, this will only be flipped at most once.
    */
   private boolean hasResubscribedAfterBootstrapAsCurrentVersion;
+
+  /**
+   * Cached HeartbeatKey references keyed by region, populated during lag monitor setup.
+   * Eliminates HeartbeatKey creation and hash computation on the per-record recording path.
+   */
+  private Map<String, HeartbeatKey> cachedHeartbeatKeys;
 
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
@@ -1132,5 +1140,20 @@ public class PartitionConsumptionState {
 
   public void setHasResubscribedAfterBootstrapAsCurrentVersion(boolean hasResubscribedAfterBootstrapAsCurrentVersion) {
     this.hasResubscribedAfterBootstrapAsCurrentVersion = hasResubscribedAfterBootstrapAsCurrentVersion;
+  }
+
+  public void cacheHeartbeatKey(String region, HeartbeatKey key) {
+    if (cachedHeartbeatKeys == null) {
+      cachedHeartbeatKeys = new HashMap<>();
+    }
+    cachedHeartbeatKeys.put(region, key);
+  }
+
+  public HeartbeatKey getCachedHeartbeatKey(String region) {
+    return cachedHeartbeatKeys == null ? null : cachedHeartbeatKeys.get(region);
+  }
+
+  public void clearCachedHeartbeatKeys() {
+    cachedHeartbeatKeys = null;
   }
 }

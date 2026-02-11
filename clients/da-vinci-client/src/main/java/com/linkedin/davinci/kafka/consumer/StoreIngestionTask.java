@@ -2823,10 +2823,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Hook for recording regular data record timestamps. Override in subclasses that support
    * record-level timestamp tracking.
    */
-  protected void recordRecordReceived(
+  protected void trackRecordReceived(
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
-      String kafkaUrl) {
+      String pubSubUrl) {
     // No Op
   }
 
@@ -3552,14 +3552,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionState,
             leaderProducedRecordContext,
             currentTimeMs);
-        // Record regular record timestamp for heartbeat monitoring if enabled
-        if (recordLevelTimestampEnabled) {
-          try {
-            recordRecordReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
-          } catch (Exception e) {
-            LOGGER.error("Failed to record regular record timestamp: ", e);
-          }
-        }
       }
       if (recordLevelMetricEnabled.get()) {
         versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
@@ -3567,6 +3559,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             versionNumber,
             LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingRecordTimestampNs),
             currentTimeMs);
+        if (recordLevelTimestampEnabled) {
+          try {
+            trackRecordReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
+          } catch (Exception e) {
+            LOGGER.error(
+                "Failed to record regular record timestamp for replica {}: ",
+                partitionConsumptionState.getReplicaId(),
+                e);
+          }
+        }
       }
     } catch (DuplicateDataException e) {
       divErrorMetricCallback.accept(e);
