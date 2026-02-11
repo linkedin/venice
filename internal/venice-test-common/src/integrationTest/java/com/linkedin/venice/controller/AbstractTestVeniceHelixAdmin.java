@@ -94,7 +94,8 @@ class AbstractTestVeniceHelixAdmin {
 
   final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   List<VersionLifecycleEvent> versionLifecycleEvents = new ArrayList<>();
-  Set<String> etlTriggeredStoreVersionNames = new HashSet<>();
+  Set<String> etlOnboardedStoreVersionNames = new HashSet<>();
+  Set<String> etlOffboardedStoreVersionNames = new HashSet<>();
 
   enum VersionLifecycleEventType {
     CREATED, DELETED, BECOMING_CURRENT_FROM_FUTURE, BECOMING_CURRENT_FROM_BACKUP, BECOMING_BACKUP
@@ -164,12 +165,12 @@ class AbstractTestVeniceHelixAdmin {
   ExternalETLService mockExternalETLService = new ExternalETLService() {
     @Override
     public void onboardETL(Store store, Version version) {
-      etlTriggeredStoreVersionNames.add(version.kafkaTopicName());
+      etlOnboardedStoreVersionNames.add(version.kafkaTopicName());
     }
 
     @Override
     public void offboardETL(Store store, Version version) {
-      etlTriggeredStoreVersionNames.remove(version.kafkaTopicName());
+      etlOffboardedStoreVersionNames.add(version.kafkaTopicName());
     }
   };
 
@@ -357,5 +358,10 @@ class AbstractTestVeniceHelixAdmin {
 
   void resetVersionLifecycleEvents() {
     versionLifecycleEvents.clear();
+  }
+
+  void resetExternalETLServiceEvents() {
+    etlOnboardedStoreVersionNames.clear();
+    etlOffboardedStoreVersionNames.clear();
   }
 }

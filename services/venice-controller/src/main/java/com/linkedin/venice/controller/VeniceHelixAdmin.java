@@ -6112,7 +6112,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (firstTimeEnablingETLWithVeniceTrigger && isSourceCluster) {
             // This is first time setting ETL strategy to EXTERNAL_WITH_VENICE_TRIGGER, so trigger ETL for all relevant
             // store versions (current and future).
-            triggerETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
+            onboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
+          }
+        }
+        if (externalETLService.isPresent() && !isParent() && etlStrategy.isPresent()
+            && etlStrategy.get() == VeniceETLStrategy.EXTERNAL_SERVICE) {
+          ETLStoreConfig oldETLStoreConfig = originalStore.getEtlStoreConfig();
+          boolean firstTimeDisablingETLWithVeniceTrigger = oldETLStoreConfig != null
+              && oldETLStoreConfig.getETLStrategy() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER;
+          boolean isSourceCluster = !originalStore.isMigrating();
+          if (!isSourceCluster) {
+            isSourceCluster = getHelixVeniceClusterResources(clusterName).isSourceCluster(clusterName, storeName);
+          }
+          if (firstTimeDisablingETLWithVeniceTrigger && isSourceCluster) {
+            // This is first time changing ETL strategy from EXTERNAL_WITH_VENICE_TRIGGER to EXTERNAL_SERVICE,
+            // so offboard ETL for all relevant store versions (current and future).
+            offboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
           }
         }
       }
@@ -6283,7 +6298,36 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void triggerETLForExistingStoreVersion(Store store) {
+  private void onboardETLForExistingStoreVersion(Store store) {
+    performETLOperationForStoreVersions(
+        store,
+        "Onboarding",
+        "onboarded",
+        (s, v) -> externalETLService.get().onboardETL(s, v));
+  }
+
+  private void offboardETLForExistingStoreVersion(Store store) {
+    performETLOperationForStoreVersions(
+        store,
+        "Offboarding",
+        "offboarded",
+        (s, v) -> externalETLService.get().offboardETL(s, v));
+  }
+
+  /**
+   * Performs ETL operations (onboarding or offboarding) for relevant store versions.
+   * This includes the current version and the largest in-progress version if it exists.
+   *
+   * @param store the store to perform ETL operations on
+   * @param operationVerb the verb describing the operation in present progressive tense (e.g., "Triggering", "Offboarding")
+   * @param operationPastParticiple the past participle of the operation (e.g., "triggered", "offboarded")
+   * @param etlOperation the ETL operation to perform (e.g., onboardETL or offboardETL)
+   */
+  private void performETLOperationForStoreVersions(
+      Store store,
+      String operationVerb,
+      String operationPastParticiple,
+      java.util.function.BiConsumer<Store, Version> etlOperation) {
     if (!externalETLService.isPresent()) {
       // Defensive coding
       throw new VeniceException("External ETL service is not initialized");
@@ -6300,21 +6344,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
-    // Trigger ETL for current version
+    // Perform ETL operation for current version
     if (currentVersion > NON_EXISTING_VERSION) {
-      LOGGER.info("Triggering ETL job for store: {} current version: {}", store.getName(), currentVersion);
-      externalETLService.get().onboardETL(store, store.getVersion(currentVersion));
-      LOGGER.info("Successfully triggered ETL job for store: {} current version: {}", store.getName(), currentVersion);
+      LOGGER.info("{} ETL job for store: {} current version: {}", operationVerb, store.getName(), currentVersion);
+      etlOperation.accept(store, store.getVersion(currentVersion));
+      LOGGER.info(
+          "Successfully {} ETL job for store: {} current version: {}",
+          operationPastParticiple,
+          store.getName(),
+          currentVersion);
     }
-    // Trigger ETL for the largest in-progress version if it exists
+    // Perform ETL operation for the largest in-progress version if it exists
     if (largestInProgressVersion != null) {
       LOGGER.info(
-          "Triggering ETL job for store: {} future version: {}",
+          "{} ETL job for store: {} future version: {}",
+          operationVerb,
           store.getName(),
           largestInProgressVersion.getNumber());
-      externalETLService.get().onboardETL(store, largestInProgressVersion);
+      etlOperation.accept(store, largestInProgressVersion);
       LOGGER.info(
-          "Successfully triggered ETL job for store: {} current version: {}",
+          "Successfully {} ETL job for store: {} future version: {}",
+          operationPastParticiple,
           store.getName(),
           largestInProgressVersion.getNumber());
     }
