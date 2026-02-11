@@ -70,6 +70,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAG
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_KIF_REPUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SUPPRESS_END_OF_PUSH_MESSAGE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
@@ -542,13 +543,25 @@ public class VenicePushJob implements AutoCloseable {
     // Compute-engine abstraction related configs
     String dataWriterComputeJobClass = props.getString(DATA_WRITER_COMPUTE_JOB_CLASS, (String) null);
 
-    // Currently, only MR mode supports KIF. This is temporary.
-    if (dataWriterComputeJobClass == null || pushJobSettingToReturn.isSourceKafka) {
+    if (dataWriterComputeJobClass == null) {
       pushJobSettingToReturn.dataWriterComputeJobClass = DataWriterMRJob.class;
     } else {
       Class objectClass = ReflectUtils.loadClass(dataWriterComputeJobClass);
       Validate.isAssignableFrom(DataWriterComputeJob.class, objectClass);
-      pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
+
+      // For KIF repush jobs, only use the configured Spark compute job class
+      // if the spark.kif.repush.enabled flag is explicitly set to true. This allows gradual rollout
+      // of Spark for KIF repush without affecting all jobs at once.
+      if (pushJobSettingToReturn.isSourceKafka && !props.getBoolean(SPARK_KIF_REPUSH_ENABLED, false)) {
+        LOGGER.info(
+            "KIF repush detected but {} is not enabled. Falling back to MapReduce. "
+                + "Set {}=true to use Spark for KIF repush.",
+            SPARK_KIF_REPUSH_ENABLED,
+            SPARK_KIF_REPUSH_ENABLED);
+        pushJobSettingToReturn.dataWriterComputeJobClass = DataWriterMRJob.class;
+      } else {
+        pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
+      }
     }
     return pushJobSettingToReturn;
   }
