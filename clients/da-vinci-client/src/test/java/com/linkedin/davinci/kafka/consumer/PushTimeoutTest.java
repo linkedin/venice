@@ -101,7 +101,6 @@ public class PushTimeoutTest {
         mock(BooleanSupplier.class),
         mockVeniceStoreVersionConfig,
         0,
-        false,
         Optional.empty(),
         null,
         null);
@@ -187,7 +186,6 @@ public class PushTimeoutTest {
         mock(BooleanSupplier.class),
         mockVeniceStoreVersionConfig,
         0,
-        false,
         Optional.empty(),
         null,
         null);

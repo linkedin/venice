@@ -1,10 +1,7 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
-import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.utils.Utils.getUniqueString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -56,7 +53,6 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
-import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -988,14 +984,6 @@ public class TestUtils {
     executor.shutdown();
     executor.shutdownNow();
     Assert.assertTrue(executor.awaitTermination(timeout, unit));
-  }
-
-  public static Map<String, Object> getIngestionIsolationPropertyMap() {
-    Map<String, Object> propertyMap = new HashMap<>();
-    propertyMap.put(SERVER_INGESTION_MODE, IngestionMode.ISOLATED);
-    propertyMap.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 1 * 1024 * 1024 * 1024L);
-    propertyMap.put(SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "-Xms256M;-Xmx1G");
-    return propertyMap;
   }
 
   public static String getUniqueTopicString(String prefix) {

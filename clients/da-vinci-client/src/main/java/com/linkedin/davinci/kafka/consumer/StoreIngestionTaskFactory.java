@@ -53,7 +53,6 @@ public class StoreIngestionTaskFactory {
       BooleanSupplier isCurrentVersion,
       VeniceStoreVersionConfig storeConfig,
       int partitionId,
-      boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
@@ -67,7 +66,6 @@ public class StoreIngestionTaskFactory {
           isCurrentVersion,
           storeConfig,
           partitionId,
-          isIsolatedIngestion,
           cacheBackend,
           internalRecordTransformerConfig,
           zkHelixAdmin);
@@ -81,7 +79,6 @@ public class StoreIngestionTaskFactory {
         isCurrentVersion,
         storeConfig,
         partitionId,
-        isIsolatedIngestion,
         cacheBackend,
         internalRecordTransformerConfig,
         zkHelixAdmin);

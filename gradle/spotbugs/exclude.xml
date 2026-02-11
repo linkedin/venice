@@ -105,10 +105,6 @@
       <Class name="com.linkedin.venice.controllerapi.ControllerTransport">
         <Field name="OBJECT_MAPPER"/>
       </Class>
-      <Class name="com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils">
-        <Field name="DUMMY_COMMAND"/>
-        <Field name="DUMMY_CONTENT"/>
-      </Class>
     </Or>
   </Match>
   <Match>
@@ -288,7 +284,6 @@
       <Class name="com.linkedin.venice.client.store.schemas.TestValueRecordWithMoreFields"/>
       <Class name="com.linkedin.venice.fastclient.schema.TestValueSchema"/>
       <Class name="com.linkedin.venice.utils.TestMockTime"/>
-      <Class name="com.linkedin.davinci.ingestion.IsolatedIngestionBackend"/>
       <Class name="com.linkedin.venice.endToEnd.TestChangelogValue"/>
       <Class name="com.linkedin.venice.endToEnd.TestChangelogValueV2"/>
       <Class name="com.linkedin.venice.endToEnd.TestChangelogKey"/>
@@ -415,7 +410,6 @@
     <Bug pattern="DM_EXIT"/>
     <Or>
       <Class name="com.linkedin.venice.controller.spark.VeniceSparkEmbeddedJettyServer"/>
-      <Class name="com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer"/>
       <Class name="com.linkedin.venice.producer.online.ProducerTool"/>
     </Or>
   </Match>

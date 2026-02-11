@@ -474,12 +474,10 @@ public class DaVinciClientSubscribeTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testSubscribeAndUnsubscribe() throws Exception {
     // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing.
-    // Enable ingestion isolation since it's more likely for the race condition to occur and make sure the future is
-    // only completed when the main process's ingestion task is subscribed to avoid deadlock.
     String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     DaVinciConfig daVinciConfig = new DaVinciConfig();
 
-    Map<String, Object> extraConfigMap = TestUtils.getIngestionIsolationPropertyMap();
+    Map<String, Object> extraConfigMap = new HashMap<>();
     DaVinciTestContext<String, GenericRecord> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
             d2Client,
@@ -505,7 +503,7 @@ public class DaVinciClientSubscribeTest {
     // window for potential
     // race conditions
     DaVinciConfig daVinciConfig = new DaVinciConfig();
-    Map<String, Object> extraConfigMap = TestUtils.getIngestionIsolationPropertyMap();
+    Map<String, Object> extraConfigMap = new HashMap<>();
     DaVinciTestContext<String, GenericRecord> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
             d2Client,

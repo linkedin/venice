@@ -131,10 +131,13 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INCREMENTAL_PUSH_STATUS_WRIT
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_INFO_LOG_LINE_LIMIT;
+<<<<<<< HEAD
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_OTEL_STATS_ENABLED;
+=======
+>>>>>>> b3e9d661c ([da-vinci] Remove deprecated Ingestion Isolation feature)
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
@@ -255,7 +258,6 @@ import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.ConfigCommonUtils;
@@ -281,7 +283,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * VeniceServerConfig maintains configs specific to Venice Server, Da Vinci client and Isolated Ingestion Service.
+ * VeniceServerConfig maintains configs specific to Venice Server, Da Vinci client.
  */
 public class VeniceServerConfig extends VeniceClusterConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerConfig.class);
@@ -502,9 +504,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int consumerPoolSizePerKafkaCluster;
   private final boolean leakedResourceCleanupEnabled;
 
-  private final IngestionMode ingestionMode;
-  private final int ingestionServicePort;
-  private final int ingestionApplicationPort;
   private final boolean databaseChecksumVerificationEnabled;
   private final boolean rocksDbStorageEngineConfigCheckEnabled;
 
@@ -935,10 +934,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     }
     leakedResourceCleanupEnabled = serverProperties.getBoolean(SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED, true);
 
-    ingestionMode =
-        IngestionMode.valueOf(serverProperties.getString(SERVER_INGESTION_MODE, IngestionMode.BUILT_IN.toString()));
-    ingestionServicePort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_SERVICE_PORT, 27015);
-    ingestionApplicationPort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, 27016);
     databaseChecksumVerificationEnabled =
         serverProperties.getBoolean(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false);
 
@@ -1561,18 +1556,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isLeakedResourceCleanupEnabled() {
     return leakedResourceCleanupEnabled;
-  }
-
-  public IngestionMode getIngestionMode() {
-    return ingestionMode;
-  }
-
-  public int getIngestionServicePort() {
-    return ingestionServicePort;
-  }
-
-  public int getIngestionApplicationPort() {
-    return ingestionApplicationPort;
   }
 
   public boolean isDatabaseChecksumVerificationEnabled() {

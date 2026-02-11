@@ -6,7 +6,7 @@ import java.util.Map;
 
 
 /**
- * IngestionCommandType is an Enum class for specifying different commands for ingestion isolation.
+ * IngestionCommandType is an Enum class for specifying different ingestion command types.
  */
 public enum IngestionCommandType {
   START_CONSUMPTION(0), STOP_CONSUMPTION(1), KILL_CONSUMPTION(2), IS_PARTITION_CONSUMING(3), REMOVE_STORAGE_ENGINE(4),

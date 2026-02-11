@@ -218,20 +218,12 @@ public class BlobTransferUtils {
   /**
    * A config check to determine if blob transfer manager is enabled
    * @param backendConfig the Venice server config
-   * @param isIsolatedIngestionEnabled whether isolated ingestion is enabled
    * @return true if blob transfer manager is enabled, false otherwise
    */
-  public static boolean isBlobTransferManagerEnabled(
-      VeniceServerConfig backendConfig,
-      boolean isIsolatedIngestionEnabled) {
-    // Blob transfer feature and isolated ingestion feature are mutually exclusive
+  public static boolean isBlobTransferManagerEnabled(VeniceServerConfig backendConfig) {
     if (backendConfig.isBlobTransferManagerEnabled() && backendConfig.isBlobTransferSslEnabled()
         && backendConfig.isBlobTransferAclEnabled()) {
-      if (isIsolatedIngestionEnabled) {
-        throw new VeniceException("Blob transfer manager is not supported with isolated ingestion");
-      } else {
-        return true;
-      }
+      return true;
     } else if (backendConfig.isBlobTransferManagerEnabled()) {
       throw new VeniceException("Blob transfer manager is not supported without SSL and ACL enabled");
     }
