@@ -73,6 +73,7 @@ import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterMetricEntity;
+import com.linkedin.venice.router.stats.RouterPipelineStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.RouterThrottleStats;
 import com.linkedin.venice.router.stats.SecurityStats;
@@ -92,6 +93,7 @@ import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -100,6 +102,8 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import io.netty.channel.AbstractChannel;
 import io.netty.channel.ChannelHandler;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultithreadEventLoopGroup;
@@ -109,6 +113,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.util.AttributeKey;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.InetSocketAddress;
@@ -127,6 +132,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -671,6 +677,16 @@ public class RouterServer extends AbstractVeniceService {
     AdminOperationsHandler adminOperationsHandler =
         new AdminOperationsHandler(accessController.orElse(null), this, adminOperationsStats);
 
+    // Pipeline diagnostic metrics
+    WritabilityMonitorHandler writabilityMonitorHandler = new WritabilityMonitorHandler();
+    RouterPipelineStats pipelineStats = new RouterPipelineStats(
+        metricsRepository,
+        "router_pipeline",
+        workerEventLoopGroup,
+        writabilityMonitorHandler::getUnwritableCount);
+    PipelineTimingHandler pipelineTimingHandler = new PipelineTimingHandler(pipelineStats);
+    PipelineTimingEndHandler pipelineTimingEndHandler = new PipelineTimingEndHandler(pipelineStats);
+
     // TODO: deprecate non-ssl port
     if (!config.isEnforcingSecureOnly()) {
       router = Optional.of(
@@ -686,6 +702,8 @@ public class RouterServer extends AbstractVeniceService {
               .rejectedConnectionCountRecorder(securityStats::recordRejectedConnectionCount)
               .timeoutProcessor(timeoutProcessor)
               .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
+                pipeline.addLast("WritabilityMonitor", writabilityMonitorHandler);
+                pipeline.addLast("PipelineTimingHandler", pipelineTimingHandler);
                 pipeline.addLast(
                     "RouterThrottleHandler",
                     new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config));
@@ -695,6 +713,7 @@ public class RouterServer extends AbstractVeniceService {
                 pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
                 addStreamingHandler(pipeline);
                 addOptionalChannelHandlersToPipeline(pipeline);
+                pipeline.addLast("PipelineTimingEndHandler", pipelineTimingEndHandler);
               })
               .idleTimeout(3, TimeUnit.HOURS)
               .enableInboundHttp2(config.isHttp2InboundEnabled())
@@ -750,6 +769,8 @@ public class RouterServer extends AbstractVeniceService {
     RouterThrottleHandler routerThrottleHandler =
         new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config);
     Consumer<ChannelPipeline> withoutAcl = pipeline -> {
+      pipeline.addLast("WritabilityMonitor", writabilityMonitorHandler);
+      pipeline.addLast("PipelineTimingHandler", pipelineTimingHandler);
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
       pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
@@ -757,8 +778,11 @@ public class RouterServer extends AbstractVeniceService {
       pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
       addStreamingHandler(pipeline);
       addOptionalChannelHandlersToPipeline(pipeline);
+      pipeline.addLast("PipelineTimingEndHandler", pipelineTimingEndHandler);
     };
     Consumer<ChannelPipeline> withAcl = pipeline -> {
+      pipeline.addLast("WritabilityMonitor", writabilityMonitorHandler);
+      pipeline.addLast("PipelineTimingHandler", pipelineTimingHandler);
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
       pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
@@ -767,6 +791,7 @@ public class RouterServer extends AbstractVeniceService {
       pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
       addStreamingHandler(pipeline);
       addOptionalChannelHandlersToPipeline(pipeline);
+      pipeline.addLast("PipelineTimingEndHandler", pipelineTimingEndHandler);
     };
 
     secureRouter = Router.builder(scatterGather)
@@ -1109,5 +1134,83 @@ public class RouterServer extends AbstractVeniceService {
     schemaRepository.refresh();
     routingDataRepository.refresh();
     hybridStoreQuotaRepository.ifPresent(HelixHybridStoreQuotaRepository::refresh);
+  }
+
+  /**
+   * Records pre_handler_latency: time from HTTP decode (requestNanos) to first Venice handler entry.
+   * Must be the FIRST Venice handler in the pipeline.
+   */
+  @ChannelHandler.Sharable
+  static class PipelineTimingHandler extends ChannelInboundHandlerAdapter {
+    static final AttributeKey<Long> HANDLER_CHAIN_START_NANOS = AttributeKey.valueOf("HANDLER_CHAIN_START_NANOS");
+    private final RouterPipelineStats stats;
+
+    PipelineTimingHandler(RouterPipelineStats stats) {
+      this.stats = stats;
+    }
+
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+      if (msg instanceof BasicFullHttpRequest) {
+        long now = System.nanoTime();
+        long requestNanos = ((BasicFullHttpRequest) msg).getRequestNanos();
+        stats.recordPreHandlerLatency(LatencyUtils.convertNSToMS(now - requestNanos));
+        ctx.channel().attr(HANDLER_CHAIN_START_NANOS).set(now);
+      }
+      ctx.fireChannelRead(msg);
+    }
+  }
+
+  /**
+   * Records handler_chain_latency: time from first Venice handler entry to last Venice handler exit.
+   * Must be the LAST Venice handler in the pipeline (after optional handlers).
+   */
+  @ChannelHandler.Sharable
+  static class PipelineTimingEndHandler extends ChannelInboundHandlerAdapter {
+    private final RouterPipelineStats stats;
+
+    PipelineTimingEndHandler(RouterPipelineStats stats) {
+      this.stats = stats;
+    }
+
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+      Long startNanos = ctx.channel().attr(PipelineTimingHandler.HANDLER_CHAIN_START_NANOS).getAndSet(null);
+      if (startNanos != null) {
+        stats.recordHandlerChainLatency(LatencyUtils.convertNSToMS(System.nanoTime() - startNanos));
+      }
+      ctx.fireChannelRead(msg);
+    }
+  }
+
+  /**
+   * Tracks the number of channels with full write buffers (unwritable).
+   * Used as an infrastructure gauge to detect slow client write backpressure.
+   */
+  @ChannelHandler.Sharable
+  static class WritabilityMonitorHandler extends ChannelInboundHandlerAdapter {
+    private final AtomicInteger unwritableCount = new AtomicInteger(0);
+
+    @Override
+    public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
+      if (ctx.channel().isWritable()) {
+        unwritableCount.decrementAndGet();
+      } else {
+        unwritableCount.incrementAndGet();
+      }
+      ctx.fireChannelWritabilityChanged();
+    }
+
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+      if (!ctx.channel().isWritable()) {
+        unwritableCount.decrementAndGet();
+      }
+      ctx.fireChannelInactive();
+    }
+
+    public int getUnwritableCount() {
+      return unwritableCount.get();
+    }
   }
 }
