@@ -200,6 +200,19 @@ public class TestDeferredVersionSwapWithSequentialRollout {
         });
       });
 
+      // For PROCEED case (targetVersion == 2), verify previousCurrentVersion is set correctly on version 2
+      if (targetVersion == 2) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+          Optional<Version> v2 = parentStore.getVersion(2);
+          Assert.assertTrue(v2.isPresent(), "Version 2 should exist");
+          Assert.assertEquals(
+              v2.get().getPreviousCurrentVersion(),
+              1,
+              "Version 2's previousCurrentVersion should be 1 after it became current");
+        });
+      }
+
       if (targetVersion == 1) {
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();

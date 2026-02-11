@@ -49,6 +49,7 @@ public class SemanticDetectorTest {
     updateStore.enableWrites = true;
     updateStore.replicateAllConfigs = true;
     updateStore.updatedConfigsList = Collections.emptyList();
+    updateStore.blobDbEnabled = "NOT_SPECIFIED";
 
     HybridStoreConfigRecord hybridStoreConfig = new HybridStoreConfigRecord();
     hybridStoreConfig.rewindTimeInSeconds = 123L;
@@ -291,6 +292,7 @@ public class SemanticDetectorTest {
     updateStore.enableWrites = true;
     updateStore.replicateAllConfigs = true;
     updateStore.updatedConfigsList = Collections.emptyList();
+    updateStore.blobDbEnabled = "NOT_SPECIFIED";
 
     // Default value of this field is 60
     updateStore.targetSwapRegionWaitTime = 10;
