@@ -288,8 +288,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public void stopInner() throws Exception {
     heartbeatLagCleanupAndLoggingThreadIsRunning.set(false);
     heartbeatReporterThreadIsRunning.set(false);
-    reportingThread.interrupt();
-    lagCleanupAndLoggingThread.interrupt();
   }
 
   /**

@@ -5,9 +5,7 @@ import com.linkedin.venice.utils.Utils;
 
 
 /**
- * Composite key for the flattened heartbeat timestamp map.
- * Replaces the deeply nested Map&lt;String, Map&lt;Integer, Map&lt;Integer, Map&lt;String, Entry&gt;&gt;&gt;&gt; structure
- * to eliminate contention at intermediate map levels when multiple partitions update concurrently.
+ * Composite key for the flattened heartbeat timestamp map
  */
 public final class HeartbeatKey {
   final String storeName;
