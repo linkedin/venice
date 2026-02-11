@@ -310,8 +310,7 @@ public class VeniceServer {
         veniceConfigLoader,
         clientConfigForConsumer.orElse(null),
         metricsRepository,
-        icProvider,
-        false);
+        icProvider);
     zkClient = veniceMetadataRepositoryBuilder.getZkClient();
     metadataRepo = veniceMetadataRepositoryBuilder.getStoreRepo();
     schemaRepo = veniceMetadataRepositoryBuilder.getSchemaRepo();
@@ -413,7 +412,6 @@ public class VeniceServer {
         partitionStateSerializer,
         readOnlyZKSharedSchemaRepository,
         icProvider,
-        false,
         compressorFactory,
         Optional.empty(),
         false,
@@ -485,7 +483,7 @@ public class VeniceServer {
     /**
      * Initialize Blob transfer manager for Service
      */
-    if (BlobTransferUtils.isBlobTransferManagerEnabled(serverConfig, false)) {
+    if (BlobTransferUtils.isBlobTransferManagerEnabled(serverConfig)) {
       aggVersionedBlobTransferStats = new AggVersionedBlobTransferStats(metricsRepository, metadataRepo, serverConfig);
       aggBlobTransferStats = new AggBlobTransferStats(
           aggVersionedBlobTransferStats,

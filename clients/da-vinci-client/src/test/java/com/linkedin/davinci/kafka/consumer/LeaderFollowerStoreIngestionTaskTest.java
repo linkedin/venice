@@ -288,7 +288,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
             mockBooleanSupplier,
             mockVeniceStoreVersionConfig,
             0,
-            false,
             Optional.empty(),
             null,
             null));

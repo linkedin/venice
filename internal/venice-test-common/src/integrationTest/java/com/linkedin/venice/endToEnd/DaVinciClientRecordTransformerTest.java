@@ -811,7 +811,6 @@ public class DaVinciClientRecordTransformerTest {
     props.setProperty("store.name", storeName);
     props.setProperty("sleep.seconds", "100");
     props.setProperty("heartbeat.timeout.seconds", "10");
-    props.setProperty("ingestion.isolation", "false");
     props.setProperty("blob.transfer.server.port", Integer.toString(port1));
     props.setProperty("blob.transfer.client.port", Integer.toString(port2));
     props.setProperty("storage.class", StorageClass.DISK.toString());

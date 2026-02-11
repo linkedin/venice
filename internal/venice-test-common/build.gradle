@@ -335,7 +335,6 @@ def integrationTestBuckets = [
         "com.linkedin.venice.controller.server.TestBackupControllerResponse",
         "com.linkedin.venice.endToEnd.TestSuperSetSchemaRegistration",
         "com.linkedin.venice.endToEnd.TestServerStorePropertiesEndpoint",
-        "com.linkedin.davinci.ingestion.IsolatedIngestionServerTest",
         "com.linkedin.venice.controller.TestHolisticSeverHealthCheck",
         "com.linkedin.venice.consumer.ConsumerIntegrationTestWithProtocolHeader",
         "com.linkedin.venice.controller.TestStartMultiControllers",

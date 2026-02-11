@@ -30,7 +30,6 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED;
 import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -149,7 +148,6 @@ public class DaVinciClientP2PBlobTransferTest {
     props.setProperty("store.name", storeName);
     props.setProperty("sleep.seconds", "100");
     props.setProperty("heartbeat.timeout.seconds", "10");
-    props.setProperty("ingestion.isolation", "false");
     props.setProperty("blob.transfer.server.port", Integer.toString(port1));
     props.setProperty("blob.transfer.client.port", Integer.toString(port2));
     props.setProperty("storage.class", StorageClass.DISK.toString());
@@ -195,8 +193,7 @@ public class DaVinciClientP2PBlobTransferTest {
         .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
         .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
-        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG")
-        .put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled);
+        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
 
     if (batchPushReportEnable) {
       // if batch push report is enabled, the peer finding expects to query at version level, but it should not affect
@@ -287,7 +284,6 @@ public class DaVinciClientP2PBlobTransferTest {
     props.setProperty("store.name", storeName);
     props.setProperty("sleep.seconds", "100");
     props.setProperty("heartbeat.timeout.seconds", "10");
-    props.setProperty("ingestion.isolation", "false");
     props.setProperty("blob.transfer.server.port", Integer.toString(port1));
     props.setProperty("blob.transfer.client.port", Integer.toString(port2));
     props.setProperty("storage.class", StorageClass.DISK.toString());
@@ -425,7 +421,6 @@ public class DaVinciClientP2PBlobTransferTest {
     props.setProperty("store.name", storeName);
     props.setProperty("sleep.seconds", "100");
     props.setProperty("heartbeat.timeout.seconds", "10");
-    props.setProperty("ingestion.isolation", "false");
     props.setProperty("blob.transfer.server.port", Integer.toString(port1));
     props.setProperty("blob.transfer.client.port", Integer.toString(port2));
     props.setProperty("storage.class", StorageClass.DISK.toString());
@@ -552,7 +547,6 @@ public class DaVinciClientP2PBlobTransferTest {
     props.setProperty("store.name", storeName);
     props.setProperty("sleep.seconds", "100");
     props.setProperty("heartbeat.timeout.seconds", "10");
-    props.setProperty("ingestion.isolation", "false");
     props.setProperty("blob.transfer.server.port", Integer.toString(port1));
     props.setProperty("blob.transfer.client.port", Integer.toString(port2));
     props.setProperty("storage.class", StorageClass.DISK.toString());

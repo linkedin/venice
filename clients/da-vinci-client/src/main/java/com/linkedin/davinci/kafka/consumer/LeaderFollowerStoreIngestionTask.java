@@ -231,7 +231,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       BooleanSupplier isCurrentVersion,
       VeniceStoreVersionConfig storeConfig,
       int errorPartitionId,
-      boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
@@ -244,7 +243,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         isCurrentVersion,
         storeConfig,
         errorPartitionId,
-        isIsolatedIngestion,
         cacheBackend,
         internalRecordTransformerConfig,
         builder.getLeaderFollowerNotifiers(),
