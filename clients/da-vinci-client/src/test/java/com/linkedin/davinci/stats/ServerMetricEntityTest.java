@@ -237,7 +237,7 @@ public class ServerMetricEntityTest {
             "ingestion.batch_processing.request.record.count",
             MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
             MetricUnit.NUMBER,
-            "Distribution of number of records per batch-processing request",
+            "Total records across batch-processing requests",
             Utils.setOf(
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,

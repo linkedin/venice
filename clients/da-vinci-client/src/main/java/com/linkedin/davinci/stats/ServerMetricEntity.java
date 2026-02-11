@@ -187,11 +187,11 @@ public enum ServerMetricEntity implements ModuleMetricEntityInterface {
   ),
 
   /**
-   * Distribution of number of records per batch-processing request.
+   * Total records across batch-processing requests.
    */
   BATCH_PROCESSING_REQUEST_RECORD_COUNT(
       "ingestion.batch_processing.request.record.count", MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
-      MetricUnit.NUMBER, "Distribution of number of records per batch-processing request",
+      MetricUnit.NUMBER, "Total records across batch-processing requests",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 

@@ -85,14 +85,26 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     return stats;
   }
 
-  /** Initializes version info for a newly created VeniceVersionedStats */
+  /**
+   * Initializes version info for a newly created VeniceVersionedStats.
+   *
+   * <p>Guards both setCurrentVersion and setFutureVersion with equality checks matching
+   * {@link #updateStatsVersionInfo}. This is critical because both methods have side effects:
+   * they call {@link VeniceVersionedStats#getStats(int)} which creates a new stats entry and
+   * links it to the reporter. Calling either with NON_EXISTING_VERSION would create a version-0
+   * stats entry, making reporters return 0.0 instead of the expected null/error code
+   * (e.g., NULL_DIV_STATS).
+   */
   private void initializeVersionInfo(VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats, Store store) {
-    versionedStats.setCurrentVersion(store.getCurrentVersion());
+    if (store.getCurrentVersion() != versionedStats.getCurrentVersion()) {
+      versionedStats.setCurrentVersion(store.getCurrentVersion());
+    }
 
     int futureVersion = computeFutureVersion(versionedStats, store.getVersions());
 
-    // Set directly without checking - this is a newly created stats object with default values
-    versionedStats.setFutureVersion(futureVersion);
+    if (futureVersion != versionedStats.getFutureVersion()) {
+      versionedStats.setFutureVersion(futureVersion);
+    }
 
     // Notify subclasses that version info has been initialized
     onVersionInfoUpdated(store.getName(), versionedStats.getCurrentVersion(), versionedStats.getFutureVersion());
