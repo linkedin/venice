@@ -121,4 +121,12 @@ public class HeartbeatOtelStats {
   public VersionInfo getVersionInfo() {
     return versionInfo;
   }
+
+  /**
+   * Cleans up all resources associated with this store's OTel stats.
+   * Call this when the store is being deleted.
+   */
+  public void close() {
+    metricsByRegion.clear();
+  }
 }
