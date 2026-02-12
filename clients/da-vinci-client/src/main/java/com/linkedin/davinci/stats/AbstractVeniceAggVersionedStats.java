@@ -55,7 +55,10 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   }
 
   public synchronized void loadAllStats() {
-    metadataRepository.getAllStores().forEach(this::addStore);
+    metadataRepository.getAllStores().forEach(store -> {
+      addStore(store);
+      updateTotalStats(store.getName());
+    });
   }
 
   protected void recordVersionedAndTotalStat(String storeName, int version, Consumer<STATS> function) {
@@ -81,73 +84,26 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     if (stats == null) {
       Store store = metadataRepository.getStoreOrThrow(storeName);
       stats = addStore(store);
+      updateTotalStats(storeName);
     }
     return stats;
   }
 
   /**
-   * Initializes version info for a newly created VeniceVersionedStats.
+   * Applies version info to a VeniceVersionedStats object. This is the core logic shared by both
+   * {@link #addStore(Store)} (initialization) and {@link #updateStatsVersionInfo(String, List, int)}
+   * (updates).
    *
-   * <p>Guards both setCurrentVersion and setFutureVersion with equality checks matching
-   * {@link #updateStatsVersionInfo}. This is critical because both methods have side effects:
-   * they call {@link VeniceVersionedStats#getStats(int)} which creates a new stats entry and
-   * links it to the reporter. Calling either with NON_EXISTING_VERSION would create a version-0
-   * stats entry, making reporters return 0.0 instead of the expected null/error code
-   * (e.g., NULL_DIV_STATS).
+   * <p>Guards both setCurrentVersion and setFutureVersion with equality checks. This is critical
+   * because both methods have side effects: they call {@link VeniceVersionedStats#getStats(int)}
+   * which creates a new stats entry and links it to the reporter. Calling either with
+   * NON_EXISTING_VERSION would create a version-0 stats entry
    */
-  private void initializeVersionInfo(VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats, Store store) {
-    if (store.getCurrentVersion() != versionedStats.getCurrentVersion()) {
-      versionedStats.setCurrentVersion(store.getCurrentVersion());
-    }
-
-    int futureVersion = computeFutureVersion(versionedStats, store.getVersions());
-
-    if (futureVersion != versionedStats.getFutureVersion()) {
-      versionedStats.setFutureVersion(futureVersion);
-    }
-
-    // Notify subclasses that version info has been initialized
-    onVersionInfoUpdated(store.getName(), versionedStats.getCurrentVersion(), versionedStats.getFutureVersion());
-  }
-
-  /**
-   * Adds all versions to the stats and computes the future version.
-   *
-   * @param versionedStats The stats object to add versions to
-   * @param existingVersions The list of versions to process
-   * @return The computed future version (max version in STARTED/PUSHED state), or NON_EXISTING_VERSION if none
-   */
-  private int computeFutureVersion(
+  private void applyVersionInfo(
       VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats,
-      List<Version> existingVersions) {
-    int futureVersion = NON_EXISTING_VERSION;
-    for (Version version: existingVersions) {
-      versionedStats.addVersion(version.getNumber());
-
-      VersionStatus status = version.getStatus();
-      if (status == VersionStatus.STARTED || status == VersionStatus.PUSHED) {
-        futureVersion = Math.max(futureVersion, version.getNumber());
-      }
-    }
-    return futureVersion;
-  }
-
-  /**
-   * Adds a store and initializes its version info. Uses computeIfAbsent for thread-safety,
-   * ensuring version info is always initialized exactly once when the store is first added.
-   */
-  protected VeniceVersionedStats<STATS, STATS_REPORTER> addStore(Store store) {
-    return aggStats.computeIfAbsent(store.getName(), s -> {
-      VeniceVersionedStats<STATS, STATS_REPORTER> newStats =
-          new VeniceVersionedStats<>(metricsRepository, s, statsInitiator, reporterSupplier);
-      initializeVersionInfo(newStats, store);
-      return newStats;
-    });
-  }
-
-  protected void updateStatsVersionInfo(String storeName, List<Version> existingVersions, int newCurrentVersion) {
-    VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats = getVersionedStats(storeName);
-
+      String storeName,
+      List<Version> existingVersions,
+      int newCurrentVersion) {
     if (newCurrentVersion != versionedStats.getCurrentVersion()) {
       versionedStats.setCurrentVersion(newCurrentVersion);
     }
@@ -163,18 +119,39 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
         .filter(versionNum -> !existingVersionNumbers.contains(versionNum) && versionNum != NON_EXISTING_VERSION)
         .forEach(versionedStats::removeVersion);
 
-    int futureVersion = computeFutureVersion(versionedStats, existingVersions);
+    int futureVersion = NON_EXISTING_VERSION;
+    for (Version version: existingVersions) {
+      versionedStats.addVersion(version.getNumber());
+
+      VersionStatus status = version.getStatus();
+      if (status == VersionStatus.STARTED || status == VersionStatus.PUSHED) {
+        futureVersion = Math.max(futureVersion, version.getNumber());
+      }
+    }
 
     if (futureVersion != versionedStats.getFutureVersion()) {
       versionedStats.setFutureVersion(futureVersion);
     }
 
-    // Notify subclasses that version info has changed
     onVersionInfoUpdated(storeName, versionedStats.getCurrentVersion(), versionedStats.getFutureVersion());
+  }
 
-    /**
-     * Since versions are changed, update the total stats accordingly.
-     */
+  /**
+   * Adds a store and initializes its version info. Uses computeIfAbsent for thread-safety,
+   * ensuring version info is always initialized exactly once when the store is first added.
+   */
+  protected VeniceVersionedStats<STATS, STATS_REPORTER> addStore(Store store) {
+    return aggStats.computeIfAbsent(store.getName(), s -> {
+      VeniceVersionedStats<STATS, STATS_REPORTER> newStats =
+          new VeniceVersionedStats<>(metricsRepository, s, statsInitiator, reporterSupplier);
+      applyVersionInfo(newStats, store.getName(), store.getVersions(), store.getCurrentVersion());
+      return newStats;
+    });
+  }
+
+  protected void updateStatsVersionInfo(String storeName, List<Version> existingVersions, int newCurrentVersion) {
+    VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats = getVersionedStats(storeName);
+    applyVersionInfo(versionedStats, storeName, existingVersions, newCurrentVersion);
     updateTotalStats(storeName);
   }
 
@@ -211,10 +188,6 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   protected int getCurrentVersion(String storeName) {
     return getVersionedStats(storeName).getCurrentVersion();
   }
-
-  /**
-   * return {@link Store#NON_EXISTING_VERSION} if backup version doesn't exist.
-   */
 
   /**
    * Some versioned stats might always increasing; in this case, the value in the total stats should be updated with
