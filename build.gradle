@@ -143,7 +143,7 @@ ext.libraries = [
     spark: 'com.sparkjava:spark-core:2.9.4', // Spark-Java Rest framework
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
     tehuti: 'io.tehuti:tehuti:0.12.5',
-    testcontainers: 'org.testcontainers:testcontainers:1.21.0',
+    testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
     tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',
     // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation
