@@ -14,9 +14,8 @@ To use the Online Producer, the store must meet some prerequisites:
 
 In addition to the store-level prerequisites, the current version must meet the following prerequisites:
 
-1. It must be configured as hybrid; aka capable of receiving near-line writes
-2. It must specify either `ACTIVE_ACTIVE` or `NON_AGGREGATE` data-replication policies
-3. It must specify a partitioner that the writer application knows how to use
+1. It must be configured as hybrid; aka capable of receiving nearline writes
+2. It must specify a partitioner that the writer application knows how to use
 
 ## API
 
