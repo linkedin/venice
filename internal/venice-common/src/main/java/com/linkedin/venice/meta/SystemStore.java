@@ -698,6 +698,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public void setBlobBasedIngestionEnabled(boolean blobBasedIngestionEnabled) {
+    throwUnsupportedOperationException("Blob based ingestion not supported");
+  }
+
+  @Override
+  public boolean isBlobBasedIngestionEnabled() {
+    return zkSharedStore.isBlobBasedIngestionEnabled();
+  }
+
+  @Override
   public void setBlobTransferInServerEnabled(String blobTransferInServerEnabled) {
     throwUnsupportedOperationException("setBlobTransferServerEnabled is not supported in SystemStore");
   }

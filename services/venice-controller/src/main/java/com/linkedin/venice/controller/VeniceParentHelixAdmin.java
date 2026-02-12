@@ -10,6 +10,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_BASED_INGESTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
@@ -3076,10 +3077,15 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_ENABLED))
           .orElseGet(currStore::isBlobTransferEnabled);
 
+      setStore.blobBasedIngestionEnabled = params.getBlobBasedIngestionEnabled()
+          .map(addToUpdatedConfigList(updatedConfigsList, BLOB_BASED_INGESTION_ENABLED))
+          .orElseGet(currStore::isBlobBasedIngestionEnabled);
+
       setStore.blobTransferInServerEnabled = params.getBlobTransferInServerEnabled()
           .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_IN_SERVER_ENABLED))
           .orElseGet(currStore::getBlobTransferInServerEnabled);
 
+<<<<<<< HEAD
       // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Store interface
       setStore.blobDbEnabled = "NOT_SPECIFIED";
 
@@ -3087,6 +3093,7 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, PREVIOUS_CURRENT_VERSION))
           .orElseGet(currStore::getPreviousCurrentVersion);
 
+      setStore.blobDbEnabled = "NOT_SPECIFIED";
       setStore.separateRealTimeTopicEnabled =
           separateRealTimeTopicEnabled.map(addToUpdatedConfigList(updatedConfigsList, SEPARATE_REAL_TIME_TOPIC_ENABLED))
               .orElseGet(currStore::isSeparateRealTimeTopicEnabled);

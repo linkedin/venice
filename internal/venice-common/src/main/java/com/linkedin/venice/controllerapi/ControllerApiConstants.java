@@ -267,6 +267,7 @@ public class ControllerApiConstants {
   public static final String UNUSED_SCHEMA_DELETION_ENABLED = "unused_schema_deletion_enabled";
 
   public static final String BLOB_TRANSFER_ENABLED = "blob_transfer_enabled";
+  public static final String BLOB_BASED_INGESTION_ENABLED = "blob_based_ingestion_enabled";
   public static final String BLOB_TRANSFER_IN_SERVER_ENABLED = "blob_transfer_in_server_enabled";
 
   public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
