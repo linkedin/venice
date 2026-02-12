@@ -1751,16 +1751,17 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   /**
-   * BUG REPRODUCTION: When an exception is thrown inside the try block of
-   * DispatchingAvroGenericStoreClient.get() (lines 216-265) BEFORE the
-   * transportFuture.whenCompleteAsync callback is registered (or if transportClient.get()
-   * itself throws), the catch block (lines 267-276) completes routeRequestFuture but does
-   * NOT complete valueFuture. The returned valueFuture remains incomplete forever.
+   * BUG REPRODUCTION: When an exception is thrown in
+   * {@link DispatchingAvroGenericStoreClient#get(GetRequestContext, Object)} before the
+   * {@code transportFuture.whenCompleteAsync(...)} callback is registered (or if
+   * {@code transportClient.get(...)} itself throws synchronously), the catch block completes
+   * {@code routeRequestFuture} but does NOT complete {@code valueFuture}. The returned
+   * {@code valueFuture} remains incomplete forever.
    *
    * This can happen when:
-   * - metadata.trackHealthBasedOnRequestToInstance() throws
-   * - composeURIForSingleGet() throws
-   * - transportClient.get() throws synchronously
+   * - {@code metadata.trackHealthBasedOnRequestToInstance(...)} throws
+   * - {@code composeURIForSingleGet(...)} throws
+   * - {@code transportClient.get(...)} throws synchronously
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testGetValueFutureNeverCompletedWhenTransportClientThrowsSynchronously()
@@ -1768,12 +1769,8 @@ public class DispatchingAvroGenericStoreClientTest {
     try {
       setUpClient();
 
-      // Make the transport client throw a synchronous exception (simulates connection failure)
+      // Simulate a synchronous failure from transportClient.get()
       TransportClient throwingTransportClient = mock(TransportClient.class);
-      doReturn(null).when(throwingTransportClient).get(any());
-
-      // Create a dispatching client that will NPE when trying to use the null transport response
-      // Actually, let's make the transportClient.get() throw directly
       org.mockito.Mockito.doThrow(new RuntimeException("Connection pool exhausted"))
           .when(throwingTransportClient)
           .get(any());
@@ -1795,9 +1792,9 @@ public class DispatchingAvroGenericStoreClientTest {
         // BUG CONFIRMED: valueFuture was never completed
         fail(
             "BUG: valueFuture hangs forever when transportClient.get() throws synchronously. "
-                + "The catch block at DispatchingAvroGenericStoreClient.java:267-276 completes "
-                + "routeRequestFuture.completeExceptionally(e) but does NOT complete valueFuture. "
-                + "The returned future remains incomplete forever.");
+                + "The catch block in DispatchingAvroGenericStoreClient#get(...) that handles synchronous "
+                + "exceptions completes routeRequestFuture.completeExceptionally(e) "
+                + "but does NOT complete valueFuture. The returned future remains incomplete forever.");
       } catch (ExecutionException e) {
         // CORRECT: valueFuture was completed with the exception
         assertTrue(e.getCause() instanceof RuntimeException || e.getCause() instanceof VeniceClientException);

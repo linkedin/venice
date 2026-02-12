@@ -187,8 +187,15 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           }
         });
       } else {
-        // Budget exhausted, complete retryFuture so finalFuture doesn't hang forever
-        retryFuture.completeExceptionally(new VeniceClientException("Retry budget exhausted, not retrying"));
+        // Budget exhausted: chain retryFuture to originalRequestFuture so the original error
+        // propagates instead of being masked by a synthetic "budget exhausted" exception.
+        originalRequestFuture.whenComplete((origValue, origThrowable) -> {
+          if (origThrowable != null) {
+            retryFuture.completeExceptionally(origThrowable);
+          } else {
+            retryFuture.complete(origValue);
+          }
+        });
       }
     };
 
