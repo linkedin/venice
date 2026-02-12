@@ -44,7 +44,7 @@ ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig("my-store")
     .setVeniceURL("http://venice-router.example.com:7777");
 
 // Create and start the client
-AvroGenericStoreClient<String, MyValue> client = ClientFactory.getAndStartGenericStoreClient(clientConfig);
+AvroGenericStoreClient<String, MyValue> client = ClientFactory.getAndStartGenericAvroClient(clientConfig);
 ```
 
 ### Reading Data
@@ -112,7 +112,7 @@ ClientConfig clientConfig = ClientConfig.defaultSpecificClientConfig("my-store",
     .setVeniceURL("http://venice-router.example.com:7777");
 
 AvroSpecificStoreClient<String, MyValueRecord> client =
-    ClientFactory.getAndStartSpecificStoreClient(clientConfig);
+    ClientFactory.getAndStartSpecificAvroClient(clientConfig);
 
 MyValueRecord value = client.get("my-key").get();
 ```
@@ -131,6 +131,7 @@ The Thin Client supports Read Compute for server-side operations:
 
 ```java
 Set<String> keys = Set.of("key1", "key2", "key3");
+List<Float> queryVector = Arrays.asList(0.1f, 0.2f, 0.3f);
 
 // Project specific fields and compute dot product
 client.compute()
@@ -152,12 +153,11 @@ client.compute()
 
 Key configuration options for `ClientConfig`:
 
-| Option                           | Description                     | Default |
-| -------------------------------- | ------------------------------- | ------- |
-| `setVeniceURL(String)`           | Router URL (required)           | -       |
-| `setRequestTimeoutMs(long)`      | Request timeout in milliseconds | 5000    |
-| `setMaxConnectionsPerRoute(int)` | Max HTTP connections per route  | 10      |
-| `setMaxConnectionsTotal(int)`    | Total max HTTP connections      | 100     |
+| Option                           | Description                    | Default |
+| -------------------------------- | ------------------------------ | ------- |
+| `setVeniceURL(String)`           | Router URL (required)          | -       |
+| `setMaxConnectionsPerRoute(int)` | Max HTTP connections per route | -       |
+| `setMaxConnectionsTotal(int)`    | Total max HTTP connections     | -       |
 
 ## Error Handling
 
@@ -180,5 +180,4 @@ try {
 
 1. **Reuse clients**: Create one client per store and reuse it across requests
 2. **Use batch gets**: For multiple keys, batch get is more efficient than multiple single gets
-3. **Handle timeouts**: Configure appropriate timeouts for your latency requirements
-4. **Close clients**: Always close clients in a finally block or use try-with-resources
+3. **Close clients**: Always close clients in a finally block or use try-with-resources
