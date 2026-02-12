@@ -76,10 +76,3 @@ public class MyStreamTask implements StreamTask {
 3. **Handle schema evolution** - Ensure your Samza job can handle multiple value schema versions
 4. **Set appropriate rewind time** - Configure hybrid store rewind time based on expected downtime and reprocessing
    needs
-
-## See Also
-
-- [Online Producer](online-producer.md) - Lower-level direct write API
-- [Batch Push](batch-push.md) - Full dataset replacement from Hadoop/Spark
-- [Hybrid Stores](../../getting-started/learn-venice/merging-batch-and-rt-data.md#hybrid-store) - Combining batch and
-  real-time data

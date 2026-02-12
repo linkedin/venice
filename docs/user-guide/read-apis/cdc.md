@@ -46,7 +46,7 @@ ChangelogClientConfig config = new ChangelogClientConfig<>()
     .setStoreName("my-store")
     .setD2Client(d2Client)
     .setControllerD2ServiceName("VeniceController")
-    .setConsumerProperties(kafkaConsumerProperties);
+    .setConsumerProperties(consumerProperties);
 
 // Create the factory
 VeniceChangelogConsumerClientFactory factory =
@@ -83,7 +83,7 @@ while (true) {
     Collection<PubSubMessage<String, ChangeEvent<MyValue>, VeniceChangeCoordinate>> messages =
         consumer.poll(1000);
 
-    for (var message : messages) {
+    for (PubSubMessage<String, ChangeEvent<MyValue>, VeniceChangeCoordinate> message : messages) {
         String key = message.getKey();
         ChangeEvent<MyValue> changeEvent = message.getValue();
 
@@ -169,9 +169,10 @@ Save checkpoints to resume consumption after application restarts:
 Set<VeniceChangeCoordinate> checkpoints = new HashSet<>();
 
 while (true) {
-    var messages = consumer.poll(1000);
+    Collection<PubSubMessage<String, ChangeEvent<MyValue>, VeniceChangeCoordinate>> messages =
+        consumer.poll(1000);
 
-    for (var message : messages) {
+    for (PubSubMessage<String, ChangeEvent<MyValue>, VeniceChangeCoordinate> message : messages) {
         // Process the message...
 
         // Save the checkpoint position
@@ -357,8 +358,7 @@ current version's push time, you will consume all events in that version.
 2. **Checkpoint regularly**: For Stateless CDC, persist checkpoints or timestamps periodically to minimize reprocessing
    after restarts. Stateful CDC manages checkpoints automatically.
 
-3. **Monitor lag**: Use `isCaughtUp()` and heartbeat timestamps to monitor consumer lag. Set up alerting on lag metrics
-   to detect when the CDC client isn't making progress.
+3. **Monitor lag**: Set up alerting on lag metrics to detect when the CDC client isn't making progress.
 
 4. **Handle null current values**: Deletions will have null `getCurrentValue()`.
 
@@ -367,7 +367,7 @@ current version's push time, you will consume all events in that version.
 
 ## Frequently Asked Questions
 
-### What happens during a version push?
+### What happens during a batch push?
 
 The CDC client starts consuming the future version in the background. Once it catches up, it attempts to swap to the
 future version at roughly the same position you were consuming on the current version. This swap is best effort, so you
@@ -393,10 +393,3 @@ Common reasons for CDC client lag:
 3. A background thread may have died (restart can mitigate)
 
 Monitor the heartbeat delay metric to detect lag issues early.
-
-## See Also
-
-- [Thin Client](thin-client.md) - Simple point-in-time reads via Router
-- [Fast Client](fast-client.md) - Low latency point-in-time reads
-- [Da Vinci Client](da-vinci-client.md) - Ultra-low latency with local caching
-- [Stream Processor](../write-apis/stream-processor.md) - Real-time writes to Venice

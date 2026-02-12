@@ -305,10 +305,3 @@ Configuration options for `DaVinciRecordTransformerConfig`:
 | `setAlwaysBootstrapFromVersionTopic` | Set to true if `storeRecordsInDaVinci` is false, and you're storing records in memory without being backed by disk | No       | false   |
 | `setRecordTransformationEnabled`     | Set false if always returning `UNCHANGED` during `transform`                                                       | No       | true    |
 | `setRecordMetadataEnabled`           | Enable if you need the record metadata in `DaVinciRecordTransformerRecordMetadata`                                 | No       | false   |
-
-## See Also
-
-- [Thin Client](thin-client.md) - Lightweight stateless client for simple use cases
-- [Fast Client](fast-client.md) - Stateless client that provides better performance than the Thin Client
-- [Change Data Capture](cdc.md) - Stream all updates to a Venice store
-- [Read APIs Overview](index.md) - Comparison of all Venice read clients

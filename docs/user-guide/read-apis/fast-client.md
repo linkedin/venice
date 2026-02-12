@@ -233,9 +233,3 @@ The Fast Client exposes metrics through `FastClientStats`:
 - Request count by type (single get, batch get, compute)
 - Retry count and success rate
 - Instance health status
-
-## See Also
-
-- [Thin Client](thin-client.md) - Simpler client with Router-based routing
-- [Da Vinci Client](da-vinci-client.md) - Ultra-low latency with local caching
-- [Architecture Overview](../../getting-started/learn-venice/architecture-overview.md) - Venice system design

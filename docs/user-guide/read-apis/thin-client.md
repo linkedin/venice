@@ -182,8 +182,3 @@ try {
 2. **Use batch gets**: For multiple keys, batch get is more efficient than multiple single gets
 3. **Handle timeouts**: Configure appropriate timeouts for your latency requirements
 4. **Close clients**: Always close clients in a finally block or use try-with-resources
-
-## See Also
-
-- [Fast Client](fast-client.md) - Lower latency with partition-aware routing
-- [Da Vinci Client](da-vinci-client.md) - Ultra-low latency with local caching
