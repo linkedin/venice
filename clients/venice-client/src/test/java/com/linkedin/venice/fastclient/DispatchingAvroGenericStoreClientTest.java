@@ -1749,4 +1749,61 @@ public class DispatchingAvroGenericStoreClientTest {
       tearDown();
     }
   }
+
+  /**
+   * BUG REPRODUCTION: When an exception is thrown inside the try block of
+   * DispatchingAvroGenericStoreClient.get() (lines 216-265) BEFORE the
+   * transportFuture.whenCompleteAsync callback is registered (or if transportClient.get()
+   * itself throws), the catch block (lines 267-276) completes routeRequestFuture but does
+   * NOT complete valueFuture. The returned valueFuture remains incomplete forever.
+   *
+   * This can happen when:
+   * - metadata.trackHealthBasedOnRequestToInstance() throws
+   * - composeURIForSingleGet() throws
+   * - transportClient.get() throws synchronously
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testGetValueFutureNeverCompletedWhenTransportClientThrowsSynchronously()
+      throws IOException, InterruptedException, ExecutionException {
+    try {
+      setUpClient();
+
+      // Make the transport client throw a synchronous exception (simulates connection failure)
+      TransportClient throwingTransportClient = mock(TransportClient.class);
+      doReturn(null).when(throwingTransportClient).get(any());
+
+      // Create a dispatching client that will NPE when trying to use the null transport response
+      // Actually, let's make the transportClient.get() throw directly
+      org.mockito.Mockito.doThrow(new RuntimeException("Connection pool exhausted"))
+          .when(throwingTransportClient)
+          .get(any());
+
+      DispatchingAvroGenericStoreClient bugClient =
+          new DispatchingAvroGenericStoreClient(storeMetadata, clientConfig, throwingTransportClient);
+      bugClient.start();
+      bugClient.verifyMetadataInitialized();
+
+      GetRequestContext getRequestContext = new GetRequestContext();
+      CompletableFuture<GenericRecord> result = bugClient.get(getRequestContext, "test_key");
+
+      try {
+        // If the bug exists, this will timeout because valueFuture was never completed
+        // The catch block only completes routeRequestFuture, not valueFuture
+        result.get(2, TimeUnit.SECONDS);
+        fail("Expected an exception to be thrown");
+      } catch (TimeoutException e) {
+        // BUG CONFIRMED: valueFuture was never completed
+        fail(
+            "BUG: valueFuture hangs forever when transportClient.get() throws synchronously. "
+                + "The catch block at DispatchingAvroGenericStoreClient.java:267-276 completes "
+                + "routeRequestFuture.completeExceptionally(e) but does NOT complete valueFuture. "
+                + "The returned future remains incomplete forever.");
+      } catch (ExecutionException e) {
+        // CORRECT: valueFuture was completed with the exception
+        assertTrue(e.getCause() instanceof RuntimeException || e.getCause() instanceof VeniceClientException);
+      }
+    } finally {
+      tearDown();
+    }
+  }
 }
