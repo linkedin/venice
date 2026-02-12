@@ -181,25 +181,19 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
   }
 
   /**
-   * Gets or creates OTel stats for a store.
-   * Uses get-then-putIfAbsent pattern to avoid recursive ConcurrentHashMap update:
-   * computeIfAbsent holds a lock on the bucket, and getCurrentVersion() can trigger
-   * onVersionInfoUpdated() which calls computeIfPresent on the same map and key.
+   * Gets or creates OTel stats for a store
    */
   private HeartbeatOtelStats getOrCreateOtelStats(String storeName) {
-    HeartbeatOtelStats existing = otelStatsMap.get(storeName);
-    if (existing != null) {
-      return existing;
-    }
-    HeartbeatOtelStats newStats = new HeartbeatOtelStats(getMetricsRepository(), storeName, clusterName);
-    newStats.updateVersionInfo(getCurrentVersion(storeName), getFutureVersion(storeName));
-    HeartbeatOtelStats prev = otelStatsMap.putIfAbsent(storeName, newStats);
-    return prev != null ? prev : newStats;
+    return otelStatsMap.computeIfAbsent(storeName, key -> {
+      HeartbeatOtelStats stats = new HeartbeatOtelStats(getMetricsRepository(), storeName, clusterName);
+      // Initialize version cache with current values
+      stats.updateVersionInfo(getCurrentVersion(storeName), getFutureVersion(storeName));
+      return stats;
+    });
   }
 
   /**
    * Gets or creates record-level OTel stats for a store.
-   * Uses get-then-putIfAbsent for the same reason as {@link #getOrCreateOtelStats}.
    */
   private RecordOtelStats getOrCreateRecordOtelStats(String storeName) {
     RecordOtelStats existing = recordOtelStatsMap.get(storeName);
