@@ -62,7 +62,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
-import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -1524,15 +1523,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           PubSubTopic newServingVersionTopic =
               pubSubTopicRepository.getTopic(versionSwap.newServingVersionTopic.toString());
 
-          // TODO: There seems to exist a condition in the server where highwatermark offsets may regress when
-          // transmitting the version swap message it seems like this can potentially happen if a repush occurs
-          // and no data is consumed on that previous version.
-          // To make the client handle this gracefully, we instate the below condition that says the hwm in the
-          // client should never go backwards.
-          List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
-              .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
-              .getOrDefault(upstreamPartition, new ArrayList<>(4));
-
           // Prefer position-based high watermarks if available, otherwise use legacy offset-based
           List<ByteBuffer> positions = versionSwap.getLocalHighWatermarkPubSubPositions();
           List<Long> highWatermarkOffsets;
@@ -1552,12 +1542,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 : Collections.emptyList();
           }
 
-          if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
-            currentVersionHighWatermarks
-                .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
-            currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
-                .put(upstreamPartition, highWatermarkOffsets);
-          }
+          currentVersionHighWatermarks
+              .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
+          currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
+              .put(upstreamPartition, highWatermarkOffsets);
           switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
           chunkAssembler.clearBuffer();
 
@@ -1642,13 +1630,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       List<Long> recordCheckpointVector,
       PubSubTopicPartition pubSubTopicPartition,
       Integer upstreamPartition) {
-    int partitionId = pubSubTopicPartition.getPartitionNumber();
-    List<Long> localOffset = (List<Long>) currentVersionHighWatermarks.getOrDefault(partitionId, Collections.EMPTY_MAP)
-        .getOrDefault(upstreamPartition, new ArrayList<>());
-    if (recordCheckpointVector != null) {
-      return !RmdUtils.hasOffsetAdvanced(localOffset, recordCheckpointVector);
-    }
-    // Has not met version swap message after client initialization.
     return false;
   }
 

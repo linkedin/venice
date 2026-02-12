@@ -306,7 +306,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
         (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
-        Arrays.asList(2L, 1L));
+        Collections.emptyList());
 
     GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(rmdTimestamp.get("age"), 11L);
@@ -412,7 +412,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
         (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
-        Arrays.asList(0L, 1L));
+        Collections.emptyList());
 
     GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(rmdTimestamp.get("age"), 11L);

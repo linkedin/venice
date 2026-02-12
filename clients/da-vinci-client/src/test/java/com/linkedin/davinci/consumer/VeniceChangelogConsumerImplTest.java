@@ -267,6 +267,8 @@ public class VeniceChangelogConsumerImplTest {
 
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(newChangeCaptureTopic, 0);
     verify(mockPubSubConsumer).subscribe(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, true);
+    // After version swap the consumer is subscribed to the new topic which has no data yet.
+    doReturn(Collections.emptyMap()).when(mockPubSubConsumer).poll(Mockito.anyLong());
     pubSubMessages = (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer
         .poll(pollTimeoutMs);
     Assert.assertTrue(pubSubMessages.isEmpty());
