@@ -5,6 +5,7 @@ import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_EN
 import static com.linkedin.venice.schema.Utils.loadSchemaFileAsString;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
@@ -29,6 +30,7 @@ import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
+import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -896,16 +898,12 @@ public class RetriableAvroGenericStoreClientTest {
 
     retriableClient = new RetriableAvroGenericStoreClient<>(dispatchingClient, clientConfig, timeoutProcessor);
 
-    // Use reflection to replace the internal singleKeyLongTailRetryManager with a mock
+    // Replace the internal singleKeyLongTailRetryManager with a mock
     // that always returns false for isRetryAllowed() (simulating exhausted budget)
-    com.linkedin.venice.meta.RetryManager mockRetryManager = mock(com.linkedin.venice.meta.RetryManager.class);
+    RetryManager mockRetryManager = mock(RetryManager.class);
     doReturn(false).when(mockRetryManager).isRetryAllowed();
-    doReturn(false).when(mockRetryManager).isRetryAllowed(org.mockito.ArgumentMatchers.anyInt());
-
-    java.lang.reflect.Field retryManagerField =
-        RetriableAvroGenericStoreClient.class.getDeclaredField("singleKeyLongTailRetryManager");
-    retryManagerField.setAccessible(true);
-    retryManagerField.set(retriableClient, mockRetryManager);
+    doReturn(false).when(mockRetryManager).isRetryAllowed(anyInt());
+    retriableClient.setSingleKeyLongTailRetryManager(mockRetryManager);
 
     GetRequestContext ctx = new GetRequestContext();
     CompletableFuture<GenericRecord> result = retriableClient.get(ctx, "test_key");
@@ -1035,15 +1033,11 @@ public class RetriableAvroGenericStoreClientTest {
     RetriableAvroGenericStoreClient<String, GenericRecord> retryClient =
         new RetriableAvroGenericStoreClient<>(dispatchingClient, testConfig, timeoutProcessor);
 
-    // Use reflection to replace the RetryManager with a mock that always denies retries
-    com.linkedin.venice.meta.RetryManager mockRetryManager = mock(com.linkedin.venice.meta.RetryManager.class);
+    // Replace the RetryManager with a mock that always denies retries
+    RetryManager mockRetryManager = mock(RetryManager.class);
     doReturn(false).when(mockRetryManager).isRetryAllowed();
-    doReturn(false).when(mockRetryManager).isRetryAllowed(org.mockito.ArgumentMatchers.anyInt());
-
-    java.lang.reflect.Field retryManagerField =
-        RetriableAvroGenericStoreClient.class.getDeclaredField("singleKeyLongTailRetryManager");
-    retryManagerField.setAccessible(true);
-    retryManagerField.set(retryClient, mockRetryManager);
+    doReturn(false).when(mockRetryManager).isRetryAllowed(anyInt());
+    retryClient.setSingleKeyLongTailRetryManager(mockRetryManager);
 
     GetRequestContext bugCtx = new GetRequestContext();
     CompletableFuture<GenericRecord> result = retryClient.get(bugCtx, "test_key");

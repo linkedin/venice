@@ -1,6 +1,7 @@
 package com.linkedin.venice.fastclient;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
@@ -109,6 +110,11 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     // Use range-based config
     computeLongTailRetryThresholdMap =
         BatchGetConfigUtils.parseRetryThresholdForBatchGet(longTailComputeRangeBasedRetryThresholdInMilliSeconds);
+  }
+
+  @VisibleForTesting
+  void setSingleKeyLongTailRetryManager(RetryManager retryManager) {
+    this.singleKeyLongTailRetryManager = retryManager;
   }
 
   enum RetryType {

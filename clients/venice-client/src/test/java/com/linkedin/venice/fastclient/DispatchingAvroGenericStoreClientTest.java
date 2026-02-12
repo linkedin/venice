@@ -14,6 +14,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
@@ -1771,9 +1772,7 @@ public class DispatchingAvroGenericStoreClientTest {
 
       // Simulate a synchronous failure from transportClient.get()
       TransportClient throwingTransportClient = mock(TransportClient.class);
-      org.mockito.Mockito.doThrow(new RuntimeException("Connection pool exhausted"))
-          .when(throwingTransportClient)
-          .get(any());
+      doThrow(new RuntimeException("Connection pool exhausted")).when(throwingTransportClient).get(any());
 
       DispatchingAvroGenericStoreClient bugClient =
           new DispatchingAvroGenericStoreClient(storeMetadata, clientConfig, throwingTransportClient);
