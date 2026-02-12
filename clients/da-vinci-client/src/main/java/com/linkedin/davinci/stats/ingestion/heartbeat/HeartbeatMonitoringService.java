@@ -139,15 +139,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         HeartbeatKey key = new HeartbeatKey(storeName, versionNum, partition, region);
         heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
       }
-    } else if (isFollower) {
-      // Follower: initialize all non-sep regions since heartbeats can arrive from any region
-      for (String region: regionNames) {
-        if (Utils.isSeparateTopicRegion(region)) {
-          continue;
-        }
-        HeartbeatKey key = new HeartbeatKey(storeName, versionNum, partition, region);
-        heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
-      }
     } else {
       // Non-AA leader: only local region
       HeartbeatKey key = new HeartbeatKey(storeName, versionNum, partition, localRegionName);
@@ -647,14 +638,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   Duration getMaxWaitForVersionInfo() {
     return maxWaitForVersionInfo;
-  }
-
-  /**
-   * Create a HeartbeatKey for caching. Called once per state transition (not per record)
-   * so callers can store the key and reuse it on the hot path.
-   */
-  public HeartbeatKey createHeartbeatKey(String store, int version, int partition, String region) {
-    return new HeartbeatKey(store, version, partition, region);
   }
 
   /**

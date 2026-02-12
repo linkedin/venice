@@ -1152,8 +1152,4 @@ public class PartitionConsumptionState {
   public HeartbeatKey getCachedHeartbeatKey(String region) {
     return cachedHeartbeatKeys == null ? null : cachedHeartbeatKeys.get(region);
   }
-
-  public void clearCachedHeartbeatKeys() {
-    cachedHeartbeatKeys = null;
-  }
 }

@@ -578,7 +578,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             topicName,
             partitionConsumptionState.getPartition(),
             HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
-        refreshCachedHeartbeatKeys(partitionConsumptionState);
         LOGGER.info("Replica: {} moved to standby/follower state", partitionConsumptionState.getReplicaId());
 
         /**
@@ -690,7 +689,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 getKafkaVersionTopic(),
                 partitionConsumptionState.getPartition(),
                 HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
-            refreshCachedHeartbeatKeys(partitionConsumptionState);
 
             /**
              * May adjust the underlying storage partition to optimize the ingestion performance.
@@ -2329,18 +2327,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean isComplete = partitionConsumptionState.isComplete();
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       region = getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl);
-      HeartbeatKey cachedKey = partitionConsumptionState.getCachedHeartbeatKey(region);
-      if (cachedKey != null) {
-        hbService.recordLeaderHeartbeat(cachedKey, getStoreName(), getVersionNumber(), region, timestamp, isComplete);
-      } else {
-        hbService.recordLeaderHeartbeat(
-            getStoreName(),
-            getVersionNumber(),
-            partitionConsumptionState.getPartition(),
-            region,
-            timestamp,
-            isComplete);
-      }
+      HeartbeatKey cachedKey = getOrCreateCachedHeartbeatKey(partitionConsumptionState, region);
+      hbService.recordLeaderHeartbeat(cachedKey, getStoreName(), getVersionNumber(), region, timestamp, isComplete);
     } else {
       /**
        * For Da Vinci there is no kafkaUrl mapping configured, we should refer to local region name setup in the
@@ -2349,18 +2337,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       region = isDaVinciClient()
           ? getServerConfig().getRegionName()
           : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl);
-      HeartbeatKey cachedKey = partitionConsumptionState.getCachedHeartbeatKey(region);
-      if (cachedKey != null) {
-        hbService.recordFollowerHeartbeat(cachedKey, getStoreName(), getVersionNumber(), region, timestamp, isComplete);
-      } else {
-        hbService.recordFollowerHeartbeat(
-            getStoreName(),
-            getVersionNumber(),
-            partitionConsumptionState.getPartition(),
-            region,
-            timestamp,
-            isComplete);
-      }
+      HeartbeatKey cachedKey = getOrCreateCachedHeartbeatKey(partitionConsumptionState, region);
+      hbService.recordFollowerHeartbeat(cachedKey, getStoreName(), getVersionNumber(), region, timestamp, isComplete);
     }
   }
 
@@ -2381,34 +2359,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         isDaVinciClient() ? serverConfig.getRegionName() : serverConfig.getKafkaClusterUrlToAliasMap().get(pubSubUrl);
     long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
     boolean isComplete = partitionConsumptionState.isComplete();
-    HeartbeatKey cachedKey = partitionConsumptionState.getCachedHeartbeatKey(region);
+    HeartbeatKey cachedKey = getOrCreateCachedHeartbeatKey(partitionConsumptionState, region);
 
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      if (cachedKey != null) {
-        hbService
-            .recordLeaderRecordTimestamp(cachedKey, storeName, versionNumber, region, messageTimestamp, isComplete);
-      } else {
-        hbService.recordLeaderRecordTimestamp(
-            storeName,
-            versionNumber,
-            partitionConsumptionState.getPartition(),
-            region,
-            messageTimestamp,
-            isComplete);
-      }
+      hbService.recordLeaderRecordTimestamp(cachedKey, storeName, versionNumber, region, messageTimestamp, isComplete);
     } else {
-      if (cachedKey != null) {
-        hbService
-            .recordFollowerRecordTimestamp(cachedKey, storeName, versionNumber, region, messageTimestamp, isComplete);
-      } else {
-        hbService.recordFollowerRecordTimestamp(
-            storeName,
-            versionNumber,
-            partitionConsumptionState.getPartition(),
-            region,
-            messageTimestamp,
-            isComplete);
-      }
+      hbService
+          .recordFollowerRecordTimestamp(cachedKey, storeName, versionNumber, region, messageTimestamp, isComplete);
     }
   }
 
@@ -4384,23 +4341,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return heartbeatMonitoringService;
   }
 
-  /**
-   * Refresh the cached HeartbeatKey references in the PCS after a lag monitor state transition.
-   * This is called once per leader/follower transition, not per record, so the HeartbeatKey allocation here
-   * is acceptable. The cached keys are then reused on the per-record hot path to avoid repeated allocation
-   * and hash computation.
-   */
-  private void refreshCachedHeartbeatKeys(PartitionConsumptionState pcs) {
-    HeartbeatMonitoringService hbService = getHeartbeatMonitoringService();
-    if (hbService == null) {
-      return;
+  private HeartbeatKey getOrCreateCachedHeartbeatKey(PartitionConsumptionState pcs, String region) {
+    HeartbeatKey key = pcs.getCachedHeartbeatKey(region);
+    if (key == null) {
+      key = new HeartbeatKey(storeName, versionNumber, pcs.getPartition(), region);
+      pcs.cacheHeartbeatKey(region, key);
     }
-    pcs.clearCachedHeartbeatKeys();
-    for (String region: getServerConfig().getRegionNames()) {
-      pcs.cacheHeartbeatKey(
-          region,
-          hbService.createHeartbeatKey(getStoreName(), getVersionNumber(), pcs.getPartition(), region));
-    }
+    return key;
   }
 
   protected String getDataRecoverySourcePubSub(Version version) {

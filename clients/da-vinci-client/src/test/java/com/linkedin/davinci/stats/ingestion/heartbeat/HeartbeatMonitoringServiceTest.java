@@ -368,27 +368,19 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertEquals(countVersions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE), 2);
     Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 2), 3);
 
-    // Check we got the right amount of regions
-    Assert.assertEquals(countRegions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 3, 0), 2);
+    // Followers only initialize with the local region, so we expect 1 region
+    Assert.assertEquals(countRegions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 3, 0), 1);
 
     // make sure we didn't get any leader heartbeats yet recorded
     Assert.assertFalse(hasStore(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE));
 
-    // check heartbeat value
+    // check heartbeat value (followers only have local region)
     IngestionTimestampEntry entry = getEntry(
         heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(),
         TEST_STORE,
         futureVersion.getNumber(),
         1,
         LOCAL_FABRIC);
-    Assert.assertTrue(entry.heartbeatTimestamp >= baseTimeStamp + 1001L);
-
-    entry = getEntry(
-        heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(),
-        TEST_STORE,
-        futureVersion.getNumber(),
-        1,
-        REMOTE_FABRIC);
     Assert.assertTrue(entry.heartbeatTimestamp >= baseTimeStamp + 1001L);
 
     // Leader state transitions
@@ -475,20 +467,22 @@ public class HeartbeatMonitoringServiceTest {
             futureVersion.getNumber(),
             1));
 
-    entry = getEntry(
-        heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(),
-        TEST_STORE,
-        futureVersion.getNumber(),
-        1,
-        REMOTE_FABRIC);
-    Assert.assertEquals(entry.heartbeatTimestamp, baseTimeStamp + 1003L);
-    entry = getEntry(
-        heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(),
-        TEST_STORE,
-        currentVersion.getNumber(),
-        1,
-        REMOTE_FABRIC);
-    Assert.assertEquals(entry.heartbeatTimestamp, baseTimeStamp + 1003L);
+    // REMOTE_FABRIC heartbeats for followers are no-ops since followers only track the local region.
+    // Verify that the REMOTE_FABRIC entries were NOT created for followers.
+    Assert.assertNull(
+        getEntry(
+            heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(),
+            TEST_STORE,
+            futureVersion.getNumber(),
+            1,
+            REMOTE_FABRIC));
+    Assert.assertNull(
+        getEntry(
+            heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(),
+            TEST_STORE,
+            currentVersion.getNumber(),
+            1,
+            REMOTE_FABRIC));
 
     // Drop/Error some
     heartbeatMonitoringService.removeLagMonitor(currentVersion, 0);
@@ -1282,8 +1276,7 @@ public class HeartbeatMonitoringServiceTest {
     heartbeatMonitoringService.updateLagMonitor(versionTopic, 0, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
 
     // Create cached key and use it for recording
-    HeartbeatKey cachedKey = heartbeatMonitoringService.createHeartbeatKey(TEST_STORE, 1, 0, LOCAL_FABRIC);
-    Assert.assertNotNull(cachedKey);
+    HeartbeatKey cachedKey = new HeartbeatKey(TEST_STORE, 1, 0, LOCAL_FABRIC);
 
     // Test cached leader heartbeat recording
     heartbeatMonitoringService.recordLeaderHeartbeat(cachedKey, TEST_STORE, 1, LOCAL_FABRIC, 5000L, true);
@@ -1306,8 +1299,8 @@ public class HeartbeatMonitoringServiceTest {
     // Switch to follower
     heartbeatMonitoringService.updateLagMonitor(versionTopic, 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
 
-    // Create follower cached key
-    HeartbeatKey followerKey = heartbeatMonitoringService.createHeartbeatKey(TEST_STORE, 1, 0, LOCAL_FABRIC);
+    // Create follower cached key (same key works for both leader and follower — the map is what differs)
+    HeartbeatKey followerKey = new HeartbeatKey(TEST_STORE, 1, 0, LOCAL_FABRIC);
 
     // Test cached follower heartbeat recording
     heartbeatMonitoringService.recordFollowerHeartbeat(followerKey, TEST_STORE, 1, LOCAL_FABRIC, 7000L, true);

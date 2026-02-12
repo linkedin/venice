@@ -14,7 +14,7 @@ public final class HeartbeatKey {
   final String region;
   private final int hashCode;
 
-  HeartbeatKey(String storeName, int version, int partition, String region) {
+  public HeartbeatKey(String storeName, int version, int partition, String region) {
     this.storeName = storeName;
     this.version = version;
     this.partition = partition;
