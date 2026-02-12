@@ -27,6 +27,7 @@ import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
@@ -374,6 +375,88 @@ public class TestDeferredVersionSwapWithSequentialRollout {
             -1);
         assertFalse(versionCreationResponse.isError());
       });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVersionStatusOnControllerRestart() throws Exception {
+    File inputDir = getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("testVersionStatusOnControllerRestart");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = "\"string\"";
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(5);
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
+      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
+
+      // Start push job in separate thread so we don't wait until version is swapped
+      props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+      Thread runVpjThread = new Thread(() -> {
+        IntegrationTestPushUtils.runVPJ(props);
+      });
+      runVpjThread.start();
+
+      // Wait for ingestion to finish
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      // Get the dc-1 cluster and controller
+      List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+      VeniceMultiClusterWrapper dc1Region = childDatacenters.get(1);
+      VeniceClusterWrapper dc1Cluster = dc1Region.getClusters().get(CLUSTER_NAMES[0]);
+      String dc1ControllerUrl = dc1Region.getControllerConnectString();
+
+      // Create a controller client for dc-1 to check version status
+      try (ControllerClient dc1ControllerClient = new ControllerClient(CLUSTER_NAMES[0], dc1ControllerUrl)) {
+
+        // Verify version status is PUSHED in dc-1 BEFORE controller restart
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreResponse storeResponse = dc1ControllerClient.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError(), "Failed to get store: " + storeResponse.getError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          Optional<Version> versionOpt = storeInfo.getVersion(1);
+          Assert.assertTrue(versionOpt.isPresent(), "Version 1 should exist");
+          VersionStatus statusBeforeRestart = versionOpt.get().getStatus();
+          Assert.assertEquals(
+              statusBeforeRestart,
+              VersionStatus.PUSHED,
+              "Version status in dc-1 should be PUSHED before controller restart");
+        });
+
+        // Restart the dc-1 controller to trigger ZK refresh
+        VeniceControllerWrapper dc1Controller = dc1Cluster.getLeaderVeniceController();
+        int controllerPort = dc1Controller.getPort();
+        dc1Cluster.stopVeniceController(controllerPort);
+        dc1Cluster.restartVeniceController(controllerPort);
+
+        // Wait for controller to be ready
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreResponse storeResponse =
+              new ControllerClient(CLUSTER_NAMES[0], dc1Region.getControllerConnectString()).getStore(storeName);
+          Assert.assertFalse(storeResponse.isError(), "Controller not ready: " + storeResponse.getError());
+        });
+
+        // Verify version status is still PUSHED in dc-1 AFTER controller restart
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+          StoreResponse storeResponse =
+              new ControllerClient(CLUSTER_NAMES[0], dc1Region.getControllerConnectString()).getStore(storeName);
+          Assert.assertFalse(storeResponse.isError(), "Failed to get store: " + storeResponse.getError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          Optional<Version> versionOpt = storeInfo.getVersion(1);
+          Assert.assertTrue(versionOpt.isPresent(), "Version 1 should exist");
+          VersionStatus statusAfterRestart = versionOpt.get().getStatus();
+          Assert.assertEquals(statusAfterRestart, VersionStatus.PUSHED);
+        });
+
+      }
     }
   }
 

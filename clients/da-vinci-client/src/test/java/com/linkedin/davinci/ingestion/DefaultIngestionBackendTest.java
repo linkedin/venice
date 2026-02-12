@@ -156,6 +156,9 @@ public class DefaultIngestionBackendTest {
     verify(aggVersionedBlobTransferStats)
         .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(true));
 
+    // Reset replica state for next iteration
+    ingestionBackend.removeReplicaConsumptionContext(Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION));
+
     // Case 2: Server client (DaVinci = false, store.isBlobTransferEnabled = false)
     when(storeIngestionService.isDaVinciClient()).thenReturn(false);
     when(store.isBlobTransferEnabled()).thenReturn(false);
@@ -220,6 +223,9 @@ public class DefaultIngestionBackendTest {
 
     ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
     verifyBlobTransfer(expectEnabled);
+
+    // Reset replica state for next iteration
+    ingestionBackend.removeReplicaConsumptionContext(Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION));
   }
 
   private void verifyBlobTransfer(boolean expectEnabled) {
@@ -473,6 +479,9 @@ public class DefaultIngestionBackendTest {
         null,
         veniceServerConfig);
 
+    // Start consumption first to set state to RUNNING (takes simple path since blobTransferManager is null)
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+
     backend.stopConsumption(storeConfig, PARTITION);
     verify(storeIngestionService).stopConsumption(storeConfig, PARTITION);
   }
@@ -484,8 +493,6 @@ public class DefaultIngestionBackendTest {
     when(blobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockStatusTrackingManager);
     when(metadataRepo.waitVersion(anyString(), anyInt(), any(Duration.class)))
         .thenReturn(new StoreVersionInfo(store, version));
-    when(store.isBlobTransferEnabled()).thenReturn(true);
-    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(veniceServerConfig.isServerAllowlistEnabled()).thenReturn(false);
     when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
 
@@ -495,6 +502,13 @@ public class DefaultIngestionBackendTest {
         storageService,
         blobTransferManager,
         veniceServerConfig);
+
+    // Start consumption via simple path to set state to RUNNING
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+
+    // Now enable blob transfer for stop operations
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
 
     // Get the actual replica ID from storeConfig
     String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
@@ -873,6 +887,9 @@ public class DefaultIngestionBackendTest {
   @Test
   public void testStopConsumptionAfterTransferCompletes() throws Exception {
     // Scenario: Transfer completes successfully, then stopConsumption is called
+    // Start consumption first to set state to RUNNING (simple path - blob transfer not enabled by default)
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
@@ -893,6 +910,9 @@ public class DefaultIngestionBackendTest {
   @Test
   public void testMultipleStopConsumptionCalls() throws Exception {
     // Scenario: Multiple stopConsumption calls (simulates duplicate Helix messages)
+    // Start consumption first to set state to RUNNING (simple path - blob transfer not enabled by default)
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(storeIngestionService.isDaVinciClient()).thenReturn(true);
     when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
@@ -904,13 +924,289 @@ public class DefaultIngestionBackendTest {
         .thenReturn(BlobTransferStatus.TRANSFER_CANCEL_REQUESTED);
     when(statusTrackingManager.isBlobTransferCancelRequestSentBefore(eq(replicaId))).thenReturn(false).thenReturn(true);
 
-    // First stopConsumption call
+    // First stopConsumption call - transitions RUNNING -> STOPPED
     ingestionBackend.stopConsumption(storeConfig, PARTITION);
 
-    // Second stopConsumption call (duplicate)
+    // Second stopConsumption call - state is STOPPED (not RUNNING), so it's a no-op
     ingestionBackend.stopConsumption(storeConfig, PARTITION);
 
-    // Verify cancelTransfer was called at least once (may be deduplicated)
-    verify(statusTrackingManager, Mockito.atLeastOnce()).cancelTransfer(eq(replicaId));
+    // Verify cancelTransfer was called exactly once (second call skipped due to state check)
+    verify(statusTrackingManager, Mockito.times(1)).cancelTransfer(eq(replicaId));
+  }
+
+  // ==================== ReplicaIntendedState Tests ====================
+
+  @Test
+  public void testReplicaIntendedState_NormalStartSetsRunning() {
+    // A fresh start should transition NOT_EXIST → RUNNING
+    DefaultIngestionBackend backend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        null,
+        veniceServerConfig);
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    // Initially NOT_EXIST
+    Assert.assertEquals(
+        backend.getReplicaIntendedState(replicaId),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+
+    // Start consumption (simple path since blobTransferManager is null)
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+
+    // Should be RUNNING
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+  }
+
+  @Test
+  public void testReplicaIntendedState_DuplicateStartIgnored() {
+    // Calling startConsumption twice should not fail; second call is a no-op
+    DefaultIngestionBackend backend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        null,
+        veniceServerConfig);
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+
+    // Second call should be ignored (state already RUNNING)
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+
+    // Verify startConsumption on ingestion service was only called once
+    verify(storeIngestionService, Mockito.times(1)).startConsumption(eq(storeConfig), eq(PARTITION), any());
+  }
+
+  @Test
+  public void testReplicaIntendedState_StopSetsStoppedFromRunning() {
+    // stopConsumption on a RUNNING replica should set it to STOPPED
+    DefaultIngestionBackend backend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        null,
+        veniceServerConfig);
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+
+    backend.stopConsumption(storeConfig, PARTITION);
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
+  }
+
+  @Test
+  public void testReplicaIntendedState_StopWithoutStartIsNoop() {
+    // stopConsumption without prior startConsumption should be a no-op (state is NOT_EXIST)
+    DefaultIngestionBackend backend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        null,
+        veniceServerConfig);
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    Assert.assertEquals(
+        backend.getReplicaIntendedState(replicaId),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+
+    backend.stopConsumption(storeConfig, PARTITION);
+
+    // State remains NOT_EXIST
+    Assert.assertEquals(
+        backend.getReplicaIntendedState(replicaId),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+
+    // stopConsumption on ingestion service should NOT have been called
+    verify(storeIngestionService, never()).stopConsumption(any(), anyInt());
+  }
+
+  @Test
+  public void testReplicaIntendedState_DuplicateStopIsNoop() {
+    // Second stopConsumption call should be a no-op since state is already STOPPED
+    DefaultIngestionBackend backend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        null,
+        veniceServerConfig);
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.stopConsumption(storeConfig, PARTITION);
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
+
+    // Second stop call should be no-op (state is STOPPED, not RUNNING)
+    backend.stopConsumption(storeConfig, PARTITION);
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
+
+    // stopConsumption on ingestion service should have been called exactly once
+    verify(storeIngestionService, Mockito.times(1)).stopConsumption(any(), anyInt());
+  }
+
+  @Test
+  public void testReplicaIntendedState_DropFromRunningSetsNotExist() {
+    // dropStoragePartitionGracefully from RUNNING should end in NOT_EXIST
+    DefaultIngestionBackend backend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        null,
+        veniceServerConfig);
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+    when(storeIngestionService.dropStoragePartitionGracefully(any(), anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+
+    backend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, false);
+    Assert.assertEquals(
+        backend.getReplicaIntendedState(replicaId),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+  }
+
+  @Test
+  public void testReplicaIntendedState_DropFromStoppedSetsNotExist() {
+    // dropStoragePartitionGracefully from STOPPED should end in NOT_EXIST
+    DefaultIngestionBackend backend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        null,
+        veniceServerConfig);
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+    when(storeIngestionService.dropStoragePartitionGracefully(any(), anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.stopConsumption(storeConfig, PARTITION);
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
+
+    backend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, false);
+    Assert.assertEquals(
+        backend.getReplicaIntendedState(replicaId),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+  }
+
+  @Test
+  public void testReplicaIntendedState_DropFromNotExistSetsNotExist() {
+    // dropStoragePartitionGracefully from NOT_EXIST should still end in NOT_EXIST
+    DefaultIngestionBackend backend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        null,
+        veniceServerConfig);
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+    when(storeIngestionService.dropStoragePartitionGracefully(any(), anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    Assert.assertEquals(
+        backend.getReplicaIntendedState(replicaId),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+
+    backend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, false);
+    Assert.assertEquals(
+        backend.getReplicaIntendedState(replicaId),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+  }
+
+  @Test
+  public void testReplicaIntendedState_StartAfterStopWaitsAndSetsRunning() {
+    // startConsumption when state is STOPPED should wait for stop to complete, then set RUNNING
+    DefaultIngestionBackend backend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        null,
+        veniceServerConfig);
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    // Start, then stop
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.stopConsumption(storeConfig, PARTITION);
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
+
+    // Start again while STOPPED - should wait for stop to complete, then set RUNNING
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+
+    // Verify stopConsumptionAndWait was called (from the STOPPED→RUNNING wait path in startConsumption)
+    verify(storeIngestionService, Mockito.atLeastOnce())
+        .stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+  }
+
+  @Test
+  public void testReplicaIntendedState_FullLifecycle() {
+    // Full lifecycle: start → stop → drop → start again
+    DefaultIngestionBackend backend = new DefaultIngestionBackend(
+        storageMetadataService,
+        storeIngestionService,
+        storageService,
+        null,
+        veniceServerConfig);
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+    when(storeIngestionService.dropStoragePartitionGracefully(any(), anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+
+    // 1. NOT_EXIST → RUNNING
+    Assert.assertEquals(
+        backend.getReplicaIntendedState(replicaId),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+
+    // 2. RUNNING → STOPPED
+    backend.stopConsumption(storeConfig, PARTITION);
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
+
+    // 3. STOPPED → NOT_EXIST (via drop)
+    backend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, false);
+    Assert.assertEquals(
+        backend.getReplicaIntendedState(replicaId),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+
+    // 4. NOT_EXIST → RUNNING (start again after drop)
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    Assert
+        .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
   }
 }

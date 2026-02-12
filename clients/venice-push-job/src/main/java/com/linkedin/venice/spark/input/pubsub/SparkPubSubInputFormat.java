@@ -1,12 +1,15 @@
 package com.linkedin.venice.spark.input.pubsub;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
+import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import com.linkedin.venice.vpj.pubsub.input.PubSubSplitPlanner;
 import java.util.List;
+import java.util.Properties;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -35,8 +38,11 @@ public class SparkPubSubInputFormat implements Scan, Batch {
 
   @Override
   public InputPartition[] planInputPartitions() {
+    // Setup SSL on the driver side
+    VeniceProperties configWithSsl = setupSSLForDriver(jobConfig);
+
     PubSubSplitPlanner planner = plannerSupplier.get();
-    List<PubSubPartitionSplit> planned = planner.plan(jobConfig);
+    List<PubSubPartitionSplit> planned = planner.plan(configWithSsl);
     InputPartition[] partitions = new InputPartition[planned.size()];
 
     int index = 0;
@@ -56,6 +62,27 @@ public class SparkPubSubInputFormat implements Scan, Batch {
   @Override
   public PartitionReaderFactory createReaderFactory() {
     return new SparkPubSubPartitionReaderFactory(jobConfig);
+  }
+
+  /**
+   * Sets up SSL on the driver side before partition planning.
+   */
+  private VeniceProperties setupSSLForDriver(VeniceProperties config) {
+    if (!config.containsKey(SSL_CONFIGURATOR_CLASS_CONFIG)) {
+      return config;
+    }
+    try {
+      Properties sslProps = VPJSSLUtils.getSslProperties(config);
+      Properties merged = config.toProperties();
+      merged.putAll(sslProps);
+      return new VeniceProperties(merged);
+    } catch (Exception e) {
+      String msg = "Failed to setup SSL for driver-side partition planning. "
+          + "Ensure the Hadoop token file is accessible and SSL certificates are valid. " + "SSL configurator class: "
+          + config.getString(SSL_CONFIGURATOR_CLASS_CONFIG);
+      LOGGER.error(msg, e);
+      throw new RuntimeException(msg, e);
+    }
   }
 
   @Override

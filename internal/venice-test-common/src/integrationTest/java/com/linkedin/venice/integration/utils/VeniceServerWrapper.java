@@ -547,6 +547,13 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     }
   }
 
+  public Process getServerProcess() {
+    if (!forkServer || serverProcess == null) {
+      throw new VeniceException("getServerProcess is only supported in forked mode with an active process");
+    }
+    return serverProcess;
+  }
+
   @Override
   public MetricsRepository getMetricsRepository() {
     if (!forkServer) {

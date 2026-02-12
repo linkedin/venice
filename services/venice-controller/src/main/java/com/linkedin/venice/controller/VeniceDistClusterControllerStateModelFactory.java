@@ -6,6 +6,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -28,7 +29,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final RealTimeTopicSwitcher realTimeTopicSwitcher;
   private final Optional<DynamicAccessController> accessController;
   private final HelixAdminClient helixAdminClient;
-  private final Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener;
+  private final Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
 
   public VeniceDistClusterControllerStateModelFactory(
       ZkClient zkClient,
@@ -40,7 +41,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       Optional<DynamicAccessController> accessController,
       HelixAdminClient helixAdminClient,
-      Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener) {
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterConfigs = clusterConfigs;
@@ -50,7 +51,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     this.realTimeTopicSwitcher = realTimeTopicSwitcher;
     this.accessController = accessController;
     this.helixAdminClient = helixAdminClient;
-    this.versionLifecycleEventListener = versionLifecycleEventListener;
+    this.versionLifecycleEventListeners = versionLifecycleEventListeners;
   }
 
   /**
@@ -70,7 +71,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
         realTimeTopicSwitcher,
         accessController,
         helixAdminClient,
-        versionLifecycleEventListener);
+        versionLifecycleEventListeners);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }

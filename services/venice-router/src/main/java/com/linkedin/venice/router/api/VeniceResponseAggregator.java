@@ -1,8 +1,12 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_DISPATCH_LATENCY;
 import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_PARSE_URI;
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_PIPELINE_LATENCY;
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_QUEUE_LATENCY;
 import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_RESPONSE_WAIT_TIME;
 import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_ROUTING_TIME;
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_SCATTER_LATENCY;
 import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_SERVER_TIME;
 import static com.linkedin.venice.HttpConstants.VENICE_CLIENT_COMPUTE;
 import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
@@ -277,6 +281,22 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     if (timeValue != Metrics.UNSET_VALUE) {
       double routingTime = LatencyUtils.convertNSToMS(timeValue);
       stats.recordRequestRoutingLatency(storeName, routingTime);
+    }
+    timeValue = metrics.get(ROUTER_PIPELINE_LATENCY);
+    if (timeValue != Metrics.UNSET_VALUE) {
+      stats.recordPipelineLatency(storeName, LatencyUtils.convertNSToMS(timeValue));
+    }
+    timeValue = metrics.get(ROUTER_SCATTER_LATENCY);
+    if (timeValue != Metrics.UNSET_VALUE) {
+      stats.recordScatterLatency(storeName, LatencyUtils.convertNSToMS(timeValue));
+    }
+    timeValue = metrics.get(ROUTER_QUEUE_LATENCY);
+    if (timeValue != Metrics.UNSET_VALUE) {
+      stats.recordQueueLatency(storeName, LatencyUtils.convertNSToMS(timeValue));
+    }
+    timeValue = metrics.get(ROUTER_DISPATCH_LATENCY);
+    if (timeValue != Metrics.UNSET_VALUE) {
+      stats.recordDispatchLatency(storeName, LatencyUtils.convertNSToMS(timeValue));
     }
     if (HEALTHY_STATUSES.contains(httpResponseStatus) && !venicePath.isStreamingRequest()) {
       // Only record successful response

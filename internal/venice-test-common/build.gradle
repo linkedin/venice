@@ -405,6 +405,9 @@ def integrationTestBuckets = [
         "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest",
         "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest"
     ],
+    "23": [
+        "com.linkedin.venice.router.TestReadPathChaos"
+    ],
 ]
 
 integrationTestBuckets.each { name, patterns ->
