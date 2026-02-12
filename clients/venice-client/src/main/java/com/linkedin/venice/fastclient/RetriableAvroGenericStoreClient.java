@@ -186,6 +186,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
             }
           }
         });
+      } else {
+        // Budget exhausted, complete retryFuture so finalFuture doesn't hang forever
+        retryFuture.completeExceptionally(new VeniceClientException("Retry budget exhausted, not retrying"));
       }
     };
 
@@ -213,6 +216,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           timeoutFuture.cancel();
           if (!isExceptionCausedByTooManyRequests(throwable)) {
             new RetryRunnable(requestContext, RetryType.ERROR_RETRY, retryTask).run();
+          } else {
+            // 429 received before long-tail fired: retryTask won't run, complete retryFuture directly
+            retryFuture.completeExceptionally(throwable);
           }
         }
       }
