@@ -22,7 +22,7 @@ For other client options, see the [Read APIs comparison](index.md).
 
 ### Setup
 
-Add the Da Vinci client dependency:
+Add the Venice client dependency:
 
 ```gradle
 dependencies {

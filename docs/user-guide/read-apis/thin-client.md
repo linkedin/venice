@@ -30,7 +30,7 @@ Add the Venice client dependency to your project:
 
 ```groovy
 dependencies {
-  implementation 'com.linkedin.venice:venice-thin-client:<version>'
+  implementation 'com.linkedin.venice:venice-client:<version>'
 }
 ```
 

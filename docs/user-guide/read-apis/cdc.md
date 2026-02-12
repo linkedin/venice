@@ -28,7 +28,7 @@ For point-in-time reads, consider the [Thin Client](thin-client.md), [Fast Clien
 
 ### Dependency
 
-Add the Da Vinci client dependency to your project (CDC is part of this module):
+Add the Venice client dependency to your project:
 
 ```groovy
 dependencies {
@@ -358,7 +358,7 @@ current version's push time, you will consume all events in that version.
 2. **Checkpoint regularly**: For Stateless CDC, persist checkpoints or timestamps periodically to minimize reprocessing
    after restarts. Stateful CDC manages checkpoints automatically.
 
-3. **Monitor lag**: Set up alerting on lag metrics to detect when the CDC client isn't making progress.
+3. **Monitor lag**: Set up alerting on the heartbeat delay metric to detect when the CDC client isn't making progress.
 
 4. **Handle null current values**: Deletions will have null `getCurrentValue()`.
 
