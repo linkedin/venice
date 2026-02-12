@@ -863,8 +863,9 @@ public class RetriableAvroGenericStoreClientTest {
    * This is the exact scenario observed in the mirror heap dump: instance returns 500 on heartbeat,
    * many requests time out exhausting the retry budget, subsequent requests hang forever.
    *
-   * We use reflection to replace the internal RetryManager with a mock that always denies retries,
-   * ensuring deterministic reproduction regardless of timing.
+   * This test uses the {@code setSingleKeyLongTailRetryManager(...)} test hook to install a
+   * {@link RetryManager} that always denies retries, ensuring deterministic reproduction
+   * of this scenario regardless of timing.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testFinalFutureHangsWhenRetryBudgetExhaustedAndOriginalFails() throws Exception {
@@ -992,7 +993,7 @@ public class RetriableAvroGenericStoreClientTest {
    * BUG REPRODUCTION (variant with shorter threshold): Same as above but uses a 20ms threshold
    * to clearly demonstrate the timing: long-tail fires at 20ms (budget denied → does nothing),
    * original fails at 200ms (timeoutFuture.isDone()=true → error retry skipped).
-   * Uses reflection to mock the RetryManager for deterministic reproduction.
+   * Uses {@code setSingleKeyLongTailRetryManager(...)} to inject a mock RetryManager for deterministic reproduction.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testFinalFutureHangsWhenLongTailFiresBeforeOriginalFailsAndBudgetExhausted() throws Exception {
