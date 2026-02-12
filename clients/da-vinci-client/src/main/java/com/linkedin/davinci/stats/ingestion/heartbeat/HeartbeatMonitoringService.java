@@ -22,6 +22,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -131,7 +132,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     int versionNum = version.getNumber();
     long currentTime = System.currentTimeMillis();
     if (version.isActiveActiveReplicationEnabled() && !isFollower) {
-      // AA leader: initialize all regions (including sep if enabled) since leader tracks replication from all regions
       for (String region: regionNames) {
         if (Utils.isSeparateTopicRegion(region) && !version.isSeparateRealTimeTopicEnabled()) {
           continue;
@@ -140,7 +140,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
       }
     } else {
-      // Non-AA leader: only local region
       HeartbeatKey key = new HeartbeatKey(storeName, versionNum, partition, localRegionName);
       heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
     }
@@ -988,7 +987,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     long minHeartbeatTimestampForCurrentVersion = Long.MAX_VALUE;
     long minHeartbeatTimestampForNonCurrentVersion = Long.MAX_VALUE;
     // Cache current version per store to avoid repeated lookups
-    Map<String, Integer> storeCurrentVersions = new VeniceConcurrentHashMap<>();
+    Map<String, Integer> storeCurrentVersions = new HashMap<>();
     for (Map.Entry<HeartbeatKey, IngestionTimestampEntry> entry: heartbeatTimestamps.entrySet()) {
       HeartbeatKey key = entry.getKey();
       int currentVersion = storeCurrentVersions.computeIfAbsent(key.storeName, storeName -> {
