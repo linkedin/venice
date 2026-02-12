@@ -8,12 +8,15 @@ import io.netty.util.concurrent.SingleThreadEventExecutor;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
 
 
 public class RouterPipelineStats extends AbstractVeniceStats {
   private final Sensor preHandlerLatencySensor;
   private final Sensor handlerChainLatencySensor;
+  private final ConcurrentMap<String, Sensor> handlerLatencySensors = new ConcurrentHashMap<>();
 
   public RouterPipelineStats(
       MetricsRepository metricsRepository,
@@ -22,7 +25,32 @@ public class RouterPipelineStats extends AbstractVeniceStats {
       Supplier<Integer> unwritableChannelCountSupplier) {
     super(metricsRepository, name);
 
-    // Infrastructure gauges: EventLoop pending tasks
+    // EventLoop pool stats (analogous to ThreadPoolStats for ThreadPoolExecutor)
+    registerSensor(
+        new AsyncGauge((ignored1, ignored2) -> workerEventLoopGroup.executorCount(), "eventloop_worker_count"));
+
+    registerSensor(new AsyncGauge((ignored1, ignored2) -> {
+      int active = 0;
+      for (EventExecutor executor: workerEventLoopGroup) {
+        if (executor instanceof SingleThreadEventExecutor) {
+          if (((SingleThreadEventExecutor) executor).pendingTasks() > 0) {
+            active++;
+          }
+        }
+      }
+      return active;
+    }, "eventloop_active_count"));
+
+    registerSensor(new AsyncGauge((ignored1, ignored2) -> {
+      long totalPending = 0;
+      for (EventExecutor executor: workerEventLoopGroup) {
+        if (executor instanceof SingleThreadEventExecutor) {
+          totalPending += ((SingleThreadEventExecutor) executor).pendingTasks();
+        }
+      }
+      return totalPending;
+    }, "eventloop_pending_tasks_total"));
+
     registerSensor(new AsyncGauge((ignored1, ignored2) -> {
       long totalPending = 0;
       int count = 0;
@@ -62,5 +90,15 @@ public class RouterPipelineStats extends AbstractVeniceStats {
 
   public void recordHandlerChainLatency(double latencyMs) {
     handlerChainLatencySensor.record(latencyMs);
+  }
+
+  public void recordHandlerLatency(String handlerName, double latencyMs) {
+    handlerLatencySensors
+        .computeIfAbsent(
+            handlerName,
+            name -> registerSensor(
+                "handler_latency_" + name,
+                TehutiUtils.getPercentileStat(getName(), "handler_latency_" + name)))
+        .record(latencyMs);
   }
 }

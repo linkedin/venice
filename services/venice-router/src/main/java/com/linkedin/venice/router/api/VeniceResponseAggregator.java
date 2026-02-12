@@ -1,5 +1,6 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_DISPATCH_GAP_LATENCY;
 import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_DISPATCH_LATENCY;
 import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_PARSE_URI;
 import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_PIPELINE_LATENCY;
@@ -297,6 +298,10 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     timeValue = metrics.get(ROUTER_DISPATCH_LATENCY);
     if (timeValue != Metrics.UNSET_VALUE) {
       stats.recordDispatchLatency(storeName, LatencyUtils.convertNSToMS(timeValue));
+    }
+    timeValue = metrics.get(ROUTER_DISPATCH_GAP_LATENCY);
+    if (timeValue != Metrics.UNSET_VALUE) {
+      stats.recordDispatchGapLatency(storeName, LatencyUtils.convertNSToMS(timeValue));
     }
     if (HEALTHY_STATUSES.contains(httpResponseStatus) && !venicePath.isStreamingRequest()) {
       // Only record successful response

@@ -117,4 +117,39 @@ public class RouterPipelineStatsTest {
     unwritableCount.set(0);
     Assert.assertEquals(reporter.query(".router_pipeline--unwritable_channel_count.Gauge").value(), 0.0);
   }
+
+  @Test
+  public void testHandlerLatencyPercentiles() {
+    RouterPipelineStats stats =
+        new RouterPipelineStats(metricsRepository, "router_pipeline", mockEventLoopGroup, unwritableCount::get);
+
+    for (int i = 1; i <= 100; i++) {
+      stats.recordHandlerLatency("throttle", i);
+    }
+
+    Assert.assertEquals((int) reporter.query(".router_pipeline--handler_latency_throttle.50thPercentile").value(), 50);
+    Assert.assertEquals((int) reporter.query(".router_pipeline--handler_latency_throttle.95thPercentile").value(), 95);
+    Assert.assertEquals((int) reporter.query(".router_pipeline--handler_latency_throttle.99thPercentile").value(), 99);
+  }
+
+  @Test
+  public void testMultipleHandlerLatencyMetrics() {
+    RouterPipelineStats stats =
+        new RouterPipelineStats(metricsRepository, "router_pipeline", mockEventLoopGroup, unwritableCount::get);
+
+    // Record different values for different handlers
+    for (int i = 1; i <= 100; i++) {
+      stats.recordHandlerLatency("health_check", i);
+      stats.recordHandlerLatency("ssl_verify", i * 2);
+    }
+
+    // health_check P50 should be ~50
+    Assert.assertEquals(
+        (int) reporter.query(".router_pipeline--handler_latency_health_check.50thPercentile").value(),
+        50);
+
+    // ssl_verify P99 should be ~198 (values are 2, 4, ..., 200)
+    int sslP99 = (int) reporter.query(".router_pipeline--handler_latency_ssl_verify.99thPercentile").value();
+    Assert.assertTrue(sslP99 >= 196 && sslP99 <= 200, "Expected ssl_verify P99 ~198 but got: " + sslP99);
+  }
 }

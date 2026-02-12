@@ -12,6 +12,7 @@ import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.base.registry.ResourceRegistry;
 import com.linkedin.alpini.base.registry.ShutdownableExecutors;
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.alpini.netty4.misc.NettyUtils;
 import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.alpini.router.api.LongTailRetrySupplier;
 import com.linkedin.alpini.router.api.ScatterGatherHelper;
@@ -94,6 +95,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -112,6 +114,7 @@ import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.AttributeKey;
 import io.netty.util.concurrent.DefaultThreadFactory;
@@ -143,6 +146,8 @@ import org.apache.logging.log4j.Logger;
 
 public class RouterServer extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(RouterServer.class);
+  private static final RedundantExceptionFilter REDUNDANT_LOG_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
   public static final String DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME = "venice-discovery";
   private static final String ROUTER_RETRY_MANAGER_THREAD_PREFIX = "Router-retry-manager-thread";
   // Immutable state
@@ -687,6 +692,16 @@ public class RouterServer extends AbstractVeniceService {
     PipelineTimingHandler pipelineTimingHandler = new PipelineTimingHandler(pipelineStats);
     PipelineTimingEndHandler pipelineTimingEndHandler = new PipelineTimingEndHandler(pipelineStats);
 
+    // Per-handler latency checkpoints
+    HandlerTimingCheckpoint throttleCheckpoint = new HandlerTimingCheckpoint(pipelineStats, "throttle");
+    HandlerTimingCheckpoint healthCheckCheckpoint = new HandlerTimingCheckpoint(pipelineStats, "health_check");
+    HandlerTimingCheckpoint sslVerifyCheckpoint = new HandlerTimingCheckpoint(pipelineStats, "ssl_verify");
+    HandlerTimingCheckpoint metadataCheckpoint = new HandlerTimingCheckpoint(pipelineStats, "metadata");
+    HandlerTimingCheckpoint adminCheckpoint = new HandlerTimingCheckpoint(pipelineStats, "admin");
+    HandlerTimingCheckpoint aclCheckpoint = new HandlerTimingCheckpoint(pipelineStats, "acl");
+    HandlerTimingCheckpoint streamingCheckpoint = new HandlerTimingCheckpoint(pipelineStats, "streaming");
+    HandlerTimingCheckpoint optionalCheckpoint = new HandlerTimingCheckpoint(pipelineStats, "optional");
+
     // TODO: deprecate non-ssl port
     if (!config.isEnforcingSecureOnly()) {
       router = Optional.of(
@@ -702,17 +717,30 @@ public class RouterServer extends AbstractVeniceService {
               .rejectedConnectionCountRecorder(securityStats::recordRejectedConnectionCount)
               .timeoutProcessor(timeoutProcessor)
               .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
+                // Log executorGroup to diagnose dispatch thread handoff (throttled to once per 60s)
+                String egMsg = "executorGroup=" + NettyUtils.executorGroup(pipeline.channel()) + " channel="
+                    + pipeline.channel().getClass().getSimpleName();
+                if (!REDUNDANT_LOG_FILTER.isRedundantException(egMsg)) {
+                  LOGGER.info("Pipeline dispatch threading: {}", egMsg);
+                }
                 pipeline.addLast("WritabilityMonitor", writabilityMonitorHandler);
                 pipeline.addLast("PipelineTimingHandler", pipelineTimingHandler);
                 pipeline.addLast(
                     "RouterThrottleHandler",
                     new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config));
+                pipeline.addLast("ThrottleCheckpoint", throttleCheckpoint);
                 pipeline.addLast("HealthCheckHandler", new HealthCheckHandler(healthCheckStats));
+                pipeline.addLast("HealthCheckCheckpoint", healthCheckCheckpoint);
                 pipeline.addLast("VerifySslHandler", unsecureRouterSslVerificationHandler);
+                pipeline.addLast("SslVerifyCheckpoint", sslVerifyCheckpoint);
                 pipeline.addLast("MetadataHandler", metaDataHandler);
+                pipeline.addLast("MetadataCheckpoint", metadataCheckpoint);
                 pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
+                pipeline.addLast("AdminCheckpoint", adminCheckpoint);
                 addStreamingHandler(pipeline);
+                pipeline.addLast("StreamingCheckpoint", streamingCheckpoint);
                 addOptionalChannelHandlersToPipeline(pipeline);
+                pipeline.addLast("OptionalCheckpoint", optionalCheckpoint);
                 pipeline.addLast("PipelineTimingEndHandler", pipelineTimingEndHandler);
               })
               .idleTimeout(3, TimeUnit.HOURS)
@@ -769,28 +797,55 @@ public class RouterServer extends AbstractVeniceService {
     RouterThrottleHandler routerThrottleHandler =
         new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config);
     Consumer<ChannelPipeline> withoutAcl = pipeline -> {
+      // Log executorGroup to diagnose dispatch thread handoff (throttled to once per 60s)
+      String egMsg = "executorGroup=" + NettyUtils.executorGroup(pipeline.channel()) + " channel="
+          + pipeline.channel().getClass().getSimpleName();
+      if (!REDUNDANT_LOG_FILTER.isRedundantException(egMsg)) {
+        LOGGER.info("SSL pipeline dispatch threading (withoutAcl): {}", egMsg);
+      }
       pipeline.addLast("WritabilityMonitor", writabilityMonitorHandler);
       pipeline.addLast("PipelineTimingHandler", pipelineTimingHandler);
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
+      pipeline.addLast("HealthCheckCheckpoint", healthCheckCheckpoint);
       pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
+      pipeline.addLast("SslVerifyCheckpoint", sslVerifyCheckpoint);
       pipeline.addLast("MetadataHandler", metaDataHandler);
+      pipeline.addLast("MetadataCheckpoint", metadataCheckpoint);
       pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
+      pipeline.addLast("AdminCheckpoint", adminCheckpoint);
       pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
+      pipeline.addLast("ThrottleCheckpoint", throttleCheckpoint);
       addStreamingHandler(pipeline);
+      pipeline.addLast("StreamingCheckpoint", streamingCheckpoint);
       addOptionalChannelHandlersToPipeline(pipeline);
+      pipeline.addLast("OptionalCheckpoint", optionalCheckpoint);
       pipeline.addLast("PipelineTimingEndHandler", pipelineTimingEndHandler);
     };
     Consumer<ChannelPipeline> withAcl = pipeline -> {
+      // Log executorGroup to diagnose dispatch thread handoff (throttled to once per 60s)
+      String egMsg = "executorGroup=" + NettyUtils.executorGroup(pipeline.channel()) + " channel="
+          + pipeline.channel().getClass().getSimpleName();
+      if (!REDUNDANT_LOG_FILTER.isRedundantException(egMsg)) {
+        LOGGER.info("SSL pipeline dispatch threading (withAcl): {}", egMsg);
+      }
       pipeline.addLast("WritabilityMonitor", writabilityMonitorHandler);
       pipeline.addLast("PipelineTimingHandler", pipelineTimingHandler);
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
+      pipeline.addLast("HealthCheckCheckpoint", healthCheckCheckpoint);
       pipeline.addLast("VerifySslHandler", routerSslVerificationHandler);
+      pipeline.addLast("SslVerifyCheckpoint", sslVerifyCheckpoint);
       pipeline.addLast("MetadataHandler", metaDataHandler);
+      pipeline.addLast("MetadataCheckpoint", metadataCheckpoint);
       pipeline.addLast("AdminOperationsHandler", adminOperationsHandler);
+      pipeline.addLast("AdminCheckpoint", adminCheckpoint);
       pipeline.addLast("RouterStoreAclHandler", aclHandler);
+      pipeline.addLast("AclCheckpoint", aclCheckpoint);
       pipeline.addLast("RouterThrottleHandler", routerThrottleHandler);
+      pipeline.addLast("ThrottleCheckpoint", throttleCheckpoint);
       addStreamingHandler(pipeline);
+      pipeline.addLast("StreamingCheckpoint", streamingCheckpoint);
       addOptionalChannelHandlersToPipeline(pipeline);
+      pipeline.addLast("OptionalCheckpoint", optionalCheckpoint);
       pipeline.addLast("PipelineTimingEndHandler", pipelineTimingEndHandler);
     };
 
@@ -1143,6 +1198,8 @@ public class RouterServer extends AbstractVeniceService {
   @ChannelHandler.Sharable
   static class PipelineTimingHandler extends ChannelInboundHandlerAdapter {
     static final AttributeKey<Long> HANDLER_CHAIN_START_NANOS = AttributeKey.valueOf("HANDLER_CHAIN_START_NANOS");
+    static final AttributeKey<Long> LAST_CHECKPOINT_NANOS = AttributeKey.valueOf("LAST_CHECKPOINT_NANOS");
+    static final AttributeKey<Long> HANDLER_CHAIN_END_NANOS = AttributeKey.valueOf("HANDLER_CHAIN_END_NANOS");
     private final RouterPipelineStats stats;
 
     PipelineTimingHandler(RouterPipelineStats stats) {
@@ -1152,10 +1209,14 @@ public class RouterServer extends AbstractVeniceService {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
       if (msg instanceof BasicFullHttpRequest) {
-        long now = System.nanoTime();
-        long requestNanos = ((BasicFullHttpRequest) msg).getRequestNanos();
-        stats.recordPreHandlerLatency(LatencyUtils.convertNSToMS(now - requestNanos));
-        ctx.channel().attr(HANDLER_CHAIN_START_NANOS).set(now);
+        BasicFullHttpRequest request = (BasicFullHttpRequest) msg;
+        // Only measure non-GET requests (multiget/compute); skip single-get
+        if (request.method() != HttpMethod.GET) {
+          long now = System.nanoTime();
+          stats.recordPreHandlerLatency(LatencyUtils.convertNSToMS(now - request.getRequestNanos()));
+          ctx.channel().attr(HANDLER_CHAIN_START_NANOS).set(now);
+          ctx.channel().attr(LAST_CHECKPOINT_NANOS).set(now);
+        }
       }
       ctx.fireChannelRead(msg);
     }
@@ -1177,9 +1238,43 @@ public class RouterServer extends AbstractVeniceService {
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
       Long startNanos = ctx.channel().attr(PipelineTimingHandler.HANDLER_CHAIN_START_NANOS).getAndSet(null);
       if (startNanos != null) {
-        stats.recordHandlerChainLatency(LatencyUtils.convertNSToMS(System.nanoTime() - startNanos));
+        long now = System.nanoTime();
+        stats.recordHandlerChainLatency(LatencyUtils.convertNSToMS(now - startNanos));
+        // Set end timestamp for dispatch gap measurement (read by scatter-gather handler)
+        ctx.channel().attr(PipelineTimingHandler.HANDLER_CHAIN_END_NANOS).set(now);
+      }
+      ctx.channel().attr(PipelineTimingHandler.LAST_CHECKPOINT_NANOS).set(null);
+      ctx.fireChannelRead(msg);
+    }
+  }
+
+  /**
+   * Records per-handler latency by measuring time since the last checkpoint.
+   * Placed after each handler in the pipeline to measure that handler's processing time.
+   */
+  @ChannelHandler.Sharable
+  static class HandlerTimingCheckpoint extends ChannelInboundHandlerAdapter {
+    private final RouterPipelineStats stats;
+    private final String handlerName;
+
+    HandlerTimingCheckpoint(RouterPipelineStats stats, String handlerName) {
+      this.stats = stats;
+      this.handlerName = handlerName;
+    }
+
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+      Long lastCheckpoint = ctx.channel().attr(PipelineTimingHandler.LAST_CHECKPOINT_NANOS).get();
+      if (lastCheckpoint != null) {
+        long now = System.nanoTime();
+        stats.recordHandlerLatency(handlerName, LatencyUtils.convertNSToMS(now - lastCheckpoint));
+        ctx.channel().attr(PipelineTimingHandler.LAST_CHECKPOINT_NANOS).set(now);
       }
       ctx.fireChannelRead(msg);
+    }
+
+    String getHandlerName() {
+      return handlerName;
     }
   }
 

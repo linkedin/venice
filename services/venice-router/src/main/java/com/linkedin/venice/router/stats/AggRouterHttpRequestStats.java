@@ -318,6 +318,11 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     recordStoreStats(storeName, stats -> stats.recordDispatchLatency(latency));
   }
 
+  public void recordDispatchGapLatency(String storeName, double latency) {
+    totalStats.recordDispatchGapLatency(latency);
+    recordStoreStats(storeName, stats -> stats.recordDispatchGapLatency(latency));
+  }
+
   public void recordUnavailableRequest(String storeName) {
     totalStats.recordUnavailableRequest();
     recordStoreStats(storeName, RouterHttpRequestStats::recordUnavailableRequest);

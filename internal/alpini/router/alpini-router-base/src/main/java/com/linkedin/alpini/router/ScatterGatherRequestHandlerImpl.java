@@ -25,7 +25,9 @@ import com.linkedin.alpini.router.api.Scatter;
 import com.linkedin.alpini.router.api.ScatterGatherHelper;
 import com.linkedin.alpini.router.api.ScatterGatherRequest;
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.util.AttributeKey;
 import io.netty.util.concurrent.EventExecutor;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -176,6 +178,14 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
       LOG.debug("[{}] handler", request.getRequestId());
       final Metrics m2 = _scatterGatherHelper.initializeMetrics(request);
       setMetric(m2, MetricNames.ROUTER_PIPELINE_LATENCY, handlerEntryNanos - request.getRequestNanos());
+      // Measure dispatch gap: time from last Venice handler exit to scatter-gather entry
+      if (ctx instanceof ChannelHandlerContext) {
+        AttributeKey<Long> endKey = AttributeKey.valueOf("HANDLER_CHAIN_END_NANOS");
+        Long handlerChainEndNanos = ((ChannelHandlerContext) ctx).channel().attr(endKey).getAndSet(null);
+        if (handlerChainEndNanos != null) {
+          setMetric(m2, MetricNames.ROUTER_DISPATCH_GAP_LATENCY, handlerEntryNanos - handlerChainEndNanos);
+        }
+      }
       CompletableFuture.completedFuture(retainRequest(request))
           .thenCompose(r -> handler0(ctx, m2, r))
           .exceptionally(ex -> {

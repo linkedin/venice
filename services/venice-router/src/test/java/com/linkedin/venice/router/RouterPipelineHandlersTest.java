@@ -15,6 +15,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import java.util.concurrent.TimeUnit;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -22,9 +23,19 @@ import org.testng.annotations.Test;
 public class RouterPipelineHandlersTest {
   /**
    * Creates a real BasicFullHttpRequest with a specific requestNanos timestamp.
+   * Uses POST method since PipelineTimingHandler only measures non-GET (multiget/compute) requests.
    * We use real objects because getRequestNanos() is a final method that cannot be mocked.
    */
-  private static BasicFullHttpRequest createRequest(long requestNanos) {
+  private static BasicFullHttpRequest createPostRequest(long requestNanos) {
+    return new BasicFullHttpRequest(
+        HttpVersion.HTTP_1_1,
+        HttpMethod.POST,
+        "/test",
+        System.currentTimeMillis(),
+        requestNanos);
+  }
+
+  private static BasicFullHttpRequest createGetRequest(long requestNanos) {
     return new BasicFullHttpRequest(
         HttpVersion.HTTP_1_1,
         HttpMethod.GET,
@@ -47,7 +58,7 @@ public class RouterPipelineHandlersTest {
     when(ctx.fireChannelRead(any())).thenReturn(ctx);
 
     long requestNanos = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(50);
-    BasicFullHttpRequest request = createRequest(requestNanos);
+    BasicFullHttpRequest request = createPostRequest(requestNanos);
 
     handler.channelRead(ctx, request);
 
@@ -61,7 +72,42 @@ public class RouterPipelineHandlersTest {
     Long startNanos = channel.attr(RouterServer.PipelineTimingHandler.HANDLER_CHAIN_START_NANOS).get();
     Assert.assertNotNull(startNanos, "HANDLER_CHAIN_START_NANOS attribute should be set");
 
+    // Verify LAST_CHECKPOINT_NANOS attribute was also set (for per-handler checkpoints)
+    Long checkpointNanos = channel.attr(RouterServer.PipelineTimingHandler.LAST_CHECKPOINT_NANOS).get();
+    Assert.assertNotNull(checkpointNanos, "LAST_CHECKPOINT_NANOS attribute should be set");
+    Assert.assertEquals(checkpointNanos, startNanos, "Both attributes should have the same value");
+
     // Verify message was forwarded
+    verify(ctx).fireChannelRead(request);
+
+    request.release();
+  }
+
+  @Test
+  public void testPipelineTimingHandlerSkipsGetRequests() throws Exception {
+    RouterPipelineStats mockStats = mock(RouterPipelineStats.class);
+    RouterServer.PipelineTimingHandler handler = new RouterServer.PipelineTimingHandler(mockStats);
+
+    EmbeddedChannel channel = new EmbeddedChannel();
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    when(ctx.channel()).thenReturn(channel);
+    when(ctx.fireChannelRead(any())).thenReturn(ctx);
+
+    long requestNanos = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(50);
+    BasicFullHttpRequest request = createGetRequest(requestNanos);
+
+    handler.channelRead(ctx, request);
+
+    // Should NOT record any latency for GET requests (single-get)
+    verify(mockStats, never()).recordPreHandlerLatency(any(Double.class));
+
+    // Attributes should NOT be set for GET requests
+    Long startNanos = channel.attr(RouterServer.PipelineTimingHandler.HANDLER_CHAIN_START_NANOS).get();
+    Assert.assertNull(startNanos, "HANDLER_CHAIN_START_NANOS should not be set for GET requests");
+    Long checkpointNanos = channel.attr(RouterServer.PipelineTimingHandler.LAST_CHECKPOINT_NANOS).get();
+    Assert.assertNull(checkpointNanos, "LAST_CHECKPOINT_NANOS should not be set for GET requests");
+
+    // Message should still be forwarded
     verify(ctx).fireChannelRead(request);
 
     request.release();
@@ -83,9 +129,11 @@ public class RouterPipelineHandlersTest {
     // Should not record any latency for non-BasicFullHttpRequest messages
     verify(mockStats, never()).recordPreHandlerLatency(any(Double.class));
 
-    // Attribute should not be set
+    // Attributes should not be set
     Long startNanos = channel.attr(RouterServer.PipelineTimingHandler.HANDLER_CHAIN_START_NANOS).get();
-    Assert.assertNull(startNanos, "Attribute should not be set for non-HTTP messages");
+    Assert.assertNull(startNanos, "HANDLER_CHAIN_START_NANOS should not be set for non-HTTP messages");
+    Long checkpointNanos = channel.attr(RouterServer.PipelineTimingHandler.LAST_CHECKPOINT_NANOS).get();
+    Assert.assertNull(checkpointNanos, "LAST_CHECKPOINT_NANOS should not be set for non-HTTP messages");
 
     // Message should still be forwarded
     verify(ctx).fireChannelRead(nonHttpMsg);
@@ -103,9 +151,10 @@ public class RouterPipelineHandlersTest {
     when(ctx.channel()).thenReturn(channel);
     when(ctx.fireChannelRead(any())).thenReturn(ctx);
 
-    // Pre-set the attribute (simulating PipelineTimingHandler having run)
+    // Pre-set attributes (simulating PipelineTimingHandler having run)
     long startNanos = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(25);
     channel.attr(RouterServer.PipelineTimingHandler.HANDLER_CHAIN_START_NANOS).set(startNanos);
+    channel.attr(RouterServer.PipelineTimingHandler.LAST_CHECKPOINT_NANOS).set(startNanos);
 
     Object msg = new Object();
     handler.channelRead(ctx, msg);
@@ -116,9 +165,15 @@ public class RouterPipelineHandlersTest {
     double recorded = latencyCaptor.getValue();
     Assert.assertTrue(recorded >= 20, "Expected >= 20ms but got: " + recorded);
 
-    // Verify attribute was cleared (getAndSet(null))
+    // Verify HANDLER_CHAIN_START_NANOS was cleared
     Long remainingNanos = channel.attr(RouterServer.PipelineTimingHandler.HANDLER_CHAIN_START_NANOS).get();
-    Assert.assertNull(remainingNanos, "Attribute should be cleared after recording");
+    Assert.assertNull(remainingNanos, "HANDLER_CHAIN_START_NANOS should be cleared after recording");
+    Long remainingCheckpoint = channel.attr(RouterServer.PipelineTimingHandler.LAST_CHECKPOINT_NANOS).get();
+    Assert.assertNull(remainingCheckpoint, "LAST_CHECKPOINT_NANOS should be cleared after recording");
+
+    // Verify HANDLER_CHAIN_END_NANOS was set (for dispatch gap measurement)
+    Long endNanos = channel.attr(RouterServer.PipelineTimingHandler.HANDLER_CHAIN_END_NANOS).get();
+    Assert.assertNotNull(endNanos, "HANDLER_CHAIN_END_NANOS should be set for dispatch gap measurement");
 
     // Verify message was forwarded
     verify(ctx).fireChannelRead(msg);
@@ -145,38 +200,157 @@ public class RouterPipelineHandlersTest {
   }
 
   @Test
-  public void testTimingHandlersEndToEnd() throws Exception {
+  public void testTimingHandlersEndToEndWithCheckpoints() throws Exception {
     RouterPipelineStats mockStats = mock(RouterPipelineStats.class);
     RouterServer.PipelineTimingHandler startHandler = new RouterServer.PipelineTimingHandler(mockStats);
+    RouterServer.HandlerTimingCheckpoint checkpoint1 = new RouterServer.HandlerTimingCheckpoint(mockStats, "handler_a");
+    RouterServer.HandlerTimingCheckpoint checkpoint2 = new RouterServer.HandlerTimingCheckpoint(mockStats, "handler_b");
     RouterServer.PipelineTimingEndHandler endHandler = new RouterServer.PipelineTimingEndHandler(mockStats);
 
-    // Use same EmbeddedChannel for both handlers to share attributes
+    // Use same EmbeddedChannel for all handlers to share attributes
     EmbeddedChannel channel = new EmbeddedChannel();
 
     ChannelHandlerContext startCtx = mock(ChannelHandlerContext.class);
     when(startCtx.channel()).thenReturn(channel);
     when(startCtx.fireChannelRead(any())).thenReturn(startCtx);
 
+    ChannelHandlerContext cp1Ctx = mock(ChannelHandlerContext.class);
+    when(cp1Ctx.channel()).thenReturn(channel);
+    when(cp1Ctx.fireChannelRead(any())).thenReturn(cp1Ctx);
+
+    ChannelHandlerContext cp2Ctx = mock(ChannelHandlerContext.class);
+    when(cp2Ctx.channel()).thenReturn(channel);
+    when(cp2Ctx.fireChannelRead(any())).thenReturn(cp2Ctx);
+
     ChannelHandlerContext endCtx = mock(ChannelHandlerContext.class);
     when(endCtx.channel()).thenReturn(channel);
     when(endCtx.fireChannelRead(any())).thenReturn(endCtx);
 
     long requestNanos = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(100);
-    BasicFullHttpRequest request = createRequest(requestNanos);
+    BasicFullHttpRequest request = createPostRequest(requestNanos);
 
-    // Simulate: start handler runs first
+    // Simulate full pipeline: start → checkpoint1 → checkpoint2 → end
     startHandler.channelRead(startCtx, request);
     verify(mockStats).recordPreHandlerLatency(any(Double.class));
 
-    // Simulate: end handler runs after (with some handler chain processing in between)
+    checkpoint1.channelRead(cp1Ctx, request);
+    verify(mockStats).recordHandlerLatency(ArgumentMatchers.eq("handler_a"), any(Double.class));
+
+    checkpoint2.channelRead(cp2Ctx, request);
+    verify(mockStats).recordHandlerLatency(ArgumentMatchers.eq("handler_b"), any(Double.class));
+
     endHandler.channelRead(endCtx, request);
     verify(mockStats).recordHandlerChainLatency(any(Double.class));
 
-    // Verify attribute was cleaned up
+    // Verify both attributes were cleaned up
     Long remaining = channel.attr(RouterServer.PipelineTimingHandler.HANDLER_CHAIN_START_NANOS).get();
-    Assert.assertNull(remaining, "Attribute should be cleared after end handler runs");
+    Assert.assertNull(remaining, "HANDLER_CHAIN_START_NANOS should be cleared after end handler runs");
+    Long remainingCheckpoint = channel.attr(RouterServer.PipelineTimingHandler.LAST_CHECKPOINT_NANOS).get();
+    Assert.assertNull(remainingCheckpoint, "LAST_CHECKPOINT_NANOS should be cleared after end handler runs");
 
     request.release();
+  }
+
+  // --- HandlerTimingCheckpoint tests ---
+
+  @Test
+  public void testHandlerTimingCheckpointRecordsLatency() throws Exception {
+    RouterPipelineStats mockStats = mock(RouterPipelineStats.class);
+    RouterServer.HandlerTimingCheckpoint checkpoint = new RouterServer.HandlerTimingCheckpoint(mockStats, "throttle");
+
+    EmbeddedChannel channel = new EmbeddedChannel();
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    when(ctx.channel()).thenReturn(channel);
+    when(ctx.fireChannelRead(any())).thenReturn(ctx);
+
+    // Set LAST_CHECKPOINT_NANOS to simulate PipelineTimingHandler having run
+    long checkpointNanos = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(30);
+    channel.attr(RouterServer.PipelineTimingHandler.LAST_CHECKPOINT_NANOS).set(checkpointNanos);
+
+    Object msg = new Object();
+    checkpoint.channelRead(ctx, msg);
+
+    // Verify per-handler latency was recorded with correct handler name
+    ArgumentCaptor<Double> latencyCaptor = ArgumentCaptor.forClass(Double.class);
+    verify(mockStats).recordHandlerLatency(ArgumentMatchers.eq("throttle"), latencyCaptor.capture());
+    double recorded = latencyCaptor.getValue();
+    Assert.assertTrue(recorded >= 25, "Expected >= 25ms but got: " + recorded);
+
+    // Verify LAST_CHECKPOINT_NANOS was updated to a new (more recent) value
+    Long updatedNanos = channel.attr(RouterServer.PipelineTimingHandler.LAST_CHECKPOINT_NANOS).get();
+    Assert.assertNotNull(updatedNanos, "LAST_CHECKPOINT_NANOS should be updated");
+    Assert.assertTrue(updatedNanos > checkpointNanos, "LAST_CHECKPOINT_NANOS should be advanced");
+
+    // Verify message was forwarded
+    verify(ctx).fireChannelRead(msg);
+  }
+
+  @Test
+  public void testHandlerTimingCheckpointSkipsWhenNoAttribute() throws Exception {
+    RouterPipelineStats mockStats = mock(RouterPipelineStats.class);
+    RouterServer.HandlerTimingCheckpoint checkpoint = new RouterServer.HandlerTimingCheckpoint(mockStats, "throttle");
+
+    EmbeddedChannel channel = new EmbeddedChannel();
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    when(ctx.channel()).thenReturn(channel);
+    when(ctx.fireChannelRead(any())).thenReturn(ctx);
+
+    // Do NOT set LAST_CHECKPOINT_NANOS
+    Object msg = new Object();
+    checkpoint.channelRead(ctx, msg);
+
+    // Should not record any latency
+    verify(mockStats, never()).recordHandlerLatency(any(String.class), any(Double.class));
+
+    // Message should still be forwarded
+    verify(ctx).fireChannelRead(msg);
+  }
+
+  @Test
+  public void testHandlerTimingCheckpointChaining() throws Exception {
+    RouterPipelineStats mockStats = mock(RouterPipelineStats.class);
+    RouterServer.HandlerTimingCheckpoint cp1 = new RouterServer.HandlerTimingCheckpoint(mockStats, "health_check");
+    RouterServer.HandlerTimingCheckpoint cp2 = new RouterServer.HandlerTimingCheckpoint(mockStats, "ssl_verify");
+
+    EmbeddedChannel channel = new EmbeddedChannel();
+
+    ChannelHandlerContext ctx1 = mock(ChannelHandlerContext.class);
+    when(ctx1.channel()).thenReturn(channel);
+    when(ctx1.fireChannelRead(any())).thenReturn(ctx1);
+
+    ChannelHandlerContext ctx2 = mock(ChannelHandlerContext.class);
+    when(ctx2.channel()).thenReturn(channel);
+    when(ctx2.fireChannelRead(any())).thenReturn(ctx2);
+
+    // Set initial checkpoint
+    long initialNanos = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(20);
+    channel.attr(RouterServer.PipelineTimingHandler.LAST_CHECKPOINT_NANOS).set(initialNanos);
+
+    Object msg = new Object();
+
+    // First checkpoint records health_check latency
+    cp1.channelRead(ctx1, msg);
+    verify(mockStats).recordHandlerLatency(ArgumentMatchers.eq("health_check"), any(Double.class));
+
+    // Capture the updated checkpoint nanos after cp1
+    Long afterCp1 = channel.attr(RouterServer.PipelineTimingHandler.LAST_CHECKPOINT_NANOS).get();
+    Assert.assertNotNull(afterCp1);
+    Assert.assertTrue(afterCp1 > initialNanos, "Checkpoint should have advanced after first handler");
+
+    // Second checkpoint records ssl_verify latency (measured from cp1's timestamp)
+    cp2.channelRead(ctx2, msg);
+    verify(mockStats).recordHandlerLatency(ArgumentMatchers.eq("ssl_verify"), any(Double.class));
+
+    Long afterCp2 = channel.attr(RouterServer.PipelineTimingHandler.LAST_CHECKPOINT_NANOS).get();
+    Assert.assertNotNull(afterCp2);
+    Assert.assertTrue(afterCp2 >= afterCp1, "Checkpoint should have advanced after second handler");
+  }
+
+  @Test
+  public void testHandlerTimingCheckpointGetHandlerName() {
+    RouterPipelineStats mockStats = mock(RouterPipelineStats.class);
+    RouterServer.HandlerTimingCheckpoint checkpoint = new RouterServer.HandlerTimingCheckpoint(mockStats, "admin");
+    Assert.assertEquals(checkpoint.getHandlerName(), "admin");
   }
 
   // --- WritabilityMonitorHandler tests ---
