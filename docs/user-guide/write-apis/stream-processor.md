@@ -69,17 +69,6 @@ public class MyStreamTask implements StreamTask {
 
 ```
 
-## Comparison: Stream Processor vs Online Producer
-
-| Feature             | Stream Processor (Samza)             | Online Producer                    |
-| ------------------- | ------------------------------------ | ---------------------------------- |
-| Checkpointing       | Automatic via Samza                  | Manual application responsibility  |
-| Delivery guarantees | Exactly-once                         | At-least-once                      |
-| Stream processing   | Full Samza capabilities              | None - direct write only           |
-| Complexity          | Higher (Samza deployment required)   | Lower (library in application)     |
-| Latency             | Moderate (batched by Samza)          | Lower (direct writes)              |
-| Best for            | Complex pipelines, historical replay | Simple online writes from services |
-
 ## Best Practices
 
 1. **Monitor Samza lag metrics** - Ensure your stream processor keeps up with upstream data

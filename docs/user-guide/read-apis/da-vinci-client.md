@@ -1,7 +1,7 @@
 # Da Vinci Client
 
 The Da Vinci Client is a stateful, embedded caching client that eagerly loads Venice data into local RocksDB storage. It
-provides ultra-low latency reads by serving all queries from local disk with zero network hops.
+provides ultra-low latency reads by serving all queries locally with zero network hops.
 
 ## When to Use
 
@@ -125,7 +125,7 @@ When Venice pushes new batch data:
 
 By default, Da Vinci Client bootstraps by consuming the full dataset from Kafka. For large datasets, this can be slow.
 **Blob Transfer** enables peer-to-peer (P2P) bootstrapping where clients download snapshots directly from other Da Vinci
-instances or Venice servers.
+instances.
 
 **Benefits:**
 
@@ -137,7 +137,7 @@ instances or Venice servers.
 - Large stores (> 10 GB) where Kafka bootstrap is too slow
 - High client churn requiring frequent bootstrap operations
 
-Blob transfer is disabled by default and must be configured at the client level. See
+Blob transfer is disabled by default and must be configured at the store and client level. See
 [P2P Bootstrapping](../../operations/advanced/p2p-bootstrapping.md) for configuration details.
 
 ### Record Transformer (DVRT)
@@ -309,6 +309,6 @@ Configuration options for `DaVinciRecordTransformerConfig`:
 ## See Also
 
 - [Thin Client](thin-client.md) - Lightweight stateless client for simple use cases
-- [Fast Client](fast-client.md) - Partition-aware client balancing latency and resource usage
-- [Change Data Capture](cdc.md) - Stream all mutations to a Venice store
+- [Fast Client](fast-client.md) - Stateless client that provides better performance than the Thin Client
+- [Change Data Capture](cdc.md) - Stream all updates to a Venice store
 - [Read APIs Overview](index.md) - Comparison of all Venice read clients
