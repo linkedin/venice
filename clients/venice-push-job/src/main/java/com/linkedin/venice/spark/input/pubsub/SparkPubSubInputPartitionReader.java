@@ -1,7 +1,5 @@
 package com.linkedin.venice.spark.input.pubsub;
 
-import static com.linkedin.venice.utils.Utils.EMPTY_BYTE_BUFFER;
-
 import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
 import com.linkedin.venice.chunking.RawKeyBytesAndChunkedKeySuffix;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -120,7 +118,7 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
         messageType = MessageType.DELETE.getValue();
         Delete delete = (Delete) pubSubMessageValue.getPayloadUnion();
         schemaId = delete.getSchemaId();
-        value = EMPTY_BYTE_BUFFER;
+        value = null; // DELETE records have no value; null ensures downstream writer.delete() is called
 
         replicationMetadataPayload = delete.getReplicationMetadataPayload();
         replicationMetadataVersionId = delete.getReplicationMetadataVersionId();
