@@ -25,6 +25,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -43,6 +44,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -91,6 +93,11 @@ public class HeartbeatMonitoringServiceTest {
     doReturn(leaderMap).when(heartbeatMonitoringService).getLeaderHeartbeatTimeStamps();
     doReturn(followerMap).when(heartbeatMonitoringService).getFollowerHeartbeatTimeStamps();
     doReturn("dc-1").when(heartbeatMonitoringService).getLocalRegionName();
+    Set<String> regionNames = new HashSet<>();
+    regionNames.add("dc-0");
+    regionNames.add("dc-1");
+    regionNames.add("dc-1_sep");
+    doReturn(regionNames).when(heartbeatMonitoringService).getRegionNames();
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
 
     // Validating Leader Lag
@@ -99,6 +106,10 @@ public class HeartbeatMonitoringServiceTest {
     int partition = 1;
     doReturn("store_v1-1").when(pcs).getReplicaId();
     doReturn(partition).when(pcs).getPartition();
+    // Mock PCS cached heartbeat keys for each region
+    for (String region: regionNames) {
+      doReturn(new HeartbeatKey(store, version, partition, region)).when(pcs).getOrCreateCachedHeartbeatKey(region);
+    }
     long currentTime = System.currentTimeMillis();
     leaderMap.put(
         new HeartbeatKey(store, version, partition, "dc-0"),
@@ -118,6 +129,8 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertEquals(timestamp, currentTime - TimeUnit.MINUTES.toMillis(10));
 
     // Add unavailable region
+    regionNames.add("dc-2");
+    doReturn(new HeartbeatKey(store, version, partition, "dc-2")).when(pcs).getOrCreateCachedHeartbeatKey("dc-2");
     leaderMap.put(
         new HeartbeatKey(store, version, partition, "dc-2"),
         new IngestionTimestampEntry(currentTime - TimeUnit.MINUTES.toMillis(20), false, false));
@@ -125,10 +138,16 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertEquals(lag, Long.MAX_VALUE);
     timestamp = heartbeatMonitoringService.getReplicaLeaderMinHeartbeatTimestamp(pcs, store, version, true);
     Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
-    // Replica not found in leader map.
-    lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcs, store, 2, true);
+    // Replica not found in leader map: PCS for version 2 has no matching entries
+    PartitionConsumptionState pcsV2 = mock(PartitionConsumptionState.class);
+    doReturn("store_v2-1").when(pcsV2).getReplicaId();
+    doReturn(partition).when(pcsV2).getPartition();
+    for (String region: regionNames) {
+      doReturn(new HeartbeatKey(store, 2, partition, region)).when(pcsV2).getOrCreateCachedHeartbeatKey(region);
+    }
+    lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcsV2, store, 2, true);
     Assert.assertEquals(lag, Long.MAX_VALUE);
-    timestamp = heartbeatMonitoringService.getReplicaLeaderMinHeartbeatTimestamp(pcs, store, 2, true);
+    timestamp = heartbeatMonitoringService.getReplicaLeaderMinHeartbeatTimestamp(pcsV2, store, 2, true);
     Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
 
     /**
@@ -161,10 +180,10 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertEquals(lag, Long.MAX_VALUE);
     timestamp = heartbeatMonitoringService.getReplicaFollowerHeartbeatTimestamp(pcs, store, version, true);
     Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
-    // Replica not found in follower map.
-    lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, 2, true);
+    // Replica not found in follower map: PCS for version 2 has no matching entries
+    lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcsV2, store, 2, true);
     Assert.assertEquals(lag, Long.MAX_VALUE);
-    timestamp = heartbeatMonitoringService.getReplicaFollowerHeartbeatTimestamp(pcs, store, 2, true);
+    timestamp = heartbeatMonitoringService.getReplicaFollowerHeartbeatTimestamp(pcsV2, store, 2, true);
     Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
   }
 
@@ -178,6 +197,19 @@ public class HeartbeatMonitoringServiceTest {
     int version = 1;
     int partition = 1;
     String region = "dc-0";
+    Set<String> regionNames = new HashSet<>();
+    regionNames.add(region);
+    doReturn(regionNames).when(heartbeatMonitoringService).getRegionNames();
+
+    // Mock KafkaStoreIngestionService -> StoreIngestionTask -> PCS for partitionFilter=-1 lookups
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(new HeartbeatKey(store, version, partition, region)).when(pcs).getOrCreateCachedHeartbeatKey(region);
+    StoreIngestionTask sit = mock(StoreIngestionTask.class);
+    doReturn(Collections.singletonList(pcs)).when(sit).getPartitionConsumptionStates();
+    KafkaStoreIngestionService ingestionService = mock(KafkaStoreIngestionService.class);
+    doReturn(sit).when(ingestionService).getStoreIngestionTask(Version.composeKafkaTopic(store, version));
+    doReturn(ingestionService).when(heartbeatMonitoringService).getKafkaStoreIngestionService();
+
     long timestamp = System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(5);
     leaderMap
         .put(new HeartbeatKey(store, version, partition, region), new IngestionTimestampEntry(timestamp, true, true));
@@ -236,6 +268,7 @@ public class HeartbeatMonitoringServiceTest {
                 false)
             .size(),
         0);
+    // Version 2 has no SIT, so partitionFilter=-1 returns empty
     Assert.assertEquals(
         heartbeatMonitoringService
             .getHeartbeatInfoFromMap(

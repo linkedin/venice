@@ -2572,6 +2572,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return partitionConsumptionStateMap.get(partitionId);
   }
 
+  public Collection<PartitionConsumptionState> getPartitionConsumptionStates() {
+    return partitionConsumptionStateMap.values();
+  }
+
   public boolean hasAnyPartitionConsumptionState(Predicate<PartitionConsumptionState> pcsPredicate) {
     for (Map.Entry<Integer, PartitionConsumptionState> partitionToConsumptionState: partitionConsumptionStateMap
         .entrySet()) {

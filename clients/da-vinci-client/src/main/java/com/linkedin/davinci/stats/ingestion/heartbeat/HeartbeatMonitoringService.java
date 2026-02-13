@@ -5,6 +5,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.ReplicaHeartbeatInfo;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -243,26 +244,56 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       int partitionFilter,
       boolean filterLagReplica) {
     Map<String, ReplicaHeartbeatInfo> result = new VeniceConcurrentHashMap<>();
-    for (Map.Entry<HeartbeatKey, IngestionTimestampEntry> entry: heartbeatTimestampMap.entrySet()) {
-      HeartbeatKey key = entry.getKey();
-      String topicName = Version.composeKafkaTopic(key.storeName, key.version);
-      if (!versionTopicName.equals(topicName)) {
-        continue;
+    String storeName = Version.parseStoreFromKafkaTopicName(versionTopicName);
+    int version = Version.parseVersionFromKafkaTopicName(versionTopicName);
+
+    if (partitionFilter >= 0) {
+      // Targeted lookup: directly look up keys for the specific partition and each region
+      for (String region: getRegionNames()) {
+        HeartbeatKey key = new HeartbeatKey(storeName, version, partitionFilter, region);
+        IngestionTimestampEntry entry = heartbeatTimestampMap.get(key);
+        if (entry == null) {
+          continue;
+        }
+        addHeartbeatInfoToResult(result, key, entry, leaderState, currentTimestamp, filterLagReplica);
       }
-      if (partitionFilter >= 0 && partitionFilter != key.partition) {
-        continue;
+    } else {
+      // No partition filter: use PCS from ingestion service to do targeted lookups per partition and region
+      KafkaStoreIngestionService ingestionService = getKafkaStoreIngestionService();
+      StoreIngestionTask sit =
+          ingestionService == null ? null : ingestionService.getStoreIngestionTask(versionTopicName);
+      if (sit != null) {
+        for (PartitionConsumptionState pcs: sit.getPartitionConsumptionStates()) {
+          for (String region: getRegionNames()) {
+            HeartbeatKey key = pcs.getOrCreateCachedHeartbeatKey(region);
+            IngestionTimestampEntry entry = heartbeatTimestampMap.get(key);
+            if (entry == null) {
+              continue;
+            }
+            addHeartbeatInfoToResult(result, key, entry, leaderState, currentTimestamp, filterLagReplica);
+          }
+        }
       }
-      long heartbeatTs = entry.getValue().heartbeatTimestamp;
-      long lag = currentTimestamp - heartbeatTs;
-      if (filterLagReplica && lag < DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS) {
-        continue;
-      }
-      String replicaId = key.getReplicaId();
-      ReplicaHeartbeatInfo replicaHeartbeatInfo =
-          new ReplicaHeartbeatInfo(replicaId, key.region, leaderState, entry.getValue().readyToServe, heartbeatTs, lag);
-      result.put(replicaId + "-" + key.region, replicaHeartbeatInfo);
     }
     return result;
+  }
+
+  private void addHeartbeatInfoToResult(
+      Map<String, ReplicaHeartbeatInfo> result,
+      HeartbeatKey key,
+      IngestionTimestampEntry entry,
+      String leaderState,
+      long currentTimestamp,
+      boolean filterLagReplica) {
+    long heartbeatTs = entry.heartbeatTimestamp;
+    long lag = currentTimestamp - heartbeatTs;
+    if (filterLagReplica && lag < DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS) {
+      return;
+    }
+    String replicaId = key.getReplicaId();
+    ReplicaHeartbeatInfo replicaHeartbeatInfo =
+        new ReplicaHeartbeatInfo(replicaId, key.region, leaderState, entry.readyToServe, heartbeatTs, lag);
+    result.put(replicaId + "-" + key.region, replicaHeartbeatInfo);
   }
 
   @Override
@@ -552,39 +583,40 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       int version,
       boolean shouldLogLag,
       long currentTimestamp) {
-    int partition = partitionConsumptionState.getPartition();
     long maxLag = 0;
     boolean found = false;
     /**
      * When initializing A/A leader lag entry, we will initialize towards all available regions, so scanning this map
      * should be able to tell us all the lag information.
+     * Use direct key lookups per region instead of iterating the entire map.
      */
-    for (Map.Entry<HeartbeatKey, IngestionTimestampEntry> entry: getLeaderHeartbeatTimeStamps().entrySet()) {
-      HeartbeatKey key = entry.getKey();
-      if (!key.storeName.equals(storeName) || key.version != version || key.partition != partition) {
+    for (String region: getRegionNames()) {
+      HeartbeatKey key = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
+      IngestionTimestampEntry entry = getLeaderHeartbeatTimeStamps().get(key);
+      if (entry == null) {
         continue;
       }
       found = true;
       // Skip separate RT topic as it is not tracked towards replication latency goal.
-      if (Utils.isSeparateTopicRegion(key.region)) {
+      if (Utils.isSeparateTopicRegion(region)) {
         continue;
       }
-      if (!entry.getValue().consumedFromUpstream) {
+      if (!entry.consumedFromUpstream) {
         if (shouldLogLag) {
           LOGGER.info(
               "Replica: {} has not received any valid leader heartbeat from region: {}.",
               partitionConsumptionState.getReplicaId(),
-              key.region);
+              region);
         }
         maxLag = Long.MAX_VALUE;
       } else {
-        long heartbeatLag = currentTimestamp - entry.getValue().heartbeatTimestamp;
+        long heartbeatLag = currentTimestamp - entry.heartbeatTimestamp;
         if (shouldLogLag) {
           LOGGER.info(
               "Replica: {} has leader heartbeat lag: {}ms from region: {}.",
               partitionConsumptionState.getReplicaId(),
               heartbeatLag,
-              key.region);
+              region);
         }
         maxLag = Math.max(maxLag, heartbeatLag);
       }
@@ -604,8 +636,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       int version,
       boolean shouldLogLag,
       long currentTimestamp) {
-    HeartbeatKey key =
-        new HeartbeatKey(storeName, version, partitionConsumptionState.getPartition(), getLocalRegionName());
+    HeartbeatKey key = partitionConsumptionState.getOrCreateCachedHeartbeatKey(getLocalRegionName());
     IngestionTimestampEntry followerReplicaTimestamp = getFollowerHeartbeatTimeStamps().get(key);
     if (followerReplicaTimestamp == null) {
       if (shouldLogLag) {
@@ -1107,6 +1138,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   String getLocalRegionName() {
     return localRegionName;
+  }
+
+  Set<String> getRegionNames() {
+    return regionNames;
   }
 
   public void setKafkaStoreIngestionService(KafkaStoreIngestionService kafkaStoreIngestionService) {

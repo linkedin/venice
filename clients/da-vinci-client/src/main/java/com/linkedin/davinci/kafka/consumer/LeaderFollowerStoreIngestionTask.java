@@ -2327,7 +2327,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean isComplete = partitionConsumptionState.isComplete();
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       region = getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl);
-      HeartbeatKey cachedKey = getOrCreateCachedHeartbeatKey(partitionConsumptionState, region);
+      HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
       hbService.recordLeaderHeartbeat(cachedKey, getStoreName(), getVersionNumber(), region, timestamp, isComplete);
     } else {
       /**
@@ -2337,7 +2337,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       region = isDaVinciClient()
           ? getServerConfig().getRegionName()
           : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl);
-      HeartbeatKey cachedKey = getOrCreateCachedHeartbeatKey(partitionConsumptionState, region);
+      HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
       hbService.recordFollowerHeartbeat(cachedKey, getStoreName(), getVersionNumber(), region, timestamp, isComplete);
     }
   }
@@ -2359,7 +2359,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         isDaVinciClient() ? serverConfig.getRegionName() : serverConfig.getKafkaClusterUrlToAliasMap().get(pubSubUrl);
     long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
     boolean isComplete = partitionConsumptionState.isComplete();
-    HeartbeatKey cachedKey = getOrCreateCachedHeartbeatKey(partitionConsumptionState, region);
+    HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
 
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       hbService.recordLeaderRecordTimestamp(cachedKey, storeName, versionNumber, region, messageTimestamp, isComplete);
@@ -4339,15 +4339,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   HeartbeatMonitoringService getHeartbeatMonitoringService() {
     return heartbeatMonitoringService;
-  }
-
-  private HeartbeatKey getOrCreateCachedHeartbeatKey(PartitionConsumptionState pcs, String region) {
-    HeartbeatKey key = pcs.getCachedHeartbeatKey(region);
-    if (key == null) {
-      key = new HeartbeatKey(storeName, versionNumber, pcs.getPartition(), region);
-      pcs.cacheHeartbeatKey(region, key);
-    }
-    return key;
   }
 
   protected String getDataRecoverySourcePubSub(Version version) {

@@ -1142,14 +1142,19 @@ public class PartitionConsumptionState {
     this.hasResubscribedAfterBootstrapAsCurrentVersion = hasResubscribedAfterBootstrapAsCurrentVersion;
   }
 
-  public void cacheHeartbeatKey(String region, HeartbeatKey key) {
+  /**
+   * Get or create a cached HeartbeatKey for the given region.
+   * Derives storeName/version from the partition replica topic name.
+   */
+  public HeartbeatKey getOrCreateCachedHeartbeatKey(String region) {
     if (cachedHeartbeatKeys == null) {
-      cachedHeartbeatKeys = new HashMap<>();
+      cachedHeartbeatKeys = new HashMap<>(3);
     }
-    cachedHeartbeatKeys.put(region, key);
-  }
-
-  public HeartbeatKey getCachedHeartbeatKey(String region) {
-    return cachedHeartbeatKeys == null ? null : cachedHeartbeatKeys.get(region);
+    return cachedHeartbeatKeys.computeIfAbsent(region, r -> {
+      String topicName = partitionReplica.getTopicName();
+      String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+      int version = Version.parseVersionFromKafkaTopicName(topicName);
+      return new HeartbeatKey(storeName, version, getPartition(), r);
+    });
   }
 }
