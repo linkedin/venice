@@ -3055,16 +3055,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return Long.MAX_VALUE;
     }
 
-    if (PubSubSymbolicPosition.EARLIEST.equals(currentPosition)) {
-      /**
-       * If the consumer is at EARLIEST, it means it has not yet started consuming, and therefore the lag is equal to
-       * the number of messages in the topic.
-       */
-      return topicManager.countRecordsUntil(pubSubTopicPartition, endPosition);
-    }
-
     long diff;
     try {
+      if (PubSubSymbolicPosition.EARLIEST.equals(currentPosition)) {
+        /**
+         * If the consumer is at EARLIEST, it means it has not yet started consuming, and therefore the lag is equal to
+         * the number of messages in the topic.
+         */
+        return topicManager.countRecordsUntil(pubSubTopicPartition, endPosition);
+      }
       diff = topicManager.diffPosition(pubSubTopicPartition, endPosition, currentPosition);
     } catch (PubSubTopicDoesNotExistException e) {
       return Long.MAX_VALUE;

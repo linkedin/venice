@@ -5925,19 +5925,34 @@ public abstract class StoreIngestionTaskTest {
   public void testMeasureLagWithCallToPubSubWhenTopicDoesNotExist() {
     final PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
     final InMemoryPubSubPosition endPosition = InMemoryPubSubPosition.of(10L);
-    final InMemoryPubSubPosition currentPosition = InMemoryPubSubPosition.of(3L);
     final String PUB_SUB_SERVER_NAME = "blah";
 
     TopicManager throwingTopicManager = mock(TopicManager.class);
     doReturn(endPosition).when(throwingTopicManager).getLatestPositionCached(partition);
     doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
         .diffPosition(any(), any(), any());
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .countRecordsUntil(any(), any());
 
+    // Case 1: Non-EARLIEST position -> diffPosition throws
     assertEquals(
-        StoreIngestionTask
-            .measureLagWithCallToPubSub(PUB_SUB_SERVER_NAME, partition, currentPosition, s -> throwingTopicManager),
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            partition,
+            InMemoryPubSubPosition.of(3L),
+            s -> throwingTopicManager),
         Long.MAX_VALUE,
-        "When diffPosition throws PubSubTopicDoesNotExistException, we expect Long.MAX_VALUE (infinite lag).");
+        "When diffPosition throws PubSubTopicDoesNotExistException, we expect Long.MAX_VALUE.");
+
+    // Case 2: EARLIEST position -> countRecordsUntil throws
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            partition,
+            PubSubSymbolicPosition.EARLIEST,
+            s -> throwingTopicManager),
+        Long.MAX_VALUE,
+        "When countRecordsUntil throws PubSubTopicDoesNotExistException, we expect Long.MAX_VALUE.");
   }
 
   /**
