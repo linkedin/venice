@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -364,43 +365,34 @@ public class StoreRequestHandlerTest {
     assertEquals(response.getStoreNamesCount(), 0);
   }
 
-  @Test
-  public void testGetClusterHealthStoresSuccess() {
-    Map<String, String> storeStatusMap = new HashMap<>();
-    storeStatusMap.put("store1", "ONLINE");
-    storeStatusMap.put("store2", "DEGRADED");
-    storeStatusMap.put("store3", "UNAVAILABLE");
-    when(admin.getAllStoreStatuses("testCluster")).thenReturn(storeStatusMap);
+  @DataProvider(name = "storeStatusMaps")
+  public Object[][] storeStatusMaps() {
+    Map<String, String> populatedMap = new HashMap<>();
+    populatedMap.put("store1", "ONLINE");
+    populatedMap.put("store2", "DEGRADED");
+    populatedMap.put("store3", "UNAVAILABLE");
+    return new Object[][] { { populatedMap }, { Collections.emptyMap() } };
+  }
+
+  @Test(dataProvider = "storeStatusMaps")
+  public void testGetClusterHealthStores(Map<String, String> expectedStatusMap) {
+    when(admin.getAllStoreStatuses("testCluster")).thenReturn(expectedStatusMap);
 
     MultiStoreStatusResponse response = storeRequestHandler.getClusterHealthStores("testCluster");
 
     verify(admin, times(1)).getAllStoreStatuses("testCluster");
     assertEquals(response.getCluster(), "testCluster");
-    assertEquals(response.getStoreStatusMap().size(), 3);
-    assertEquals(response.getStoreStatusMap().get("store1"), "ONLINE");
-    assertEquals(response.getStoreStatusMap().get("store2"), "DEGRADED");
-    assertEquals(response.getStoreStatusMap().get("store3"), "UNAVAILABLE");
+    assertEquals(response.getStoreStatusMap(), expectedStatusMap);
   }
 
-  @Test
-  public void testGetClusterHealthStoresEmptyMap() {
-    when(admin.getAllStoreStatuses("testCluster")).thenReturn(Collections.emptyMap());
-
-    MultiStoreStatusResponse response = storeRequestHandler.getClusterHealthStores("testCluster");
-
-    verify(admin, times(1)).getAllStoreStatuses("testCluster");
-    assertEquals(response.getCluster(), "testCluster");
-    assertEquals(response.getStoreStatusMap().size(), 0);
+  @DataProvider(name = "blankClusterNames")
+  public Object[][] blankClusterNames() {
+    return new Object[][] { { null }, { "" } };
   }
 
-  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
-  public void testGetClusterHealthStoresMissingClusterName() {
-    storeRequestHandler.getClusterHealthStores(null);
-  }
-
-  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
-  public void testGetClusterHealthStoresEmptyClusterName() {
-    storeRequestHandler.getClusterHealthStores("");
+  @Test(dataProvider = "blankClusterNames", expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
+  public void testGetClusterHealthStoresWithBlankClusterName(String clusterName) {
+    storeRequestHandler.getClusterHealthStores(clusterName);
   }
 
   @Test

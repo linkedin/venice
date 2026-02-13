@@ -270,9 +270,9 @@ public class StoreRequestHandler {
       throw new IllegalArgumentException("Cluster name is required");
     }
 
-    LOGGER.info("Getting health status for all stores in cluster: {}", clusterName);
+    LOGGER.debug("Getting health status for all stores in cluster: {}", clusterName);
     Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);
-    LOGGER.info("Found {} stores with health status in cluster: {}", storeStatusMap.size(), clusterName);
+    LOGGER.debug("Found {} stores with health status in cluster: {}", storeStatusMap.size(), clusterName);
 
     MultiStoreStatusResponse response = new MultiStoreStatusResponse();
     response.setCluster(clusterName);
