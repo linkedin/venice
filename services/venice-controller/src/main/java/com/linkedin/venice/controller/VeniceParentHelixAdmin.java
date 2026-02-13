@@ -3181,10 +3181,6 @@ public class VeniceParentHelixAdmin implements Admin {
             currStore.getKeyUrnFields().stream().map(Objects::toString).collect(Collectors.toList());
       }
 
-      // Set defaults for v95 fields that don't yet have full Java-layer support
-      setStore.blobDbEnabled = "NOT_SPECIFIED";
-      setStore.previousCurrentVersion = -1;
-
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
       StoragePersona personaToValidate = null;

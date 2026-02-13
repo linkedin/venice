@@ -1046,8 +1046,6 @@ public class ReadOnlyStore implements Store {
     storeProperties.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
     storeProperties.setKeyUrnFields(getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
     storeProperties.setUncleanLeaderElectionEnabledForRTTopics(getUncleanLeaderElectionEnabledForRTTopics());
-    // v40 fields without full Java-layer support yet
-    storeProperties.setBlobDbEnabled("NOT_SPECIFIED");
 
     return storeProperties;
   }
@@ -1917,8 +1915,6 @@ public class ReadOnlyStore implements Store {
     storeVersion.setSeparateRealTimeTopicEnabled(version.isSeparateRealTimeTopicEnabled());
     storeVersion.setBlobTransferEnabled(version.isBlobTransferEnabled());
     storeVersion.setBlobTransferInServerEnabled(version.getBlobTransferInServerEnabled());
-    // v40 field without full Java-layer support yet
-    storeVersion.setBlobDbEnabled("NOT_SPECIFIED");
     storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
     storeVersion.setHybridConfig(convertHybridStoreConfig(version.getHybridStoreConfig()));
     storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());
