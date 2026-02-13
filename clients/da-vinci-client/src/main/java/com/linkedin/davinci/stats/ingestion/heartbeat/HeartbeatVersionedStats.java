@@ -104,10 +104,13 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
 
   @Override
   public void handleStoreDeleted(String storeName) {
-    super.handleStoreDeleted(storeName);
-    HeartbeatOtelStats otelStats = otelStatsMap.remove(storeName);
-    if (otelStats != null) {
-      otelStats.close();
+    try {
+      super.handleStoreDeleted(storeName);
+    } finally {
+      HeartbeatOtelStats otelStats = otelStatsMap.remove(storeName);
+      if (otelStats != null) {
+        otelStats.close();
+      }
     }
   }
 
@@ -137,8 +140,9 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
   }
 
   /**
-   * Gets or creates OTel stats for a store.
-   * Version info will be initialized via onVersionInfoUpdated() callback.
+   * Gets or creates OTel stats for a store. On first creation, version info is
+   * initialized eagerly from the current version cache. Subsequent version changes
+   * are propagated via the {@link #onVersionInfoUpdated} callback.
    */
   private HeartbeatOtelStats getOrCreateHeartbeatOtelStats(String storeName) {
     return otelStatsMap.computeIfAbsent(storeName, key -> {

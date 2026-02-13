@@ -13,6 +13,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -176,11 +177,21 @@ public class HeartbeatVersionedStatsTest {
     // Record some metrics to create OTel stats for the store
     heartbeatVersionedStats.recordLeaderLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 100);
 
+    HeartbeatOtelStats otelStatsBefore = heartbeatVersionedStats.getOtelStatsForTesting(STORE_NAME);
+    assertNotNull(otelStatsBefore, "OTel stats should exist before deletion");
+
     // handleStoreDeleted should clean up OTel stats without throwing exceptions
     heartbeatVersionedStats.handleStoreDeleted(STORE_NAME);
 
+    // Verify OTel stats are cleaned up after deletion
+    assertNull(heartbeatVersionedStats.getOtelStatsForTesting(STORE_NAME), "OTel stats should be null after deletion");
+
     // After deletion, recording new metrics should still work (creates new stats)
     heartbeatVersionedStats.recordLeaderLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 200);
+
+    // Verify a fresh OTel stats instance was created (different object from before deletion)
+    HeartbeatOtelStats otelStatsAfter = heartbeatVersionedStats.getOtelStatsForTesting(STORE_NAME);
+    assertNotNull(otelStatsAfter, "OTel stats should be recreated after recording post-deletion");
   }
 
   @Test
@@ -214,6 +225,11 @@ public class HeartbeatVersionedStatsTest {
     // Verify version info was initialized correctly
     HeartbeatStat stats = heartbeatVersionedStats.getStatsForTesting(newStoreName, newCurrentVersion);
     assertNotNull(stats, "Stats should be created for the new store");
+
+    HeartbeatOtelStats otelStats = heartbeatVersionedStats.getOtelStatsForTesting(newStoreName);
+    assertNotNull(otelStats, "OTel stats should be created for the new store");
+    assertEquals(otelStats.getVersionInfo().getCurrentVersion(), newCurrentVersion);
+    assertEquals(otelStats.getVersionInfo().getFutureVersion(), newFutureVersion);
   }
 
   @Test

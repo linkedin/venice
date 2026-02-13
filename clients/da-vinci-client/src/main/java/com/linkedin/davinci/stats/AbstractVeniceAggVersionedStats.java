@@ -96,8 +96,9 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
    *
    * <p>Guards both setCurrentVersion and setFutureVersion with equality checks. This is critical
    * because both methods have side effects: they call {@link VeniceVersionedStats#getStats(int)}
-   * which creates a new stats entry and links it to the reporter. Calling either with
-   * NON_EXISTING_VERSION would create a version-0 stats entry
+   * which creates a new stats entry if absent, then wire that entry to the reporter via
+   * setCurrentStats/setFutureStats. Calling either with NON_EXISTING_VERSION would create a
+   * version-0 stats entry.
    */
   private void applyVersionInfo(
       VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats,
@@ -200,6 +201,11 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   /**
    * Hook method called when version info is updated for a store.
    * Subclasses can override this to react to version changes.
+   *
+   * <p><b>WARNING:</b> This method may be called from within a {@code ConcurrentHashMap.computeIfAbsent}
+   * lambda in {@link #addStore(Store)}. Implementations MUST NOT access {@code aggStats} (e.g., via
+   * {@link #getVersionedStats}, {@link #getCurrentVersion}, {@link #getFutureVersion}) as this would
+   * re-enter the ConcurrentHashMap and cause a deadlock (JDK 8) or IllegalStateException (JDK 9+).
    *
    * @param storeName The store whose version info changed
    * @param currentVersion The new current version

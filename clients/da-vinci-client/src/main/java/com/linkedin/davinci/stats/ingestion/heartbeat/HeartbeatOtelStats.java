@@ -123,8 +123,9 @@ public class HeartbeatOtelStats {
   }
 
   /**
-   * Cleans up all resources associated with this store's OTel stats.
-   * Call this when the store is being deleted.
+   * Clears the per-region metric state map, releasing references to MetricEntityState objects.
+   * Does not deregister OTel instruments from the metrics repository — they will be
+   * cleaned up when the Meter/MeterProvider is closed or the SDK shuts down.
    */
   public void close() {
     metricsByRegion.clear();
