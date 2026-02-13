@@ -315,146 +315,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   /**
-   * Record a leader heartbeat timestamp for a given partition of a store version from a specific region.
-   *
-   * @param store the store this heartbeat is for
-   * @param version the version this heartbeat is for
-   * @param partition the partition this heartbeat is for
-   * @param region the region this heartbeat is from
-   * @param timestamp the time of this heartbeat
-   * @param isReadyToServe has this partition been marked ready to serve?  This determines how the metric is reported
-   */
-  public void recordLeaderHeartbeat(
-      String store,
-      int version,
-      int partition,
-      String region,
-      Long timestamp,
-      boolean isReadyToServe) {
-    recordIngestionTimestamp(
-        store,
-        version,
-        partition,
-        region,
-        timestamp,
-        leaderHeartbeatTimeStamps,
-        isReadyToServe,
-        false,
-        true);
-  }
-
-  /**
-   * Record a follower ingestion timestamp (from heartbeat control message) for a given partition of a store version from a specific region.
-   *
-   * @param store the store this heartbeat is for
-   * @param version the version this heartbeat is for
-   * @param partition the partition this heartbeat is for
-   * @param region the region this heartbeat is from
-   * @param timestamp the time of this heartbeat
-   * @param isReadyToServe has this partition been marked ready to serve?  This determines how the metric is reported
-   */
-  public void recordFollowerHeartbeat(
-      String store,
-      int version,
-      int partition,
-      String region,
-      Long timestamp,
-      boolean isReadyToServe) {
-    recordIngestionTimestamp(
-        store,
-        version,
-        partition,
-        region,
-        timestamp,
-        followerHeartbeatTimeStamps,
-        isReadyToServe,
-        true,
-        true);
-  }
-
-  /**
-   * Record a leader record-level timestamp for a given partition of a store version from a specific region.
-   * Only records the timestamp if record-level timestamp tracking is enabled.
-   * Timestamps are aggregated periodically for OTel metrics emission.
-   *
-   * @param store the store this record is for
-   * @param version the version this record is for
-   * @param partition the partition this record is for
-   * @param region the region this record is from
-   * @param timestamp the timestamp of this record
-   * @param isReadyToServe has this partition been marked ready to serve?
-   */
-  public void recordLeaderRecordTimestamp(
-      String store,
-      int version,
-      int partition,
-      String region,
-      Long timestamp,
-      boolean isReadyToServe) {
-    if (!recordLevelTimestampEnabled) {
-      return;
-    }
-
-    // Store MAX timestamp for periodic OTel aggregation
-    recordIngestionTimestamp(
-        store,
-        version,
-        partition,
-        region,
-        timestamp,
-        leaderHeartbeatTimeStamps,
-        isReadyToServe,
-        false,
-        false);
-
-    // Emit per-record OTel metric immediately (if enabled)
-    if (perRecordOtelMetricsEnabled) {
-      long delay = System.currentTimeMillis() - timestamp;
-      versionStatsReporter.emitPerRecordLeaderOtelMetric(store, version, region, delay);
-    }
-  }
-
-  /**
-   * Record a follower record-level timestamp for a given partition of a store version from a specific region.
-   * Only records the timestamp if record-level timestamp tracking is enabled.
-   *
-   * @param store the store this record is for
-   * @param version the version this record is for
-   * @param partition the partition this record is for
-   * @param region the region this record is from
-   * @param timestamp the timestamp of this record
-   * @param isReadyToServe has this partition been marked ready to serve?
-   */
-  public void recordFollowerRecordTimestamp(
-      String store,
-      int version,
-      int partition,
-      String region,
-      Long timestamp,
-      boolean isReadyToServe) {
-    if (!recordLevelTimestampEnabled) {
-      return;
-    }
-
-    recordIngestionTimestamp(
-        store,
-        version,
-        partition,
-        region,
-        timestamp,
-        followerHeartbeatTimeStamps,
-        isReadyToServe,
-        true,
-        false);
-
-    // Emit per-record OTel metric immediately (if enabled)
-    if (perRecordOtelMetricsEnabled) {
-      long delay = System.currentTimeMillis() - timestamp;
-      versionStatsReporter.emitPerRecordFollowerOtelMetric(store, version, region, delay, isReadyToServe);
-    }
-  }
-
-  /**
    * Update lag monitor for a given resource replica based on different heartbeat lag monitor action.
    */
   public void updateLagMonitor(
@@ -701,7 +561,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   /**
-   * Unified internal method to record ingestion timestamps from both heartbeat control messages and regular data records.
+   * Internal recording method to record ingestion timestamps from both heartbeat control messages and regular data
+   * records.
    *
    * @param isHeartbeatMessage true if this is a heartbeat control message, false if it's a regular data record
    *
@@ -712,31 +573,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * When isHeartbeatMessage=false (regular data records):
    *   - heartbeatTimestamp is preserved (not updated)
    *   - recordTimestamp = max(timestamp, existing recordTimestamp)
-   */
-  private void recordIngestionTimestamp(
-      String store,
-      int version,
-      int partition,
-      String region,
-      Long timestamp,
-      Map<HeartbeatKey, IngestionTimestampEntry> heartbeatTimestamps,
-      boolean isReadyToServe,
-      boolean retainHighestTimeStamp,
-      boolean isHeartbeatMessage) {
-    if (region == null) {
-      return;
-    }
-    recordIngestionTimestamp(
-        new HeartbeatKey(store, version, partition, region),
-        timestamp,
-        heartbeatTimestamps,
-        isReadyToServe,
-        retainHighestTimeStamp,
-        isHeartbeatMessage);
-  }
-
-  /**
-   * Internal recording method that accepts a pre-built HeartbeatKey.
    */
   private void recordIngestionTimestamp(
       HeartbeatKey key,

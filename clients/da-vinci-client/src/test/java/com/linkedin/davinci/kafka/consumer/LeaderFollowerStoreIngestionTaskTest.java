@@ -32,6 +32,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -995,33 +996,35 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(urlMap).when(veniceServerConfig).getKafkaClusterUrlToAliasMap();
     doReturn(veniceServerConfig).when(ingestionTask).getServerConfig();
 
+    // Set up PCS cached heartbeat keys
+    HeartbeatKey leaderKey = new HeartbeatKey("foo", 1, 100, "c1");
+    doReturn(leaderKey).when(pcs).getOrCreateCachedHeartbeatKey("c1");
+    HeartbeatKey followerLocalKey = new HeartbeatKey("foo", 1, 100, "local");
+    doReturn(followerLocalKey).when(pcs).getOrCreateCachedHeartbeatKey("local");
+
     // Monitoring service is null.
     ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
+    verify(heartbeatMonitoringService, never()).recordLeaderHeartbeat(any(HeartbeatKey.class), anyLong(), anyBoolean());
     verify(heartbeatMonitoringService, never())
-        .recordLeaderHeartbeat(anyString(), anyInt(), anyInt(), anyString(), anyLong(), anyBoolean());
-    verify(heartbeatMonitoringService, never())
-        .recordFollowerHeartbeat(anyString(), anyInt(), anyInt(), anyString(), anyLong(), anyBoolean());
+        .recordFollowerHeartbeat(any(HeartbeatKey.class), anyLong(), anyBoolean());
 
     // Verify Leader
     doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
     doReturn(LeaderFollowerStateType.LEADER).when(pcs).getLeaderFollowerState();
     ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
-    verify(heartbeatMonitoringService, times(1))
-        .recordLeaderHeartbeat(eq("foo"), eq(1), eq(100), eq("c1"), eq(123L), eq(false));
+    verify(heartbeatMonitoringService, times(1)).recordLeaderHeartbeat(eq(leaderKey), eq(123L), eq(false));
     verify(heartbeatMonitoringService, never())
-        .recordFollowerHeartbeat(anyString(), anyInt(), anyInt(), anyString(), anyLong(), anyBoolean());
+        .recordFollowerHeartbeat(any(HeartbeatKey.class), anyLong(), anyBoolean());
     // Verify Follower
     doReturn(false).when(ingestionTask).isDaVinciClient();
     doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
     ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
-    verify(heartbeatMonitoringService, times(1))
-        .recordFollowerHeartbeat(eq("foo"), eq(1), eq(100), eq("c1"), eq(123L), eq(false));
+    verify(heartbeatMonitoringService, times(1)).recordFollowerHeartbeat(eq(leaderKey), eq(123L), eq(false));
     // Verify Da Vinci
     doReturn(true).when(ingestionTask).isDaVinciClient();
     doReturn("local").when(veniceServerConfig).getRegionName();
     ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
-    verify(heartbeatMonitoringService, times(1))
-        .recordFollowerHeartbeat(eq("foo"), eq(1), eq(100), eq("local"), eq(123L), eq(false));
+    verify(heartbeatMonitoringService, times(1)).recordFollowerHeartbeat(eq(followerLocalKey), eq(123L), eq(false));
   }
 
   @Test
