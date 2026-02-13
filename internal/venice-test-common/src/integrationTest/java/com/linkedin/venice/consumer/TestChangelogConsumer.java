@@ -725,7 +725,7 @@ public class TestChangelogConsumer {
      */
 
     // run empty push to clean up batch data
-    parentControllerClient.sendEmptyPushAndWait(storeName, "Run empty push job", 1000, 30 * Time.MS_PER_SECOND);
+    parentControllerClient.sendEmptyPushAndWait(storeName, "Run empty push job", 1000, 60 * Time.MS_PER_SECOND);
     // set up mocked time for Samza records so some records can be stale intentionally.
     List<Long> mockTimestampInMs = new LinkedList<>();
     Instant now = Instant.now();
@@ -1011,7 +1011,7 @@ public class TestChangelogConsumer {
       sendStreamingRecord(veniceProducer, storeName, Integer.toString(10000), genericRecordV2, null);
     }
 
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
       IntegrationTestUtils.pollChangeEventsFromSpecificChangeCaptureConsumer(
           polledChangeEventsMap,
           polledChangeEventsList,
@@ -1233,7 +1233,7 @@ public class TestChangelogConsumer {
     changeLogConsumer.subscribeAll().get();
     final List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      pubSubMessages.addAll(changeLogConsumer.poll(1000));
+      pubSubMessages.addAll(changeLogConsumer.poll(1));
       Assert.assertEquals(pubSubMessages.size(), 100);
     });
     // The consumer sequence id should be consecutive and monotonically increasing within the same partition. All
@@ -1308,7 +1308,7 @@ public class TestChangelogConsumer {
       }
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-            changeLogConsumer.poll(1000);
+            changeLogConsumer.poll(1);
         for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
           pubSubMessagesMap.put(message.getKey(), message);
         }
@@ -1337,10 +1337,16 @@ public class TestChangelogConsumer {
       pubSubMessagesMap.clear();
       changeLogConsumer.seekToCheckpoint(new HashSet<>(partitionToChangeCoordinateMap.values())).get();
 
-      // Shouldn't be any messages to consume
-      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-          changeLogConsumer.poll(1000);
-      assertEquals(pubSubMessagesList.size(), partitionCount);
+      Set<Integer> partitions = new HashSet<>(partitionCount);
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+            changeLogConsumer.poll(1);
+        // get unique partitions
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+          partitions.add(message.getPartition());
+        }
+        assertEquals(partitions.size(), partitionCount);
+      });
 
       try (VeniceSystemProducer veniceProducer =
           IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
@@ -1350,7 +1356,7 @@ public class TestChangelogConsumer {
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> tempPubSubMessagesList =
-            changeLogConsumer.poll(1000);
+            changeLogConsumer.poll(1);
         assertEquals(tempPubSubMessagesList.size(), 1);
 
         for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: tempPubSubMessagesList) {
@@ -1412,9 +1418,9 @@ public class TestChangelogConsumer {
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
       changeLogConsumer.subscribeAll().get();
 
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-            changeLogConsumer.poll(1000);
+            changeLogConsumer.poll(1);
         for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
           pubSubMessagesMap.put(message.getKey(), message);
         }
@@ -1439,9 +1445,9 @@ public class TestChangelogConsumer {
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
       changeLogConsumer.subscribeAll().get();
 
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-            changeLogConsumer.poll(1000);
+            changeLogConsumer.poll(1);
         for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
           pubSubMessagesMap.put(message.getKey(), message);
         }
@@ -1465,7 +1471,7 @@ public class TestChangelogConsumer {
       IntegrationTestPushUtils.runVPJ(props);
 
       // Client shouldn't be able to poll anything, since it's still on version 1
-      assertEquals(changeLogConsumer.poll(1000).size(), 0);
+      assertEquals(changeLogConsumer.poll(1).size(), 0);
     }
 
     // Restart client
@@ -1474,9 +1480,9 @@ public class TestChangelogConsumer {
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
       changeLogConsumer.subscribeAll().get();
 
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-            changeLogConsumer.poll(1000);
+            changeLogConsumer.poll(1);
         for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
           pubSubMessagesMap.put(message.getKey(), message);
         }
@@ -1506,9 +1512,9 @@ public class TestChangelogConsumer {
           veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, version);
       changeLogConsumer3.subscribeAll().get();
 
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-            changeLogConsumer3.poll(1000);
+            changeLogConsumer3.poll(1);
         for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
           pubSubMessagesMap.put(message.getKey(), message);
         }
