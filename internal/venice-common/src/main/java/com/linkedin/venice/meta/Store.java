@@ -340,6 +340,10 @@ public interface Store {
 
   String getBlobTransferInServerEnabled();
 
+  void setBlobDbEnabled(String blobDbEnabled);
+
+  String getBlobDbEnabled();
+
   boolean isNearlineProducerCompressionEnabled();
 
   void setNearlineProducerCompressionEnabled(boolean compressionEnabled);

@@ -364,8 +364,21 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
       /**
        * Only enable blob files for block-based format.
+       * Store-level config takes precedence; if not specified, fallback to cluster-level config.
        */
-      if (rocksDBServerConfig.isBlobFilesEnabled()) {
+      boolean enableBlobFiles;
+      switch (storagePartitionConfig.getBlobDbEnabled()) {
+        case ENABLED:
+          enableBlobFiles = true;
+          break;
+        case DISABLED:
+          enableBlobFiles = false;
+          break;
+        default:
+          // NOT_SPECIFIED - use cluster-level config
+          enableBlobFiles = rocksDBServerConfig.isBlobFilesEnabled();
+      }
+      if (enableBlobFiles) {
         options.setEnableBlobFiles(true);
         options.setEnableBlobGarbageCollection(true);
         options.setMinBlobSize(rocksDBServerConfig.getMinBlobSizeInBytes());

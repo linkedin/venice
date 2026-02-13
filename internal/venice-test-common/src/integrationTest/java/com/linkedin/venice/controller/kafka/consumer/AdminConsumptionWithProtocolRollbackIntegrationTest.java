@@ -295,6 +295,7 @@ public class AdminConsumptionWithProtocolRollbackIntegrationTest {
     adminMessage.executionId = executionId;
     updateStore.storeLifecycleHooks = Collections.emptyList();
     updateStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
+    updateStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     updateStore.keyUrnFields = Collections.emptyList();
     return adminOperationSerializer.serialize(adminMessage, writerSchemaId);
   }
