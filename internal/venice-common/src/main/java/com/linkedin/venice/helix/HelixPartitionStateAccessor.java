@@ -38,6 +38,10 @@ public abstract class HelixPartitionStateAccessor {
     customizedStateProvider.deletePerPartitionCustomizedState(stateType.name(), topic, partitionName);
   }
 
+  protected void deleteAllReplicaStatus(HelixPartitionState stateType) {
+    customizedStateProvider.deleteAllResourcesCustomizedStates(stateType.name());
+  }
+
   public String getReplicaStatus(HelixPartitionState stateType, String topic, String partitionName) {
     try {
       return customizedStateProvider.getPerPartitionCustomizedState(stateType.name(), topic, partitionName)
