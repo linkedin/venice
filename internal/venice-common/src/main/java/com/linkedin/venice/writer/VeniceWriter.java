@@ -2259,13 +2259,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         topicPartition,
         leadershipTerm,
         kafkaMessageEnvelope);
-    return producerAdapter.sendMessage(
-        topicPartition.getPubSubTopic().getName(),
-        topicPartition.getPartitionNumber(),
-        KafkaKey.DOL_STAMP,
-        kafkaMessageEnvelope,
-        EmptyPubSubMessageHeaders.SINGLETON,
-        callback);
+    synchronized (this.partitionLocks[topicPartition.getPartitionNumber()]) {
+      return producerAdapter.sendMessage(
+          topicPartition.getPubSubTopic().getName(),
+          topicPartition.getPartitionNumber(),
+          KafkaKey.DOL_STAMP,
+          kafkaMessageEnvelope,
+          EmptyPubSubMessageHeaders.SINGLETON,
+          callback);
+    }
   }
 
   public static KafkaMessageEnvelope getHeartbeatKME(
