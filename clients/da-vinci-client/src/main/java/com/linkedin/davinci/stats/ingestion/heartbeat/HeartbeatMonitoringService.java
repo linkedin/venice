@@ -652,8 +652,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         ((storeName, version, region, heartbeatTs, isReadyToServe) -> versionStatsReporter
             .recordFollowerLag(storeName, version, region, heartbeatTs, isReadyToServe)));
 
-    // Record record-level delays via OTel (if record-level timestamp tracking is enabled)
-    if (recordLevelTimestampEnabled) {
+    // Record record-level delays via OTel periodically. Skip if per-record OTel metrics are already enabled,
+    // since those emit accurate per-message latency and the periodic snapshot would add inaccurate data points
+    // (delay grows by up to the reporting interval since it uses max(recordTimestamp) rather than per-record values).
+    if (recordLevelTimestampEnabled && !perRecordOtelMetricsEnabled) {
       recordRecordLags(
           leaderHeartbeatTimeStamps,
           ((storeName, version, region, recordTs, isReadyToServe) -> versionStatsReporter
