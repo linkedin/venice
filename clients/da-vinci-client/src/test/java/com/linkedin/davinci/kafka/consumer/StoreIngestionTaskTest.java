@@ -361,6 +361,7 @@ public abstract class StoreIngestionTaskTest {
 
   static {
     StoreIngestionTask.SCHEMA_POLLING_DELAY_MS = 100;
+    StoreIngestionTask.STORE_VERSION_POLLING_DELAY_MS = 100;
     IngestionNotificationDispatcher.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
   }
 
