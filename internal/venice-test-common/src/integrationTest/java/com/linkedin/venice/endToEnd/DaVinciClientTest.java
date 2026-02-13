@@ -38,7 +38,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -134,7 +133,6 @@ public class DaVinciClientTest {
         .put(DATA_BASE_PATH, baseDataPath)
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled)
         .build();
 
     int totalIterations = 10;
@@ -314,8 +312,8 @@ public class DaVinciClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Isolated-Ingestion", dataProviderClass = DataProviderUtils.class)
-  public void testStatusReportDuringBoostrap(IngestionMode ingestionMode, Boolean isD2ClientEnabled) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testStatusReportDuringBoostrap(Boolean isD2ClientEnabled) throws Exception {
     int keyCnt = 1000;
     String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(keyCnt);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
@@ -324,7 +322,6 @@ public class DaVinciClientTest {
     extraBackendProp.put(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS, "5");
     extraBackendProp.put(KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, "5");
     extraBackendProp.put(PUSH_STATUS_STORE_ENABLED, "true");
-    extraBackendProp.put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled);
     DaVinciTestContext<Integer, Object> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
             d2Client,
@@ -332,7 +329,7 @@ public class DaVinciClientTest {
             Optional.empty(),
             cluster,
             storeName,
-            new DaVinciConfig().setIsolated(ingestionMode.equals(IngestionMode.ISOLATED)),
+            new DaVinciConfig(),
             extraBackendProp);
     try (DaVinciClient<Integer, Object> client = daVinciTestContext.getDaVinciClient()) {
       CompletableFuture<Void> subscribeFuture = client.subscribeAll();

@@ -1,7 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static org.testng.Assert.assertEquals;
@@ -25,12 +24,10 @@ import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -100,8 +97,8 @@ public class DaVinciLiveUpdateSuppressionTest {
     }
   }
 
-  @Test(dataProvider = "Isolated-Ingestion", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT * 2)
-  public void testLiveUpdateSuppression(IngestionMode ingestionMode, Boolean isD2ClientEnabled) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testLiveUpdateSuppression() throws Exception {
     final String storeName = Utils.getUniqueString("store");
     AtomicReference<StoreInfo> storeInfo = new AtomicReference<>();
     cluster.useControllerClient(client -> {
@@ -124,10 +121,8 @@ public class DaVinciLiveUpdateSuppressionTest {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 
     // Enable live update suppression
-    Map<String, Object> extraBackendConfigMap =
-        (ingestionMode.equals(IngestionMode.ISOLATED)) ? TestUtils.getIngestionIsolationPropertyMap() : new HashMap<>();
+    Map<String, Object> extraBackendConfigMap = new HashMap<>();
     extraBackendConfigMap.put(FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS, true);
-    extraBackendConfigMap.put(SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED, isD2ClientEnabled);
 
     Future[] writerFutures = new Future[KEY_COUNT];
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;

@@ -216,7 +216,7 @@ public class ServiceFactory {
       String serverName,
       Map<String, Map<String, String>> kafkaClusterMap,
       String serverD2ServiceName) {
-    // Set ZK host needed for D2 client creation ingestion isolation ingestion.
+    // Set ZK host needed for D2 client creation.
     configProperties.setProperty(D2_ZK_HOSTS_ADDRESS, zkAddress);
     return getStatefulService(
         VeniceServerWrapper.SERVICE_NAME,

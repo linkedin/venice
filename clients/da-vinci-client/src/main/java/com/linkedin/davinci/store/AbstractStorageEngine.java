@@ -629,8 +629,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   /**
-   * Used in ingestion isolation mode update the storage engine's cache in sync with the updates to the state in
-   * {@link com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService}
+   * Update the storage engine's store version state cache.
    */
   @Override
   public void updateStoreVersionStateCache(StoreVersionState versionState) {

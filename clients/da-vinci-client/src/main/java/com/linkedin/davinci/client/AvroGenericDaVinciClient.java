@@ -277,27 +277,18 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   protected CompletableFuture<Void> seekToTail() {
-    if (getBackend().isIsolatedIngestion()) {
-      throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
-    }
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.universalSet());
     return getStoreBackend().seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, null, null, true), getVersion());
   }
 
   protected CompletableFuture<Void> seekToTail(Set<Integer> partitionSet) {
-    if (getBackend().isIsolatedIngestion()) {
-      throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
-    }
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.wrap(partitionSet));
     return getStoreBackend().seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, null, null, true), getVersion());
   }
 
   protected CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
-    if (getBackend().isIsolatedIngestion()) {
-      throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
-    }
     throwIfNotReady();
     Map<Integer, PubSubPosition> positionMap = new HashMap<>();
     for (VeniceChangeCoordinate changeCoordinate: checkpoints) {
@@ -313,9 +304,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   protected CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
-    if (getBackend().isIsolatedIngestion()) {
-      throw new VeniceClientException("Isolated Ingestion is not supported with seekToTimestamps");
-    }
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.wrap(timestamps.keySet()));
     return getStoreBackend()
@@ -323,9 +311,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   protected CompletableFuture<Void> seekToTimestamps(Long timestamp) {
-    if (getBackend().isIsolatedIngestion()) {
-      throw new VeniceClientException("Isolated Ingestion is not supported with seekToTimestamps");
-    }
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.universalSet());
     return getStoreBackend()

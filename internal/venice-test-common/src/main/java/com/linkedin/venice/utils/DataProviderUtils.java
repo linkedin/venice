@@ -10,7 +10,6 @@ import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
-import com.linkedin.venice.meta.IngestionMode;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
@@ -98,10 +97,9 @@ public class DataProviderUtils {
     return new Object[][] { { 1 }, { 3 } };
   }
 
-  @DataProvider(name = "Isolated-Ingestion")
-  public static Object[][] isolatedIngestion() {
-    return new Object[][] { { IngestionMode.BUILT_IN, true }, { IngestionMode.ISOLATED, false },
-        { IngestionMode.ISOLATED, true } };
+  @DataProvider(name = "D2-Client-Enabled")
+  public static Object[][] d2ClientEnabled() {
+    return new Object[][] { { true }, { false } };
   }
 
   @DataProvider(name = "Chunking-And-Partition-Counts")
