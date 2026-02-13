@@ -133,7 +133,7 @@ public class PartitionConsumptionState {
    * <ul>
    *   <li>State machine thread: calls setDolState(), getDolState(), clearDolState(), isDolComplete()</li>
    *   <li>Producer callback thread: calls getDolState(), then setDolProduced() on the DolStamp</li>
-   *   <li>Consumer/drainer thread: calls getDolState(), then setDolConsumed() on the DolStamp</li>
+   *   <li>Drainer thread: calls getDolState(), then setDolConsumed() on the DolStamp</li>
    * </ul>
    *
    * <p>Thread safety: The volatile reference ensures proper publication. The DolStamp's internal flags

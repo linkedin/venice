@@ -19,6 +19,18 @@ import java.util.UUID;
  */
 public class DoLStampGuidGenerator implements GuidGenerator {
   private static DoLStampGuidGenerator instance;
+  private static final GUID DOL_STAMP_GUID;
+
+  static {
+    UUID javaUtilUuid =
+        UUID.nameUUIDFromBytes("declarationOfLeadershipControlMessage".getBytes(StandardCharsets.UTF_8));
+    DOL_STAMP_GUID = new GUID();
+    byte[] guidBytes = ByteBuffer.allocate(16)
+        .putLong(javaUtilUuid.getMostSignificantBits())
+        .putLong(javaUtilUuid.getLeastSignificantBits())
+        .array();
+    DOL_STAMP_GUID.bytes(guidBytes);
+  }
 
   private DoLStampGuidGenerator() {
   }
@@ -32,14 +44,6 @@ public class DoLStampGuidGenerator implements GuidGenerator {
 
   @Override
   public GUID getGuid() {
-    UUID javaUtilUuid =
-        UUID.nameUUIDFromBytes("declarationOfLeadershipControlMessage".getBytes(StandardCharsets.UTF_8));
-    GUID guid = new GUID();
-    byte[] guidBytes = ByteBuffer.allocate(16)
-        .putLong(javaUtilUuid.getMostSignificantBits())
-        .putLong(javaUtilUuid.getLeastSignificantBits())
-        .array();
-    guid.bytes(guidBytes);
-    return guid;
+    return DOL_STAMP_GUID;
   }
 }
