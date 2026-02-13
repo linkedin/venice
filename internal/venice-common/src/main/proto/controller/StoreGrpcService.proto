@@ -97,16 +97,27 @@ message GetRepushInfoGrpcResponse {
 }
 
 message RepushInfoGrpc {
-  string kafkaBrokerUrl = 1;
+  string pubSubUrl = 1;
   optional VersionGrpc version = 2;
   optional string systemSchemaClusterD2ServiceName = 3;
   optional string systemSchemaClusterD2ZkHost = 4;
 }
 
+enum VersionStatusGrpc {
+  NOT_CREATED = 0;
+  STARTED = 1;
+  PUSHED = 2;
+  ONLINE = 3;
+  ERROR = 4;
+  CREATED = 5;
+  PARTIALLY_ONLINE = 6;
+  KILLED = 7;
+}
+
 message VersionGrpc {
   int32 number = 1;
   int64 createdTime = 2;
-  int32 status = 3; // VersionStatus enum ordinal
+  VersionStatusGrpc status = 3;
   string pushJobId = 4;
   int32 partitionCount = 5;
   int32 replicationFactor = 6;

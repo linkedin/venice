@@ -33,6 +33,7 @@ import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.protocols.controller.VersionGrpc;
+import com.linkedin.venice.protocols.controller.VersionStatusGrpc;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
@@ -183,7 +184,7 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
       // Convert POJO to protobuf response
       RepushInfo repushInfo = result.getRepushInfo();
       RepushInfoGrpc.Builder repushInfoBuilder = RepushInfoGrpc.newBuilder()
-          .setKafkaBrokerUrl(repushInfo.getKafkaBrokerUrl() != null ? repushInfo.getKafkaBrokerUrl() : "");
+          .setPubSubUrl(repushInfo.getKafkaBrokerUrl() != null ? repushInfo.getKafkaBrokerUrl() : "");
 
       if (repushInfo.getVersion() != null) {
         repushInfoBuilder.setVersion(convertVersionToProto(repushInfo.getVersion()));
@@ -209,7 +210,7 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
     return VersionGrpc.newBuilder()
         .setNumber(version.getNumber())
         .setCreatedTime(version.getCreatedTime())
-        .setStatus(version.getStatus().getValue())
+        .setStatus(VersionStatusGrpc.forNumber(version.getStatus().getValue()))
         .setPushJobId(version.getPushJobId())
         .setPartitionCount(version.getPartitionCount())
         .setReplicationFactor(version.getReplicationFactor())

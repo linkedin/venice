@@ -45,6 +45,7 @@ import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcErrorInfo;
+import com.linkedin.venice.protocols.controller.VersionStatusGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
 import io.grpc.Status;
@@ -484,10 +485,12 @@ public class StoreGrpcServiceImplTest {
 
     assertNotNull(actualResponse);
     assertEquals(actualResponse.getStoreInfo(), storeInfo);
-    assertEquals(actualResponse.getRepushInfo().getKafkaBrokerUrl(), "kafka.broker:9092");
+    assertEquals(actualResponse.getRepushInfo().getPubSubUrl(), "kafka.broker:9092");
     assertTrue(actualResponse.getRepushInfo().hasVersion());
     assertEquals(actualResponse.getRepushInfo().getVersion().getNumber(), 1);
-    assertEquals(actualResponse.getRepushInfo().getVersion().getStatus(), VersionStatus.ONLINE.getValue());
+    assertEquals(
+        actualResponse.getRepushInfo().getVersion().getStatus(),
+        VersionStatusGrpc.forNumber(VersionStatus.ONLINE.getValue()));
   }
 
   @Test
@@ -522,7 +525,7 @@ public class StoreGrpcServiceImplTest {
     GetRepushInfoGrpcResponse actualResponse = blockingStub.getRepushInfo(request);
 
     assertNotNull(actualResponse);
-    assertEquals(actualResponse.getRepushInfo().getKafkaBrokerUrl(), "another.kafka.broker:9092");
+    assertEquals(actualResponse.getRepushInfo().getPubSubUrl(), "another.kafka.broker:9092");
     assertFalse(actualResponse.getRepushInfo().hasVersion());
   }
 

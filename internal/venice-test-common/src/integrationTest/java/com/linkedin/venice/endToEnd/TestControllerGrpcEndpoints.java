@@ -424,9 +424,7 @@ public class TestControllerGrpcEndpoints {
     assertEquals(getRepushInfoResponse.getStoreInfo().getStoreName(), storeName);
     assertEquals(getRepushInfoResponse.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
     assertNotNull(getRepushInfoResponse.getRepushInfo(), "Repush info should not be null");
-    assertFalse(
-        getRepushInfoResponse.getRepushInfo().getKafkaBrokerUrl().isEmpty(),
-        "Kafka broker URL should not be empty");
+    assertFalse(getRepushInfoResponse.getRepushInfo().getPubSubUrl().isEmpty(), "Kafka broker URL should not be empty");
     assertTrue(getRepushInfoResponse.getRepushInfo().hasVersion(), "Version info should be present");
     assertEquals(getRepushInfoResponse.getRepushInfo().getVersion().getNumber(), 1, "Version number should be 1");
   }
@@ -462,9 +460,7 @@ public class TestControllerGrpcEndpoints {
     GetRepushInfoGrpcResponse getRepushInfoResponse = storeBlockingStub.getRepushInfo(getRepushInfoRequest);
     assertNotNull(getRepushInfoResponse, "Response should not be null");
     assertNotNull(getRepushInfoResponse.getRepushInfo(), "Repush info should not be null");
-    assertFalse(
-        getRepushInfoResponse.getRepushInfo().getKafkaBrokerUrl().isEmpty(),
-        "Kafka broker URL should not be empty");
+    assertFalse(getRepushInfoResponse.getRepushInfo().getPubSubUrl().isEmpty(), "Kafka broker URL should not be empty");
   }
 
   @Test(timeOut = TIMEOUT_MS)
