@@ -933,7 +933,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test(timeOut = 60_000)
-  public void testCheckAndHandleUpstreamOffsetRewindSkipsWhenBootstrapCompletedAndNoEop() throws InterruptedException {
+  public void testCheckAndHandleUpstreamOffsetRewind() throws InterruptedException {
     setUp();
     TopicManager mockTopicManager = mock(TopicManager.class);
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_rt"), 0);
@@ -942,78 +942,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubPosition newPosition = ApacheKafkaOffsetPosition.of(50L);
     PubSubPosition prevPosition = ApacheKafkaOffsetPosition.of(100L); // rewind scenario
 
-    // Case 1: versionBootstrapCompleted=true and EOP not received -> skip diffPosition entirely
-    doReturn(false).when(pcs).isEndOfPushReceived();
-    leaderFollowerStoreIngestionTask.versionBootstrapCompleted = true;
-
-    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
-        mockTopicManager,
-        tp,
-        pcs,
-        record,
-        newPosition,
-        prevPosition,
-        leaderFollowerStoreIngestionTask);
-
-    // diffPosition should never be called since we skip early
-    verify(mockTopicManager, never()).diffPosition(any(), any(), any());
-
-    // Case 2: versionBootstrapCompleted=true and EOP received -> should call diffPosition
-    doReturn(true).when(pcs).isEndOfPushReceived();
-    doReturn(-50L).when(mockTopicManager).diffPosition(any(), any(), any());
-
-    // Need to set up the ingestionTask as non-hybrid to avoid the rewind handling
-    doReturn(false).when(leaderFollowerStoreIngestionTask).isHybridMode();
-
-    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
-        mockTopicManager,
-        tp,
-        pcs,
-        record,
-        newPosition,
-        prevPosition,
-        leaderFollowerStoreIngestionTask);
-
-    verify(mockTopicManager, times(1)).diffPosition(any(), any(), any());
-  }
-
-  @Test(timeOut = 60_000)
-  public void testCheckAndHandleUpstreamOffsetRewindWhenTopicDoesNotExist() throws InterruptedException {
-    setUp();
-    TopicManager mockTopicManager = mock(TopicManager.class);
-    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_rt"), 0);
-    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
-    PubSubPosition newPosition = ApacheKafkaOffsetPosition.of(50L);
-    PubSubPosition prevPosition = ApacheKafkaOffsetPosition.of(100L);
-
-    doReturn(true).when(pcs).isEndOfPushReceived();
-    leaderFollowerStoreIngestionTask.versionBootstrapCompleted = false;
-
-    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(mockTopicManager)
-        .diffPosition(any(), any(), any());
-
-    // Should not throw - the exception is caught and the method returns early
-    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
-        mockTopicManager,
-        tp,
-        pcs,
-        record,
-        newPosition,
-        prevPosition,
-        leaderFollowerStoreIngestionTask);
-  }
-
-  @Test(timeOut = 60_000)
-  public void testCheckAndHandleUpstreamOffsetRewindSkipsForEarliestPosition() throws InterruptedException {
-    setUp();
-    TopicManager mockTopicManager = mock(TopicManager.class);
-    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_rt"), 0);
-    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
-    PubSubPosition newPosition = ApacheKafkaOffsetPosition.of(50L);
-
-    // EARLIEST previous position -> should skip diffPosition
+    // Case 1: EARLIEST previous position -> skip diffPosition
     LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
         mockTopicManager,
         tp,
@@ -1022,8 +951,47 @@ public class LeaderFollowerStoreIngestionTaskTest {
         newPosition,
         PubSubSymbolicPosition.EARLIEST,
         leaderFollowerStoreIngestionTask);
-
     verify(mockTopicManager, never()).diffPosition(any(), any(), any());
+
+    // Case 2: versionBootstrapCompleted=true and EOP not received -> skip diffPosition
+    doReturn(false).when(pcs).isEndOfPushReceived();
+    leaderFollowerStoreIngestionTask.versionBootstrapCompleted = true;
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mockTopicManager,
+        tp,
+        pcs,
+        record,
+        newPosition,
+        prevPosition,
+        leaderFollowerStoreIngestionTask);
+    verify(mockTopicManager, never()).diffPosition(any(), any(), any());
+
+    // Case 3: versionBootstrapCompleted=true and EOP received -> should call diffPosition
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(-50L).when(mockTopicManager).diffPosition(any(), any(), any());
+    doReturn(false).when(leaderFollowerStoreIngestionTask).isHybridMode();
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mockTopicManager,
+        tp,
+        pcs,
+        record,
+        newPosition,
+        prevPosition,
+        leaderFollowerStoreIngestionTask);
+    verify(mockTopicManager, times(1)).diffPosition(any(), any(), any());
+
+    // Case 4: diffPosition throws PubSubTopicDoesNotExistException -> should not throw
+    leaderFollowerStoreIngestionTask.versionBootstrapCompleted = false;
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(mockTopicManager)
+        .diffPosition(any(), any(), any());
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mockTopicManager,
+        tp,
+        pcs,
+        record,
+        newPosition,
+        prevPosition,
+        leaderFollowerStoreIngestionTask);
   }
 
   @Test(timeOut = 60_000)

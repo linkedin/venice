@@ -3906,20 +3906,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         getLatestPersistedRtPositionForLagMeasurement(pcs, rtPubSubBrokerAddress);
     TopicManager topicManager = getTopicManager(rtPubSubBrokerAddress);
     long lag;
-    if (PubSubSymbolicPosition.EARLIEST.equals(latestPersistedRtPosition)) {
-      // If the latest persisted position is EARLIEST, it means no message has been processed yet, so the lag is the
-      // count of messages from the beginning of the topic to the end position.
-      try {
+    try {
+      if (PubSubSymbolicPosition.EARLIEST.equals(latestPersistedRtPosition)) {
+        // If the latest persisted position is EARLIEST, it means no message has been processed yet, so the lag is the
+        // count of messages from the beginning of the topic to the end position.
         lag = topicManager.countRecordsUntil(rtTopicPartition, rtEndPosition);
-      } catch (PubSubTopicDoesNotExistException e) {
-        return Long.MAX_VALUE;
-      }
-    } else {
-      try {
+      } else {
         lag = topicManager.diffPosition(rtTopicPartition, rtEndPosition, latestPersistedRtPosition) - 1;
-      } catch (PubSubTopicDoesNotExistException e) {
-        return Long.MAX_VALUE;
       }
+    } catch (PubSubTopicDoesNotExistException e) {
+      return Long.MAX_VALUE;
     }
 
     if (shouldLog) {
