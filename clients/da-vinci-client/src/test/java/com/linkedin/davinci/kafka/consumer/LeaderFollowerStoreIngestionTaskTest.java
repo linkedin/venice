@@ -13,6 +13,7 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -75,6 +76,7 @@ import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
@@ -898,6 +900,205 @@ public class LeaderFollowerStoreIngestionTaskTest {
       verify(mockLocalTopicManager, times(1)).diffPosition(any(), eq(endPosition), eq(vtPosition));
       verify(mockLocalTopicManager, never()).countRecordsUntil(any(), any());
     }
+  }
+
+  @Test(timeOut = 60_000)
+  public void testIsLocalVersionTopicPartitionFullyConsumedWhenTopicDoesNotExist() throws InterruptedException {
+    setUp();
+    TopicManager mockLocalTopicManager = mock(TopicManager.class);
+    PubSubPosition endPosition = ApacheKafkaOffsetPosition.of(100L);
+
+    // Case 1: diffPosition throws PubSubTopicDoesNotExistException -> should return false
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(mockLocalTopicManager)
+        .diffPosition(any(), any(), any());
+    when(mockPartitionConsumptionState.getLatestProcessedVtPosition()).thenReturn(ApacheKafkaOffsetPosition.of(99L));
+    when(mockPartitionConsumptionState.getPartition()).thenReturn(0);
+    when(mockPartitionConsumptionState.getReplicaTopicPartition())
+        .thenReturn(new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0));
+    doReturn(mockLocalTopicManager).when(leaderFollowerStoreIngestionTask).getTopicManager(anyString());
+    doReturn(endPosition).when(leaderFollowerStoreIngestionTask).getTopicPartitionEndPosition(anyString(), any());
+
+    assertFalse(
+        leaderFollowerStoreIngestionTask.isLocalVersionTopicPartitionFullyConsumed(mockPartitionConsumptionState),
+        "Should return false when diffPosition throws PubSubTopicDoesNotExistException");
+
+    // Case 2: countRecordsUntil throws PubSubTopicDoesNotExistException (EARLIEST path) -> should return false
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(mockLocalTopicManager)
+        .countRecordsUntil(any(), any());
+    when(mockPartitionConsumptionState.getLatestProcessedVtPosition()).thenReturn(PubSubSymbolicPosition.EARLIEST);
+
+    assertFalse(
+        leaderFollowerStoreIngestionTask.isLocalVersionTopicPartitionFullyConsumed(mockPartitionConsumptionState),
+        "Should return false when countRecordsUntil throws PubSubTopicDoesNotExistException");
+  }
+
+  @Test(timeOut = 60_000)
+  public void testCheckAndHandleUpstreamOffsetRewind() throws InterruptedException {
+    setUp();
+    TopicManager mockTopicManager = mock(TopicManager.class);
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_rt"), 0);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    PubSubPosition newPosition = ApacheKafkaOffsetPosition.of(50L);
+    PubSubPosition prevPosition = ApacheKafkaOffsetPosition.of(100L); // rewind scenario
+
+    // Case 1: EARLIEST previous position -> skip diffPosition
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mockTopicManager,
+        tp,
+        pcs,
+        record,
+        newPosition,
+        PubSubSymbolicPosition.EARLIEST,
+        leaderFollowerStoreIngestionTask);
+    verify(mockTopicManager, never()).diffPosition(any(), any(), any());
+
+    // Case 2: versionBootstrapCompleted=true and EOP not received -> skip diffPosition
+    doReturn(false).when(pcs).isEndOfPushReceived();
+    leaderFollowerStoreIngestionTask.versionBootstrapCompleted = true;
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mockTopicManager,
+        tp,
+        pcs,
+        record,
+        newPosition,
+        prevPosition,
+        leaderFollowerStoreIngestionTask);
+    verify(mockTopicManager, never()).diffPosition(any(), any(), any());
+
+    // Case 3: versionBootstrapCompleted=true and EOP received -> should call diffPosition
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(-50L).when(mockTopicManager).diffPosition(any(), any(), any());
+    doReturn(false).when(leaderFollowerStoreIngestionTask).isHybridMode();
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mockTopicManager,
+        tp,
+        pcs,
+        record,
+        newPosition,
+        prevPosition,
+        leaderFollowerStoreIngestionTask);
+    verify(mockTopicManager, times(1)).diffPosition(any(), any(), any());
+
+    // Case 4: diffPosition throws PubSubTopicDoesNotExistException -> should not throw
+    leaderFollowerStoreIngestionTask.versionBootstrapCompleted = false;
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(mockTopicManager)
+        .diffPosition(any(), any(), any());
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mockTopicManager,
+        tp,
+        pcs,
+        record,
+        newPosition,
+        prevPosition,
+        leaderFollowerStoreIngestionTask);
+  }
+
+  @Test(timeOut = 60_000)
+  public void testSyncConsumedUpstreamRTOffsetMapWhenTopicDoesNotExist() throws InterruptedException {
+    setUp();
+    TopicManager throwingTopicManager = mock(TopicManager.class);
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .diffPosition(any(), any(), any());
+    doReturn(throwingTopicManager).when(leaderFollowerStoreIngestionTask).getTopicManager(anyString());
+
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-topic_rt");
+    doReturn(rtTopic).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    PubSubTopicPartition leaderTopicPartition = new PubSubTopicPartitionImpl(rtTopic, 0);
+    doReturn(leaderTopicPartition).when(mockPartitionConsumptionState).getSourceTopicPartition(rtTopic);
+
+    // Set latest consumed position to non-EARLIEST so the diffPosition path is hit
+    doReturn(ApacheKafkaOffsetPosition.of(5L)).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(any(), anyString());
+
+    Map<String, PubSubPosition> upstreamStartPositionByUrl = new HashMap<>();
+    upstreamStartPositionByUrl.put("kafka-url", ApacheKafkaOffsetPosition.of(10L));
+
+    // Should not throw - exception is caught and position update is skipped
+    leaderFollowerStoreIngestionTask
+        .syncConsumedUpstreamRTOffsetMapIfNeeded(mockPartitionConsumptionState, upstreamStartPositionByUrl);
+
+    // Verify that updateLatestConsumedRtPositions was NOT called since the exception was caught
+    verify(leaderFollowerStoreIngestionTask, never()).updateLatestConsumedRtPositions(any(), anyString(), any());
+  }
+
+  @Test(timeOut = 60_000)
+  public void testShouldProcessRecordWhenTopicDoesNotExist() throws InterruptedException {
+    setUp();
+    // Setup for the default (STANDBY/follower) branch
+    doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    PubSubTopicPartition vtp = new PubSubTopicPartitionImpl(versionTopic, 0);
+
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    doReturn(0).when(record).getPartition();
+    doReturn(vtp).when(record).getTopicPartition();
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    doReturn(false).when(kafkaKey).isControlMessage();
+    doReturn(kafkaKey).when(record).getKey();
+    doReturn(ApacheKafkaOffsetPosition.of(5L)).when(record).getPosition();
+
+    // Set lastProcessedVtPos to non-EARLIEST so the diffPosition path is hit
+    doReturn(ApacheKafkaOffsetPosition.of(3L)).when(mockPartitionConsumptionState).getLatestProcessedVtPosition();
+
+    // Make diffPosition throw PubSubTopicDoesNotExistException
+    TopicManager throwingTopicManager = mock(TopicManager.class);
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .diffPosition(any(), any(), any());
+    doReturn(throwingTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
+
+    // Should process the record (not skip it) when topic doesn't exist
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask).shouldProcessRecord(record);
+    boolean result = leaderFollowerStoreIngestionTask.shouldProcessRecord(record);
+    assertTrue(result, "Should process the record when diffPosition throws PubSubTopicDoesNotExistException");
+  }
+
+  @Test(timeOut = 60_000)
+  public void testMeasureRtLagForSingleRegionWhenTopicDoesNotExist() throws InterruptedException {
+    setUp();
+    TopicManager throwingTopicManager = mock(TopicManager.class);
+    PubSubPosition endPosition = ApacheKafkaOffsetPosition.of(100L);
+
+    doReturn(throwingTopicManager).when(leaderFollowerStoreIngestionTask).getTopicManager(anyString());
+    doReturn(endPosition).when(leaderFollowerStoreIngestionTask).getTopicPartitionEndPosition(anyString(), any());
+
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-topic_rt");
+    doReturn(rtTopic).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    doReturn(0).when(mockPartitionConsumptionState).getPartition();
+    doReturn("replica-0").when(mockPartitionConsumptionState).getReplicaId();
+
+    doReturn(rtTopic).when(leaderFollowerStoreIngestionTask).resolveRtTopicWithPubSubBrokerAddress(any(), anyString());
+
+    // Case 1: diffPosition throws exception (non-EARLIEST path)
+    doReturn(ApacheKafkaOffsetPosition.of(50L)).when(leaderFollowerStoreIngestionTask)
+        .getLatestPersistedRtPositionForLagMeasurement(any(), anyString());
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .diffPosition(any(), any(), any());
+
+    long lag =
+        leaderFollowerStoreIngestionTask.measureRtLagForSingleRegion("kafka-url", mockPartitionConsumptionState, false);
+    assertEquals(
+        lag,
+        Long.MAX_VALUE,
+        "Should return Long.MAX_VALUE when diffPosition throws PubSubTopicDoesNotExistException");
+
+    // Case 2: countRecordsUntil throws exception (EARLIEST path)
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(leaderFollowerStoreIngestionTask)
+        .getLatestPersistedRtPositionForLagMeasurement(any(), anyString());
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .countRecordsUntil(any(), any());
+
+    lag =
+        leaderFollowerStoreIngestionTask.measureRtLagForSingleRegion("kafka-url", mockPartitionConsumptionState, false);
+    assertEquals(
+        lag,
+        Long.MAX_VALUE,
+        "Should return Long.MAX_VALUE when countRecordsUntil throws PubSubTopicDoesNotExistException");
   }
 
   @Test(timeOut = 60_000)

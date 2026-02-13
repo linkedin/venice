@@ -95,6 +95,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -107,6 +108,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -406,6 +408,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AtomicBoolean recordLevelMetricEnabled;
   protected final boolean isGlobalRtDivEnabled;
   protected volatile VersionRole versionRole;
+  protected volatile boolean versionBootstrapCompleted;
   protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
   protected final boolean batchReportIncPushStatusEnabled;
 
@@ -660,6 +663,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
     this.versionRole =
         PartitionReplicaIngestionContext.determineStoreVersionRole(versionNumber, store.getCurrentVersion());
+    this.versionBootstrapCompleted = VersionStatus.isBootstrapCompleted(version.getStatus());
     this.workloadType = PartitionReplicaIngestionContext
         .determineWorkloadType(isActiveActiveReplicationEnabled, isWriteComputationEnabled);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
@@ -1698,6 +1702,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // If the store having no current version, we do not need to resubscribe.
     if (currentVersionNumber == Store.NON_EXISTING_VERSION) {
       return;
+    }
+
+    if (!versionBootstrapCompleted) {
+      Version ver = store.getVersion(versionNumber);
+      versionBootstrapCompleted = ver != null && VersionStatus.isBootstrapCompleted(ver.getStatus());
     }
 
     boolean isWriteComputeEnabled = store.isWriteComputationEnabled();
@@ -3046,15 +3055,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return Long.MAX_VALUE;
     }
 
-    if (PubSubSymbolicPosition.EARLIEST.equals(currentPosition)) {
-      /**
-       * If the consumer is at EARLIEST, it means it has not yet started consuming, and therefore the lag is equal to
-       * the number of messages in the topic.
-       */
-      return topicManager.countRecordsUntil(pubSubTopicPartition, endPosition);
+    long diff;
+    try {
+      if (PubSubSymbolicPosition.EARLIEST.equals(currentPosition)) {
+        /**
+         * If the consumer is at EARLIEST, it means it has not yet started consuming, and therefore the lag is equal to
+         * the number of messages in the topic.
+         */
+        return topicManager.countRecordsUntil(pubSubTopicPartition, endPosition);
+      }
+      diff = topicManager.diffPosition(pubSubTopicPartition, endPosition, currentPosition);
+    } catch (PubSubTopicDoesNotExistException e) {
+      return Long.MAX_VALUE;
     }
-
-    long diff = topicManager.diffPosition(pubSubTopicPartition, endPosition, currentPosition);
     if (diff == 0) {
       /**
        * Topics which were never produced to have an end position of zero. Such topics are empty and therefore, by
