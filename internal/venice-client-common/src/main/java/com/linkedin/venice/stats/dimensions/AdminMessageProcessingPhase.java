@@ -1,19 +1,19 @@
 package com.linkedin.venice.stats.dimensions;
 
 /**
- * Dimension enum representing the sub-components of admin message processing pipelines.
+ * Dimension enum representing the sub-phases of admin message processing pipelines.
  * Each value corresponds to a distinct phase within an admin message handler, enabling
- * per-component latency breakdown within the
+ * per-phase latency breakdown within the
  * {@code controller.admin_consumption.message.processing_time_per_component} OTel histogram.
  *
  * <p>This dimension is paired with {@link VeniceMetricsDimensions#VENICE_ADMIN_MESSAGE_TYPE} so
- * that components can be attributed to the specific admin message type being processed. Currently
+ * that phases can be attributed to the specific admin message type being processed. Currently
  * the values below cover the AddVersion pipeline, but new values should be added here as other
- * admin message types gain per-component instrumentation.
+ * admin message types gain per-phase instrumentation.
  *
- * Maps to {@link VeniceMetricsDimensions#VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENTS}.
+ * Maps to {@link VeniceMetricsDimensions#VENICE_ADMIN_MESSAGE_PROCESSING_PHASE}.
  */
-public enum AdminMessageProcessingComponent implements VeniceDimensionInterface {
+public enum AdminMessageProcessingPhase implements VeniceDimensionInterface {
   /** Time spent retiring outdated store versions before creating a new one. */
   RETIRE_OLD_VERSIONS("retire_old_versions"),
 
@@ -37,13 +37,13 @@ public enum AdminMessageProcessingComponent implements VeniceDimensionInterface 
 
   private final String dimensionValue;
 
-  AdminMessageProcessingComponent(String dimensionValue) {
+  AdminMessageProcessingPhase(String dimensionValue) {
     this.dimensionValue = dimensionValue;
   }
 
   @Override
   public VeniceMetricsDimensions getDimensionName() {
-    return VeniceMetricsDimensions.VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENTS;
+    return VeniceMetricsDimensions.VENICE_ADMIN_MESSAGE_PROCESSING_PHASE;
   }
 
   @Override
