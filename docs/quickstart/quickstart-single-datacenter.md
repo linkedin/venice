@@ -85,13 +85,16 @@ Let's push the data:
 ```
 
 #### Step 7: Read data from the store
-Let's query some data from `venice-store`, using `venice-thin-client` which is included in venice container images. (key: `1 to 100`)
+Venice provides two client types for reading data. Both are included in the venice-client container image.
+
+##### Option A: Thin client (routes through the router)
+The thin client sends all read requests through the Venice Router.
 ```
 ./fetch.sh <router> <store> <key>
 ```
 For example:
 ```bash
-$ ./fetch.sh http://venice-router:7777 test-store 1 
+$ ./fetch.sh http://venice-router:7777 test-store 1
 key=1
 value=val1
 
@@ -101,6 +104,36 @@ value=val100
 
 # Now if we do get on non-existing key, venice will return `null`
 $ ./fetch.sh http://venice-router:7777 test-store 101
+key=101
+value=null
+```
+
+##### Option B: Fast client (D2 service discovery, reads directly from servers)
+The fast client uses D2 service discovery for initial cluster discovery via the router, then
+fetches metadata and routes data reads directly to the storage servers, bypassing the router.
+This requires enabling storage node read quota on the store:
+```bash
+java -jar /opt/venice/bin/venice-admin-tool-all.jar --update-store \
+  --url http://venice-controller:5555 --cluster venice-cluster0 \
+  --store test-store --storage-node-read-quota-enabled true
+```
+
+Then query using the fast client:
+```
+./fast-client-fetch.sh <store> <key>
+```
+For example:
+```bash
+$ ./fast-client-fetch.sh test-store 1
+key=1
+value=val1
+
+$ ./fast-client-fetch.sh test-store 100
+key=100
+value=val100
+
+# Non-existing key returns null
+$ ./fast-client-fetch.sh test-store 101
 key=101
 value=null
 ```
