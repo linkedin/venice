@@ -12,6 +12,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -402,6 +403,173 @@ public class TestIncrementalPush {
               offsetRecord.getTrackingIncrementalPushStatus().forEach((pushJobId, TsToStatus) -> {
                 Assert.assertEquals(TsToStatus.status, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.getValue());
               });
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+    }
+  }
+
+  /**
+   * Test that incremental push throttling is applied when writing to the regular RT topic
+   * and that the push completes successfully with throttling enabled.
+   * Also verifies that throttling is NOT applied when pushing to a separate RT topic.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testIncrementalPushWithThrottling() throws IOException {
+    final String storeName = Utils.getUniqueString("inc_push_throttle");
+    String parentControllerUrl = parentController.getControllerUrl();
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "test_owner", keySchemaStr, NAME_RECORD_V2_SCHEMA.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setActiveActiveReplicationEnabled(true)
+              .setWriteComputationEnabled(true)
+              .setChunkingEnabled(true)
+              .setIncrementalPushEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          response.getKafkaTopic(),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      // Run incremental push with throttling enabled (writing to regular RT topic).
+      // Use a low quota (10 rec/sec) so ~99 records takes at least ~10 seconds, proving throttling is active.
+      Properties vpjProperties =
+          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+      vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
+      vpjProperties.put(INCREMENTAL_PUSH, true);
+      vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, 10);
+
+      String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
+      long vpjStartTime = System.currentTimeMillis();
+      try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
+        IntegrationTestPushUtils.runVPJ(vpjProperties, 1, childControllerClient);
+      }
+      long vpjElapsedSeconds = (System.currentTimeMillis() - vpjStartTime) / 1000;
+      // With 99 records at 10 rec/sec, throttled push should take at least 5 seconds
+      Assert.assertTrue(
+          vpjElapsedSeconds >= 5,
+          "Incremental push with throttling should take at least 5s, but finished in " + vpjElapsedSeconds + "s");
+
+      VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+      veniceClusterWrapper.waitVersion(storeName, 1);
+
+      // Verify data was written correctly despite throttling
+      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          try {
+            for (int i = 1; i < 100; i++) {
+              String key = String.valueOf(i);
+              GenericRecord value = readValue(storeReader, key);
+              assertNotNull(value, "Key " + key + " should not be missing!");
+              assertEquals(value.get("firstName").toString(), "first_name_" + key);
+              assertEquals(value.get("lastName").toString(), "last_name_" + key);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+    }
+  }
+
+  /**
+   * Test that incremental push throttling is NOT applied when pushing to a separate RT topic.
+   * The push should succeed and data should be readable.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testIncrementalPushThrottlingSkippedForSeparateRT() throws IOException {
+    final String storeName = Utils.getUniqueString("inc_push_sep_rt_throttle");
+    String parentControllerUrl = parentController.getControllerUrl();
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(inputDir);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "test_owner", keySchemaStr, NAME_RECORD_V1_SCHEMA.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setActiveActiveReplicationEnabled(true)
+              .setWriteComputationEnabled(true)
+              .setChunkingEnabled(true)
+              .setIncrementalPushEnabled(true)
+              .setSeparateRealTimeTopicEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          60,
+          TimeUnit.SECONDS);
+
+      // Run incremental push with throttling config set, but pushing to separate RT topic
+      // Throttling should be automatically skipped since PUSH_TO_SEPARATE_REALTIME_TOPIC is detected
+      Properties vpjProperties =
+          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+      vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
+      vpjProperties.put(INCREMENTAL_PUSH, true);
+      // Set a very low quota - if throttling were applied, the push would be very slow
+      vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, 1);
+
+      String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
+      // Record wall-clock time. With quota of 1 rec/sec and ~100 records, a throttled push would take ~100s.
+      // An unthrottled push should finish well under 30s, so this timing bound distinguishes the two cases.
+      long vpjStartTime = System.currentTimeMillis();
+      try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
+        // This should complete quickly because throttling is skipped for separate RT
+        IntegrationTestPushUtils.runVPJ(vpjProperties, 1, childControllerClient);
+      }
+      long vpjElapsedSeconds = (System.currentTimeMillis() - vpjStartTime) / 1000;
+      Assert.assertTrue(
+          vpjElapsedSeconds < 30,
+          "Incremental push to separate RT topic should not be throttled, but took " + vpjElapsedSeconds + "s");
+
+      VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+      veniceClusterWrapper.waitVersion(storeName, 1);
+
+      // Verify data was written correctly
+      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          try {
+            for (int i = 1; i < 100; i++) {
+              String key = String.valueOf(i);
+              GenericRecord value = readValue(storeReader, key);
+              assertNotNull(value, "Key " + key + " should not be missing!");
+              assertEquals(value.get("firstName").toString(), "first_name_" + key);
+              assertEquals(value.get("lastName").toString(), "last_name_" + key);
             }
           } catch (Exception e) {
             throw new VeniceException(e);

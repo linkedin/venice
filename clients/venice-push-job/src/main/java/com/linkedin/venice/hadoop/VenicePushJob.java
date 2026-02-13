@@ -36,6 +36,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.EXTENDED_SCHEMA_VAL
 import static com.linkedin.venice.vpj.VenicePushJobConstants.HADOOP_TMP_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_ID;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_URL;
@@ -370,6 +371,11 @@ public class VenicePushJob implements AutoCloseable {
     }
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
+
+    // Incremental push write quota settings
+    pushJobSettingToReturn.incrementalPushWriteQuotaRecordsPerSecond =
+        props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, -1);
+
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     pushJobSettingToReturn.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     pushJobSettingToReturn.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
@@ -1645,6 +1651,11 @@ public class VenicePushJob implements AutoCloseable {
         } else {
           summaryLogLines.add("Zstd Dictionary creation Failed");
         }
+      }
+
+      long incrementalPushThrottledTimeMs = taskTracker.getIncrementalPushThrottledTimeMs();
+      if (incrementalPushThrottledTimeMs > 0) {
+        summaryLogLines.add("Incremental push total throttle time: " + incrementalPushThrottledTimeMs + " ms");
       }
 
       LOGGER.info("Data writer job summary: \n\t{}", StringUtils.join(summaryLogLines, "\n\t"));
