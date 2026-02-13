@@ -5,6 +5,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.STORE_REPUSH_TRIGGER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
@@ -75,6 +77,13 @@ public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
       "store.compaction.triggered_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of log compaction repush triggered for a store after it becomes eligible",
       setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY, VENICE_CLUSTER_NAME)
+  ),
+
+  /** PushJobStatusStats: Push job completions */
+  PUSH_JOB_COUNT(
+      "controller.push_job.count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Push job completions, differentiated by push type and status",
+      setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME, VENICE_PUSH_JOB_TYPE, VENICE_PUSH_JOB_STATUS)
   );
 
   private final MetricEntity metricEntity;
