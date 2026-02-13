@@ -1870,11 +1870,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return Long.MAX_VALUE;
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      return getHeartbeatMonitoringService()
-          .getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+      return getHeartbeatMonitoringService().getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, shouldLogLag);
     } else {
-      return getHeartbeatMonitoringService()
-          .getReplicaFollowerHeartbeatLag(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+      return getHeartbeatMonitoringService().getReplicaFollowerHeartbeatLag(partitionConsumptionState, shouldLogLag);
     }
   }
 
@@ -1887,10 +1885,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       return getHeartbeatMonitoringService()
-          .getReplicaLeaderMinHeartbeatTimestamp(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+          .getReplicaLeaderMinHeartbeatTimestamp(partitionConsumptionState, shouldLogLag);
     } else {
       return getHeartbeatMonitoringService()
-          .getReplicaFollowerHeartbeatTimestamp(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+          .getReplicaFollowerHeartbeatTimestamp(partitionConsumptionState, shouldLogLag);
     }
   }
 
@@ -2328,7 +2326,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       region = getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl);
       HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
-      hbService.recordLeaderHeartbeat(cachedKey, getStoreName(), getVersionNumber(), region, timestamp, isComplete);
+      hbService.recordLeaderHeartbeat(cachedKey, timestamp, isComplete);
     } else {
       /**
        * For Da Vinci there is no kafkaUrl mapping configured, we should refer to local region name setup in the
@@ -2338,7 +2336,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           ? getServerConfig().getRegionName()
           : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl);
       HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
-      hbService.recordFollowerHeartbeat(cachedKey, getStoreName(), getVersionNumber(), region, timestamp, isComplete);
+      hbService.recordFollowerHeartbeat(cachedKey, timestamp, isComplete);
     }
   }
 
@@ -2362,10 +2360,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
 
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      hbService.recordLeaderRecordTimestamp(cachedKey, storeName, versionNumber, region, messageTimestamp, isComplete);
+      hbService.recordLeaderRecordTimestamp(cachedKey, messageTimestamp, isComplete);
     } else {
-      hbService
-          .recordFollowerRecordTimestamp(cachedKey, storeName, versionNumber, region, messageTimestamp, isComplete);
+      hbService.recordFollowerRecordTimestamp(cachedKey, messageTimestamp, isComplete);
     }
   }
 

@@ -24,6 +24,7 @@ import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -132,7 +133,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     String storeName = version.getStoreName();
     int versionNum = version.getNumber();
     long currentTime = System.currentTimeMillis();
-    if (version.isActiveActiveReplicationEnabled() && !isFollower) {
+    if (version.isActiveActiveReplicationEnabled()) {
       for (String region: regionNames) {
         if (Utils.isSeparateTopicRegion(region) && !version.isSeparateRealTimeTopicEnabled()) {
           continue;
@@ -309,6 +310,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public void stopInner() throws Exception {
     heartbeatLagCleanupAndLoggingThreadIsRunning.set(false);
     heartbeatReporterThreadIsRunning.set(false);
+    reportingThread.interrupt();
+    lagCleanupAndLoggingThread.interrupt();
   }
 
   /**
@@ -511,15 +514,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    */
   public long getReplicaLeaderMaxHeartbeatLag(
       PartitionConsumptionState partitionConsumptionState,
-      String storeName,
-      int version,
       boolean shouldLogLag) {
-    return getReplicaLeaderMaxHeartbeatLag(
-        partitionConsumptionState,
-        storeName,
-        version,
-        shouldLogLag,
-        System.currentTimeMillis());
+    return getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, shouldLogLag, System.currentTimeMillis());
   }
 
   /**
@@ -528,13 +524,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    */
   public long getReplicaLeaderMinHeartbeatTimestamp(
       PartitionConsumptionState partitionConsumptionState,
-      String storeName,
-      int version,
       boolean shouldLogLag) {
     // Use a fixed timestamp so there is no value overflow.
     long currentTimestamp = System.currentTimeMillis();
-    long lag =
-        getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, storeName, version, shouldLogLag, currentTimestamp);
+    long lag = getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, shouldLogLag, currentTimestamp);
     if (lag == Long.MAX_VALUE) {
       return INVALID_MESSAGE_TIMESTAMP;
     } else {
@@ -548,15 +541,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    */
   public long getReplicaFollowerHeartbeatLag(
       PartitionConsumptionState partitionConsumptionState,
-      String storeName,
-      int version,
       boolean shouldLogLag) {
-    return getReplicaFollowerHeartbeatLag(
-        partitionConsumptionState,
-        storeName,
-        version,
-        shouldLogLag,
-        System.currentTimeMillis());
+    return getReplicaFollowerHeartbeatLag(partitionConsumptionState, shouldLogLag, System.currentTimeMillis());
   }
 
   /**
@@ -565,12 +551,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    */
   public long getReplicaFollowerHeartbeatTimestamp(
       PartitionConsumptionState partitionConsumptionState,
-      String storeName,
-      int version,
       boolean shouldLogLag) {
     long currentTimestamp = System.currentTimeMillis();
-    long lag =
-        getReplicaFollowerHeartbeatLag(partitionConsumptionState, storeName, version, shouldLogLag, currentTimestamp);
+    long lag = getReplicaFollowerHeartbeatLag(partitionConsumptionState, shouldLogLag, currentTimestamp);
     if (lag == INVALID_HEARTBEAT_LAG) {
       return INVALID_MESSAGE_TIMESTAMP;
     }
@@ -579,8 +562,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   long getReplicaLeaderMaxHeartbeatLag(
       PartitionConsumptionState partitionConsumptionState,
-      String storeName,
-      int version,
       boolean shouldLogLag,
       long currentTimestamp) {
     long maxLag = 0;
@@ -632,8 +613,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   long getReplicaFollowerHeartbeatLag(
       PartitionConsumptionState partitionConsumptionState,
-      String storeName,
-      int version,
       boolean shouldLogLag,
       long currentTimestamp) {
     HeartbeatKey key = partitionConsumptionState.getOrCreateCachedHeartbeatKey(getLocalRegionName());
@@ -674,13 +653,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * Record a leader record-level timestamp using a pre-built HeartbeatKey.
    * Avoids HeartbeatKey allocation and hash computation on the per-record hot path.
    */
-  public void recordLeaderRecordTimestamp(
-      HeartbeatKey key,
-      String store,
-      int version,
-      String region,
-      Long timestamp,
-      boolean isReadyToServe) {
+  public void recordLeaderRecordTimestamp(HeartbeatKey key, Long timestamp, boolean isReadyToServe) {
     if (!recordLevelTimestampEnabled) {
       return;
     }
@@ -689,7 +662,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
     if (perRecordOtelMetricsEnabled) {
       long delay = System.currentTimeMillis() - timestamp;
-      versionStatsReporter.emitPerRecordLeaderOtelMetric(store, version, region, delay);
+      versionStatsReporter.emitPerRecordLeaderOtelMetric(key.storeName, key.version, key.region, delay);
     }
   }
 
@@ -697,13 +670,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * Record a follower record-level timestamp using a pre-built HeartbeatKey.
    * Avoids HeartbeatKey allocation and hash computation on the per-record hot path.
    */
-  public void recordFollowerRecordTimestamp(
-      HeartbeatKey key,
-      String store,
-      int version,
-      String region,
-      Long timestamp,
-      boolean isReadyToServe) {
+  public void recordFollowerRecordTimestamp(HeartbeatKey key, Long timestamp, boolean isReadyToServe) {
     if (!recordLevelTimestampEnabled) {
       return;
     }
@@ -712,7 +679,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
     if (perRecordOtelMetricsEnabled) {
       long delay = System.currentTimeMillis() - timestamp;
-      versionStatsReporter.emitPerRecordFollowerOtelMetric(store, version, region, delay, isReadyToServe);
+      versionStatsReporter
+          .emitPerRecordFollowerOtelMetric(key.storeName, key.version, key.region, delay, isReadyToServe);
     }
   }
 
@@ -720,13 +688,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * Record a leader heartbeat timestamp using a pre-built HeartbeatKey.
    * Avoids HeartbeatKey allocation and hash computation on the per-record hot path.
    */
-  public void recordLeaderHeartbeat(
-      HeartbeatKey key,
-      String store,
-      int version,
-      String region,
-      Long timestamp,
-      boolean isReadyToServe) {
+  public void recordLeaderHeartbeat(HeartbeatKey key, Long timestamp, boolean isReadyToServe) {
     recordIngestionTimestamp(key, timestamp, leaderHeartbeatTimeStamps, isReadyToServe, false, true);
   }
 
@@ -734,13 +696,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * Record a follower heartbeat timestamp using a pre-built HeartbeatKey.
    * Avoids HeartbeatKey allocation and hash computation on the per-record hot path.
    */
-  public void recordFollowerHeartbeat(
-      HeartbeatKey key,
-      String store,
-      int version,
-      String region,
-      Long timestamp,
-      boolean isReadyToServe) {
+  public void recordFollowerHeartbeat(HeartbeatKey key, Long timestamp, boolean isReadyToServe) {
     recordIngestionTimestamp(key, timestamp, followerHeartbeatTimeStamps, isReadyToServe, true, true);
   }
 
@@ -950,10 +906,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       return;
     }
     // Group entries by (store, version, partition) since cleanup checks partition assignments per version
-    Map<String, Map<Integer, Set<Integer>>> storeVersionPartitions = new VeniceConcurrentHashMap<>();
+    Map<String, Map<Integer, Set<Integer>>> storeVersionPartitions = new HashMap<>();
     for (HeartbeatKey key: heartbeatTimestamps.keySet()) {
-      storeVersionPartitions.computeIfAbsent(key.storeName, k -> new VeniceConcurrentHashMap<>())
-          .computeIfAbsent(key.version, k -> new java.util.HashSet<>())
+      storeVersionPartitions.computeIfAbsent(key.storeName, k -> new HashMap<>())
+          .computeIfAbsent(key.version, k -> new HashSet<>())
           .add(key.partition);
     }
     for (Map.Entry<String, Map<Integer, Set<Integer>>> storeEntry: storeVersionPartitions.entrySet()) {

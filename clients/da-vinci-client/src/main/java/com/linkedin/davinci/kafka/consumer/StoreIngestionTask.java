@@ -3567,10 +3567,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           try {
             trackRecordReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
           } catch (Exception e) {
-            LOGGER.error(
-                "Failed to record regular record timestamp for replica {}: ",
-                partitionConsumptionState.getReplicaId(),
-                e);
+            String msg =
+                "Failed to record regular record timestamp for replica " + partitionConsumptionState.getReplicaId();
+            if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+              LOGGER.error(msg, e);
+            }
           }
         }
       }
