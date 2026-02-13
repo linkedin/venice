@@ -5,6 +5,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -13,6 +15,8 @@ import com.linkedin.venice.stats.dimensions.VenicePushType;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import java.util.HashMap;
+import java.util.Map;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -175,6 +179,39 @@ public class PushJobStatusStatsOtelTest {
     disabledStats.recordIncrementalPushSuccessSensor(TEST_STORE_NAME);
     disabledStats.recordIncrementalPushFailureDueToUserErrorSensor(TEST_STORE_NAME);
     disabledStats.recordIncrementalPushFailureNotDueToUserErrorSensor(TEST_STORE_NAME);
+  }
+
+  @Test
+  public void testPushJobTehutiMetricNameEnum() {
+    Map<PushJobStatusStats.PushJobTehutiMetricNameEnum, String> expectedNames = new HashMap<>();
+    expectedNames.put(PushJobStatusStats.PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_SUCCESS, "batch_push_job_success");
+    expectedNames.put(
+        PushJobStatusStats.PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_FAILED_USER_ERROR,
+        "batch_push_job_failed_user_error");
+    expectedNames.put(
+        PushJobStatusStats.PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_FAILED_NON_USER_ERROR,
+        "batch_push_job_failed_non_user_error");
+    expectedNames.put(
+        PushJobStatusStats.PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_SUCCESS,
+        "incremental_push_job_success");
+    expectedNames.put(
+        PushJobStatusStats.PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_FAILED_USER_ERROR,
+        "incremental_push_job_failed_user_error");
+    expectedNames.put(
+        PushJobStatusStats.PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_FAILED_NON_USER_ERROR,
+        "incremental_push_job_failed_non_user_error");
+
+    assertEquals(
+        PushJobStatusStats.PushJobTehutiMetricNameEnum.values().length,
+        expectedNames.size(),
+        "New PushJobTehutiMetricNameEnum values were added but not included in this test");
+
+    for (PushJobStatusStats.PushJobTehutiMetricNameEnum enumValue: PushJobStatusStats.PushJobTehutiMetricNameEnum
+        .values()) {
+      String expectedName = expectedNames.get(enumValue);
+      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
+      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
+    }
   }
 
   private void validateCounter(String metricName, long expectedValue, Attributes expectedAttributes) {

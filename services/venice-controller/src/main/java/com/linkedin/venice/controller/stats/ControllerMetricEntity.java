@@ -81,7 +81,7 @@ public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
 
   /** PushJobStatusStats: Push job completions */
   PUSH_JOB_COUNT(
-      "controller.push_job.count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "push_job.count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Push job completions, differentiated by push type and status",
       setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME, VENICE_PUSH_JOB_TYPE, VENICE_PUSH_JOB_STATUS)
   );

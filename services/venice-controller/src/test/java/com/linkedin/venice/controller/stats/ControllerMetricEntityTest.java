@@ -99,7 +99,7 @@ public class ControllerMetricEntityTest {
     expectedMetrics.put(
         ControllerMetricEntity.PUSH_JOB_COUNT,
         new MetricEntity(
-            "controller.push_job.count",
+            "push_job.count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Push job completions, differentiated by push type and status",
