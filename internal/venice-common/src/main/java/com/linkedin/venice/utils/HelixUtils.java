@@ -387,7 +387,18 @@ public final class HelixUtils {
    * @return replica URL
    */
   public static String instanceIdToUrl(String instanceId) {
-    return "https://" + instanceId.replace("_", ":");
+    return instanceIdToUrl(instanceId, true);
+  }
+
+  /**
+   * Convert a replica's instance ID to its URL with a configurable scheme.
+   * @param instanceId the instance ID in the format "host_port"
+   * @param https if true, use "https://"; otherwise, use "http://"
+   * @return replica URL
+   */
+  public static String instanceIdToUrl(String instanceId, boolean https) {
+    String scheme = https ? "https://" : "http://";
+    return scheme + instanceId.replace("_", ":");
   }
 
   public static CloudConfig getCloudConfig(

@@ -176,6 +176,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -5918,6 +5919,40 @@ public abstract class StoreIngestionTaskTest {
             s -> mockTopicManager),
         MESSAGE_COUNT - 1 - CURRENT_POSITION_SOME_CONSUMED.getInternalOffset(),
         "If the partition has messages in it, and we consumed some of them, we expect lag to equal the unconsumed message count.");
+  }
+
+  @Test
+  public void testMeasureLagWithCallToPubSubWhenTopicDoesNotExist() {
+    final PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    final InMemoryPubSubPosition endPosition = InMemoryPubSubPosition.of(10L);
+    final String PUB_SUB_SERVER_NAME = "blah";
+
+    TopicManager throwingTopicManager = mock(TopicManager.class);
+    doReturn(endPosition).when(throwingTopicManager).getLatestPositionCached(partition);
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .diffPosition(any(), any(), any());
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .countRecordsUntil(any(), any());
+
+    // Case 1: Non-EARLIEST position -> diffPosition throws
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            partition,
+            InMemoryPubSubPosition.of(3L),
+            s -> throwingTopicManager),
+        Long.MAX_VALUE,
+        "When diffPosition throws PubSubTopicDoesNotExistException, we expect Long.MAX_VALUE.");
+
+    // Case 2: EARLIEST position -> countRecordsUntil throws
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            partition,
+            PubSubSymbolicPosition.EARLIEST,
+            s -> throwingTopicManager),
+        Long.MAX_VALUE,
+        "When countRecordsUntil throws PubSubTopicDoesNotExistException, we expect Long.MAX_VALUE.");
   }
 
   /**

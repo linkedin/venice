@@ -760,6 +760,8 @@ ext.createDiffFile = { ->
 
       // venice-client
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
+      // CLI tool requiring real D2/ZK infrastructure to test
+      ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/FastClientQueryTool.java',
       // unit test for gRPC Transport Client is not straightforward, adding to exclusion list for now
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/transport/GrpcTransportClient.java',
       // unit test for deprecated DispatchingVsonStoreClient is not meaningful since most logic is in its parent class
@@ -771,6 +773,8 @@ ext.createDiffFile = { ->
 
       // venice-common
       ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
+      // D2 utility requiring real ZooKeeper to test
+      ':!internal/venice-common/src/main/java/com/linkedin/venice/d2/D2ConfigUtils.java',
       ':!internal/venice-common/src/main/java/com/linkedin/venice/acl/handler/StoreAclHandler.java',
 
       // venice-client-common
