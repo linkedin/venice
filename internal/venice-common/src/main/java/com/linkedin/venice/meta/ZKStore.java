@@ -977,6 +977,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public String getUncleanLeaderElectionEnabledForRTTopics() {
+    return this.storeProperties.uncleanLeaderElectionEnabledForRTTopics.toString();
+  }
+
+  @Override
+  public void setUncleanLeaderElectionEnabledForRTTopics(String uncleanLeaderElectionEnabledForRTTopics) {
+    this.storeProperties.uncleanLeaderElectionEnabledForRTTopics = uncleanLeaderElectionEnabledForRTTopics;
+  }
+
+  @Override
   public boolean isNearlineProducerCompressionEnabled() {
     return this.storeProperties.nearlineProducerCompressionEnabled;
   }

@@ -708,6 +708,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public String getUncleanLeaderElectionEnabledForRTTopics() {
+    return zkSharedStore.getUncleanLeaderElectionEnabledForRTTopics();
+  }
+
+  @Override
+  public void setUncleanLeaderElectionEnabledForRTTopics(String uncleanLeaderElectionEnabledForRTTopics) {
+    throwUnsupportedOperationException("setUncleanLeaderElectionEnabledForRTTopics is not supported in SystemStore");
+  }
+
+  @Override
   public void setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
     throwUnsupportedOperationException("setMaxCompactionLagSeconds");
   }

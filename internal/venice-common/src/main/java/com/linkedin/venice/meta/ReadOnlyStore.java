@@ -1651,6 +1651,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public String getUncleanLeaderElectionEnabledForRTTopics() {
+    return this.delegate.getUncleanLeaderElectionEnabledForRTTopics();
+  }
+
+  @Override
+  public void setUncleanLeaderElectionEnabledForRTTopics(String uncleanLeaderElectionEnabledForRTTopics) {
+    throw new UnsupportedOperationException("Unclean leader election config is read-only");
+  }
+
+  @Override
   public boolean isNearlineProducerCompressionEnabled() {
     return delegate.isNearlineProducerCompressionEnabled();
   }

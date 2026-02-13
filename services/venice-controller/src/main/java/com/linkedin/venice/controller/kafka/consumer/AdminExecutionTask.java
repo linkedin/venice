@@ -569,6 +569,10 @@ public class AdminExecutionTask implements Callable<Void> {
             message.blobTransferInServerEnabled == null
                 ? ActivationState.NOT_SPECIFIED
                 : ActivationState.valueOf(message.blobTransferInServerEnabled.toString()))
+        .setUncleanLeaderElectionEnabledForRTTopics(
+            message.uncleanLeaderElectionEnabledForRTTopics == null
+                ? ActivationState.NOT_SPECIFIED
+                : ActivationState.valueOf(message.uncleanLeaderElectionEnabledForRTTopics.toString()))
         .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
         .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)

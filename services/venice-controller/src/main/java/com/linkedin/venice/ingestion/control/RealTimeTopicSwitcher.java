@@ -18,6 +18,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -161,8 +162,19 @@ public class RealTimeTopicSwitcher {
       }
       int replicationFactor = realTimeTopic.isRealTime() ? kafkaReplicationFactorForRTTopics : kafkaReplicationFactor;
       Optional<Integer> minISR = realTimeTopic.isRealTime() ? minSyncReplicasForRTTopics : Optional.empty();
-      Optional<Boolean> uncleanLeaderElection =
-          realTimeTopic.isRealTime() ? uncleanLeaderElectionEnableForRTTopics : Optional.empty();
+      Optional<Boolean> uncleanLeaderElection;
+      if (realTimeTopic.isRealTime()) {
+        String storeUle = store.getUncleanLeaderElectionEnabledForRTTopics();
+        if (ConfigCommonUtils.ActivationState.ENABLED.name().equals(storeUle)) {
+          uncleanLeaderElection = Optional.of(true);
+        } else if (ConfigCommonUtils.ActivationState.DISABLED.name().equals(storeUle)) {
+          uncleanLeaderElection = Optional.of(false);
+        } else {
+          uncleanLeaderElection = uncleanLeaderElectionEnableForRTTopics;
+        }
+      } else {
+        uncleanLeaderElection = Optional.empty();
+      }
       getTopicManager().createTopic(
           realTimeTopic,
           partitionCount,
