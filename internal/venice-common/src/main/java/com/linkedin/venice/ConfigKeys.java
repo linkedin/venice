@@ -1136,6 +1136,12 @@ public class ConfigKeys {
   public static final String SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED = "server.parallel.resource.shutdown.enabled";
 
   /**
+   * Config to control the thread pool size used for parallel ingestion task shutdown.
+   * Default is {@code Runtime.getRuntime().availableProcessors() * 2}.
+   */
+  public static final String SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE = "server.parallel.shutdown.thread.pool.size";
+
+  /**
    * Config for adaptive throttler signal refresh interval in seconds.
    */
   public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS =
