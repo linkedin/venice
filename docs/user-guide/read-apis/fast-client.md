@@ -1,7 +1,7 @@
 # Fast Client
 
-The Fast Client is Venice's high-performance read client. It's partition-aware, routes requests directly to servers
-(bypassing the Router), and provides lower latency than the Thin Client.
+The Fast Client is Venice's high-performance read client that routes requests directly to servers (bypassing the
+Router), and provides lower latency than the Thin Client.
 
 ## Characteristics
 
@@ -39,20 +39,51 @@ dependencies {
 Use `ClientFactory` from the fastclient package:
 
 ```java
-// D2 client for service discovery (required)
-D2Client d2Client = // ... your D2 client setup
+// Create R2 client for HTTP communication
+HttpClientFactory httpClientFactory = new HttpClientFactory.Builder()
+    .setUsePipelineV2(true) // Enable HTTP/2
+    .build();
+Client r2Client = new TransportClientAdapter(
+    httpClientFactory.getClient(Collections.emptyMap())
+);
 
-// Create client configuration
+// Create D2 client for service discovery
+D2Client d2Client = new D2ClientBuilder()
+    .setZkHosts("zookeeper.example.com:2181") // Your ZooKeeper hosts
+    .build();
+D2ClientUtils.startClient(d2Client); // Start the D2 client
+
+// Create Fast Client configuration
 ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
     .setStoreName("my-store")
-    .setR2Client(d2Client)
+    .setR2Client(r2Client)
     .setD2Client(d2Client)
     .setClusterDiscoveryD2Service("VeniceController")
     .build();
 
-// Create and start the client
+// Create and start the Fast Client
 AvroGenericStoreClient<String, MyValue> client =
     ClientFactory.getAndStartGenericStoreClient(clientConfig);
+```
+
+**With SSL**, add SSL properties to the R2 and D2 clients:
+
+```java
+// R2 client: Add SSL properties to httpClientFactory.getClient()
+Map<String, Object> sslProperties = new HashMap<>();
+sslProperties.put(HttpClientFactory.HTTP_SSL_CONTEXT, sslFactory.getSSLContext());
+sslProperties.put(HttpClientFactory.HTTP_SSL_PARAMS, sslFactory.getSSLParameters());
+Client r2Client = new TransportClientAdapter(
+    httpClientFactory.getClient(sslProperties) // Use sslProperties instead of Collections.emptyMap()
+);
+
+// D2 client: Add SSL configuration to builder
+D2Client d2Client = new D2ClientBuilder()
+    .setZkHosts("zookeeper.example.com:2181")
+    .setIsSSLEnabled(true)
+    .setSSLContext(sslFactory.getSSLContext())
+    .setSSLParameters(sslFactory.getSSLParameters())
+    .build();
 ```
 
 ### Reading Data
@@ -76,12 +107,11 @@ Map<String, MyValue> results = client.batchGet(keys).get();
 
 ### Using Specific Records
 
+For type-safe access with Avro-generated classes:
+
 ```java
 ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<String, MyValueRecord, MyValueRecord>()
-    .setStoreName("my-store")
-    .setR2Client(d2Client)
-    .setD2Client(d2Client)
-    .setClusterDiscoveryD2Service("VeniceController")
+    // ... basic config ...
     .setSpecificValueClass(MyValueRecord.class)
     .build();
 
@@ -93,63 +123,34 @@ AvroSpecificStoreClient<String, MyValueRecord> client =
 
 ### Long-Tail Retry
 
-The Fast Client supports automatic retry for slow requests (long-tail latency):
+Automatically retry slow requests to improve P99 latency:
 
 ```java
 ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
-    .setStoreName("my-store")
-    .setR2Client(d2Client)
-    .setD2Client(d2Client)
-    .setClusterDiscoveryD2Service("VeniceController")
-    // Enable long-tail retry for single get
+    // ... basic config ...
     .setLongTailRetryEnabledForSingleGet(true)
     .setLongTailRetryThresholdForSingleGetInMicroSeconds(5000) // 5ms
-    // Enable for batch get with range-based thresholds
     .setLongTailRetryEnabledForBatchGet(true)
     .build();
 ```
 
-### Retry Budget
+### Advanced Configuration
 
-Control retry rate to prevent overloading servers:
+Configure retry budget, load control, and dual-read mode:
 
 ```java
 ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
-    // ... other config ...
+    // ... basic config ...
+    // Retry budget (enabled by default) - prevents retry storms
     .setRetryBudgetEnabled(true)
-    .setRetryBudgetPercentage(10.0) // Allow 10% of requests to retry
-    .build();
-```
-
-### Load Control
-
-Automatic request rejection when servers are overloaded:
-
-```java
-ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
-    // ... other config ...
+    .setRetryBudgetPercentage(0.1) // Allow 10% of requests to retry
+    // Load control - automatic request rejection when overloaded
     .setStoreLoadControllerEnabled(true)
     .setStoreLoadControllerMaxRejectionRatio(0.5) // Max 50% rejection
-    .build();
-```
-
-### Dual Read Mode
-
-Run Fast Client alongside Thin Client for gradual migration:
-
-```java
-// Create a Thin Client first
-AvroGenericStoreClient<String, MyValue> thinClient = // ... create thin client
-
-ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
-    // ... other config ...
+    // Dual read - run alongside Thin Client for gradual migration
     .setDualReadEnabled(true)
-    .setGenericThinClient(thinClient)
+    .setGenericThinClient(thinClient) // Your existing Thin Client instance
     .build();
-
-// Dual read: Fast Client handles reads, Thin Client used for comparison/fallback
-AvroGenericStoreClient<String, MyValue> client =
-    ClientFactory.getAndStartGenericStoreClient(clientConfig);
 ```
 
 ## Configuration Options
@@ -165,17 +166,17 @@ Key configuration options for `ClientConfig`:
 | `setMetadataRefreshIntervalInSeconds(long)`    | Metadata refresh interval                       | 60      |
 | `setLongTailRetryEnabledForSingleGet(boolean)` | Enable retry for single get                     | false   |
 | `setLongTailRetryEnabledForBatchGet(boolean)`  | Enable retry for batch get                      | false   |
-| `setRetryBudgetEnabled(boolean)`               | Enable retry budget                             | false   |
-| `setRetryBudgetPercentage(double)`             | Max retry rate percentage                       | 10.0    |
+| `setRetryBudgetEnabled(boolean)`               | Enable retry budget                             | true    |
+| `setRetryBudgetPercentage(double)`             | Max retry rate percentage (0.0-1.0)             | 0.1     |
 | `setStoreLoadControllerEnabled(boolean)`       | Enable load control                             | false   |
 
 ### Routing Strategies
 
-The Fast Client supports different routing strategies:
+Configure different routing strategies:
 
 ```java
 ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
-    // ... other config ...
+    // ... basic config ...
     .setClientRoutingStrategyType(ClientRoutingStrategyType.LEAST_LOADED)
     .build();
 ```
@@ -187,15 +188,16 @@ Available strategies:
 
 ## gRPC Support
 
-The Fast Client supports gRPC transport for potentially lower latency:
+Enable gRPC transport for potentially lower latency:
 
 ```java
 GrpcClientConfig grpcConfig = new GrpcClientConfig.Builder()
-    .setNettyServerToGrpcAddressMap(serverToGrpcMap)
+    .setR2Client(r2Client) // Required for non-storage requests
+    .setNettyServerToGrpcAddress(serverToGrpcMap)
     .build();
 
 ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
-    .setStoreName("my-store")
+    // ... basic config ...
     .setUseGrpc(true)
     .setGrpcClientConfig(grpcConfig)
     .build();
@@ -203,18 +205,38 @@ ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
 
 ## Health Monitoring
 
-The Fast Client includes instance health monitoring to avoid unhealthy servers:
+Configure instance health monitoring to avoid unhealthy servers:
 
 ```java
 InstanceHealthMonitorConfig healthConfig = new InstanceHealthMonitorConfig.Builder()
-    .setBlockedInstanceMaxBackoffMs(30000)
-    .setBlockedInstanceMinBackoffMs(1000)
+    .setClient(r2Client)
+    .setRoutingRequestDefaultTimeoutMS(1000)
+    .setRoutingPendingRequestCounterInstanceBlockThreshold(50)
+    .setHeartBeatIntervalSeconds(30)
+    .setHeartBeatRequestTimeoutMS(10000)
     .build();
 
 ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
-    // ... other config ...
-    .setInstanceHealthMonitorConfig(healthConfig)
+    // ... basic config ...
+    .setInstanceHealthMonitor(new InstanceHealthMonitor(healthConfig))
     .build();
+```
+
+## Client Lifecycle
+
+### Closing the Client
+
+Always close clients properly to release resources:
+
+```java
+// Close the Venice client
+client.close();
+
+// Shutdown D2 client
+D2ClientUtils.shutdownClient(d2Client);
+
+// Shutdown R2 client
+r2Client.shutdown(null);
 ```
 
 ## Best Practices
@@ -224,12 +246,4 @@ ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
 3. **Use retry budget**: Prevents retry storms under load
 4. **Monitor health metrics**: The Fast Client exposes metrics for monitoring
 5. **Start with conservative settings**: Tune retry thresholds based on observed latency
-
-## Metrics
-
-The Fast Client exposes metrics through `FastClientStats`:
-
-- Request latency (P50, P95, P99)
-- Request count by type (single get, batch get, compute)
-- Retry count and success rate
-- Instance health status
+6. **Always close clients**: Properly shutdown all clients to prevent resource leaks
