@@ -266,8 +266,8 @@ public class TestZKStore {
     for (Version version: store.getVersions()) {
       Assert.assertEquals(
           version.getStatus(),
-          VersionStatus.ONLINE,
-          "After enabling a store to write, all of PUSHED version should be activated.");
+          VersionStatus.PUSHED,
+          "After enabling a store to write, all of PUSHED will stay as PUSHED. Deferred swap service will mark them as online");
     }
   }
 

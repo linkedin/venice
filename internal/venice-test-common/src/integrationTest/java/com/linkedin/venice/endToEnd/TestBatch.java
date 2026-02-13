@@ -52,7 +52,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -92,12 +91,14 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.LongBinaryOperator;
 import org.apache.avro.Schema;
@@ -120,7 +121,7 @@ import org.testng.annotations.Test;
 public abstract class TestBatch {
   private static final Logger LOGGER = LogManager.getLogger(TestBatch.class);
   protected static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
-  private static final int MAX_RETRY_ATTEMPTS = 3;
+  private static final int STORE_VERSION_AVAILABILITY_TIMEOUT_SEC = 30;
   protected static final int LARGE_VALUE_SIZE = 3 * BYTES_PER_MB; // 3 MB apiece
   protected static final String BASE_DATA_PATH_1 = Utils.getTempDataDirectory().getAbsolutePath();
   protected static final String BASE_DATA_PATH_2 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -1094,22 +1095,20 @@ public abstract class TestBatch {
         Utf8 expectedUtf8 = new Utf8(expectedString);
 
         LOGGER.info("About to query key: {}", i);
-        // This call often fails due to a race condition where the store is not perceived to exist yet
-        Utf8 returnedUtf8Value = null;
-        Integer attempts = 0;
-        while (attempts < MAX_RETRY_ATTEMPTS) {
-          try {
-            returnedUtf8Value = (Utf8) avroClient.get(key).get();
-            break;
-          } catch (VeniceClientException e) {
-            attempts++;
-            if (attempts == MAX_RETRY_ATTEMPTS) {
-              throw e;
-            }
-            // Give it a sec
-            Thread.sleep(1000);
-          }
-        }
+        // This call may fail due to a race condition where the store version is not available yet
+        AtomicReference<Utf8> returnedUtf8ValueRef = new AtomicReference<>();
+        TestUtils.waitForNonDeterministicAssertion(
+            STORE_VERSION_AVAILABILITY_TIMEOUT_SEC,
+            TimeUnit.SECONDS,
+            true, // exponentialBackOff
+            () -> {
+              try {
+                returnedUtf8ValueRef.set((Utf8) avroClient.get(key).get());
+              } catch (Exception e) {
+                throw new AssertionError("Failed to get value for key: " + key, e);
+              }
+            });
+        Utf8 returnedUtf8Value = returnedUtf8ValueRef.get();
 
         Assert.assertNotNull(returnedUtf8Value, "Avro client returned null value for key: " + key + ".");
         LOGGER.info("Received value of size: {} for key: {}", returnedUtf8Value.length(), key);
@@ -1452,5 +1451,76 @@ public abstract class TestBatch {
           .getCurrentVersion(veniceCluster.getClusterName(), storeName);
       Assert.assertEquals(version, 2);
     });
+  }
+
+  /**
+   * End-to-end test to verify that a user-initiated push can kill an ongoing compliance push.
+   * This test:
+   * 1. Creates a store and does an initial push
+   * 2. Starts a compliance push using requestTopicForWrites (simulates compliance push in progress)
+   * 3. Runs a real VPJ user push which should kill the compliance push
+   * 4. Verifies the user push succeeds and creates the expected version
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUserPushKillsCompliancePushEndToEnd() throws Exception {
+    File inputDir = getTempDataDirectory();
+    String storeName = Utils.getUniqueString("compliance-push-kill-store");
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+
+    // Write test data
+    writeSimpleAvroFileWithStringToStringSchema(inputDir);
+
+    // Create store and do initial push
+    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
+    Schema keySchema = Schema.parse("\"string\"");
+    Schema valueSchema = Schema.parse("\"string\"");
+    createStoreForJob(veniceCluster, keySchema.toString(), valueSchema.toString(), props).close();
+
+    // Run initial push to create version 1
+    IntegrationTestPushUtils.runVPJ(props);
+
+    try (ControllerClient controllerClient =
+        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs())) {
+      // Verify version 1 is current
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+        Assert.assertEquals(currentVersion, 1, "Initial push should create version 1");
+      });
+
+      // Start a compliance push (this simulates an ongoing compliance push)
+      String compliancePushId = Version.generateCompliancePushId("test-compliance-push-" + System.currentTimeMillis());
+      VersionCreationResponse compliancePushResponse = controllerClient.requestTopicForWrites(
+          storeName,
+          1000,
+          Version.PushType.BATCH,
+          compliancePushId,
+          true,
+          true,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
+      Assert.assertFalse(
+          compliancePushResponse.isError(),
+          "Compliance push should start successfully: " + compliancePushResponse.getError());
+      int compliancePushVersion = compliancePushResponse.getVersion();
+      Assert.assertEquals(compliancePushVersion, 2, "Compliance push should create version 2");
+
+      // Now run a user-initiated VPJ push - this should kill the compliance push
+      // Write new data for the user push
+      writeSimpleAvroFileWithStringToStringSchema2(inputDir);
+      Properties userPushProps = defaultVPJProps(veniceCluster, inputDirPath, storeName);
+
+      // Run the user push - this should succeed after killing the compliance push
+      IntegrationTestPushUtils.runVPJ(userPushProps);
+
+      // Verify the user push succeeded and created version 3 (compliance push v2 was killed)
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+        Assert.assertEquals(currentVersion, 3, "User push should create version 3 after killing compliance push v2");
+      });
+    }
   }
 }

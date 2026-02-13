@@ -80,6 +80,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
@@ -917,16 +918,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     TopicManager topicManager = getTopicManager(localKafkaServer);
-
-    // Case: No records consumed yet --> check if the partition contains any records
-    if (PubSubSymbolicPosition.EARLIEST.equals(latestProcessedLocalVtPosition)) {
-      // Nothing consumed and nothing available --> treat as fully consumed
-      return topicManager.countRecordsUntil(pcs.getReplicaTopicPartition(), localVtEndPosition) == 0;
+    long diff;
+    try {
+      // Case: No records consumed yet --> check if the partition contains any records
+      if (PubSubSymbolicPosition.EARLIEST.equals(latestProcessedLocalVtPosition)) {
+        // Nothing consumed and nothing available --> treat as fully consumed
+        return topicManager.countRecordsUntil(pcs.getReplicaTopicPartition(), localVtEndPosition) == 0;
+      }
+      // General case: fully consumed if at most one record behind (as end position represents "last + 1")
+      diff =
+          topicManager.diffPosition(pcs.getReplicaTopicPartition(), localVtEndPosition, latestProcessedLocalVtPosition);
+    } catch (PubSubTopicDoesNotExistException e) {
+      return false;
     }
-
-    // General case: fully consumed if at most one record behind (as end position represents "last + 1")
-    long diff =
-        topicManager.diffPosition(pcs.getReplicaTopicPartition(), localVtEndPosition, latestProcessedLocalVtPosition);
 
     // diff < 0 means end position was probably stale
     // Log using redundant-exception filter to trace edge conditions
@@ -1122,13 +1126,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, kafkaURL);
         // update latest consumed RT position if incoming upstream start position is greater
         // than the latest consumed RT position
-        if ((PubSubSymbolicPosition.EARLIEST.equals(latestConsumedRtPosition)
-            && !PubSubSymbolicPosition.EARLIEST.equals(upstreamStartPosition))
-            || getTopicManager(kafkaURL).diffPosition(
-                Utils.createPubSubTopicPartitionFromLeaderTopicPartition(kafkaURL, leaderTopicPartition),
-                upstreamStartPosition,
-                latestConsumedRtPosition) > 0) {
-          updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartPosition);
+        try {
+          if ((PubSubSymbolicPosition.EARLIEST.equals(latestConsumedRtPosition)
+              && !PubSubSymbolicPosition.EARLIEST.equals(upstreamStartPosition))
+              || getTopicManager(kafkaURL).diffPosition(
+                  Utils.createPubSubTopicPartitionFromLeaderTopicPartition(kafkaURL, leaderTopicPartition),
+                  upstreamStartPosition,
+                  latestConsumedRtPosition) > 0) {
+            updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartPosition);
+          }
+        } catch (PubSubTopicDoesNotExistException e) {
+          // Topic has been deleted, skip position update
         }
       });
     }
@@ -1607,10 +1615,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       final PubSubPosition newUpstreamPosition,
       final PubSubPosition previousUpstreamPosition,
       LeaderFollowerStoreIngestionTask ingestionTask) {
-    if (PubSubSymbolicPosition.EARLIEST.equals(previousUpstreamPosition)
-        || topicManager.diffPosition(pubSubTopicPartition, newUpstreamPosition, previousUpstreamPosition) >= 0) {
-      return; // Rewind did not happen
+    try {
+      // Skip rewind check if version is already PUSHED/ONLINE but EOP hasn't been received yet on this partition.
+      // In this state, the replica is still catching up on batch data and the upstream topic may already be deleted,
+      // making the diffPosition call unnecessary and error-prone. This could happen during rebalance.
+      if (PubSubSymbolicPosition.EARLIEST.equals(previousUpstreamPosition)
+          || (!partitionConsumptionState.isEndOfPushReceived() && ingestionTask.versionBootstrapCompleted)) {
+        return;
+      }
+      if (topicManager.diffPosition(pubSubTopicPartition, newUpstreamPosition, previousUpstreamPosition) >= 0) {
+        return; // Rewind did not happen
+      }
+    } catch (PubSubTopicDoesNotExistException e) {
+      return; // Topic has been deleted, rewind check is not applicable
     }
+
     if (!ingestionTask.isHybridMode()) {
       /**
        * The lossy rewind issue will only affect hybrid store since only hybrid store version topics
@@ -2021,18 +2040,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
 
         PubSubPosition lastProcessedVtPos = partitionConsumptionState.getLatestProcessedVtPosition();
-        if (!PubSubSymbolicPosition.EARLIEST.equals(lastProcessedVtPos) && topicManagerRepository.getLocalTopicManager()
-            .diffPosition(record.getTopicPartition(), lastProcessedVtPos, record.getPosition()) >= 0) {
-          String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
-              + partitionConsumptionState.getReplicaId() + " had already processed the record";
-          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
-            LOGGER.info(
-                "{}; LastKnownPosition: {}; PositionOfIncomingRecord: {}",
-                message,
-                lastProcessedVtPos,
-                record.getPosition());
+        try {
+          if (!PubSubSymbolicPosition.EARLIEST.equals(lastProcessedVtPos)
+              && topicManagerRepository.getLocalTopicManager()
+                  .diffPosition(record.getTopicPartition(), lastProcessedVtPos, record.getPosition()) >= 0) {
+            String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
+                + partitionConsumptionState.getReplicaId() + " had already processed the record";
+            if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
+              LOGGER.info(
+                  "{}; LastKnownPosition: {}; PositionOfIncomingRecord: {}",
+                  message,
+                  lastProcessedVtPos,
+                  record.getPosition());
+            }
+            return false;
           }
-          return false;
+        } catch (PubSubTopicDoesNotExistException e) {
+          // Topic has been deleted, skip duplicate check and process the record
         }
         break;
     }
@@ -3882,12 +3906,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         getLatestPersistedRtPositionForLagMeasurement(pcs, rtPubSubBrokerAddress);
     TopicManager topicManager = getTopicManager(rtPubSubBrokerAddress);
     long lag;
-    if (PubSubSymbolicPosition.EARLIEST.equals(latestPersistedRtPosition)) {
-      // If the latest persisted position is EARLIEST, it means no message has been processed yet, so the lag is the
-      // count of messages from the beginning of the topic to the end position.
-      lag = topicManager.countRecordsUntil(rtTopicPartition, rtEndPosition);
-    } else {
-      lag = topicManager.diffPosition(rtTopicPartition, rtEndPosition, latestPersistedRtPosition) - 1;
+    try {
+      if (PubSubSymbolicPosition.EARLIEST.equals(latestPersistedRtPosition)) {
+        // If the latest persisted position is EARLIEST, it means no message has been processed yet, so the lag is the
+        // count of messages from the beginning of the topic to the end position.
+        lag = topicManager.countRecordsUntil(rtTopicPartition, rtEndPosition);
+      } else {
+        lag = topicManager.diffPosition(rtTopicPartition, rtEndPosition, latestPersistedRtPosition) - 1;
+      }
+    } catch (PubSubTopicDoesNotExistException e) {
+      return Long.MAX_VALUE;
     }
 
     if (shouldLog) {

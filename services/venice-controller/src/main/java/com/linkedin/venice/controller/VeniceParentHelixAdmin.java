@@ -1810,9 +1810,6 @@ public class VeniceParentHelixAdmin implements Admin {
         return version;
       }
 
-      boolean isExistingPushJobARepush = Version.isPushIdRePush(existingPushJobId);
-      boolean isIncomingPushJobARepush = Version.isPushIdRePush(pushJobId);
-
       // If version swap is enabled, do not check for lingering push as user may swap at much later time.
       if (!version.isVersionSwapDeferred() && getLingeringStoreVersionChecker()
           .isStoreVersionLingering(store, version, timer, this, requesterCert, identityParser)) {
@@ -1837,14 +1834,12 @@ public class VeniceParentHelixAdmin implements Admin {
               version.getCreatedTime());
           killOfflinePush(clusterName, currentPushTopic.get(), true);
         }
-      } else if (isExistingPushJobARepush && !pushType.isIncremental() && !isIncomingPushJobARepush) {
-        // Inc push policy INCREMENTAL_PUSH_SAME_AS_REAL_TIME with target version filtering is deprecated and not going
-        // to be used.
-
-        // Kill the existing job if incoming push type is not an inc push and also not a repush job.
+      } else if (Version.canIncomingPushKillExistingPush(existingPushJobId, pushJobId, pushType)) {
+        // Kill the existing system push (repush or compliance push) if incoming push is a user-initiated push.
+        // This allows user-initiated pushes to preempt system pushes.
         LOGGER.info(
-            "Found running repush job with push id: {} and incoming push is a batch job or stream reprocessing "
-                + "job with push id: {}. Killing the repush job for store: {}",
+            "Found running system push job (repush/compliance) with push id: {} and incoming push is a "
+                + "user-initiated batch job or stream reprocessing job with push id: {}. Killing the system push for store: {}",
             existingPushJobId,
             pushJobId,
             storeName);
@@ -3677,8 +3672,15 @@ public class VeniceParentHelixAdmin implements Admin {
       final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
       Schema existingValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
 
+      // Update superset schema if:
+      // 1. Compute is enabled (existing behavior), OR
+      // 2. A superset schema already exists (always keep it updated even if compute is disabled)
+      // Check if a superset schema already exists for this store
       final boolean doUpdateSupersetSchemaID;
-      if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
+      boolean supersetSchemaAlreadyExists =
+          store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID;
+      if (existingValueSchema != null
+          && (store.isReadComputationEnabled() || store.isWriteComputationEnabled() || supersetSchemaAlreadyExists)) {
         SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
         Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();

@@ -5,6 +5,8 @@ import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface.getUniqueMetricEntities;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
+import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
 import com.linkedin.davinci.stats.ServerMetricEntity;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
@@ -35,16 +37,7 @@ public class HeartbeatOtelStats {
   // Per-region metric entity states
   private final Map<String, MetricEntityStateThreeEnums<VersionRole, ReplicaType, ReplicaState>> metricsByRegion;
 
-  private static class VersionInfo {
-    private final int currentVersion;
-    private final int futureVersion;
-
-    VersionInfo(int currentVersion, int futureVersion) {
-      this.currentVersion = currentVersion;
-      this.futureVersion = futureVersion;
-    }
-  }
-
+  // Version info cache for classifying versions as CURRENT/FUTURE/BACKUP
   private volatile VersionInfo versionInfo = new VersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
 
   public HeartbeatOtelStats(MetricsRepository metricsRepository, String storeName, String clusterName) {
@@ -97,7 +90,7 @@ public class HeartbeatOtelStats {
     if (!emitOtelMetrics()) {
       return;
     }
-    VersionRole versionRole = classifyVersion(version, this.versionInfo);
+    VersionRole versionRole = OtelVersionedStatsUtils.classifyVersion(version, this.versionInfo);
 
     MetricEntityStateThreeEnums<VersionRole, ReplicaType, ReplicaState> metricState = getOrCreateMetricState(region);
 
@@ -122,22 +115,6 @@ public class HeartbeatOtelStats {
           ReplicaType.class,
           ReplicaState.class);
     });
-  }
-
-  /**
-   * Classifies a version as CURRENT or FUTURE or BACKUP
-   *
-   * @param version The version number to classify
-   * @param versionInfo The current/future version (cached)
-   * @return {@link VersionRole}
-   */
-  static VersionRole classifyVersion(int version, VersionInfo versionInfo) {
-    if (version == versionInfo.currentVersion) {
-      return VersionRole.CURRENT;
-    } else if (version == versionInfo.futureVersion) {
-      return VersionRole.FUTURE;
-    }
-    return VersionRole.BACKUP;
   }
 
   @VisibleForTesting

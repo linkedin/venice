@@ -63,6 +63,7 @@ public class PushJobSetting implements Serializable {
   /** Refer {@link VenicePushJobConstants#COMPRESSION_METRIC_COLLECTION_ENABLED} **/
   public boolean compressionMetricCollectionEnabled;
   public boolean repushTTLEnabled;
+  public boolean isCompliancePush;
   // specify time to drop stale records.
   public long repushTTLStartTimeMs;
   // HDFS directory to cache RMD schemas
@@ -158,6 +159,9 @@ public class PushJobSetting implements Serializable {
   public transient Version sourceKafkaInputVersionInfo;
   public CompressionStrategy sourceVersionCompressionStrategy;
   public boolean sourceVersionChunkingEnabled;
+
+  public byte[] sourceDictionary;
+  public byte[] topicDictionary;
 
   public PushJobSetting() {
     // Default for preserving backward compatibility

@@ -43,6 +43,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 
 /**
@@ -74,19 +75,36 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
   });
 
   private final @Nonnull SCATTER_GATHER_HELPER _scatterGatherHelper;
+  private final @Nullable Executor _responseAggregationExecutor;
 
   protected ScatterGatherRequestHandlerImpl(
       @Nonnull SCATTER_GATHER_HELPER scatterGatherHelper,
       @Nonnull TimeoutProcessor timeoutProcessor) {
-    super(timeoutProcessor);
-    _scatterGatherHelper = Objects.requireNonNull(scatterGatherHelper, "scatterGatherHelper");
+    this(scatterGatherHelper, timeoutProcessor, null);
   }
 
   protected ScatterGatherRequestHandlerImpl(
       @Nonnull SCATTER_GATHER_HELPER scatterGatherHelper,
       @Nonnull RouterTimeoutProcessor timeoutProcessor) {
+    this(scatterGatherHelper, timeoutProcessor, null);
+  }
+
+  protected ScatterGatherRequestHandlerImpl(
+      @Nonnull SCATTER_GATHER_HELPER scatterGatherHelper,
+      @Nonnull TimeoutProcessor timeoutProcessor,
+      Executor responseAggregationExecutor) {
     super(timeoutProcessor);
     _scatterGatherHelper = Objects.requireNonNull(scatterGatherHelper, "scatterGatherHelper");
+    _responseAggregationExecutor = responseAggregationExecutor;
+  }
+
+  protected ScatterGatherRequestHandlerImpl(
+      @Nonnull SCATTER_GATHER_HELPER scatterGatherHelper,
+      @Nonnull RouterTimeoutProcessor timeoutProcessor,
+      Executor responseAggregationExecutor) {
+    super(timeoutProcessor);
+    _scatterGatherHelper = Objects.requireNonNull(scatterGatherHelper, "scatterGatherHelper");
+    _responseAggregationExecutor = responseAggregationExecutor;
   }
 
   public final @Nonnull SCATTER_GATHER_HELPER getScatterGatherHelper() {
@@ -154,8 +172,10 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
   protected @Nonnull AsyncFuture<HR> handler(@Nonnull CHC ctx, @Nonnull BHS request) throws Exception {
     AsyncPromise<HR> promise = AsyncFuture.deferred(false);
     try {
+      long handlerEntryNanos = Time.nanoTime();
       LOG.debug("[{}] handler", request.getRequestId());
       final Metrics m2 = _scatterGatherHelper.initializeMetrics(request);
+      setMetric(m2, MetricNames.ROUTER_PIPELINE_LATENCY, handlerEntryNanos - request.getRequestNanos());
       CompletableFuture.completedFuture(retainRequest(request))
           .thenCompose(r -> handler0(ctx, m2, r))
           .exceptionally(ex -> {
@@ -256,6 +276,10 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
       hostHealthMonitor = _scatterGatherHelper::isHostHealthy;
     }
     return scatter(request.getMethodName(), path, request.getRequestHeaders(), hostHealthMonitor, m, null)
+        .thenApply(s -> {
+          setMetric(m, MetricNames.ROUTER_SCATTER_LATENCY, Time.nanoTime() - beforeScatter);
+          return s;
+        })
         .thenComposeAsync(
             scatter -> handler1(
                 ctx,
@@ -288,6 +312,10 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
 
     setMetric(m, MetricNames.ROUTER_PARSE_URI, afterParseUri - beforeParseUri);
     setMetric(m, MetricNames.ROUTER_ROUTING_TIME, afterScatter - beforeScatter);
+    long scatterLatency = m != null ? m.get(MetricNames.ROUTER_SCATTER_LATENCY) : Metrics.UNSET_VALUE;
+    if (scatterLatency != Metrics.UNSET_VALUE) {
+      setMetric(m, MetricNames.ROUTER_QUEUE_LATENCY, (afterScatter - beforeScatter) - scatterLatency);
+    }
 
     boolean retryableRequest = !longTailMilliseconds.isDone() || longTailMilliseconds.isSuccess();
 
@@ -407,7 +435,8 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
         stats,
         requestDeadline,
         timeoutCancel,
-        longTailTimeoutFuture);
+        longTailTimeoutFuture,
+        afterScatter);
   }
 
   CompletableFuture<HR> gatherResponses(
@@ -419,7 +448,8 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
       ScatterGatherStats.Delta stats,
       long requestDeadline,
       Runnable timeoutCancel,
-      AsyncPromise<HRS> longTailTimeoutFuture) {
+      AsyncPromise<HRS> longTailTimeoutFuture,
+      long handler1EntryNanos) {
     LOG.debug("[{}] gatherResponses", request.getRequestId());
 
     // Wait for all of the responses to come back.
@@ -468,9 +498,12 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
     CompletableFuture<HR> response = new CompletableFuture<>();
     long arrivalNanoseconds = request.getRequestNanos();
     long responseWaitStartNanos = Time.nanoTime();
+    setMetric(m, MetricNames.ROUTER_DISPATCH_LATENCY, responseWaitStartNanos - handler1EntryNanos);
 
     // BHS req = retainRequest(request); -- request will have refCnt of 0 at this point!
     BHS req = request;
+    // Use dedicated response aggregation executor if provided, otherwise use stageExecutor(ctx)
+    Executor executor = _responseAggregationExecutor != null ? _responseAggregationExecutor : stageExecutor(ctx);
     gatheredResponses.whenCompleteAsync((responseList, throwable) -> {
       // LOG.debug("[{}] respond", req.getRequestId());
       try {
@@ -510,7 +543,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
         // releaseRequest(req);
         stats.apply();
       }
-    }, stageExecutor(ctx));
+    }, executor);
 
     return response;
   }

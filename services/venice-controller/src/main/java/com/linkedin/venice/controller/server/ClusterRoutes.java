@@ -17,6 +17,8 @@ import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
 import com.linkedin.venice.utils.Utils;
 import java.util.Map;
 import java.util.Optional;
@@ -25,8 +27,18 @@ import spark.Route;
 
 
 public class ClusterRoutes extends AbstractRoute {
+  private final ClusterAdminOpsRequestHandler clusterAdminOpsRequestHandler;
+
   public ClusterRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+    this(sslEnabled, accessController, null);
+  }
+
+  public ClusterRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      ClusterAdminOpsRequestHandler clusterAdminOpsRequestHandler) {
     super(sslEnabled, accessController);
+    this.clusterAdminOpsRequestHandler = clusterAdminOpsRequestHandler;
   }
 
   /**
@@ -91,7 +103,14 @@ public class ClusterRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, STORE_MIGRATION_ALLOWED.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
-        veniceResponse.setStoreMigrationAllowed(admin.isStoreMigrationAllowed(clusterName));
+
+        StoreMigrationCheckGrpcRequest grpcRequest =
+            StoreMigrationCheckGrpcRequest.newBuilder().setClusterName(clusterName).build();
+
+        StoreMigrationCheckGrpcResponse grpcResponse =
+            clusterAdminOpsRequestHandler.isStoreMigrationAllowed(grpcRequest);
+
+        veniceResponse.setStoreMigrationAllowed(grpcResponse.getStoreMigrationAllowed());
       }
     };
   }

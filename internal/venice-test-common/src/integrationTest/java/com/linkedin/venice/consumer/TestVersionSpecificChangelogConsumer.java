@@ -30,7 +30,11 @@ import com.linkedin.davinci.consumer.ImmutableChangeCapturePubSubMessage;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
+import com.linkedin.davinci.utils.ClientRmdSerDe;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.schema.StoreSchemaFetcher;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -338,12 +342,29 @@ public class TestVersionSpecificChangelogConsumer {
       assertEquals(pubSubMessages.size(), numKeys * 2);
     });
     // The change events written from near-line should have valid and deserialized replication metadata
-    for (int i = numKeys; i < pubSubMessages.size(); i++) {
-      ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-          (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessages.get(i);
-      assertNotNull(message.getDeserializedReplicationMetadata());
-      long timestamp = (long) message.getDeserializedReplicationMetadata().get("timestamp");
-      assertTrue(timestamp > 0);
+    try (StoreSchemaFetcher schemaFetcher = ClientFactory.createStoreSchemaFetcher(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setD2Client(d2Client)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
+      ClientRmdSerDe clientRmdSerDe = new ClientRmdSerDe(schemaFetcher);
+      for (int i = numKeys; i < pubSubMessages.size(); i++) {
+        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessages.get(i);
+        assertNotNull(message.getDeserializedReplicationMetadata());
+        long timestamp = (long) message.getDeserializedReplicationMetadata().get("timestamp");
+        assertTrue(timestamp > 0);
+        // Use ClientRmdSerDe to verify the deserialized replication metadata and vice versa
+        assertEquals(
+            message.getDeserializedReplicationMetadata(),
+            clientRmdSerDe.deserializeRmdBytes(
+                message.getWriterSchemaId(),
+                message.getWriterSchemaId(),
+                message.getReplicationMetadataPayload()));
+        assertEquals(
+            message.getReplicationMetadataPayload(),
+            clientRmdSerDe
+                .serializeRmdRecord(message.getWriterSchemaId(), message.getDeserializedReplicationMetadata()));
+      }
     }
   }
 

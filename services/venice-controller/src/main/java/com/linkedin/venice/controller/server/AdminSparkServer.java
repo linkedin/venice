@@ -300,20 +300,23 @@ public class AdminSparkServer extends AbstractVeniceService {
     // Build all different routes
     ControllerRoutes controllerRoutes =
         new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository, requestHandler);
-    StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository);
+    StoresRoutes storesRoutes =
+        new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository, requestHandler.getStoreRequestHandler());
     JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
     CreateVersion createVersion = new CreateVersion(sslEnabled, accessController, this.checkReadMethodForKafka);
     CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController);
     NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(sslEnabled, accessController);
-    SchemaRoutes schemaRoutes = new SchemaRoutes(sslEnabled, accessController);
+    SchemaRoutes schemaRoutes =
+        new SchemaRoutes(sslEnabled, accessController, requestHandler.getSchemaRequestHandler());
     AdminCommandExecutionRoutes adminCommandExecutionRoutes =
         new AdminCommandExecutionRoutes(sslEnabled, accessController);
     RoutersClusterConfigRoutes routersClusterConfigRoutes =
         new RoutersClusterConfigRoutes(sslEnabled, accessController);
     MigrationRoutes migrationRoutes = new MigrationRoutes(sslEnabled, accessController);
     VersionRoute versionRoute = new VersionRoute(sslEnabled, accessController);
-    ClusterRoutes clusterRoutes = new ClusterRoutes(sslEnabled, accessController);
+    ClusterRoutes clusterRoutes =
+        new ClusterRoutes(sslEnabled, accessController, requestHandler.getClusterAdminOpsRequestHandler());
     NewClusterBuildOutRoutes newClusterBuildOutRoutes = new NewClusterBuildOutRoutes(sslEnabled, accessController);
     DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(sslEnabled, accessController);
     AdminTopicMetadataRoutes adminTopicMetadataRoutes = new AdminTopicMetadataRoutes(sslEnabled, accessController);
@@ -708,9 +711,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getInUseSchemaIds(admin)));
     httpService.get(
         VALIDATE_STORE_DELETED.getPath(),
-        new VeniceParentControllerRegionStateHandler(
-            admin,
-            storesRoutes.validateStoreDeleted(admin, requestHandler.getStoreRequestHandler())));
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.validateStoreDeleted(admin)));
 
     httpService.post(
         CLEANUP_INSTANCE_CUSTOMIZED_STATES.getPath(),

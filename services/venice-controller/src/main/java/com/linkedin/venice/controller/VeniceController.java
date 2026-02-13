@@ -9,6 +9,7 @@ import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.grpc.server.ClusterAdminOpsGrpcServiceImpl;
+import com.linkedin.venice.controller.grpc.server.SchemaGrpcServiceImpl;
 import com.linkedin.venice.controller.grpc.server.StoreGrpcServiceImpl;
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcAuditLoggingInterceptor;
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslSessionInterceptor;
@@ -108,7 +109,8 @@ public class VeniceController {
   private final PubSubClientsFactory pubSubClientsFactory;
   private final LogContext logContext;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
-  private final Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener;
+  private final Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
+  private final Optional<ExternalETLService> externalETLService;
 
   /**
    * Allocates a new {@code VeniceController} object.
@@ -176,7 +178,8 @@ public class VeniceController {
     this.asyncRetryingServiceDiscoveryAnnouncer =
         new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
     this.pubSubTopicRepository = multiClusterConfigs.getPubSubTopicRepository();
-    this.versionLifecycleEventListener = Optional.ofNullable(ctx.getVersionLifecycleEventListener());
+    this.versionLifecycleEventListeners = Optional.ofNullable(ctx.getVersionLifecycleEventListeners());
+    this.externalETLService = Optional.ofNullable(ctx.getExternalETLService());
     this.controllerService = createControllerService();
     this.adminServer = createAdminServer(false);
     this.secureAdminServer = sslEnabled ? createAdminServer(true) : null;
@@ -211,7 +214,8 @@ public class VeniceController {
         pubSubTopicRepository,
         pubSubClientsFactory,
         pubSubPositionTypeRegistry,
-        versionLifecycleEventListener);
+        versionLifecycleEventListeners,
+        externalETLService);
     Admin admin = veniceControllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent() && !(admin instanceof VeniceParentHelixAdmin)) {
       throw new VeniceException(
@@ -330,6 +334,8 @@ public class VeniceController {
     StoreGrpcServiceImpl storeGrpcServiceGrpc = new StoreGrpcServiceImpl(
         unsecureRequestHandler.getStoreRequestHandler(),
         unsecureRequestHandler.getControllerAccessManager());
+    SchemaGrpcServiceImpl schemaGrpcService =
+        new SchemaGrpcServiceImpl(unsecureRequestHandler.getSchemaRequestHandler());
     ClusterAdminOpsGrpcServiceImpl clusterAdminOpsGrpcService = new ClusterAdminOpsGrpcServiceImpl(
         unsecureRequestHandler.getClusterAdminOpsRequestHandler(),
         unsecureRequestHandler.getControllerAccessManager());
@@ -344,6 +350,7 @@ public class VeniceController {
         new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminGrpcPort())
             .addService(grpcService)
             .addService(storeGrpcServiceGrpc)
+            .addService(schemaGrpcService)
             .addService(clusterAdminOpsGrpcService)
             .setExecutor(grpcExecutor)
             .setInterceptors(interceptors)
@@ -358,6 +365,8 @@ public class VeniceController {
       StoreGrpcServiceImpl secureStoreGrpcService = new StoreGrpcServiceImpl(
           secureRequestHandler.getStoreRequestHandler(),
           secureRequestHandler.getControllerAccessManager());
+      SchemaGrpcServiceImpl secureSchemaGrpcService =
+          new SchemaGrpcServiceImpl(secureRequestHandler.getSchemaRequestHandler());
       ClusterAdminOpsGrpcServiceImpl secureClusterAdminOpsGrpcService = new ClusterAdminOpsGrpcServiceImpl(
           secureRequestHandler.getClusterAdminOpsRequestHandler(),
           secureRequestHandler.getControllerAccessManager());
@@ -365,6 +374,7 @@ public class VeniceController {
           new VeniceGrpcServerConfig.Builder().setPort(multiClusterConfigs.getAdminSecureGrpcPort())
               .addService(secureGrpcService)
               .addService(secureStoreGrpcService)
+              .addService(secureSchemaGrpcService)
               .addService(secureClusterAdminOpsGrpcService)
               .setExecutor(grpcExecutor)
               .setSslFactory(sslFactory)

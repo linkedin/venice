@@ -127,7 +127,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
 
     consumer = veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME);
     Assert.assertTrue(consumer instanceof VeniceChangelogConsumerImpl);
-
   }
 
   @Test
@@ -167,6 +166,22 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Assert.assertNotSame(consumer, consumer1);
     Assert.assertNotSame(consumer, consumer2);
     Assert.assertNotSame(consumer1, consumer2);
+  }
+
+  @Test
+  public void testChangelogConsumerWithViewName() {
+    ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig();
+
+    // Default of the field is null
+    Assert.assertNull(globalChangelogClientConfig.getViewName());
+
+    // Setting view name should work as expected
+    globalChangelogClientConfig.setViewName(VIEW_NAME);
+    Assert.assertEquals(globalChangelogClientConfig.getViewName(), VIEW_NAME);
+
+    // reset view name to null through empty string
+    globalChangelogClientConfig.setViewName("");
+    Assert.assertNull(globalChangelogClientConfig.getViewName());
   }
 
   private void setUpMockStoreResponse(D2ControllerClient mockControllerClient, String storeConsumer) {

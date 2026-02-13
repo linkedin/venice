@@ -70,6 +70,7 @@ import com.linkedin.venice.serialization.avro.AvroSpecificStoreDeserializerCache
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -479,7 +480,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           compressor = compressorFactory.createVersionSpecificCompressorIfNotExist(
               version.getCompressionStrategy(),
               topicName,
-              dictionary.array());
+              ByteUtils.extractByteArray(dictionary));
         }
       } else {
         compressor = compressorFactory.getCompressor(version.getCompressionStrategy());

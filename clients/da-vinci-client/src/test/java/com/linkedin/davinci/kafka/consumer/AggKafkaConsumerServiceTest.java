@@ -280,12 +280,29 @@ public class AggKafkaConsumerServiceTest {
 
     Map<PubSubTopicPartition, Long> staleTopicPartitions = new HashMap<>();
     PubSubTopicPartition mockStaleTopicPartition = mock(PubSubTopicPartition.class);
-    String staleTopicName = "noPollTopicName";
+    PubSubTopic mockPubSubTopic = mock(PubSubTopic.class);
+    String staleTopicName = "noPollTopicName_v1";
+    int partitionNumber = 5;
     when(mockStaleTopicPartition.getTopicName()).thenReturn(staleTopicName);
-    when(mockStaleTopicPartition.getPartitionNumber()).thenReturn(0);
+    when(mockStaleTopicPartition.getPartitionNumber()).thenReturn(partitionNumber);
+    when(mockStaleTopicPartition.getPubSubTopic()).thenReturn(mockPubSubTopic);
+    when(mockPubSubTopic.getName()).thenReturn(staleTopicName);
+    when(mockPubSubTopic.toString()).thenReturn(staleTopicName);
     staleTopicPartitions.put(mockStaleTopicPartition, 0L);
     long expectedStaleTimeMs = 20000L;
     when(goodConsumerService.getStaleTopicPartitions(expectedStaleTimeMs - 10000L)).thenReturn(staleTopicPartitions);
+
+    // Mock consumer and ingestion info for consumer name
+    SharedKafkaConsumer mockConsumer = mock(SharedKafkaConsumer.class);
+    when(goodConsumerService.getConsumerAssignedToVersionTopicPartition(mockPubSubTopic, mockStaleTopicPartition))
+        .thenReturn(mockConsumer);
+    String expectedConsumerName = "test-consumer-0";
+    TopicPartitionIngestionInfo mockIngestionInfo =
+        new TopicPartitionIngestionInfo(1000L, 50L, 10.5, 1024.0, expectedConsumerName, 100L, 200L, staleTopicName);
+    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> mockIngestionInfoMap = new HashMap<>();
+    mockIngestionInfoMap.put(mockStaleTopicPartition, mockIngestionInfo);
+    when(goodConsumerService.getIngestionInfoFor(mockPubSubTopic, mockStaleTopicPartition, true))
+        .thenReturn(mockIngestionInfoMap);
 
     Consumer<String> killIngestionTaskRunnable = mock(Consumer.class);
     Runnable repairRunnable = getDetectAndRepairRunnable(
@@ -305,9 +322,24 @@ public class AggKafkaConsumerServiceTest {
     ArgumentCaptor<String> logStringCaptor = ArgumentCaptor.forClass(String.class);
     verify(logger).warn(logStringCaptor.capture());
     String logMessage = logStringCaptor.getValue();
-    Assert.assertTrue(logMessage.contains("Consumer poll tracker found stale topic partitions"));
-    Assert.assertTrue(logMessage.contains(staleTopicName));
-    Assert.assertTrue(logMessage.contains("stale for: " + expectedStaleTimeMs));
+    Assert.assertTrue(
+        logMessage.contains("Consumer poll tracker found stale topic partitions"),
+        "Log should contain warning message prefix");
+    // Verify replica ID format (topicName-partitionNumber)
+    String expectedReplicaId = staleTopicName + "-" + partitionNumber;
+    Assert.assertTrue(
+        logMessage.contains("replica: " + expectedReplicaId),
+        "Log should contain replica ID: " + expectedReplicaId);
+    // Verify consumer name is present
+    Assert.assertTrue(
+        logMessage.contains("consumer: " + expectedConsumerName),
+        "Log should contain consumer name: " + expectedConsumerName);
+    // Verify stale duration
+    Assert.assertTrue(
+        logMessage.contains("stale for: " + expectedStaleTimeMs + "ms"),
+        "Log should contain stale duration");
+    // Verify comma separator is used
+    Assert.assertTrue(logMessage.contains(", replica:"), "Log should use comma separator");
   }
 
   private Runnable getDetectAndRepairRunnable(
