@@ -4,9 +4,37 @@ package com.linkedin.venice.protocols;
 option java_multiple_files = true;
 
 service VeniceReadService {
+  // Existing RPCs (implemented)
   rpc get (VeniceClientRequest) returns (VeniceServerResponse) {}
   rpc batchGet(VeniceClientRequest) returns (VeniceServerResponse) {}
   rpc countByValue(CountByValueRequest) returns (CountByValueResponse) {}
+
+  // New RPCs below are defined for future implementation.
+  // Server-side implementation will be added in subsequent PRs.
+  // TODO: gRPC interceptors (e.g., ACL) currently assume VeniceClientRequest as the inbound
+  // message type. They must be updated to handle these new request types before enabling these RPCs.
+
+  rpc singleGet(SingleGetRequest) returns (SingleGetResponse) {}
+
+  rpc multiGet(MultiGetRequest) returns (MultiKeyResponse) {}
+
+  rpc multiGetStreaming(MultiGetRequest) returns (stream MultiKeyStreamingResponse) {}
+
+  rpc compute(ComputeRequest) returns (MultiKeyResponse) {}
+
+  rpc computeStreaming(ComputeRequest) returns (stream MultiKeyStreamingResponse) {}
+
+  rpc isServerHealthy(HealthCheckRequest) returns (HealthCheckResponse) {}
+
+  rpc getCompressionDictionary(CompressionDictionaryRequest) returns (CompressionDictionaryResponse) {}
+
+  rpc handleAdminRequest(AdminRequest) returns (AdminResponse) {}
+
+  rpc getMetadata(MetadataRequest) returns (MetadataResponse) {}
+
+  rpc getCurrentVersionInfo(CurrentVersionInfoRequest) returns (CurrentVersionInfoResponse) {}
+
+  rpc getIngestionContext(IngestionContextRequest) returns (IngestionContextResponse) {}
 }
 
 message VeniceClientRequest {
@@ -47,4 +75,153 @@ message CountByValueResponse {
 
 message ValueCount {
   map<string, int32> valueToCounts = 1;
+}
+
+/*
+ * Note: The following message formats will be evolved in the future. The current format is used
+ * for the initial implementation and helps refactor the existing code.
+ *
+ * Error handling: Errors are sent via gRPC's onError() mechanism using StatusRuntimeException
+ * with google.rpc.Status. Response messages do not contain errorMessage fields.
+ */
+message SingleGetRequest {
+  string resourceName = 1;
+  uint32 partition = 2;
+  // URL-encoded key string, unlike MultiKeyRequestKey.keyBytes which carries raw serialized bytes.
+  string key = 3;
+  bool isRetryRequest = 4;
+  string keyEncodingType = 5;
+}
+
+message SingleGetResponse {
+  sint32 schemaId = 1;
+  bytes payload = 2;
+  CompressionStrategy compressionStrategy = 3;
+  uint32 responseRCU = 4;
+}
+
+message MultiGetRequest {
+  string resourceName = 1;
+  bool isRetryRequest = 2;
+  // keyCount allows pre-allocating buffers without iterating the repeated keys field.
+  // Servers should validate keyCount == keys.size() if both are set.
+  uint32 keyCount = 3;
+  repeated MultiKeyRequestKey keys = 4;
+  repeated RpcRequestHeader headers = 5;
+}
+
+message MultiKeyRequestKey {
+  int32 keyIndex = 1;
+  uint32 partition = 2;
+  bytes keyBytes = 3;
+}
+
+message ComputeRequest {
+  string resourceName = 1;
+  bytes computeRequestBytes = 2;
+  sint32 computeValueSchemaId = 3;
+  bool isRetryRequest = 4;
+  uint32 apiVersion = 5;
+  // keyCount allows pre-allocating buffers without iterating the repeated keys field.
+  // Servers should validate keyCount == keys.size() if both are set.
+  uint32 keyCount = 6;
+  repeated MultiKeyRequestKey keys = 7;
+  repeated RpcRequestHeader headers = 8;
+}
+
+message MultiKeyResponse {
+  sint32 schemaId = 1;
+  bytes payload = 2;
+  CompressionStrategy compressionStrategy = 3;
+  uint32 responseRCU = 4;
+}
+
+message MultiKeyStreamingResponse {
+  sint32 schemaId = 1;
+  int32 keyIndex = 2;
+  bytes payload = 3;
+  CompressionStrategy compressionStrategy = 4;
+  uint32 responseRCU = 5;
+}
+
+message RpcRequestHeader {
+  string key = 1;
+  string value = 2;
+}
+
+message HealthCheckRequest {
+}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string message = 2;
+}
+
+message CompressionDictionaryRequest {
+  string storeName = 1;
+  uint32 storeVersion = 2;
+}
+
+message CompressionDictionaryResponse {
+  bytes payload = 1;
+}
+
+// Enum corresponding to com.linkedin.venice.compression.CompressionStrategy.
+// Proto values are offset by +1 from the Java enum's getValue() to accommodate proto3's
+// required UNSPECIFIED = 0 default. Mapping: proto_value = java_getValue() + 1.
+// COMPRESSION_STRATEGY_UNSPECIFIED = 0 has no Java equivalent and should be treated as an error.
+enum CompressionStrategy {
+  COMPRESSION_STRATEGY_UNSPECIFIED = 0;
+  NO_OP = 1;
+  GZIP = 2;
+  ZSTD = 3 [deprecated = true];
+  ZSTD_WITH_DICT = 4;
+}
+
+// Enum corresponding to com.linkedin.venice.meta.ServerAdminAction.
+// Proto values are offset by +1 from the Java enum's getValue() to accommodate proto3's
+// required UNSPECIFIED = 0 default. Mapping: proto_value = java_getValue() + 1.
+// SERVER_ADMIN_ACTION_UNSPECIFIED = 0 has no Java equivalent and should be treated as an error.
+enum ServerAdminAction {
+  SERVER_ADMIN_ACTION_UNSPECIFIED = 0;
+  DUMP_INGESTION_STATE = 1;
+  DUMP_SERVER_CONFIGS = 2;
+}
+
+message AdminRequest {
+  string resourceName = 1;
+  optional uint32 partition = 2;
+  ServerAdminAction serverAdminAction = 3;
+}
+
+message AdminResponse {
+  sint32 schemaId = 1;
+  bytes payload = 2;
+}
+
+message CurrentVersionInfoRequest {
+  string storeName = 1;
+}
+
+message CurrentVersionInfoResponse {
+  sint32 currentVersion = 1;
+}
+
+message MetadataRequest {
+  string storeName = 1;
+}
+
+message MetadataResponse {
+  sint32 schemaId = 1;
+  bytes payload = 2;
+}
+
+message IngestionContextRequest {
+  string versionTopicName = 1;
+  string topicName = 2;
+  uint32 partition = 3;
+}
+
+message IngestionContextResponse {
+  bytes payload = 1;
 }
