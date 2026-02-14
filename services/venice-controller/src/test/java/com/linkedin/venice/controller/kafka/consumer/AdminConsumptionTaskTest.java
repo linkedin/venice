@@ -79,6 +79,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
@@ -122,7 +123,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -357,6 +357,57 @@ public class AdminConsumptionTaskTest {
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test
+  public void testSyncNumericOffsetFromPositionWithKafkaPosition() {
+    // Test that syncNumericOffsetFromPosition correctly extracts and sets numeric offsets
+    // from ApacheKafkaOffsetPosition instances
+    ApacheKafkaOffsetPosition kafkaPosition = new ApacheKafkaOffsetPosition(42L);
+    AdminMetadata metadata = new AdminMetadata();
+
+    // Test setting local offset
+    AdminConsumptionTask.syncNumericOffsetFromPosition(metadata, kafkaPosition, false);
+    Assert.assertEquals(Long.valueOf(42L), metadata.getOffset(), "Should set local offset from Kafka position");
+
+    // Test setting upstream offset
+    ApacheKafkaOffsetPosition upstreamKafkaPosition = new ApacheKafkaOffsetPosition(100L);
+    AdminConsumptionTask.syncNumericOffsetFromPosition(metadata, upstreamKafkaPosition, true);
+    Assert.assertEquals(
+        Long.valueOf(100L),
+        metadata.getUpstreamOffset(),
+        "Should set upstream offset from Kafka position");
+  }
+
+  @Test
+  public void testSyncNumericOffsetFromPositionWithNonKafkaPosition() {
+    // Test that syncNumericOffsetFromPosition does not modify offsets for non-Kafka positions
+    InMemoryPubSubPosition inMemoryPosition = InMemoryPubSubPosition.of(50L);
+    AdminMetadata metadata = new AdminMetadata();
+    metadata.setOffset(-1L);
+    metadata.setUpstreamOffset(-1L);
+
+    // Should not modify offset for InMemoryPubSubPosition
+    AdminConsumptionTask.syncNumericOffsetFromPosition(metadata, inMemoryPosition, false);
+    Assert
+        .assertEquals(Long.valueOf(-1L), metadata.getOffset(), "Should not modify local offset for non-Kafka position");
+
+    AdminConsumptionTask.syncNumericOffsetFromPosition(metadata, inMemoryPosition, true);
+    Assert.assertEquals(
+        Long.valueOf(-1L),
+        metadata.getUpstreamOffset(),
+        "Should not modify upstream offset for non-Kafka position");
+  }
+
+  @Test
+  public void testSyncNumericOffsetFromPositionWithNullPosition() {
+    // Test that syncNumericOffsetFromPosition handles null position gracefully
+    AdminMetadata metadata = new AdminMetadata();
+    metadata.setOffset(-1L);
+
+    // Should not throw or modify for null position
+    AdminConsumptionTask.syncNumericOffsetFromPosition(metadata, null, false);
+    Assert.assertEquals(Long.valueOf(-1L), metadata.getOffset(), "Should not modify offset for null position");
   }
 
   @Test(timeOut = TIMEOUT)
@@ -1016,9 +1067,8 @@ public class AdminConsumptionTaskTest {
           AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
       final long executionId = i;
       TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName).toLegacyMap();
-        return AdminTopicMetadataAccessor.getOffsets(metaData).getFirst() == executionId
-            && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
+        AdminMetadata metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+        return AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
       });
 
       Assert.assertEquals(
@@ -1056,9 +1106,8 @@ public class AdminConsumptionTaskTest {
           pubSubMessageHeaders);
       final long executionId = i;
       TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName).toLegacyMap();
-        return AdminTopicMetadataAccessor.getOffsets(metaData).getFirst() == executionId
-            && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
+        AdminMetadata metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+        return AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
       });
 
       Assert.assertEquals(
