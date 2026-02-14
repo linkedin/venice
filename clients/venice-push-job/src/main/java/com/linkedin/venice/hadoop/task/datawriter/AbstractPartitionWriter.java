@@ -9,9 +9,13 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEG
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
@@ -47,6 +51,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -243,6 +248,11 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private final Lazy<CompressorFactory> compressorFactory = Lazy.of(CompressorFactory::new);
   private Lazy<VeniceCompressor> compressor;
 
+  // Incremental push write quota throttlers
+  private boolean isIncrementalPush = false;
+  private EventThrottler recordsThrottler = null;
+  private long totalThrottleTimeMs = 0;
+
   /**
    * Compute engines will kill a task if it's inactive for a configured time. This time might be is too short for the
    * partition writers to retry sending messages and too short for Venice and Kafka team to mitigate write-path
@@ -424,10 +434,51 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     if (veniceWriter == null) {
       veniceWriter = createBasicVeniceWriter();
     }
+    // Apply throttling for incremental pushes if enabled
+    maybeThrottleIncrementalPush(dataWriterTaskTracker);
     writerConsumer.accept(veniceWriter);
     messageSent++;
     telemetry();
     dataWriterTaskTracker.trackRecordSentToPubSub();
+  }
+
+  /**
+   * Apply throttling for incremental pushes based on configured write quotas.
+   * This method will block if the write rate exceeds the configured quota.
+   */
+  private void maybeThrottleIncrementalPush(DataWriterTaskTracker dataWriterTaskTracker) {
+    if (recordsThrottler == null) {
+      return;
+    }
+
+    long startTime = System.currentTimeMillis();
+    recordsThrottler.maybeThrottle(1);
+    long throttleTime = System.currentTimeMillis() - startTime;
+    if (throttleTime > 0) {
+      totalThrottleTimeMs += throttleTime;
+      dataWriterTaskTracker.trackIncrementalPushThrottledTime(throttleTime);
+      if (messageSent % telemetryMessageInterval == 0) {
+        LOGGER.info(
+            "Incremental push throttling active: throttled for {} ms this interval, total throttle time: {} ms",
+            throttleTime,
+            totalThrottleTimeMs);
+      }
+    }
+  }
+
+  @VisibleForTesting
+  boolean isIncrementalPushThrottlingEnabled() {
+    return isIncrementalPush && recordsThrottler != null;
+  }
+
+  @VisibleForTesting
+  EventThrottler getRecordsThrottler() {
+    return recordsThrottler;
+  }
+
+  @VisibleForTesting
+  void invokeThrottleForTesting(DataWriterTaskTracker tracker) {
+    maybeThrottleIncrementalPush(tracker);
   }
 
   protected AbstractVeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter() {
@@ -662,6 +713,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       this.rmdSchema = AvroCompatibilityHelper.parse(props.getString(RMD_SCHEMA_PROP));
     }
     initStorageQuotaFields(props);
+    initIncrementalPushThrottlers(props);
     /**
      * A dummy background task that reports progress every 5 minutes.
      */
@@ -722,6 +774,46 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       exceedQuota = false;
     } else {
       exceedQuota = inputStorageQuotaTracker.exceedQuota(getTotalIncomingDataSizeInBytes());
+    }
+  }
+
+  /**
+   * Initialize throttlers for incremental push write quota enforcement.
+   * Throttlers are only created if this is an incremental push writing to the regular RT topic
+   * (not a separate real-time topic) and write quota is enabled.
+   */
+  private void initIncrementalPushThrottlers(VeniceProperties props) {
+    this.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
+    if (!isIncrementalPush) {
+      return;
+    }
+
+    // Skip throttling for incremental pushes writing to a separate real-time topic.
+    // Separate RT topics have their own ingestion path and don't need push-job-side throttling.
+    boolean pushToSeparateRealtimeTopic = props.getBoolean(PUSH_TO_SEPARATE_REALTIME_TOPIC, false);
+    if (pushToSeparateRealtimeTopic) {
+      LOGGER.info("Incremental push write quota throttling is skipped for separate real-time topic pushes");
+      return;
+    }
+
+    long recordsPerSecond = props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, -1);
+    long timeWindowMs = props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, 1000);
+
+    String storeName = Version.parseStoreFromKafkaTopicName(props.getString(TOPIC_PROP));
+
+    // Create records throttler if quota is set (> 0)
+    if (recordsPerSecond > 0) {
+      this.recordsThrottler = new EventThrottler(
+          recordsPerSecond,
+          timeWindowMs,
+          storeName + "_incremental_push_records_throttler",
+          false,
+          EventThrottler.BLOCK_STRATEGY);
+      LOGGER.info(
+          "Initialized incremental push records throttler for store {}: {} records/sec, time window: {} ms",
+          storeName,
+          recordsPerSecond,
+          timeWindowMs);
     }
   }
 
