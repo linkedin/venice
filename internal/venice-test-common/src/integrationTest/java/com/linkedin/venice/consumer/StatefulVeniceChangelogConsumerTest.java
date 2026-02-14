@@ -1,6 +1,7 @@
 package com.linkedin.venice.consumer;
 
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
@@ -63,7 +64,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.endToEnd.TestChangelogKey;
 import com.linkedin.venice.endToEnd.TestChangelogValue;
 import com.linkedin.venice.endToEnd.TestChangelogValueV2;
-import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -111,6 +111,7 @@ public class StatefulVeniceChangelogConsumerTest {
   private D2Client d2Client;
   private MetricsRepository metricsRepository;
   private String zkAddress;
+  private Properties consumerProperties;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -141,6 +142,13 @@ public class StatefulVeniceChangelogConsumerTest {
 
     metricsRepository = getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
 
+    consumerProperties = new Properties();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, clusterWrapper.getPubSubBrokerWrapper().getAddress());
+    consumerProperties.put(CLUSTER_NAME, clusterName);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
+    consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
+    consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
+
     deleteWithRmdKeyIndex.id = 1000;
   }
 
@@ -155,16 +163,11 @@ public class StatefulVeniceChangelogConsumerTest {
     String storeName = Utils.getUniqueString("store");
     String inputDirPath = setUpStore(storeName);
 
-    PubSubBrokerWrapper localKafka = clusterWrapper.getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
-    consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
-    consumerProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
+    Properties testConsumerProperties = new Properties();
+    testConsumerProperties.putAll(consumerProperties);
+    testConsumerProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
     ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+        new ChangelogClientConfig().setConsumerProperties(testConsumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setLocalD2ZkHosts(zkAddress)
@@ -359,33 +362,28 @@ public class StatefulVeniceChangelogConsumerTest {
       port2 = TestUtils.getFreePort();
     }
 
-    PubSubBrokerWrapper localKafka = clusterWrapper.getPubSubBrokerWrapper();
-    String localKafkaUrl = localKafka.getAddress();
-    Properties consumerProperties = new Properties();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
-    consumerProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
-    consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port1);
-    consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port2);
-    consumerProperties.put(BLOB_TRANSFER_SSL_ENABLED, true);
-    consumerProperties.put(BLOB_TRANSFER_ACL_ENABLED, true);
+    Properties testConsumerProperties = new Properties();
+    testConsumerProperties.putAll(consumerProperties);
+    testConsumerProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
+    testConsumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port1);
+    testConsumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port2);
+    testConsumerProperties.put(BLOB_TRANSFER_SSL_ENABLED, true);
+    testConsumerProperties.put(BLOB_TRANSFER_ACL_ENABLED, true);
 
     String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
-    consumerProperties.put(SSL_KEYSTORE_TYPE, "JKS");
-    consumerProperties.put(SSL_KEYSTORE_LOCATION, keyStorePath);
-    consumerProperties.put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD);
-    consumerProperties.put(SSL_TRUSTSTORE_TYPE, "JKS");
-    consumerProperties.put(SSL_TRUSTSTORE_LOCATION, keyStorePath);
-    consumerProperties.put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD);
-    consumerProperties.put(SSL_KEY_PASSWORD, LOCAL_PASSWORD);
-    consumerProperties.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
-    consumerProperties.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
-    consumerProperties.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
-    consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
+    testConsumerProperties.put(SSL_KEYSTORE_TYPE, "JKS");
+    testConsumerProperties.put(SSL_KEYSTORE_LOCATION, keyStorePath);
+    testConsumerProperties.put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD);
+    testConsumerProperties.put(SSL_TRUSTSTORE_TYPE, "JKS");
+    testConsumerProperties.put(SSL_TRUSTSTORE_LOCATION, keyStorePath);
+    testConsumerProperties.put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD);
+    testConsumerProperties.put(SSL_KEY_PASSWORD, LOCAL_PASSWORD);
+    testConsumerProperties.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
+    testConsumerProperties.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
+    testConsumerProperties.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
 
     ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+        new ChangelogClientConfig().setConsumerProperties(testConsumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setLocalD2ZkHosts(zkAddress)
@@ -416,7 +414,7 @@ public class StatefulVeniceChangelogConsumerTest {
           ChangelogConsumerDaVinciRecordTransformerUserApp.class,
           inputDirPath2,
           zkAddress,
-          localKafkaUrl,
+          clusterWrapper.getPubSubBrokerWrapper().getAddress(),
           clusterName,
           storeName,
           Integer.toString(port2),
@@ -482,13 +480,6 @@ public class StatefulVeniceChangelogConsumerTest {
     String storeName = Utils.getUniqueString("store");
     String inputDirPath = setUpStore(storeName);
 
-    PubSubBrokerWrapper localKafka = clusterWrapper.getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
     ChangelogClientConfig globalChangelogClientConfig =
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
@@ -575,33 +566,28 @@ public class StatefulVeniceChangelogConsumerTest {
       port2 = TestUtils.getFreePort();
     }
 
-    PubSubBrokerWrapper localKafka = clusterWrapper.getPubSubBrokerWrapper();
-    String localKafkaUrl = localKafka.getAddress();
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
-    consumerProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
-    consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port1);
-    consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port2);
-    consumerProperties.put(BLOB_TRANSFER_SSL_ENABLED, true);
-    consumerProperties.put(BLOB_TRANSFER_ACL_ENABLED, true);
+    Properties testConsumerProperties = new Properties();
+    testConsumerProperties.putAll(consumerProperties);
+    testConsumerProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
+    testConsumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port1);
+    testConsumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port2);
+    testConsumerProperties.put(BLOB_TRANSFER_SSL_ENABLED, true);
+    testConsumerProperties.put(BLOB_TRANSFER_ACL_ENABLED, true);
 
     String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
-    consumerProperties.put(SSL_KEYSTORE_TYPE, "JKS");
-    consumerProperties.put(SSL_KEYSTORE_LOCATION, keyStorePath);
-    consumerProperties.put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD);
-    consumerProperties.put(SSL_TRUSTSTORE_TYPE, "JKS");
-    consumerProperties.put(SSL_TRUSTSTORE_LOCATION, keyStorePath);
-    consumerProperties.put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD);
-    consumerProperties.put(SSL_KEY_PASSWORD, LOCAL_PASSWORD);
-    consumerProperties.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
-    consumerProperties.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
-    consumerProperties.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+    testConsumerProperties.put(SSL_KEYSTORE_TYPE, "JKS");
+    testConsumerProperties.put(SSL_KEYSTORE_LOCATION, keyStorePath);
+    testConsumerProperties.put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD);
+    testConsumerProperties.put(SSL_TRUSTSTORE_TYPE, "JKS");
+    testConsumerProperties.put(SSL_TRUSTSTORE_LOCATION, keyStorePath);
+    testConsumerProperties.put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD);
+    testConsumerProperties.put(SSL_KEY_PASSWORD, LOCAL_PASSWORD);
+    testConsumerProperties.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
+    testConsumerProperties.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
+    testConsumerProperties.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
 
     ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+        new ChangelogClientConfig().setConsumerProperties(testConsumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setLocalD2ZkHosts(zkAddress)
@@ -636,7 +622,7 @@ public class StatefulVeniceChangelogConsumerTest {
           ChangelogConsumerDaVinciRecordTransformerUserApp.class,
           inputDirPath2,
           zkAddress,
-          localKafkaUrl,
+          clusterWrapper.getPubSubBrokerWrapper().getAddress(),
           clusterName,
           storeName,
           Integer.toString(port2),

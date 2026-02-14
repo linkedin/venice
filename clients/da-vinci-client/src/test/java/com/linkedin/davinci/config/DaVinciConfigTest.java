@@ -101,4 +101,22 @@ public class DaVinciConfigTest {
     assertNotNull(config.getRecordTransformerConfig());
   }
 
+  @Test
+  public void testDisableBlockCacheDefaultsToFalse() {
+    DaVinciConfig config = new DaVinciConfig();
+    assertFalse(config.isDisableBlockCache(), "disableBlockCache should default to false");
+  }
+
+  @Test
+  public void testDisableBlockCacheSetterGetter() {
+    DaVinciConfig config = new DaVinciConfig();
+    assertFalse(config.isDisableBlockCache());
+
+    config.setDisableBlockCache(true);
+    assertTrue(config.isDisableBlockCache());
+
+    config.setDisableBlockCache(false);
+    assertFalse(config.isDisableBlockCache());
+  }
+
 }

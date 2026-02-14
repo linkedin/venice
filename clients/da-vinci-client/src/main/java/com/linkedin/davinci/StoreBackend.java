@@ -212,6 +212,12 @@ public class StoreBackend {
         positionMap.put(partition, PubSubSymbolicPosition.LATEST);
       }
       checkpointInfo.setPositionMap(positionMap);
+    } else if (checkpointInfo != null && checkpointInfo.isSeekToBeginningOfPush()) {
+      Map<Integer, PubSubPosition> positionMap = new HashMap<>();
+      for (int partition: partitionList) {
+        positionMap.put(partition, PubSubSymbolicPosition.EARLIEST);
+      }
+      checkpointInfo.setPositionMap(positionMap);
     }
     return daVinciCurrentVersion.subscribe(partitions, checkpointInfo).exceptionally(e -> {
       synchronized (this) {

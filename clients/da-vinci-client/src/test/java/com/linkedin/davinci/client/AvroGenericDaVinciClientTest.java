@@ -19,6 +19,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -36,6 +37,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.schemas.TestValueRecord;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.StoreDisabledException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
@@ -537,6 +539,44 @@ public class AvroGenericDaVinciClientTest {
   }
 
   @Test
+  public void testSeekToBeginningOfPush() throws Exception {
+    // Setup
+    ClientConfig clientConfig = new ClientConfig(storeName);
+    AvroGenericSeekableDaVinciClient<Integer, String> dvcClient =
+        (AvroGenericSeekableDaVinciClient<Integer, String>) setUpSeekableClient(clientConfig, true);
+
+    // Mock backend
+    StoreBackend mockStoreBackend = mock(StoreBackend.class);
+    // Mock the seek method
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
+        .seekToCheckpoint(any(DaVinciSeekCheckpointInfo.class), eq(Optional.empty()));
+    doReturn(true).when(dvcClient).isReady();
+    when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
+    // Test
+    CompletableFuture<Void> future = dvcClient.seekToBeginningOfPush(Collections.singleton(1));
+    future.get(); // Wait for completion
+    // Verify
+    verify(dvcClient).seekToBeginningOfPush(Collections.singleton(1));
+    assertTrue(future.isDone() && !future.isCompletedExceptionally());
+  }
+
+  @Test
+  public void testSeekToBeginningOfPushWhenNotReady() throws Exception {
+    // Setup
+    ClientConfig clientConfig = new ClientConfig(storeName);
+    AvroGenericSeekableDaVinciClient<Integer, String> dvcClient =
+        (AvroGenericSeekableDaVinciClient<Integer, String>) setUpSeekableClient(clientConfig, true);
+
+    // Test and verify exception
+    try {
+      CompletableFuture<Void> future = dvcClient.seekToBeginningOfPush(Collections.emptySet());
+      future.get();
+      fail("Expected VeniceClientException to be thrown when client is not ready");
+    } catch (VeniceClientException e) {
+    }
+  }
+
+  @Test
   public void testSeekToTailWhenNotReady() throws Exception {
     // Setup
     ClientConfig clientConfig = new ClientConfig(storeName);
@@ -578,5 +618,24 @@ public class AvroGenericDaVinciClientTest {
       fail("Expected exception to be thrown");
     } catch (VeniceClientException e) {
     }
+  }
+
+  @Test
+  public void testDaVinciSeekCheckpointInfoSeekToBeginningOfPush() {
+    DaVinciSeekCheckpointInfo info = new DaVinciSeekCheckpointInfo(null, null, null, false, true);
+    assertTrue(info.isSeekToBeginningOfPush());
+    assertFalse(info.isSeekToTail());
+  }
+
+  @Test
+  public void testDaVinciSeekCheckpointInfoMutualExclusion() {
+    assertThrows(VeniceException.class, () -> new DaVinciSeekCheckpointInfo(null, null, null, true, true));
+  }
+
+  @Test
+  public void testDaVinciSeekCheckpointInfoBackwardCompatibility() {
+    DaVinciSeekCheckpointInfo info = new DaVinciSeekCheckpointInfo(null, null, null, false);
+    assertFalse(info.isSeekToBeginningOfPush());
+    assertFalse(info.isSeekToTail());
   }
 }
