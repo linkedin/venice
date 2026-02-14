@@ -3672,8 +3672,15 @@ public class VeniceParentHelixAdmin implements Admin {
       final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
       Schema existingValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
 
+      // Update superset schema if:
+      // 1. Compute is enabled (existing behavior), OR
+      // 2. A superset schema already exists (always keep it updated even if compute is disabled)
+      // Check if a superset schema already exists for this store
       final boolean doUpdateSupersetSchemaID;
-      if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
+      boolean supersetSchemaAlreadyExists =
+          store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID;
+      if (existingValueSchema != null
+          && (store.isReadComputationEnabled() || store.isWriteComputationEnabled() || supersetSchemaAlreadyExists)) {
         SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
         Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();

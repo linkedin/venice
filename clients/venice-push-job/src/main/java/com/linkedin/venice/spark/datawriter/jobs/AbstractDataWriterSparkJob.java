@@ -97,10 +97,13 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.UUID;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -436,6 +439,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       StructType schema = dataFrame.schema();
       ExpressionEncoder<Row> encoder = RowEncoder.apply(schema);
 
+      final LongAccumulator ttlFilteredAcc = accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter;
+
       // Apply filter using mapPartitions for efficiency (one filter instance per partition)
       dataFrame = dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
         SparkKafkaInputTTLFilter ttlFilter =
@@ -457,7 +462,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
             if (shouldRemove) {
               // Increment counter for filtered records
-              accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter.add(1);
+              ttlFilteredAcc.add(1);
             }
 
             return !shouldRemove; // Keep if NOT filtered
@@ -575,6 +580,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     ExpressionEncoder<Row> encoder = RowEncoder.apply(DEFAULT_SCHEMA_WITH_SCHEMA_ID);
 
+    final LongAccumulator emptyRecordAcc = accumulatorsForDataWriterJob.emptyRecordCounter;
+
     dataFrame = dataFrame
         // Group by key
         .groupByKey((MapFunction<Row, byte[]>) row -> row.getAs(KEY_COLUMN_NAME), Encoders.BINARY())
@@ -602,7 +609,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
           if (assembled == null) {
             // Latest record is DELETE, chunks incomplete, or filtered by TTL
-            accumulatorsForDataWriterJob.emptyRecordCounter.add(1);
+            emptyRecordAcc.add(1);
             return Collections.emptyIterator();
           }
 
@@ -842,8 +849,22 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
 
     validateDataFrameFieldAndTypes(fields, dataSchema, RMD_COLUMN_NAME, DataTypes.BinaryType);
 
+    // For KIF repush, the DataFrame may contain Venice internal columns (defined in SparkConstants)
+    // needed for chunk assembly. These are consumed by applyChunkAssembly() and dropped in runComputeJob().
+    Set<String> allowedInternalColumns = new HashSet<>();
+    PushJobSetting setting = getPushJobSetting();
+    if (setting != null && setting.isSourceKafka) {
+      allowedInternalColumns.addAll(
+          Arrays.asList(
+              SCHEMA_ID_COLUMN_NAME,
+              RMD_VERSION_ID_COLUMN_NAME,
+              OFFSET_COLUMN_NAME,
+              MESSAGE_TYPE_COLUMN_NAME,
+              CHUNKED_KEY_SUFFIX_COLUMN_NAME));
+    }
+
     for (StructField field: fields) {
-      if (field.name().startsWith("_")) {
+      if (field.name().startsWith("_") && !allowedInternalColumns.contains(field.name())) {
         String errorMessage = String
             .format("The provided input must not have fields that start with an underscore. Got: %s", field.name());
         throw new VeniceInvalidInputException(errorMessage);

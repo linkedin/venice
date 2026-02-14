@@ -156,6 +156,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
@@ -491,6 +492,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
   private final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
+  private final Optional<ExternalETLService> externalETLService;
 
   // Test only.
   public VeniceHelixAdmin(
@@ -500,7 +502,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubTopicRepository pubSubTopicRepository,
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
-      Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener) {
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<ExternalETLService> externalETLService) {
     this(
         multiClusterConfigs,
         metricsRepository,
@@ -515,7 +518,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pubSubClientsFactory,
         pubSubPositionTypeRegistry,
         Collections.EMPTY_LIST,
-        versionLifecycleEventListener);
+        versionLifecycleEventListeners,
+        externalETLService);
   }
 
   // TODO Use different configs for different clusters when creating helix admin.
@@ -533,7 +537,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines,
-      Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener) {
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<ExternalETLService> externalETLService) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
     this.logContext = multiClusterConfigs.getLogContext();
@@ -803,7 +808,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         realTimeTopicSwitcher,
         accessController,
         helixAdminClient,
-        versionLifecycleEventListener);
+        versionLifecycleEventListeners);
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
       if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
@@ -879,6 +884,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
 
     pushJobUserErrorCheckpoints = commonConfig.getPushJobUserErrorCheckpoints();
+    this.externalETLService = externalETLService;
   }
 
   private Set<RepushCandidateFilter> getRepushCandidateFiltersFromControllerConfig(
@@ -6094,6 +6100,36 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           store.setEtlStoreConfig(etlStoreConfig);
           return store;
         });
+        if (externalETLService.isPresent() && !isParent() && etlStrategy.isPresent()
+            && etlStrategy.get() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER) {
+          ETLStoreConfig oldETLStoreConfig = originalStore.getEtlStoreConfig();
+          boolean firstTimeEnablingETLWithVeniceTrigger = oldETLStoreConfig == null
+              || oldETLStoreConfig.getETLStrategy() != VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER;
+          boolean isSourceCluster = !originalStore.isMigrating();
+          if (!isSourceCluster) {
+            isSourceCluster = getHelixVeniceClusterResources(clusterName).isSourceCluster(clusterName, storeName);
+          }
+          if (firstTimeEnablingETLWithVeniceTrigger && isSourceCluster) {
+            // This is first time setting ETL strategy to EXTERNAL_WITH_VENICE_TRIGGER, so trigger ETL for all relevant
+            // store versions (current and future).
+            onboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
+          }
+        }
+        if (externalETLService.isPresent() && !isParent() && etlStrategy.isPresent()
+            && etlStrategy.get() == VeniceETLStrategy.EXTERNAL_SERVICE) {
+          ETLStoreConfig oldETLStoreConfig = originalStore.getEtlStoreConfig();
+          boolean firstTimeDisablingETLWithVeniceTrigger = oldETLStoreConfig != null
+              && oldETLStoreConfig.getETLStrategy() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER;
+          boolean isSourceCluster = !originalStore.isMigrating();
+          if (!isSourceCluster) {
+            isSourceCluster = getHelixVeniceClusterResources(clusterName).isSourceCluster(clusterName, storeName);
+          }
+          if (firstTimeDisablingETLWithVeniceTrigger && isSourceCluster) {
+            // This is first time changing ETL strategy from EXTERNAL_WITH_VENICE_TRIGGER to EXTERNAL_SERVICE,
+            // so offboard ETL for all relevant store versions (current and future).
+            offboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
+          }
+        }
       }
       if (backupVersionRetentionMs.isPresent()) {
         setBackupVersionRetentionMs(clusterName, storeName, backupVersionRetentionMs.get());
@@ -6259,6 +6295,78 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           e.getClass().getSimpleName());
       throw e;
+    }
+  }
+
+  private void onboardETLForExistingStoreVersion(Store store) {
+    performETLOperationForStoreVersions(
+        store,
+        "Onboarding",
+        "onboarded",
+        (s, v) -> externalETLService.get().onboardETL(s, v));
+  }
+
+  private void offboardETLForExistingStoreVersion(Store store) {
+    performETLOperationForStoreVersions(
+        store,
+        "Offboarding",
+        "offboarded",
+        (s, v) -> externalETLService.get().offboardETL(s, v));
+  }
+
+  /**
+   * Performs ETL operations (onboarding or offboarding) for relevant store versions.
+   * This includes the current version and the largest in-progress version if it exists.
+   *
+   * @param store the store to perform ETL operations on
+   * @param operationVerb the verb describing the operation in present progressive tense (e.g., "Triggering", "Offboarding")
+   * @param operationPastParticiple the past participle of the operation (e.g., "triggered", "offboarded")
+   * @param etlOperation the ETL operation to perform (e.g., onboardETL or offboardETL)
+   */
+  private void performETLOperationForStoreVersions(
+      Store store,
+      String operationVerb,
+      String operationPastParticiple,
+      java.util.function.BiConsumer<Store, Version> etlOperation) {
+    if (!externalETLService.isPresent()) {
+      // Defensive coding
+      throw new VeniceException("External ETL service is not initialized");
+    }
+    int currentVersion = store.getCurrentVersion();
+    // Find the largest in-progress version greater than current version
+    Version largestInProgressVersion = null;
+    for (Version version: store.getVersions()) {
+      if (version.getNumber() > currentVersion
+          && (version.getStatus() == VersionStatus.STARTED || version.getStatus() == PUSHED)) {
+        if (largestInProgressVersion == null || version.getNumber() > largestInProgressVersion.getNumber()) {
+          largestInProgressVersion = version;
+        }
+      }
+    }
+
+    // Perform ETL operation for current version
+    if (currentVersion > NON_EXISTING_VERSION) {
+      LOGGER.info("{} ETL job for store: {} current version: {}", operationVerb, store.getName(), currentVersion);
+      etlOperation.accept(store, store.getVersion(currentVersion));
+      LOGGER.info(
+          "Successfully {} ETL job for store: {} current version: {}",
+          operationPastParticiple,
+          store.getName(),
+          currentVersion);
+    }
+    // Perform ETL operation for the largest in-progress version if it exists
+    if (largestInProgressVersion != null) {
+      LOGGER.info(
+          "{} ETL job for store: {} future version: {}",
+          operationVerb,
+          store.getName(),
+          largestInProgressVersion.getNumber());
+      etlOperation.accept(store, largestInProgressVersion);
+      LOGGER.info(
+          "Successfully {} ETL job for store: {} future version: {}",
+          operationPastParticiple,
+          store.getName(),
+          largestInProgressVersion.getNumber());
     }
   }
 

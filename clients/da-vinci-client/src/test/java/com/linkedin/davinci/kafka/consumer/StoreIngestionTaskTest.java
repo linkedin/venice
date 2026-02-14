@@ -81,10 +81,12 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.helix.StateModelIngestionProgressNotifier;
 import com.linkedin.davinci.ingestion.LagType;
@@ -174,6 +176,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -225,6 +228,8 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -545,6 +550,8 @@ public abstract class StoreIngestionTaskTest {
     when(storeInfo.getName()).thenReturn(storeNameWithoutVersionInfo);
     when(storeInfo.getHybridStoreConfig().getRealTimeTopicName())
         .thenReturn(Utils.composeRealTimeTopic(storeNameWithoutVersionInfo));
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(mockStorageService)
+        .getRefCountedStorageEngine(anyString());
 
     mockLogNotifier = mock(LogNotifier.class);
     mockNotifierProgress = new ArrayList<>();
@@ -2313,7 +2320,7 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
 
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
-      storeIngestionTaskUnderTest.setSkipValidationForSeekableClientEnabled();
+      storeIngestionTaskUnderTest.setSkipValidationsForDaVinciClientEnabled();
       ArgumentCaptor<InMemoryPubSubPosition> positionCaptor = ArgumentCaptor.forClass(InMemoryPubSubPosition.class);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
@@ -5914,6 +5921,40 @@ public abstract class StoreIngestionTaskTest {
         "If the partition has messages in it, and we consumed some of them, we expect lag to equal the unconsumed message count.");
   }
 
+  @Test
+  public void testMeasureLagWithCallToPubSubWhenTopicDoesNotExist() {
+    final PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    final InMemoryPubSubPosition endPosition = InMemoryPubSubPosition.of(10L);
+    final String PUB_SUB_SERVER_NAME = "blah";
+
+    TopicManager throwingTopicManager = mock(TopicManager.class);
+    doReturn(endPosition).when(throwingTopicManager).getLatestPositionCached(partition);
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .diffPosition(any(), any(), any());
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .countRecordsUntil(any(), any());
+
+    // Case 1: Non-EARLIEST position -> diffPosition throws
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            partition,
+            InMemoryPubSubPosition.of(3L),
+            s -> throwingTopicManager),
+        Long.MAX_VALUE,
+        "When diffPosition throws PubSubTopicDoesNotExistException, we expect Long.MAX_VALUE.");
+
+    // Case 2: EARLIEST position -> countRecordsUntil throws
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            partition,
+            PubSubSymbolicPosition.EARLIEST,
+            s -> throwingTopicManager),
+        Long.MAX_VALUE,
+        "When countRecordsUntil throws PubSubTopicDoesNotExistException, we expect Long.MAX_VALUE.");
+  }
+
   /**
    * When SIT encounters a corrupted {@link OffsetRecord} in {@link StoreIngestionTask#processCommonConsumerAction} and
    * {@link StorageMetadataService#getLastOffset} throws an exception due to a deserialization error,
@@ -6444,6 +6485,48 @@ public abstract class StoreIngestionTaskTest {
     shutdownExecutor.shutdown();
   }
 
+  @Test
+  public void testSkipValidationForSeekableClientEnabled() throws Exception {
+    // Test 1: Non-CDC client with non-view topic should NOT skip validation
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      assertFalse(
+          storeIngestionTaskUnderTest.shouldSkipValidationsForDaVinciClientEnabled(),
+          "Non-CDC client with regular topic should not skip validation");
+    }, AA_OFF);
+
+    // Test 2: CDC client with non-view topic should NOT skip validation
+    StoreIngestionTaskTestConfig cdcNonViewConfig =
+        new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+          assertFalse(
+              storeIngestionTaskUnderTest.shouldSkipValidationsForDaVinciClientEnabled(),
+              "CDC client with non-view topic should not skip validation");
+        }, AA_OFF);
+
+    DaVinciRecordTransformerConfig cdcRecordTransformerConfig = buildCdcRecordTransformerConfig();
+    cdcNonViewConfig.setRecordTransformerConfig(cdcRecordTransformerConfig);
+
+    runTest(cdcNonViewConfig);
+
+    // Test 3: CDC client with materialized view topic SHOULD skip validation
+    // This test uses a real materialized view topic name by overriding the store version name in config
+    StoreIngestionTaskTestConfig cdcMaterializedViewConfig =
+        new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+          assertTrue(
+              storeIngestionTaskUnderTest.shouldSkipValidationsForDaVinciClientEnabled(),
+              "CDC client with materialized view topic should skip validation");
+        }, AA_OFF);
+
+    cdcMaterializedViewConfig.setRecordTransformerConfig(cdcRecordTransformerConfig).setDaVinci(true);
+    // Override the store version config to use a materialized view topic name
+    cdcMaterializedViewConfig.setStoreVersionConfigOverride(storeVersionConfig -> {
+      String materializedViewTopicName = storeNameWithoutVersionInfo + "_v1" + VeniceView.VIEW_NAME_SEPARATOR
+          + "testView" + MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX;
+      doReturn(materializedViewTopicName).when(storeVersionConfig).getStoreVersionName();
+    });
+
+    runTest(cdcMaterializedViewConfig);
+  }
+
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
     // mock the store config
@@ -6487,6 +6570,35 @@ public abstract class StoreIngestionTaskTest {
         .setOutputValueClass(String.class)
         .setOutputValueSchema(myValueSchema)
         .setRecordTransformationEnabled(isRecordTransformationEnabled)
+        .build();
+  }
+
+  /**
+   * Builds a CDC record transformer config that returns a mock CDC transformer.
+   * This is used to test logic that depends on isCDCRecordTransformer() returning true.
+   */
+  private DaVinciRecordTransformerConfig buildCdcRecordTransformerConfig() {
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = new SchemaEntry(SCHEMA_ID, myKeySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry valueSchemaEntry = new SchemaEntry(SCHEMA_ID, myValueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
+
+    // Create a mock CDC transformer that will return true for isCDCRecordTransformer()
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer mockCdcTransformer =
+        mock(VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer.class);
+
+    // Mock the function to return the CDC transformer
+    DaVinciRecordTransformerFunctionalInterface cdcTransformerFunction =
+        (storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> mockCdcTransformer;
+
+    return new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(cdcTransformerFunction)
+        .setOutputValueClass(String.class)
+        .setOutputValueSchema(myValueSchema)
+        .setRecordTransformationEnabled(false)
         .build();
   }
 
