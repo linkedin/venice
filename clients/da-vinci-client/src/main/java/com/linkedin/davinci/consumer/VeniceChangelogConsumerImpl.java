@@ -62,7 +62,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
-import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -1552,12 +1551,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 : Collections.emptyList();
           }
 
-          if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
-            currentVersionHighWatermarks
-                .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
-            currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
-                .put(upstreamPartition, highWatermarkOffsets);
-          }
+          currentVersionHighWatermarks
+              .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
+          currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
+              .put(upstreamPartition, highWatermarkOffsets);
           switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
           chunkAssembler.clearBuffer();
 
@@ -1642,13 +1639,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       List<Long> recordCheckpointVector,
       PubSubTopicPartition pubSubTopicPartition,
       Integer upstreamPartition) {
-    int partitionId = pubSubTopicPartition.getPartitionNumber();
-    List<Long> localOffset = (List<Long>) currentVersionHighWatermarks.getOrDefault(partitionId, Collections.EMPTY_MAP)
-        .getOrDefault(upstreamPartition, new ArrayList<>());
-    if (recordCheckpointVector != null) {
-      return !RmdUtils.hasOffsetAdvanced(localOffset, recordCheckpointVector);
-    }
-    // Has not met version swap message after client initialization.
     return false;
   }
 

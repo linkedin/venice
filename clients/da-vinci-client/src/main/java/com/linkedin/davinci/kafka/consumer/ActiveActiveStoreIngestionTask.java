@@ -495,8 +495,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         beforeProcessingBatchRecordsTimestampMs);
 
     final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
-    final long offsetSumPreOperation =
-        rmdWithValueSchemaID != null ? RmdUtils.extractOffsetVectorSumFromRmd(rmdWithValueSchemaID.getRmdRecord()) : 0;
     List<Long> recordTimestampsPreOperation = rmdWithValueSchemaID != null
         ? RmdUtils.extractTimestampFromRmd(rmdWithValueSchemaID.getRmdRecord())
         : Collections.singletonList(0L);
@@ -578,7 +576,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (rmdWithValueSchemaID != null) {
         aggVersionedIngestionStats.recordTotalDuplicateKeyUpdate(storeName, versionNumber);
       }
-      validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
+      validatePostOperationResultsAndRecord(mergeConflictResult, recordTimestampsPreOperation);
 
       final ByteBuffer updatedValueBytes = maybeCompressData(
           consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -741,22 +739,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   private void validatePostOperationResultsAndRecord(
       MergeConflictResult mergeConflictResult,
-      Long offsetSumPreOperation,
       List<Long> timestampsPreOperation) {
     // Nothing was applied, no harm no foul
     if (mergeConflictResult.isUpdateIgnored()) {
       return;
-    }
-    // Post Validation checks on resolution
-    GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
-    if (offsetSumPreOperation > RmdUtils.extractOffsetVectorSumFromRmd(rmdRecord)) {
-      // offsets went backwards, raise an alert!
-      hostLevelIngestionStats.recordOffsetRegressionDCRError();
-      aggVersionedIngestionStats.recordOffsetRegressionDCRError(storeName, versionNumber);
-      LOGGER.error(
-          "Offset vector found to have gone backwards for {}!! New invalid replication metadata result: {}",
-          storeVersionName,
-          rmdRecord);
     }
   }
 
