@@ -281,7 +281,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
       pushStatus.setPartitionStatus(partitionStatus);
     }
     doThrow(new VeniceException("Could not delete.")).when(getMockStoreCleaner())
-        .deleteOneStoreVersion(anyString(), anyString(), anyInt());
+        .deleteOneStoreVersion(anyString(), anyString(), anyInt(), anyBoolean(), anyBoolean());
     when(getMockAccessor().getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation -> {
       String kafkaTopic = invocation.getArgument(0);
       for (OfflinePushStatus status: statusList) {
@@ -293,7 +293,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     });
     getMonitor().loadAllPushes();
     verify(getMockStoreRepo(), atLeastOnce()).updateStore(store);
-    verify(getMockStoreCleaner(), atLeastOnce()).deleteOneStoreVersion(anyString(), anyString(), anyInt());
+    verify(getMockStoreCleaner(), atLeastOnce())
+        .deleteOneStoreVersion(anyString(), anyString(), anyInt(), anyBoolean(), anyBoolean());
     Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.ERROR);
     Mockito.reset(getMockAccessor());
   }

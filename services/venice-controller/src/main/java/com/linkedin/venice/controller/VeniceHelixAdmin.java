@@ -181,6 +181,7 @@ import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
+import com.linkedin.venice.participant.protocol.enums.PushJobKillTrigger;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
@@ -3716,7 +3717,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // Mark offline push job as Error and clean up resources because add version failed.
       PushMonitor offlinePushMonitor = resources.getPushMonitor();
       offlinePushMonitor.markOfflinePushAsError(Version.composeKafkaTopic(storeName, versionNumber), statusDetails);
-      deleteOneStoreVersion(clusterName, storeName, versionNumber);
+      deleteOneStoreVersion(
+          clusterName,
+          storeName,
+          versionNumber,
+          false,
+          PushJobKillTrigger.VERSION_CREATION_FAILURE,
+          statusDetails);
     }
   }
 
@@ -4190,7 +4197,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       List<Version> deletingVersionSnapshot = new ArrayList<>(store.getVersions());
 
       for (Version version: deletingVersionSnapshot) {
-        deleteOneStoreVersion(clusterName, version.getStoreName(), version.getNumber());
+        deleteOneStoreVersion(
+            clusterName,
+            version.getStoreName(),
+            version.getNumber(),
+            true,
+            PushJobKillTrigger.USER_REQUEST,
+            "Delete all versions");
       }
       LOGGER.info("Deleted all versions in store: {} in cluster: {}", storeName, clusterName);
       return deletingVersionSnapshot;
@@ -4223,7 +4236,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return;
       }
       LOGGER.info("Deleting version: {} in store: {} in cluster: {}", versionNum, storeName, clusterName);
-      deleteOneStoreVersion(clusterName, storeName, versionNum);
+      deleteOneStoreVersion(clusterName, storeName, versionNum, false, PushJobKillTrigger.USER_REQUEST, null);
       LOGGER.info("Deleted version: {} in store: {} in cluster: {}", versionNum, storeName, clusterName);
     }
   }
@@ -4232,8 +4245,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * Delete version from cluster, removing all related resources
    */
   @Override
-  public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
-    deleteOneStoreVersion(clusterName, storeName, versionNumber, false);
+  public void deleteOneStoreVersion(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean isForcedDelete,
+      boolean deleteDueToError) {
+    deleteOneStoreVersion(
+        clusterName,
+        storeName,
+        versionNumber,
+        isForcedDelete,
+        deleteDueToError ? PushJobKillTrigger.INGESTION_FAILURE : PushJobKillTrigger.VERSION_RETIREMENT,
+        null);
+  }
+
+  void deleteOneStoreVersion(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean isForcedDelete,
+      PushJobKillTrigger trigger,
+      String details) {
+    deleteOneStoreVersionInternal(clusterName, storeName, versionNumber, isForcedDelete, trigger, details);
   }
 
   /**
@@ -4248,7 +4282,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         .isTopicWriteNeeded();
   }
 
-  private void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber, boolean isForcedDelete) {
+  private void deleteOneStoreVersionInternal(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      boolean isForcedDelete,
+      PushJobKillTrigger trigger,
+      String details) {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       Store store = resources.getStoreMetadataRepository().getStore(storeName);
@@ -4268,7 +4308,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       LOGGER.info("Deleting helix resource: {} in cluster: {}", resourceName, clusterName);
       deleteHelixResource(clusterName, resourceName);
       LOGGER.info("Killing offline push for: {} in cluster: {}", resourceName, clusterName);
-      killOfflinePush(clusterName, resourceName, true);
+      killOfflinePush(clusterName, resourceName, trigger, details, true);
 
       // Check DIV error in the push status before stopping the monitor.
       boolean hasFatalDataValidationError = hasFatalDataValidationError(pushMonitor, resourceName);
@@ -4483,7 +4523,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           continue;
         }
         try {
-          deleteOneStoreVersion(clusterName, storeName, version.getNumber());
+          deleteOneStoreVersion(
+              clusterName,
+              storeName,
+              version.getNumber(),
+              false,
+              PushJobKillTrigger.VERSION_RETIREMENT,
+              null);
         } catch (VeniceException e) {
           LOGGER.warn(
               "Could not delete store {} version number {} in cluster {}",
@@ -8171,10 +8217,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#killOfflinePush(String, String, boolean)
+   * @see Admin#killOfflinePush(String, String, PushJobKillTrigger, String, boolean)
    */
   @Override
-  public void killOfflinePush(String clusterName, String kafkaTopic, boolean isForcedKill) {
+  public void killOfflinePush(
+      String clusterName,
+      String kafkaTopic,
+      PushJobKillTrigger trigger,
+      String details,
+      boolean isForcedKill) {
     if (!isResourceStillAlive(kafkaTopic)) {
       /**
        * To avoid sending kill job messages if the resource is already removed, and this
@@ -8271,7 +8322,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     if (multiClusterConfigs.getControllerConfig(clusterName).isParticipantMessageStoreEnabled()
         && participantMessageStoreRTTMap.containsKey(clusterName)) {
-      sendKillMessageToParticipantStore(clusterName, kafkaTopic);
+      sendKillMessageToParticipantStore(clusterName, kafkaTopic, trigger, details);
     }
   }
 
@@ -8291,8 +8342,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     writer.flush();
   }
 
-  public void sendKillMessageToParticipantStore(String clusterName, String kafkaTopic) {
-    LOGGER.info("Send kill message for topic: {} to participant store of cluster: {}", kafkaTopic, clusterName);
+  public void sendKillMessageToParticipantStore(
+      String clusterName,
+      String kafkaTopic,
+      PushJobKillTrigger trigger,
+      String details) {
+    LOGGER.info(
+        "Send kill message for topic: {} to participant store of cluster: {} with trigger: {} and details: {}",
+        kafkaTopic,
+        clusterName,
+        trigger,
+        details);
     VeniceWriter writer = participantStoreClientsManager.getWriter(clusterName);
     ParticipantMessageType killPushJobType = ParticipantMessageType.KILL_PUSH_JOB;
     ParticipantMessageKey key = new ParticipantMessageKey();
@@ -8300,6 +8360,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     key.messageType = killPushJobType.getValue();
     KillPushJob message = new KillPushJob();
     message.timestamp = System.currentTimeMillis();
+    message.trigger = trigger != null ? trigger.name() : PushJobKillTrigger.UNKNOWN.name();
+    message.details = details;
     ParticipantMessageValue value = new ParticipantMessageValue();
     value.messageType = killPushJobType.getValue();
     value.messageUnion = message;
@@ -9122,7 +9184,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     if (storeName.isPresent()) {
       if (versionNum.isPresent()) {
-        deleteOneStoreVersion(clusterName, storeName.get(), versionNum.get(), true);
+        deleteOneStoreVersion(
+            clusterName,
+            storeName.get(),
+            versionNum.get(),
+            true,
+            PushJobKillTrigger.USER_REQUEST,
+            "Wipe cluster");
       } else {
         setStoreReadWriteability(clusterName, storeName.get(), false);
         deleteStore(clusterName, storeName.get(), Store.IGNORE_VERSION, false, true, false);

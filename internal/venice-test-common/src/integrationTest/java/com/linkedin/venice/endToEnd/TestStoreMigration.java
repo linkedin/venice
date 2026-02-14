@@ -64,6 +64,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
+import com.linkedin.venice.participant.protocol.enums.PushJobKillTrigger;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -676,7 +677,11 @@ public class TestStoreMigration {
     VeniceHelixAdmin destClusterVhaDc0 = destClusterWrapper.getLeaderVeniceController().getVeniceHelixAdmin();
     assertFalse(destClusterVhaDc0.isParent());
     // add kill message to dest cluster
-    destClusterVhaDc0.sendKillMessageToParticipantStore(destClusterName, currentVersionTopicName);
+    destClusterVhaDc0.sendKillMessageToParticipantStore(
+        destClusterName,
+        currentVersionTopicName,
+        PushJobKillTrigger.USER_REQUEST,
+        null);
     // Verify the kill push message is in the participant message store.
     verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, true);
     // delete kill message from dest cluster
@@ -806,7 +811,11 @@ public class TestStoreMigration {
       VeniceHelixAdmin destClusterVhaDc0 = destClusterWrapper.getLeaderVeniceController().getVeniceHelixAdmin();
       assertFalse(destClusterVhaDc0.isParent());
       // add kill message to dest cluster
-      destClusterVhaDc0.sendKillMessageToParticipantStore(destClusterName, currentVersionTopicName);
+      destClusterVhaDc0.sendKillMessageToParticipantStore(
+          destClusterName,
+          currentVersionTopicName,
+          PushJobKillTrigger.USER_REQUEST,
+          null);
       // Verify the kill push message is in the participant message store.
       verifyKillMessageInParticipantStore(destClusterWrapper, currentVersionTopicName, true);
 

@@ -1,0 +1,42 @@
+{
+  "name": "ParticipantMessageValue",
+  "namespace": "com.linkedin.venice.participant.protocol",
+  "type": "record",
+  "fields": [
+    {
+      "name": "messageType",
+      "doc": "0 => KillPushJob",
+      "type": "int"
+    },
+    {
+      "name": "messageUnion",
+      "doc": "This contains the main body of the message",
+      "type": [
+        {
+          "name": "KillPushJob",
+          "type": "record",
+          "fields": [
+            {
+              "name": "timestamp",
+              "type": "long",
+              "default": -1
+            },
+            {
+              "name": "trigger",
+              "type": "string",
+              "default": "UNKNOWN"
+            },
+            {
+              "name": "details",
+              "type": [
+                "null",
+                "string"
+              ],
+              "default": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

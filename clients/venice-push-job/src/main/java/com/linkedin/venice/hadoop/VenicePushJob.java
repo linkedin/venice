@@ -134,6 +134,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.participant.protocol.enums.PushJobKillTrigger;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -1000,11 +1001,14 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     LOGGER.info("Scheduling timeout executor for store: {} with timeout: {}ms", pushJobSetting.storeName, timeoutMs);
+    final long capturedTimeoutMs = timeoutMs;
     timeoutExecutor.schedule(() -> {
-      cancel();
+      String timeoutDetails = "Push job exceeded timeout: " + capturedTimeoutMs + " ms ("
+          + TimeUnit.MILLISECONDS.toHours(capturedTimeoutMs) + " hours)";
+      cancel(PushJobKillTrigger.SLA_VIOLATION, timeoutDetails);
       throw new VeniceTimeoutException(
-          "Failing push-job for store " + pushJobSetting.storeName + " which is still running after " + timeoutMs
-              + " ms (" + TimeUnit.MILLISECONDS.toHours(timeoutMs) + " hours)");
+          "Failing push-job for store " + pushJobSetting.storeName + " which is still running after "
+              + capturedTimeoutMs + " ms (" + TimeUnit.MILLISECONDS.toHours(capturedTimeoutMs) + " hours)");
     }, timeoutMs, TimeUnit.MILLISECONDS);
   }
 
@@ -2929,10 +2933,20 @@ public class VenicePushJob implements AutoCloseable {
 
   /**
    * A cancel method for graceful cancellation of the running Job to be invoked as a result of user actions or due to
-   * the job exceeding bootstrapToOnlineTimeoutInHours.
+   * the job exceeding bootstrapToOnlineTimeoutInHours. This is the default cancel that doesn't specify a trigger,
+   * which uses USER_REQUEST as the default trigger.
    */
   public void cancel() {
-    killJob(pushJobSetting, controllerClient);
+    cancel(PushJobKillTrigger.USER_REQUEST, null);
+  }
+
+  /**
+   * A cancel method for graceful cancellation of the running Job with a specific trigger reason.
+   * @param trigger the reason for cancellation
+   * @param details additional details about the cancellation
+   */
+  public void cancel(PushJobKillTrigger trigger, String details) {
+    killJob(pushJobSetting, controllerClient, trigger, details);
     if (StringUtils.isEmpty(pushJobSetting.topic)) {
       pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
     } else {
@@ -2943,6 +2957,14 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient) {
+    killJob(pushJobSetting, controllerClient, PushJobKillTrigger.PUSH_JOB_FAILED, null);
+  }
+
+  void killJob(
+      PushJobSetting pushJobSetting,
+      ControllerClient controllerClient,
+      PushJobKillTrigger trigger,
+      String details) {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
     killDataWriterJob();
     if (!pushJobSetting.isIncrementalPush) {
@@ -2958,11 +2980,16 @@ public class VenicePushJob implements AutoCloseable {
       if (StringUtils.isEmpty(pushJobSetting.topic)) {
         LOGGER.error("Could not find a store version to delete for store: {}", pushJobSetting.storeName);
       } else {
+        String triggerStr = trigger != null ? trigger.name() : PushJobKillTrigger.UNKNOWN.name();
         ControllerClient.retryableRequest(
             controllerClient,
             pushJobSetting.controllerRetries,
-            c -> c.killOfflinePushJob(pushJobSetting.topic));
-        LOGGER.info("Offline push job has been killed, topic: {}", pushJobSetting.topic);
+            c -> c.killOfflinePushJob(pushJobSetting.topic, triggerStr, details));
+        LOGGER.info(
+            "Offline push job has been killed, topic: {}, trigger: {}, details: {}",
+            pushJobSetting.topic,
+            trigger,
+            details);
       }
     }
   }

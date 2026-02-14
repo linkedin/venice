@@ -433,8 +433,8 @@ public class PushStatusStoreTest {
       // Delete store1 version in main thread and store2 version in a new thread at the same time.
       // Store1 version deletion should finish instead of waiting forever even though system store RT does not exist
       // Store2 da-vinci push status should be deleted successfully
-      asyncExecutor.submit(() -> admin.deleteOneStoreVersion(cluster.getClusterName(), storeName2, 1));
-      admin.deleteOneStoreVersion(cluster.getClusterName(), storeName, 1);
+      asyncExecutor.submit(() -> admin.deleteOneStoreVersion(cluster.getClusterName(), storeName2, 1, false, false));
+      admin.deleteOneStoreVersion(cluster.getClusterName(), storeName, 1, false, false);
       TestUtils.waitForNonDeterministicAssertion(
           30,
           TimeUnit.SECONDS,

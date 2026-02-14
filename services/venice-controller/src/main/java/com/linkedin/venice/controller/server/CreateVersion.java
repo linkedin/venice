@@ -47,6 +47,7 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.participant.protocol.enums.PushJobKillTrigger;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Collections;
@@ -833,7 +834,12 @@ public class CreateVersion extends AbstractRoute {
         // Clean up on failed push.
         if (version != null && clusterName != null) {
           LOGGER.warn("Cleaning up failed Empty push of {}", version.kafkaTopicName());
-          admin.killOfflinePush(clusterName, version.kafkaTopicName(), true);
+          admin.killOfflinePush(
+              clusterName,
+              version.kafkaTopicName(),
+              PushJobKillTrigger.VERSION_CREATION_FAILURE,
+              e.getMessage(),
+              true);
         }
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
