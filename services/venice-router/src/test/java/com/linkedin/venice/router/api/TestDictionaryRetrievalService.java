@@ -31,6 +31,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -48,6 +49,7 @@ public class TestDictionaryRetrievalService {
   SSLFactory sslFactory;
   StorageNodeClient storageNodeClient;
   CompressorFactory compressorFactory;
+  MetricsRepository metricsRepository;
   Store store;
   Version version;
 
@@ -78,6 +80,7 @@ public class TestDictionaryRetrievalService {
     doReturn(store).when(metadataRepository).getStore(any());
     storageNodeClient = mock(StorageNodeClient.class);
     compressorFactory = mock(CompressorFactory.class);
+    metricsRepository = new MetricsRepository();
     sslFactory = mock(SSLFactory.class);
   }
 
@@ -91,7 +94,8 @@ public class TestDictionaryRetrievalService {
           Optional.of(sslFactory),
           metadataRepository,
           storageNodeClient,
-          compressorFactory);
+          compressorFactory,
+          metricsRepository);
       dictionaryRetrievalService.start();
       StoreDataChangedListener storeChangeListener = dictionaryRetrievalService.getStoreChangeListener();
       // update the compression strategy such that dictionaryRetrievalService will try to fetch the dictionary
@@ -133,7 +137,8 @@ public class TestDictionaryRetrievalService {
           Optional.of(sslFactory),
           metadataRepository,
           storageNodeClient,
-          compressorFactory);
+          compressorFactory,
+          metricsRepository);
       dictionaryRetrievalService.start();
       StoreDataChangedListener storeChangeListener = dictionaryRetrievalService.getStoreChangeListener();
 
@@ -183,7 +188,8 @@ public class TestDictionaryRetrievalService {
           Optional.of(sslFactory),
           metadataRepository,
           storageNodeClient,
-          compressorFactory);
+          compressorFactory,
+          metricsRepository);
       dictionaryRetrievalService.start();
       StoreDataChangedListener storeChangeListener = dictionaryRetrievalService.getStoreChangeListener();
       // update the compression strategy such that dictionaryRetrievalService will try to fetch the dictionary
@@ -257,7 +263,8 @@ public class TestDictionaryRetrievalService {
               Optional.of(sslFactory),
               metadataRepository,
               storageNodeClient,
-              compressorFactory));
+              compressorFactory,
+              metricsRepository));
       dictionaryRetrievalService.start();
       StoreDataChangedListener storeChangeListener = dictionaryRetrievalService.getStoreChangeListener();
 
