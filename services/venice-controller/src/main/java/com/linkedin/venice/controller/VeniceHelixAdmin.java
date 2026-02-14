@@ -1544,25 +1544,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (isPushJobFailedDueToUserError(overallStatus, pushJobDetailsValue, pushJobUserErrorCheckpoints)) {
             logMessage.append(" due to user error");
             if (isIncrementalPush) {
-              pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor();
+              pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor(storeName.toString());
             } else {
-              pushJobStatusStats.recordBatchPushFailureDueToUserErrorSensor();
+              pushJobStatusStats.recordBatchPushFailureDueToUserErrorSensor(storeName.toString());
             }
           } else {
             logMessage.append(" due to non-user error");
             if (isIncrementalPush) {
-              pushJobStatusStats.recordIncrementalPushFailureNotDueToUserErrorSensor();
+              pushJobStatusStats.recordIncrementalPushFailureNotDueToUserErrorSensor(storeName.toString());
             } else {
-              pushJobStatusStats.recordBatchPushFailureNotDueToUserErrorSensor();
+              pushJobStatusStats.recordBatchPushFailureNotDueToUserErrorSensor(storeName.toString());
             }
           }
         } else if (PushJobDetailsStatus.isSucceeded(overallStatus)) {
           logMessage.append(" succeeded with status: ").append(overallStatus);
           // Emit metrics for successful push jobs
           if (isIncrementalPush) {
-            pushJobStatusStats.recordIncrementalPushSuccessSensor();
+            pushJobStatusStats.recordIncrementalPushSuccessSensor(storeName.toString());
           } else {
-            pushJobStatusStats.recordBatchPushSuccessSensor();
+            pushJobStatusStats.recordBatchPushSuccessSensor(storeName.toString());
           }
 
           // Scheduled log compaction metric
