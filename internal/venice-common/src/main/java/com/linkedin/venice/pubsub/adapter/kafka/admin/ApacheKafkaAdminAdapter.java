@@ -401,12 +401,16 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     Optional<Long> maxLogCompactionLagMs = properties.containsKey(TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG)
         ? Optional.of(Long.parseLong(properties.getProperty(TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG)))
         : Optional.empty();
+    Optional<Boolean> uncleanLeaderElectionEnable =
+        Optional.ofNullable(properties.getProperty(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG))
+            .map(Boolean::parseBoolean);
     return new PubSubTopicConfiguration(
         retentionMs,
         isLogCompacted,
         minInSyncReplicas,
         minLogCompactionLagMs,
-        maxLogCompactionLagMs);
+        maxLogCompactionLagMs,
+        uncleanLeaderElectionEnable);
   }
 
   private Properties unmarshallProperties(PubSubTopicConfiguration pubSubTopicConfiguration) {
@@ -433,6 +437,10 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
         .ifPresent(
             minIsrConfig -> topicProperties
                 .put(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, Integer.toString(minIsrConfig)));
+    pubSubTopicConfiguration.getUncleanLeaderElectionEnable()
+        .ifPresent(
+            uncleanLeaderElection -> topicProperties
+                .put(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG, Boolean.toString(uncleanLeaderElection)));
     // Just in case the Kafka cluster isn't configured as expected.
     topicProperties.put(TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG, TimestampType.LOG_APPEND_TIME.toString());
     return topicProperties;

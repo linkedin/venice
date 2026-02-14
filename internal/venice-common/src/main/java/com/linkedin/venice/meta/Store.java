@@ -340,6 +340,10 @@ public interface Store {
 
   String getBlobTransferInServerEnabled();
 
+  String getUncleanLeaderElectionEnabledForRTTopics();
+
+  void setUncleanLeaderElectionEnabledForRTTopics(String uncleanLeaderElectionEnabledForRTTopics);
+
   boolean isNearlineProducerCompressionEnabled();
 
   void setNearlineProducerCompressionEnabled(boolean compressionEnabled);

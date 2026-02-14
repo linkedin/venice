@@ -268,6 +268,8 @@ public class ControllerApiConstants {
 
   public static final String BLOB_TRANSFER_ENABLED = "blob_transfer_enabled";
   public static final String BLOB_TRANSFER_IN_SERVER_ENABLED = "blob_transfer_in_server_enabled";
+  public static final String UNCLEAN_LEADER_ELECTION_ENABLED_FOR_RT_TOPICS =
+      "unclean_leader_election_enabled_for_rt_topics";
 
   public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
 

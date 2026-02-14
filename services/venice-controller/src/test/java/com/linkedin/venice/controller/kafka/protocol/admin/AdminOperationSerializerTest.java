@@ -52,6 +52,8 @@ public class AdminOperationSerializerTest {
     updateStore.separateRealTimeTopicEnabled = false;
     updateStore.storeLifecycleHooks = Collections.emptyList();
     updateStore.blobTransferInServerEnabled = "NOT_SPECIFIED";
+    updateStore.blobDbEnabled = "NOT_SPECIFIED";
+    updateStore.uncleanLeaderElectionEnabledForRTTopics = "NOT_SPECIFIED";
     updateStore.keyUrnFields = Collections.emptyList();
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
@@ -103,6 +105,11 @@ public class AdminOperationSerializerTest {
     // Purposely set to true. This field doesn't exist in v74, so it should throw an exception.
     // Default value of this field is False.
     updateStore.separateRealTimeTopicEnabled = true;
+    updateStore.storeLifecycleHooks = Collections.emptyList();
+    updateStore.blobTransferInServerEnabled = "NOT_SPECIFIED";
+    updateStore.blobDbEnabled = "NOT_SPECIFIED";
+    updateStore.uncleanLeaderElectionEnabledForRTTopics = "NOT_SPECIFIED";
+    updateStore.keyUrnFields = Collections.emptyList();
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;
