@@ -98,7 +98,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
    * because both methods have side effects: they call {@link VeniceVersionedStats#getStats(int)}
    * which creates a new stats entry if absent, then wire that entry to the reporter via
    * setCurrentStats/setFutureStats. Calling either with NON_EXISTING_VERSION would create a
-   * version-0 stats entry.
+   * stats entry with version 0.
    */
   private void applyVersionInfo(
       VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats,

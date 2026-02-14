@@ -1,6 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
-import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelStats.SERVER_METRIC_ENTITIES;
+import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_OPTIONS_USE_DIRECT_READS;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
