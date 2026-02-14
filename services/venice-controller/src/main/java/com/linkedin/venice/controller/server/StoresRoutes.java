@@ -84,7 +84,6 @@ import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
-import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.SchemaUsageResponse;
@@ -258,16 +257,20 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, RepushInfoResponse veniceResponse) {
         AdminSparkServer.validateParams(request, GET_REPUSH_INFO.getParams(), admin);
+
+        // Extract primitives from HTTP request
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String fabricName = request.queryParams(FABRIC);
+        Optional<String> fabric = fabricName != null ? Optional.of(fabricName) : Optional.empty();
 
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
+        // Call handler - returns POJO directly
+        RepushInfoResponse result = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
 
-        RepushInfo repushInfo = admin.getRepushInfo(clusterName, storeName, Optional.ofNullable(fabricName));
-
-        veniceResponse.setRepushInfo(repushInfo);
+        // Copy result to response
+        veniceResponse.setCluster(result.getCluster());
+        veniceResponse.setName(result.getName());
+        veniceResponse.setRepushInfo(result.getRepushInfo());
       }
     };
   }

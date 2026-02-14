@@ -22,6 +22,8 @@ import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
@@ -386,6 +388,100 @@ public class TestControllerGrpcEndpoints {
     StatusRuntimeException exception = Assert
         .expectThrows(StatusRuntimeException.class, () -> schemaBlockingStub.getValueSchema(invalidSchemaRequest));
     assertEquals(exception.getStatus().getCode(), io.grpc.Status.Code.INVALID_ARGUMENT);
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testGetRepushInfoGrpcEndpoint() {
+    String storeName = Utils.getUniqueString("test_get_repush_info_store");
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+
+    ClusterStoreGrpcInfo storeGrpcInfo = ClusterStoreGrpcInfo.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setStoreName(storeName)
+        .build();
+
+    // Step 1: Create the store
+    CreateStoreGrpcRequest createStoreGrpcRequest = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeGrpcInfo)
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse createResponse = storeBlockingStub.createStore(createStoreGrpcRequest);
+    assertNotNull(createResponse, "Response should not be null");
+    assertEquals(createResponse.getStoreInfo().getStoreName(), storeName);
+
+    // Step 2: Do an empty push to create version 1
+    veniceCluster.createVersion(storeName, 0);
+
+    // Step 3: Get repush info using gRPC endpoint
+    GetRepushInfoGrpcRequest getRepushInfoRequest =
+        GetRepushInfoGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).build();
+    GetRepushInfoGrpcResponse getRepushInfoResponse = storeBlockingStub.getRepushInfo(getRepushInfoRequest);
+    assertNotNull(getRepushInfoResponse, "Response should not be null");
+    assertEquals(getRepushInfoResponse.getStoreInfo().getStoreName(), storeName);
+    assertEquals(getRepushInfoResponse.getStoreInfo().getClusterName(), veniceCluster.getClusterName());
+    assertNotNull(getRepushInfoResponse.getRepushInfo(), "Repush info should not be null");
+    assertFalse(getRepushInfoResponse.getRepushInfo().getPubSubUrl().isEmpty(), "Kafka broker URL should not be empty");
+    assertTrue(getRepushInfoResponse.getRepushInfo().hasVersion(), "Version info should be present");
+    assertEquals(getRepushInfoResponse.getRepushInfo().getVersion().getNumber(), 1, "Version number should be 1");
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testGetRepushInfoGrpcEndpointWithFabric() {
+    String storeName = Utils.getUniqueString("test_get_repush_info_fabric_store");
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+
+    ClusterStoreGrpcInfo storeGrpcInfo = ClusterStoreGrpcInfo.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setStoreName(storeName)
+        .build();
+
+    // Step 1: Create the store
+    CreateStoreGrpcRequest createStoreGrpcRequest = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(storeGrpcInfo)
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse createResponse = storeBlockingStub.createStore(createStoreGrpcRequest);
+    assertNotNull(createResponse, "Response should not be null");
+
+    // Step 2: Do an empty push to create version 1
+    veniceCluster.createVersion(storeName, 0);
+
+    // Step 3: Get repush info with fabric parameter
+    GetRepushInfoGrpcRequest getRepushInfoRequest =
+        GetRepushInfoGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).setFabric("test-fabric").build();
+    GetRepushInfoGrpcResponse getRepushInfoResponse = storeBlockingStub.getRepushInfo(getRepushInfoRequest);
+    assertNotNull(getRepushInfoResponse, "Response should not be null");
+    assertNotNull(getRepushInfoResponse.getRepushInfo(), "Repush info should not be null");
+    assertFalse(getRepushInfoResponse.getRepushInfo().getPubSubUrl().isEmpty(), "Kafka broker URL should not be empty");
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testGetRepushInfoGrpcEndpointForNonExistentStore() {
+    String storeName = Utils.getUniqueString("non_existent_store");
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+
+    ClusterStoreGrpcInfo storeGrpcInfo = ClusterStoreGrpcInfo.newBuilder()
+        .setClusterName(veniceCluster.getClusterName())
+        .setStoreName(storeName)
+        .build();
+
+    GetRepushInfoGrpcRequest getRepushInfoRequest =
+        GetRepushInfoGrpcRequest.newBuilder().setStoreInfo(storeGrpcInfo).build();
+
+    // Should fail with NOT_FOUND status
+    StatusRuntimeException exception =
+        Assert.expectThrows(StatusRuntimeException.class, () -> storeBlockingStub.getRepushInfo(getRepushInfoRequest));
+    assertEquals(exception.getStatus().getCode(), io.grpc.Status.Code.NOT_FOUND);
   }
 
   @Test(timeOut = TIMEOUT_MS)

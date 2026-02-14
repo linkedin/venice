@@ -11,12 +11,16 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
@@ -359,6 +363,87 @@ public class StoreRequestHandlerTest {
     ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
 
     assertEquals(response.getStoreNamesCount(), 0);
+  }
+
+  @Test
+  public void testGetRepushInfoSuccess() {
+    String clusterName = "testCluster";
+    String storeName = "testStore";
+    Optional<String> fabric = Optional.of("testFabric");
+
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getNumber()).thenReturn(1);
+    when(mockVersion.getCreatedTime()).thenReturn(123456789L);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.ONLINE);
+    when(mockVersion.getPushJobId()).thenReturn("test-push-job-123");
+    when(mockVersion.getPartitionCount()).thenReturn(10);
+    when(mockVersion.getReplicationFactor()).thenReturn(3);
+
+    RepushInfo mockRepushInfo =
+        RepushInfo.createRepushInfo(mockVersion, "kafka.broker.url:9092", "testD2Service", "testZkHost");
+
+    when(admin.getRepushInfo(clusterName, storeName, fabric)).thenReturn(mockRepushInfo);
+
+    RepushInfoResponse response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
+
+    verify(admin, times(1)).getRepushInfo(clusterName, storeName, fabric);
+    assertEquals(response.getCluster(), clusterName);
+    assertEquals(response.getName(), storeName);
+    assertEquals(response.getRepushInfo().getKafkaBrokerUrl(), "kafka.broker.url:9092");
+    assertEquals(response.getRepushInfo().getVersion().getNumber(), 1);
+    assertEquals(response.getRepushInfo().getVersion().getCreatedTime(), 123456789L);
+    assertEquals(response.getRepushInfo().getVersion().getStatus(), VersionStatus.ONLINE);
+    assertEquals(response.getRepushInfo().getVersion().getPushJobId(), "test-push-job-123");
+    assertEquals(response.getRepushInfo().getVersion().getPartitionCount(), 10);
+    assertEquals(response.getRepushInfo().getVersion().getReplicationFactor(), 3);
+    assertEquals(response.getRepushInfo().getSystemSchemaClusterD2ServiceName(), "testD2Service");
+    assertEquals(response.getRepushInfo().getSystemSchemaClusterD2ZkHost(), "testZkHost");
+  }
+
+  @Test
+  public void testGetRepushInfoWithoutFabric() {
+    String clusterName = "testCluster";
+    String storeName = "testStore";
+    Optional<String> fabric = Optional.empty();
+
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getNumber()).thenReturn(2);
+    when(mockVersion.getCreatedTime()).thenReturn(987654321L);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.PUSHED);
+    when(mockVersion.getPushJobId()).thenReturn("test-push-job-456");
+    when(mockVersion.getPartitionCount()).thenReturn(5);
+    when(mockVersion.getReplicationFactor()).thenReturn(2);
+
+    RepushInfo mockRepushInfo =
+        RepushInfo.createRepushInfo(mockVersion, "another.kafka.broker:9092", "anotherD2Service", "anotherZkHost");
+
+    when(admin.getRepushInfo(clusterName, storeName, fabric)).thenReturn(mockRepushInfo);
+
+    RepushInfoResponse response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
+
+    verify(admin, times(1)).getRepushInfo(clusterName, storeName, fabric);
+    assertEquals(response.getCluster(), clusterName);
+    assertEquals(response.getName(), storeName);
+    assertEquals(response.getRepushInfo().getKafkaBrokerUrl(), "another.kafka.broker:9092");
+    assertEquals(response.getRepushInfo().getVersion().getNumber(), 2);
+  }
+
+  @Test
+  public void testGetRepushInfoWithNullVersion() {
+    String clusterName = "testCluster";
+    String storeName = "testStore";
+    Optional<String> fabric = Optional.empty();
+
+    RepushInfo mockRepushInfo = RepushInfo.createRepushInfo(null, "kafka.broker:9092", null, null);
+
+    when(admin.getRepushInfo(clusterName, storeName, fabric)).thenReturn(mockRepushInfo);
+
+    RepushInfoResponse response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
+
+    assertEquals(response.getRepushInfo().getKafkaBrokerUrl(), "kafka.broker:9092");
+    assertTrue(response.getRepushInfo().getVersion() == null);
+    assertTrue(response.getRepushInfo().getSystemSchemaClusterD2ServiceName() == null);
+    assertTrue(response.getRepushInfo().getSystemSchemaClusterD2ZkHost() == null);
   }
 
   @Test

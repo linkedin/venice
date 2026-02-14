@@ -4141,6 +4141,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public RepushInfo getRepushInfo(String clusterName, String storeName, Optional<String> fabricName) {
     Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName);
+    }
     boolean isSSL = isSSLEnabledForPush(clusterName, storeName);
     String systemSchemaClusterName = multiClusterConfigs.getSystemSchemaClusterName();
     VeniceControllerClusterConfig systemSchemaClusterConfig =
