@@ -351,6 +351,11 @@ public class StoresRoutes extends AbstractRoute {
         if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
+        if (!admin.isParent()) {
+          veniceResponse.setError("Store migration is only allowed from a parent controller!");
+          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
+          return;
+        }
         AdminSparkServer.validateParams(request, MIGRATE_STORE.getParams(), admin);
         String srcClusterName = request.queryParams(CLUSTER);
         String destClusterName = request.queryParams(CLUSTER_DEST);
@@ -406,6 +411,11 @@ public class StoresRoutes extends AbstractRoute {
         if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
           return;
         }
+        if (!admin.isParent()) {
+          veniceResponse.setError("Complete migration is only allowed from a parent controller!");
+          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
+          return;
+        }
         AdminSparkServer.validateParams(request, COMPLETE_MIGRATION.getParams(), admin);
         String srcClusterName = request.queryParams(CLUSTER);
         String destClusterName = request.queryParams(CLUSTER_DEST);
@@ -448,6 +458,11 @@ public class StoresRoutes extends AbstractRoute {
           if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
             return;
           }
+          if (!admin.isParent()) {
+            veniceResponse.setError("Abort migration is only allowed from a parent controller!");
+            veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
+            return;
+          }
           AdminSparkServer.validateParams(request, ABORT_MIGRATION.getParams(), admin);
           String srcClusterName = request.queryParams(CLUSTER);
           String destClusterName = request.queryParams(CLUSTER_DEST);
@@ -482,6 +497,11 @@ public class StoresRoutes extends AbstractRoute {
         try {
           // Only allow allowlist users to run this command
           if (!checkIsAllowListUser(request, storeMigrationResponse, () -> isAllowListUser(request))) {
+            return;
+          }
+          if (!admin.isParent()) {
+            storeMigrationResponse.setError("Auto store migration is only allowed from a parent controller!");
+            storeMigrationResponse.setErrorType(ErrorType.BAD_REQUEST);
             return;
           }
           AdminSparkServer.validateParams(request, MIGRATE_STORE.getParams(), admin);
