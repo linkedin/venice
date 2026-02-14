@@ -675,12 +675,8 @@ public class VeniceOpenTelemetryMetricsRepository {
     private final MetricEntity metricEntity;
 
     CommonMetricsEntity(MetricType metricType, MetricUnit unit, String description) {
-      this.metricEntity = MetricEntity.createInternalMetricEntityWithoutDimensions(
-          this.name().toLowerCase(),
-          metricType,
-          unit,
-          description,
-          "internal");
+      this.metricEntity =
+          MetricEntity.createWithNoDimensions(this.name().toLowerCase(), metricType, unit, description, "internal");
     }
 
     public MetricEntity getMetricEntity() {
