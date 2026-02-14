@@ -108,6 +108,21 @@ public class ControllerMetricEntityTest {
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE,
                 VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS)));
+    expectedMetrics.put(
+        ControllerMetricEntity.TOPIC_CLEANUP_DELETABLE_COUNT,
+        MetricEntity.createWithNoDimensions(
+            "topic_cleanup_service.topic.deletable_count",
+            MetricType.GAUGE,
+            MetricUnit.NUMBER,
+            "Count of topics currently eligible for deletion"));
+    expectedMetrics.put(
+        ControllerMetricEntity.TOPIC_CLEANUP_DELETED_COUNT,
+        new MetricEntity(
+            "topic_cleanup_service.topic.deleted_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of topic deletion operations",
+            Utils.setOf(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
 
     for (ControllerMetricEntity metric: ControllerMetricEntity.values()) {
       MetricEntity actual = metric.getMetricEntity();

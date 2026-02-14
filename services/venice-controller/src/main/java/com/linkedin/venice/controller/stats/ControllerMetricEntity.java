@@ -84,6 +84,17 @@ public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
       "push_job.count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Push job completions, differentiated by push type and status",
       setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME, VENICE_PUSH_JOB_TYPE, VENICE_PUSH_JOB_STATUS)
+  ),
+
+  /** TopicCleanupServiceStats: Gauge of topics currently eligible for deletion */
+  TOPIC_CLEANUP_DELETABLE_COUNT(
+      "topic_cleanup_service.topic.deletable_count", MetricType.GAUGE, MetricUnit.NUMBER,
+      "Count of topics currently eligible for deletion"
+  ),
+  /** TopicCleanupServiceStats: Count of topic deletion operations (success and failure) */
+  TOPIC_CLEANUP_DELETED_COUNT(
+      "topic_cleanup_service.topic.deleted_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of topic deletion operations", setOf(VENICE_RESPONSE_STATUS_CODE_CATEGORY)
   );
 
   private final MetricEntity metricEntity;
@@ -106,6 +117,12 @@ public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
       Set<VeniceMetricsDimensions> dimensionsList) {
     this.metricName = metricName;
     this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
+  }
+
+  /** Constructor for metrics with no dimensions, to be used only with {@link com.linkedin.venice.stats.metrics.MetricEntityStateBase} */
+  ControllerMetricEntity(String metricName, MetricType metricType, MetricUnit unit, String description) {
+    this.metricName = metricName;
+    this.metricEntity = MetricEntity.createWithNoDimensions(metricName, metricType, unit, description);
   }
 
   @VisibleForTesting
