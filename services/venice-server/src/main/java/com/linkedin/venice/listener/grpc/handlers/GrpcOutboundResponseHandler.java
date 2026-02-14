@@ -53,7 +53,7 @@ public class GrpcOutboundResponseHandler extends VeniceServerGrpcHandler {
     ctx.setError();
     statsContext.setResponseStatus(NOT_FOUND);
     veniceServerResponseBuilder.setData(ByteString.EMPTY);
-    veniceServerResponseBuilder.setErrorCode(VeniceReadResponseStatus.KEY_NOT_FOUND);
+    veniceServerResponseBuilder.setErrorCode(VeniceReadResponseStatus.KEY_NOT_FOUND.getCode());
     veniceServerResponseBuilder.setErrorMessage("Key not found");
     invokeNextHandler(ctx);
   }

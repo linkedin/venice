@@ -4,9 +4,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
+import com.google.protobuf.ByteString;
 import com.linkedin.venice.acl.handler.AccessResult;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -19,6 +21,8 @@ import io.grpc.InsecureChannelCredentials;
 import io.grpc.ServerCall;
 import io.grpc.Status;
 import io.grpc.TlsChannelCredentials;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import javax.net.ssl.KeyManager;
@@ -204,5 +208,44 @@ public class GrpcUtilsTest {
 
     // Verify the exception is thrown
     assertNotNull(thrownException);
+  }
+
+  @Test
+  public void testToByteStringFromByteArray() {
+    byte[] data = new byte[] { 1, 2, 3, 4, 5 };
+    ByteString result = GrpcUtils.toByteString(data);
+    assertEquals(result.size(), 5);
+    assertEquals(result.toByteArray(), data);
+  }
+
+  @Test
+  public void testToByteStringFromNullByteArray() {
+    assertSame(GrpcUtils.toByteString((byte[]) null), ByteString.EMPTY);
+  }
+
+  @Test
+  public void testToByteStringFromEmptyByteArray() {
+    assertSame(GrpcUtils.toByteString(new byte[0]), ByteString.EMPTY);
+  }
+
+  @Test
+  public void testToByteStringFromByteBuf() {
+    byte[] data = new byte[] { 10, 20, 30 };
+    ByteBuf buf = Unpooled.wrappedBuffer(data);
+    ByteString result = GrpcUtils.toByteString(buf);
+    assertEquals(result.size(), 3);
+    assertEquals(result.toByteArray(), data);
+    buf.release();
+  }
+
+  @Test
+  public void testToByteStringFromNullByteBuf() {
+    assertSame(GrpcUtils.toByteString((ByteBuf) null), ByteString.EMPTY);
+  }
+
+  @Test
+  public void testToByteStringFromEmptyByteBuf() {
+    ByteBuf buf = Unpooled.EMPTY_BUFFER;
+    assertSame(GrpcUtils.toByteString(buf), ByteString.EMPTY);
   }
 }
