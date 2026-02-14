@@ -971,7 +971,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               pubSubAddress,
               sourceTopicPartition);
           PubSubTopicPartition newSourceTopicPartition =
-              resolveRtTopicPartitionWithPubSubBrokerAddress(newSourceTopic, pcs, pubSubAddress);
+              resolveTopicPartitionWithPubSubBrokerAddress(newSourceTopic, pcs, pubSubAddress);
           try {
             rtStartPosition =
                 getRewindStartPositionForRealTimeTopic(pubSubAddress, newSourceTopicPartition, rewindStartTimestamp);
@@ -1355,7 +1355,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return () -> {
       PubSubTopic pubSubTopic = sourceTopicPartition.getPubSubTopic();
       PubSubTopicPartition resolvedTopicPartition =
-          resolveRtTopicPartitionWithPubSubBrokerAddress(pubSubTopic, pcs, sourceKafkaUrl);
+          resolveTopicPartitionWithPubSubBrokerAddress(pubSubTopic, pcs, sourceKafkaUrl);
       // Calculate upstream offset
       PubSubPosition upstreamOffset =
           getRewindStartPositionForRealTimeTopic(sourceKafkaUrl, resolvedTopicPartition, rewindStartTimestamp);

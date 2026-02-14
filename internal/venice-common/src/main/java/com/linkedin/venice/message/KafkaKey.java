@@ -1,5 +1,6 @@
 package com.linkedin.venice.message;
 
+import com.linkedin.venice.guid.DoLStampGuidGenerator;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -33,6 +34,31 @@ public class KafkaKey implements Measurable {
           .putInt(0)
           .putInt(0)
           .array());
+
+  /**
+   * Special key for Declaration of Leadership (DoL) control messages.
+   *
+   * <p>Used during leader handover to confirm the new leader can write to and consume from the local VT.
+   * This is distinct from HEART_BEAT to clearly separate leadership declaration from heartbeat semantics.
+   *
+   * <p>The DoL mechanism provides deterministic confirmation that a new leader has successfully:
+   * <ul>
+   *   <li>Produced a message to the local version topic (VT)</li>
+   *   <li>Consumed that message back from VT (loopback confirmation)</li>
+   * </ul>
+   *
+   * <p>This eliminates the need for time-based waits during leader handover and provides
+   * strong guarantees that the leader is ready to switch to consuming from the leader source topic
+   * (remote VT or RT topic).
+   */
+  public static final KafkaKey DOL_STAMP = new KafkaKey(
+      MessageType.CONTROL_MESSAGE,
+      ByteBuffer.allocate(CONTROL_MESSAGE_KAFKA_KEY_LENGTH)
+          .put(DoLStampGuidGenerator.getInstance().getGuid().bytes())
+          .putInt(0) // segment number
+          .putInt(0) // sequence number
+          .array());
+
   private final byte keyHeaderByte;
   private final byte[] key; // TODO: Consider whether we may want to use a ByteBuffer here
 

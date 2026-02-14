@@ -73,6 +73,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -1286,5 +1287,111 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(storeIngestionTask, times(2)).reportError(anyString(), eq(1), any());
     verify(storeIngestionTask, times(0)).reportError(anyString(), eq(2), any());
     verify(storeIngestionTask, times(2)).reportError(anyString(), eq(3), any());
+  }
+
+  @Test
+  public void testDolStampProduceCallbackSuccess() {
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    long leadershipTerm = 42L;
+    DolStamp dolStamp = new DolStamp(leadershipTerm, "test-host");
+    doReturn(dolStamp).when(mockPcs).getDolState();
+    doReturn("test-replica-id").when(mockPcs).getReplicaId();
+
+    // Verify DolStamp is not marked as produced before callback
+    assertFalse(dolStamp.isDolProduced());
+
+    // Create callback and invoke onCompletion with success
+    PubSubProducerCallback callback =
+        new LeaderFollowerStoreIngestionTask.DolStampProduceCallback(mockPcs, leadershipTerm);
+    PubSubProduceResult mockResult = mock(PubSubProduceResult.class);
+    PubSubPosition mockPosition = mock(PubSubPosition.class);
+    doReturn(mockPosition).when(mockResult).getPubSubPosition();
+
+    callback.onCompletion(mockResult, null);
+
+    // Verify DolStamp is marked as produced
+    assertTrue(dolStamp.isDolProduced());
+    // Verify clearDolState was NOT called
+    verify(mockPcs, never()).clearDolState();
+  }
+
+  @Test
+  public void testDolStampProduceCallbackFailure() {
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    long leadershipTerm = 42L;
+    DolStamp dolStamp = new DolStamp(leadershipTerm, "test-host");
+    doReturn(dolStamp).when(mockPcs).getDolState();
+    doReturn("test-replica-id").when(mockPcs).getReplicaId();
+
+    // Create callback and invoke onCompletion with failure
+    PubSubProducerCallback callback =
+        new LeaderFollowerStoreIngestionTask.DolStampProduceCallback(mockPcs, leadershipTerm);
+
+    callback.onCompletion(null, new RuntimeException("Test exception"));
+
+    // Verify DolStamp is NOT marked as produced
+    assertFalse(dolStamp.isDolProduced());
+    // Verify clearDolState WAS called to fall back to legacy mechanism
+    verify(mockPcs, times(1)).clearDolState();
+  }
+
+  @Test
+  public void testDolStampProduceCallbackTermMismatch() {
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    long callbackTerm = 42L;
+    long dolStateTerm = 100L; // Different term
+    DolStamp dolStamp = new DolStamp(dolStateTerm, "test-host");
+    doReturn(dolStamp).when(mockPcs).getDolState();
+    doReturn("test-replica-id").when(mockPcs).getReplicaId();
+
+    // Create callback with different term than DolStamp
+    PubSubProducerCallback callback =
+        new LeaderFollowerStoreIngestionTask.DolStampProduceCallback(mockPcs, callbackTerm);
+    PubSubProduceResult mockResult = mock(PubSubProduceResult.class);
+    PubSubPosition mockPosition = mock(PubSubPosition.class);
+    doReturn(mockPosition).when(mockResult).getPubSubPosition();
+
+    callback.onCompletion(mockResult, null);
+
+    // Verify DolStamp is NOT marked as produced due to term mismatch
+    assertFalse(dolStamp.isDolProduced());
+  }
+
+  @Test
+  public void testDolStampProduceCallbackNullDolState() {
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    long leadershipTerm = 42L;
+    doReturn(null).when(mockPcs).getDolState();
+    doReturn("test-replica-id").when(mockPcs).getReplicaId();
+
+    // Create callback and invoke onCompletion - should not throw with null DolState
+    PubSubProducerCallback callback =
+        new LeaderFollowerStoreIngestionTask.DolStampProduceCallback(mockPcs, leadershipTerm);
+    PubSubProduceResult mockResult = mock(PubSubProduceResult.class);
+    PubSubPosition mockPosition = mock(PubSubPosition.class);
+    doReturn(mockPosition).when(mockResult).getPubSubPosition();
+
+    callback.onCompletion(mockResult, null);
+
+    // No exception thrown, clearDolState not called
+    verify(mockPcs, never()).clearDolState();
+  }
+
+  @Test
+  public void testDolStampIsDolComplete() {
+    // Test DolStamp complete state
+    DolStamp dolStampComplete = new DolStamp(42L, "test-host");
+    assertFalse(dolStampComplete.isDolComplete());
+
+    dolStampComplete.setDolProduced(true);
+    assertFalse(dolStampComplete.isDolComplete());
+
+    dolStampComplete.setDolConsumed(true);
+    assertTrue(dolStampComplete.isDolComplete());
+
+    // Test incomplete state (only consumed)
+    DolStamp dolStampIncomplete = new DolStamp(42L, "test-host");
+    dolStampIncomplete.setDolConsumed(true);
+    assertFalse(dolStampIncomplete.isDolComplete());
   }
 }

@@ -177,7 +177,8 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
           "Did not find a suitable consumer after checking " + consumersChecked + " instances.");
     }
     LOGGER.info(
-        "Get shared consumer for: {} from the ingestion task belonging to version topic: {} with index: {}",
+        "Get shared consumer: {} for: {} from the ingestion task belonging to version topic: {} with index: {}",
+        consumer,
         topicPartition,
         versionTopic,
         consumerIndex);

@@ -5,6 +5,8 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.kafka.protocol.Put;
@@ -192,5 +194,80 @@ public class PartitionConsumptionStateTest {
     }
     Assert.assertEquals(pcs.getPendingReportIncPushVersionList().size(), 50);
     Assert.assertEquals(pcs.getPendingReportIncPushVersionList().get(0), "v_0");
+  }
+
+  @Test
+  public void testDolStateOperations() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+
+    // Initially, DoL state should be null
+    assertNull(pcs.getDolState());
+
+    // Test setDolState
+    DolStamp dolStamp = new DolStamp(42L, "test-host-123");
+    pcs.setDolState(dolStamp);
+    assertNotNull(pcs.getDolState());
+    assertEquals(pcs.getDolState(), dolStamp);
+    assertEquals(pcs.getDolState().getLeadershipTerm(), 42L);
+    assertEquals(pcs.getDolState().getHostId(), "test-host-123");
+
+    // Test clearDolState
+    pcs.clearDolState();
+    assertNull(pcs.getDolState());
+  }
+
+  @Test
+  public void testHighestLeadershipTermOperations() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+
+    // Initially, highest leadership term should be -1 (default uninitialized value)
+    assertEquals(pcs.getHighestLeadershipTerm(), -1L);
+
+    // Test setHighestLeadershipTerm
+    pcs.setHighestLeadershipTerm(100L);
+    assertEquals(pcs.getHighestLeadershipTerm(), 100L);
+
+    // Test updating to a higher term
+    pcs.setHighestLeadershipTerm(200L);
+    assertEquals(pcs.getHighestLeadershipTerm(), 200L);
+
+    // Test setting to a lower term (should be allowed)
+    pcs.setHighestLeadershipTerm(50L);
+    assertEquals(pcs.getHighestLeadershipTerm(), 50L);
+  }
+
+  @Test
+  public void testDolStateWithMultipleUpdates() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+
+    // Set first DolStamp
+    DolStamp dolStamp1 = new DolStamp(1L, "host-1");
+    pcs.setDolState(dolStamp1);
+    assertEquals(pcs.getDolState().getLeadershipTerm(), 1L);
+
+    // Replace with second DolStamp
+    DolStamp dolStamp2 = new DolStamp(2L, "host-2");
+    pcs.setDolState(dolStamp2);
+    assertEquals(pcs.getDolState().getLeadershipTerm(), 2L);
+    assertEquals(pcs.getDolState().getHostId(), "host-2");
+
+    // Clear and verify
+    pcs.clearDolState();
+    assertNull(pcs.getDolState());
   }
 }

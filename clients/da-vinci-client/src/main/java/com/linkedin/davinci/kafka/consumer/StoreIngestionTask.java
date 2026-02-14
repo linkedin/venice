@@ -277,7 +277,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Keeps track of producer states inside version topic that drainer threads have processed so far.
    * Producers states in this validator will be flushed to the metadata partition of the storage engine regularly in
-   * {@link #syncOffset(String, PartitionConsumptionState)}
+   * {@link #syncOffset(PartitionConsumptionState)}
    * NOTE: consumerDiv will be used in place of this when {@link #isGlobalRtDivEnabled()} is true.
    */
   private final DataIntegrityValidator drainerDiv;
@@ -3540,13 +3540,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerRecord.getPubSubMessageTime(),
             partitionConsumptionState);
         try {
-          if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
-              && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-            recordHeartbeatReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
-            if (recordTransformer != null) {
-              recordTransformer.onHeartbeat(
-                  consumerRecord.getTopicPartition().getPartitionNumber(),
-                  consumerRecord.getPubSubMessageTime());
+          if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()) {
+            if (Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+              recordHeartbeatReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
+              if (recordTransformer != null) {
+                recordTransformer.onHeartbeat(
+                    consumerRecord.getTopicPartition().getPartitionNumber(),
+                    consumerRecord.getPubSubMessageTime());
+              }
+            } else {
+              // Check and handle DoL message for non-heartbeat messages
+              checkAndHandleDoLMessage(partitionConsumptionState, consumerRecord);
             }
           }
         } catch (Exception e) {
@@ -3721,8 +3725,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       boolean tolerateMissingMessagesForRealTimeTopic) {
     KafkaKey key = consumerRecord.getKey();
-    if (key.isControlMessage() && Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())) {
-      return; // Skip validation for ingestion heartbeat records.
+    if (key.isControlMessage() && (Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())
+        || Arrays.equals(KafkaKey.DOL_STAMP.getKey(), key.getKey()))) {
+      return; // Skip validation for ingestion heartbeat and DoL stamp records.
     } else if (isGlobalRtDivEnabled() && isRecordSelfProduced(consumerRecord)) {
       // Skip validation for self-produced records. If there were any issues, the followers would've reported it already
       // e.g. Leader->Follower, resubscribe to local VT, consume messages produced by itself (when it was leader)
@@ -3967,7 +3972,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubPosition startOffset,
       String kafkaURL) {
     PubSubTopicPartition resolvedTopicPartition =
-        resolveRtTopicPartitionWithPubSubBrokerAddress(pubSubTopic, partitionConsumptionState, kafkaURL);
+        resolveTopicPartitionWithPubSubBrokerAddress(pubSubTopic, partitionConsumptionState, kafkaURL);
     consumerSubscribe(resolvedTopicPartition, startOffset, kafkaURL);
   }
 
@@ -4981,7 +4986,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * For RT input topic with separate-RT kafka URL, this method will return topic-partition with separated-RT topic.
    * For other case, it will return topic-partition with input topic.
    */
-  PubSubTopicPartition resolveRtTopicPartitionWithPubSubBrokerAddress(
+  PubSubTopicPartition resolveTopicPartitionWithPubSubBrokerAddress(
       PubSubTopic topic,
       PartitionConsumptionState partitionConsumptionState,
       String pubSubBrokerAddress) {
@@ -5265,6 +5270,125 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.error("Caught exception when resubscribing for replica: {}", pcs.getReplicaId(), e);
       }
     }
+  }
+
+  /**
+  * Checks if the consumed message is a DoL (Declaration of Leadership) stamp and marks it as consumed
+  * if it matches the current DolStamp. This method is called during message consumption to detect when
+  * the leader replica has successfully consumed back its own DoL stamp, indicating it's fully caught up
+  * with the version topic and ready to switch to consuming from remote VT or RT.
+  *
+  * @param pcs the partition consumption state tracking DoL status
+  * @param dolPubSubMessage the consumed DoL PubSub message with leadership metadata
+  *
+  * Package-private for testing.
+  */
+  void checkAndHandleDoLMessage(PartitionConsumptionState pcs, DefaultPubSubMessage dolPubSubMessage) {
+    // Early exit if DoL mechanism is disabled via config or message key is not DoL stamp
+    if (!shouldUseDolMechanism() || !Arrays.equals(dolPubSubMessage.getKey().getKey(), KafkaKey.DOL_STAMP.getKey())) {
+      return;
+    }
+
+    // Extract leadership metadata from the message
+    KafkaMessageEnvelope value = dolPubSubMessage.getValue();
+    LeaderMetadata leaderMetadata = value.getLeaderMetadataFooter();
+    if (leaderMetadata == null) {
+      // Message doesn't have leadership metadata, skip processing
+      return;
+    }
+    // Only check cluster ID if we have a valid local cluster ID configured
+    if (localKafkaClusterId != Integer.MIN_VALUE && leaderMetadata.getUpstreamKafkaClusterId() != localKafkaClusterId) {
+      // Message is not from our own local region, skip processing
+      return;
+    }
+
+    CharSequence hostNameCharSeq = leaderMetadata.getHostName();
+    String consumedHostId = hostNameCharSeq != null ? hostNameCharSeq.toString() : null;
+    // Extract term information from the consumed message
+    long consumedTermId = leaderMetadata.getTermId();
+    long messageTimestamp =
+        value.getProducerMetadata() != null ? value.getProducerMetadata().getMessageTimestamp() : -1;
+    String replicaId = pcs.getReplicaId();
+
+    // Update highest observed leadership term for monitoring
+    long previousHighestTerm = pcs.getHighestLeadershipTerm();
+    if (consumedTermId > previousHighestTerm) {
+      pcs.setHighestLeadershipTerm(consumedTermId);
+      LOGGER.info(
+          "Replica: {} observed new highest leadership term: {} (previous: {}) from host: {} at timestamp: {}",
+          replicaId,
+          consumedTermId,
+          previousHighestTerm,
+          consumedHostId,
+          messageTimestamp);
+    }
+    DolStamp currentDolStamp = pcs.getDolState();
+    // Get current DoL state - may be null if not in STANDBY->LEADER transition
+    if (currentDolStamp == null) {
+      // Not currently waiting for a DoL, just log for observability
+      LOGGER.debug(
+          "Replica: {} consumed DoL stamp for term: {} from host: {} (timestamp: {}), but not currently waiting for DoL",
+          replicaId,
+          consumedTermId,
+          consumedHostId,
+          messageTimestamp);
+      return;
+    }
+
+    // Validate DoL matches expected term and host
+    long expectedTermId = currentDolStamp.getLeadershipTerm();
+    String expectedHostId = currentDolStamp.getHostId();
+
+    // Ignore DoL from different host (use Objects.equals for null-safety)
+    if (!Objects.equals(expectedHostId, consumedHostId)) {
+      LOGGER.debug(
+          "Replica: {} ignoring DoL from different host. Expected: {}, received: {}",
+          replicaId,
+          expectedHostId,
+          consumedHostId);
+      return;
+    }
+
+    // Ignore stale DoL from older term
+    if (consumedTermId < expectedTermId) {
+      LOGGER.debug(
+          "Replica: {} ignoring stale DoL from older term. Expected: {}, received: {}",
+          replicaId,
+          expectedTermId,
+          consumedTermId);
+      return;
+    }
+
+    // Handle DoL from future term - indicates race or concurrent leadership change
+    if (consumedTermId > expectedTermId) {
+      LOGGER.warn(
+          "Replica: {} consumed DoL from future term. Expected: {}, received: {}. DolStamp: {}",
+          replicaId,
+          expectedTermId,
+          consumedTermId,
+          currentDolStamp);
+      return;
+    }
+
+    // DoL loopback complete - term and host match
+    currentDolStamp.setDolConsumed(true);
+    long loopbackLatencyMs = currentDolStamp.getLatencyMs();
+    LOGGER.info(
+        "Replica {}: DoL loopback complete - successfully produced to and consumed back from local VT, "
+            + "confirming replica is fully caught up and ready to switch to leader source topic. "
+            + "Loopback latency: {} ms. [term={}, host={}, timestamp={}]. DolStamp={}",
+        replicaId,
+        loopbackLatencyMs,
+        consumedTermId,
+        consumedHostId,
+        messageTimestamp,
+        currentDolStamp);
+  }
+
+  protected boolean shouldUseDolMechanism() {
+    return isSystemStore
+        ? serverConfig.isLeaderHandoverUseDoLMechanismEnabledForSystemStores()
+        : serverConfig.isLeaderHandoverUseDoLMechanismEnabledForUserStores();
   }
 
   AbstractStoreBufferService getStoreBufferService() {

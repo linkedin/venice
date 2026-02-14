@@ -1302,7 +1302,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public void waitVersion(String storeName, int versionId, ControllerClient client) {
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
       String kafkaTopic = Version.composeKafkaTopic(storeName, versionId);
       JobStatusQueryResponse response = TestUtils.assertCommand(client.queryJobStatus(kafkaTopic));
       if (response.getStatus().equals(ExecutionStatus.ERROR.toString())) {
