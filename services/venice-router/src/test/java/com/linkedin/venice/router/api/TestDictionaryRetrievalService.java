@@ -309,4 +309,108 @@ public class TestDictionaryRetrievalService {
       }
     }
   }
+
+  /**
+   * This test specifically verifies that shouldDownloadDictionaryForVersion returns true for PUSHED versions.
+   * This covers the race condition fix where a version transitions STARTED->PUSHED during dictionary download.
+   */
+  @Test
+  public void testPushedVersionDictionaryRetrieval() throws Exception {
+    DictionaryRetrievalService dictionaryRetrievalService = null;
+    try {
+      dictionaryRetrievalService = new DictionaryRetrievalService(
+          onlineInstanceFinder,
+          routerConfig,
+          Optional.of(sslFactory),
+          metadataRepository,
+          storageNodeClient,
+          compressorFactory,
+          metricsRepository);
+
+      // Test that PUSHED status is allowed for dictionary download (same as STARTED and ONLINE)
+      doReturn(CompressionStrategy.ZSTD_WITH_DICT).when(version).getCompressionStrategy();
+
+      // Verify STARTED is allowed
+      doReturn(VersionStatus.STARTED).when(version).getStatus();
+      assertTrue(
+          dictionaryRetrievalService.shouldDownloadDictionaryForVersion(version),
+          "Dictionary should be downloaded for version in STARTED state");
+
+      // Verify PUSHED is allowed (the fix)
+      doReturn(VersionStatus.PUSHED).when(version).getStatus();
+      assertTrue(
+          dictionaryRetrievalService.shouldDownloadDictionaryForVersion(version),
+          "Dictionary should be downloaded for version in PUSHED state");
+
+      // Verify ONLINE is allowed
+      doReturn(VersionStatus.ONLINE).when(version).getStatus();
+      assertTrue(
+          dictionaryRetrievalService.shouldDownloadDictionaryForVersion(version),
+          "Dictionary should be downloaded for version in ONLINE state");
+
+      // Verify ERROR is NOT allowed
+      doReturn(VersionStatus.ERROR).when(version).getStatus();
+      assertTrue(
+          !dictionaryRetrievalService.shouldDownloadDictionaryForVersion(version),
+          "Dictionary should NOT be downloaded for version in ERROR state");
+
+      // Verify KILLED is NOT allowed
+      doReturn(VersionStatus.KILLED).when(version).getStatus();
+      assertTrue(
+          !dictionaryRetrievalService.shouldDownloadDictionaryForVersion(version),
+          "Dictionary should NOT be downloaded for version in KILLED state");
+    } finally {
+      if (dictionaryRetrievalService != null) {
+        dictionaryRetrievalService.close();
+        // Reset to NO_OP for the next test
+        doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
+        // Reset store version status to ONLINE
+        doReturn(VersionStatus.ONLINE).when(version).getStatus();
+      }
+    }
+  }
+
+  /**
+   * This test verifies that dictionary is NOT queued for versions in invalid states (ERROR, KILLED, etc).
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testDictionarySkippedForInvalidVersionStatus() throws Exception {
+    DictionaryRetrievalService dictionaryRetrievalService = null;
+    try {
+      dictionaryRetrievalService = new DictionaryRetrievalService(
+          onlineInstanceFinder,
+          routerConfig,
+          Optional.of(sslFactory),
+          metadataRepository,
+          storageNodeClient,
+          compressorFactory,
+          metricsRepository);
+      dictionaryRetrievalService.start();
+      StoreDataChangedListener storeChangeListener = dictionaryRetrievalService.getStoreChangeListener();
+
+      // Set up version in ERROR status
+      doReturn(CompressionStrategy.ZSTD_WITH_DICT).when(version).getCompressionStrategy();
+      doReturn(VersionStatus.ERROR).when(version).getStatus();
+
+      // Trigger dictionary retrieval
+      storeChangeListener.handleStoreChanged(store);
+
+      // Give it a moment to process
+      Thread.sleep(1000);
+
+      // Verify that the dictionary is NOT queued for ERROR version
+      assertTrue(
+          !dictionaryRetrievalService.getDownloadingDictionaryFutures().containsKey(KAFKA_TOPIC_NAME),
+          "Dictionary should NOT be downloaded for version in ERROR state");
+    } finally {
+      if (dictionaryRetrievalService != null) {
+        dictionaryRetrievalService.stop();
+        dictionaryRetrievalService.close();
+        // Reset to NO_OP for the next test
+        doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
+        // Reset store version status to ONLINE
+        doReturn(VersionStatus.ONLINE).when(version).getStatus();
+      }
+    }
+  }
 }

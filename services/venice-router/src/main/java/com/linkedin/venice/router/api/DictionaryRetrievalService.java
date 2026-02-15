@@ -144,7 +144,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         if (!shouldDownloadDictionaryForVersion(version)) {
           if (version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT) {
             LOGGER.info(
-                "Skipping dictionary download for {} because version status is {} (requires ONLINE or STARTED)",
+                "Skipping dictionary download for {} because version status is {} (requires ONLINE, STARTED, or PUSHED)",
                 topic,
                 version.getStatus());
             stats.recordVersionSkippedByStatus();
@@ -476,13 +476,12 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
                         TimeUnit.MILLISECONDS));
               }
             } else {
-              if (initCompressorFromDictionary(version, dictionary)) {
-                stats.recordDownloadSuccess();
-                LOGGER.info("Dictionary downloaded and compressor is ready for resource: {}", kafkaTopic);
-              } else {
-                stats.recordVersionSkippedByStatus();
-                LOGGER.debug("Dictionary downloaded for {} but compressor initialization was skipped", kafkaTopic);
-              }
+              initCompressorFromDictionary(version, dictionary);
+              stats.recordDownloadSuccess();
+              LOGGER.info(
+                  "Dictionary downloaded and compressor is ready for resource: {} (version status: {})",
+                  kafkaTopic,
+                  version.getStatus());
             }
             return null;
           }, executor);
@@ -494,28 +493,44 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
   /**
    * Initialize a compressor from the downloaded dictionary.
+   * Handles race conditions where version status changes during dictionary download.
+   * Now supports PUSHED state to handle STARTED→PUSHED transitions during download.
+   *
    * @param version The version to initialize the compressor for
    * @param dictionary The dictionary bytes
-   * @return true if the compressor was initialized, false if initialization was skipped
    */
-  private boolean initCompressorFromDictionary(Version version, byte[] dictionary) {
+  private void initCompressorFromDictionary(Version version, byte[] dictionary) {
     String kafkaTopic = version.kafkaTopicName();
+    VersionStatus currentStatus = version.getStatus();
+
     if (!shouldDownloadDictionaryForVersion(version)) {
       LOGGER.warn(
-          "Dictionary downloaded for {} but version status is now {} — compressor will NOT be initialized (version likely retired or status changed)",
+          "Dictionary downloaded for {} but version status is now {} — compressor will NOT be initialized (status changed during download, likely version retired or in error state)",
           kafkaTopic,
-          version.getStatus());
-      return false;
+          currentStatus);
+      stats.recordVersionSkippedByStatus();
+      return;
     }
+
     if (!downloadingDictionaryFutures.containsKey(kafkaTopic)) {
       LOGGER.warn(
-          "Dictionary downloaded for {} but it is no longer in downloadingDictionaryFutures — compressor will NOT be initialized (version likely retired)",
+          "Dictionary downloaded for {} but it is no longer in downloadingDictionaryFutures — compressor will NOT be initialized (version likely retired during download)",
           kafkaTopic);
-      return false;
+      stats.recordVersionSkippedByStatus();
+      return;
     }
+
     CompressionStrategy compressionStrategy = version.getCompressionStrategy();
     compressorFactory.createVersionSpecificCompressorIfNotExist(compressionStrategy, kafkaTopic, dictionary);
-    return true;
+
+    // Log with status to help identify STARTED→PUSHED race conditions
+    if (currentStatus == VersionStatus.PUSHED) {
+      LOGGER.info(
+          "Compressor initialized for {} in PUSHED state (likely STARTED→PUSHED transition during download) — compressor will be ready when version goes ONLINE",
+          kafkaTopic);
+    } else {
+      LOGGER.info("Compressor initialized for {} with status {}", kafkaTopic, currentStatus);
+    }
   }
 
   private void handleVersionRetirement(String kafkaTopic, String exceptionReason) {
@@ -534,9 +549,11 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     compressorFactory.removeVersionSpecificCompressor(kafkaTopic);
   }
 
-  private boolean shouldDownloadDictionaryForVersion(Version version) {
+  // Package-private for testing
+  boolean shouldDownloadDictionaryForVersion(Version version) {
     return version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-        && (version.getStatus() == VersionStatus.ONLINE || version.getStatus() == VersionStatus.STARTED);
+        && (version.getStatus() == VersionStatus.ONLINE || version.getStatus() == VersionStatus.STARTED
+            || version.getStatus() == VersionStatus.PUSHED);
   }
 
   @Override
