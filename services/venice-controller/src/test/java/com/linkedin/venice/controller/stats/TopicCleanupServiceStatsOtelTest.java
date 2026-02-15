@@ -4,16 +4,23 @@ import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
+import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -39,7 +46,10 @@ public class TopicCleanupServiceStatsOtelTest {
   @Test
   public void testRecordDeletableTopicsCount() {
     stats.recordDeletableTopicsCount(5);
-    validateGauge(ControllerMetricEntity.TOPIC_CLEANUP_DELETABLE_COUNT.getMetricName(), 5, Attributes.empty());
+    validateGauge(
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETABLE_COUNT.getMetricName(),
+        5,
+        Attributes.empty());
   }
 
   @Test
@@ -47,14 +57,17 @@ public class TopicCleanupServiceStatsOtelTest {
     stats.recordDeletableTopicsCount(10);
     stats.recordDeletableTopicsCount(3);
     // Gauge should reflect the last recorded value
-    validateGauge(ControllerMetricEntity.TOPIC_CLEANUP_DELETABLE_COUNT.getMetricName(), 3, Attributes.empty());
+    validateGauge(
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETABLE_COUNT.getMetricName(),
+        3,
+        Attributes.empty());
   }
 
   @Test
   public void testRecordTopicDeleted() {
     stats.recordTopicDeleted();
     validateCounter(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
         1,
         Attributes.builder()
             .put(
@@ -69,7 +82,7 @@ public class TopicCleanupServiceStatsOtelTest {
     stats.recordTopicDeleted();
     stats.recordTopicDeleted();
     validateCounter(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
         3,
         Attributes.builder()
             .put(
@@ -82,7 +95,7 @@ public class TopicCleanupServiceStatsOtelTest {
   public void testRecordTopicDeletionError() {
     stats.recordTopicDeletionError();
     validateCounter(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
         1,
         Attributes.builder()
             .put(
@@ -96,7 +109,7 @@ public class TopicCleanupServiceStatsOtelTest {
     stats.recordTopicDeletionError();
     stats.recordTopicDeletionError();
     validateCounter(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
         2,
         Attributes.builder()
             .put(
@@ -113,7 +126,7 @@ public class TopicCleanupServiceStatsOtelTest {
 
     // Verify success counter
     validateCounter(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
         2,
         Attributes.builder()
             .put(
@@ -123,7 +136,7 @@ public class TopicCleanupServiceStatsOtelTest {
 
     // Verify failure counter is independent
     validateCounter(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
         1,
         Attributes.builder()
             .put(
@@ -139,11 +152,14 @@ public class TopicCleanupServiceStatsOtelTest {
     stats.recordTopicDeletionError();
 
     // Gauge metric
-    validateGauge(ControllerMetricEntity.TOPIC_CLEANUP_DELETABLE_COUNT.getMetricName(), 15, Attributes.empty());
+    validateGauge(
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETABLE_COUNT.getMetricName(),
+        15,
+        Attributes.empty());
 
     // Success counter
     validateCounter(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
         1,
         Attributes.builder()
             .put(
@@ -153,7 +169,7 @@ public class TopicCleanupServiceStatsOtelTest {
 
     // Failure counter
     validateCounter(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
         1,
         Attributes.builder()
             .put(
@@ -184,6 +200,65 @@ public class TopicCleanupServiceStatsOtelTest {
     plainStats.recordDeletableTopicsCount(5);
     plainStats.recordTopicDeleted();
     plainStats.recordTopicDeletionError();
+  }
+
+  @Test
+  public void testTopicCleanupOtelMetricEntity() {
+    Map<TopicCleanupServiceStats.TopicCleanupOtelMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
+    expectedMetrics.put(
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETABLE_COUNT,
+        MetricEntity.createWithNoDimensions(
+            "topic_cleanup_service.topic.deletable_count",
+            MetricType.GAUGE,
+            MetricUnit.NUMBER,
+            "Count of topics currently eligible for deletion"));
+    expectedMetrics.put(
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT,
+        new MetricEntity(
+            "topic_cleanup_service.topic.deleted_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of topic deletion operations",
+            Utils.setOf(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+
+    assertEquals(
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.values().length,
+        expectedMetrics.size(),
+        "New TopicCleanupOtelMetricEntity values were added but not included in this test");
+
+    for (TopicCleanupServiceStats.TopicCleanupOtelMetricEntity metric: TopicCleanupServiceStats.TopicCleanupOtelMetricEntity
+        .values()) {
+      MetricEntity actual = metric.getMetricEntity();
+      MetricEntity expected = expectedMetrics.get(metric);
+
+      assertNotNull(expected, "No expected definition for " + metric.name());
+      assertEquals(actual.getMetricName(), expected.getMetricName(), "Unexpected metric name for " + metric.name());
+      assertEquals(actual.getMetricType(), expected.getMetricType(), "Unexpected metric type for " + metric.name());
+      assertEquals(actual.getUnit(), expected.getUnit(), "Unexpected metric unit for " + metric.name());
+      assertEquals(
+          actual.getDescription(),
+          expected.getDescription(),
+          "Unexpected metric description for " + metric.name());
+      assertEquals(
+          actual.getDimensionsList(),
+          expected.getDimensionsList(),
+          "Unexpected metric dimensions for " + metric.name());
+    }
+
+    // Verify all TopicCleanupOtelMetricEntity entries are present in CONTROLLER_SERVICE_METRIC_ENTITIES
+    for (MetricEntity expected: expectedMetrics.values()) {
+      boolean found = false;
+      for (MetricEntity actual: CONTROLLER_SERVICE_METRIC_ENTITIES) {
+        if (Objects.equals(actual.getMetricName(), expected.getMetricName())
+            && actual.getMetricType() == expected.getMetricType() && actual.getUnit() == expected.getUnit()
+            && Objects.equals(actual.getDescription(), expected.getDescription())
+            && Objects.equals(actual.getDimensionsList(), expected.getDimensionsList())) {
+          found = true;
+          break;
+        }
+      }
+      assertTrue(found, "MetricEntity not found in CONTROLLER_SERVICE_METRIC_ENTITIES: " + expected.getMetricName());
+    }
   }
 
   @Test

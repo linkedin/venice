@@ -1,12 +1,20 @@
 package com.linkedin.venice.controller.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.utils.Utils.setOf;
+
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
@@ -31,7 +39,7 @@ public class TopicCleanupServiceStats extends AbstractVeniceStats {
     Attributes baseAttributes = otelData.getBaseAttributes();
 
     deletableTopicsCountMetric = MetricEntityStateBase.create(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETABLE_COUNT.getMetricEntity(),
+        TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETABLE_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         TopicCleanupTehutiMetricNameEnum.DELETABLE_TOPICS_COUNT,
@@ -40,7 +48,7 @@ public class TopicCleanupServiceStats extends AbstractVeniceStats {
         baseAttributes);
 
     topicsDeletedMetric = MetricEntityStateOneEnum.create(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricEntity(),
+        TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         TopicCleanupTehutiMetricNameEnum.TOPICS_DELETED_RATE,
@@ -49,7 +57,7 @@ public class TopicCleanupServiceStats extends AbstractVeniceStats {
         VeniceResponseStatusCategory.class);
 
     topicDeletionErrorMetric = MetricEntityStateOneEnum.create(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricEntity(),
+        TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         TopicCleanupTehutiMetricNameEnum.TOPIC_DELETION_ERROR_RATE,
@@ -83,6 +91,46 @@ public class TopicCleanupServiceStats extends AbstractVeniceStats {
     @Override
     public String getMetricName() {
       return this.metricName;
+    }
+  }
+
+  public enum TopicCleanupOtelMetricEntity implements ModuleMetricEntityInterface {
+    /** Gauge of topics currently eligible for deletion */
+    TOPIC_CLEANUP_DELETABLE_COUNT(
+        "topic_cleanup_service.topic.deletable_count", MetricType.GAUGE, MetricUnit.NUMBER,
+        "Count of topics currently eligible for deletion"
+    ),
+    /** Count of topic deletion operations (success and failure) */
+    TOPIC_CLEANUP_DELETED_COUNT(
+        "topic_cleanup_service.topic.deleted_count", MetricType.COUNTER, MetricUnit.NUMBER,
+        "Count of topic deletion operations", setOf(VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+    );
+
+    private final MetricEntity metricEntity;
+    private final String metricName;
+
+    TopicCleanupOtelMetricEntity(String metricName, MetricType metricType, MetricUnit unit, String description) {
+      this.metricName = metricName;
+      this.metricEntity = MetricEntity.createWithNoDimensions(metricName, metricType, unit, description);
+    }
+
+    TopicCleanupOtelMetricEntity(
+        String metricName,
+        MetricType metricType,
+        MetricUnit unit,
+        String description,
+        java.util.Set<VeniceMetricsDimensions> dimensionsList) {
+      this.metricName = metricName;
+      this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
+    }
+
+    @VisibleForTesting
+    public String getMetricName() {
+      return metricName;
+    }
+
+    public MetricEntity getMetricEntity() {
+      return metricEntity;
     }
   }
 }

@@ -9,7 +9,7 @@ import static com.linkedin.venice.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE;
 import static com.linkedin.venice.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED;
 import static com.linkedin.venice.PushJobCheckpoints.START_DATA_WRITER_JOB;
 import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_PREFIX;
-import static com.linkedin.venice.controller.stats.ControllerMetricEntity.PUSH_JOB_COUNT;
+import static com.linkedin.venice.controller.stats.PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT;
 import static com.linkedin.venice.status.PushJobDetailsStatus.COMPLETED;
 import static com.linkedin.venice.status.PushJobDetailsStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;

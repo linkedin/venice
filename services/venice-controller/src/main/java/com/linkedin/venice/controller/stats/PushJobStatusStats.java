@@ -1,19 +1,31 @@
 package com.linkedin.venice.controller.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.utils.Utils.setOf;
+
 import com.google.common.collect.ImmutableMap;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VenicePushJobStatus;
 import com.linkedin.venice.stats.dimensions.VenicePushType;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.CountSinceLastMeasurement;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Set;
 
 
 public class PushJobStatusStats extends AbstractVeniceStats {
@@ -35,7 +47,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
     this.baseDimensionsMap = otelData.getBaseDimensionsMap();
 
     batchPushSuccessMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
+        PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_SUCCESS,
@@ -43,7 +55,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         baseDimensionsMap);
 
     batchPushFailureDueToUserErrorMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
+        PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_FAILED_USER_ERROR,
@@ -51,7 +63,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         baseDimensionsMap);
 
     batchPushFailureDueToNonUserErrorMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
+        PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         PushJobTehutiMetricNameEnum.BATCH_PUSH_JOB_FAILED_NON_USER_ERROR,
@@ -59,7 +71,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         baseDimensionsMap);
 
     incrementalPushSuccessMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
+        PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_SUCCESS,
@@ -67,7 +79,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         baseDimensionsMap);
 
     incrementalPushFailureDueToUserErrorMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
+        PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_FAILED_USER_ERROR,
@@ -75,7 +87,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         baseDimensionsMap);
 
     incrementalPushFailureDueToNonUserErrorMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
+        PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         PushJobTehutiMetricNameEnum.INCREMENTAL_PUSH_JOB_FAILED_NON_USER_ERROR,
@@ -139,6 +151,37 @@ public class PushJobStatusStats extends AbstractVeniceStats {
     @Override
     public String getMetricName() {
       return this.metricName;
+    }
+  }
+
+  public enum PushJobOtelMetricEntity implements ModuleMetricEntityInterface {
+    /** PushJobStatusStats: Push job completions */
+    PUSH_JOB_COUNT(
+        "push_job.count", MetricType.COUNTER, MetricUnit.NUMBER,
+        "Push job completions, differentiated by push type and status",
+        setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME, VENICE_PUSH_JOB_TYPE, VENICE_PUSH_JOB_STATUS)
+    );
+
+    private final MetricEntity metricEntity;
+    private final String metricName;
+
+    PushJobOtelMetricEntity(
+        String metricName,
+        MetricType metricType,
+        MetricUnit unit,
+        String description,
+        Set<VeniceMetricsDimensions> dimensionsList) {
+      this.metricName = metricName;
+      this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
+    }
+
+    @VisibleForTesting
+    public String getMetricName() {
+      return metricName;
+    }
+
+    public MetricEntity getMetricEntity() {
+      return metricEntity;
     }
   }
 }

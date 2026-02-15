@@ -1,175 +1,108 @@
 package com.linkedin.venice.controller.stats;
 
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.VeniceController;
-import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricType;
-import com.linkedin.venice.stats.metrics.MetricUnit;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
+import java.io.File;
+import java.net.URL;
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Enumeration;
+import java.util.List;
 import java.util.Objects;
 import org.testng.annotations.Test;
 
 
+/**
+ * Validates that {@link VeniceController#CONTROLLER_SERVICE_METRIC_ENTITIES} is complete —
+ * i.e., it aggregates metric entities from every {@link ModuleMetricEntityInterface} enum
+ * defined in the controller stats package.
+ *
+ * <p>This test automatically discovers all {@link ModuleMetricEntityInterface} enums in
+ * the {@code com.linkedin.venice.controller.stats} package by scanning the compiled
+ * classes directories. If a new stats class adds a nested {@code ModuleMetricEntityInterface}
+ * enum but does not register it in {@link VeniceController#CONTROLLER_SERVICE_METRIC_ENTITIES},
+ * this test will fail.
+ */
 public class ControllerMetricEntityTest {
+  private static final String STATS_PACKAGE = ControllerMetricEntityTest.class.getPackage().getName();
+
   @Test
-  public void testControllerMetricEntities() {
-    Map<ControllerMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
-    expectedMetrics.put(
-        ControllerMetricEntity.INFLIGHT_CALL_COUNT,
-        new MetricEntity(
-            "inflight_call_count",
-            MetricType.UP_DOWN_COUNTER,
-            MetricUnit.NUMBER,
-            "Count of all current inflight calls to controller spark server",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT)));
-    expectedMetrics.put(
-        ControllerMetricEntity.CALL_COUNT,
-        new MetricEntity(
-            "call_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Count of all calls to controller spark server",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
-    expectedMetrics.put(
-        ControllerMetricEntity.CALL_TIME,
-        new MetricEntity(
-            "call_time",
-            MetricType.HISTOGRAM,
-            MetricUnit.MILLISECOND,
-            "Latency histogram of all successful calls to controller spark server",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
-    expectedMetrics.put(
-        ControllerMetricEntity.STORE_REPUSH_CALL_COUNT,
-        new MetricEntity(
-            "store.repush.call_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Count of all requests to repush a store",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.STORE_REPUSH_TRIGGER_SOURCE)));
-    expectedMetrics.put(
-        ControllerMetricEntity.STORE_COMPACTION_NOMINATED_COUNT,
-        new MetricEntity(
-            "store.compaction.nominated_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Count of stores nominated for scheduled compaction",
-            Utils.setOf(VeniceMetricsDimensions.VENICE_STORE_NAME, VeniceMetricsDimensions.VENICE_CLUSTER_NAME)));
-    expectedMetrics.put(
-        ControllerMetricEntity.STORE_COMPACTION_ELIGIBLE_STATE,
-        new MetricEntity(
-            "store.compaction.eligible_state",
-            MetricType.GAUGE,
-            MetricUnit.NUMBER,
-            "Track the state from the time a store is nominated for compaction to the time the repush is completed",
-            Utils.setOf(VeniceMetricsDimensions.VENICE_STORE_NAME, VeniceMetricsDimensions.VENICE_CLUSTER_NAME)));
-    expectedMetrics.put(
-        ControllerMetricEntity.STORE_COMPACTION_TRIGGERED_COUNT,
-        new MetricEntity(
-            "store.compaction.triggered_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Count of log compaction repush triggered for a store after it becomes eligible",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME)));
-    expectedMetrics.put(
-        ControllerMetricEntity.PUSH_JOB_COUNT,
-        new MetricEntity(
-            "push_job.count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Push job completions, differentiated by push type and status",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE,
-                VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS)));
-    expectedMetrics.put(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETABLE_COUNT,
-        MetricEntity.createWithNoDimensions(
-            "topic_cleanup_service.topic.deletable_count",
-            MetricType.GAUGE,
-            MetricUnit.NUMBER,
-            "Count of topics currently eligible for deletion"));
-    expectedMetrics.put(
-        ControllerMetricEntity.TOPIC_CLEANUP_DELETED_COUNT,
-        new MetricEntity(
-            "topic_cleanup_service.topic.deleted_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Count of topic deletion operations",
-            Utils.setOf(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+  @SuppressWarnings("unchecked")
+  public void testControllerServiceMetricEntitiesIsComplete() throws Exception {
+    // Discover all ModuleMetricEntityInterface enums in the controller stats package.
+    // Use getResources (plural) to enumerate all classpath locations for this package
+    // (main classes and test classes are in separate directories).
+    List<Class<? extends ModuleMetricEntityInterface>> discoveredEnumClasses = new ArrayList<>();
 
-    for (ControllerMetricEntity metric: ControllerMetricEntity.values()) {
-      MetricEntity actual = metric.getMetricEntity();
-      MetricEntity expected = expectedMetrics.get(metric);
+    String packagePath = STATS_PACKAGE.replace('.', '/');
+    Enumeration<URL> packageUrls = Thread.currentThread().getContextClassLoader().getResources(packagePath);
 
-      assertNotNull(expected, "No expected definition for " + metric.name());
-      assertNotNull(actual.getMetricName(), "Metric name should not be null for " + metric.name());
-      assertEquals(actual.getMetricName(), expected.getMetricName(), "Unexpected metric name for " + metric.name());
-      assertNotNull(actual.getMetricType(), "Metric type should not be null for " + metric.name());
-      assertEquals(actual.getMetricType(), expected.getMetricType(), "Unexpected metric type for " + metric.name());
-      assertNotNull(actual.getUnit(), "Metric unit should not be null for " + metric.name());
-      assertEquals(actual.getUnit(), expected.getUnit(), "Unexpected metric unit for " + metric.name());
-      assertNotNull(actual.getDescription(), "Metric description should not be null for " + metric.name());
-      assertEquals(
-          actual.getDescription(),
-          expected.getDescription(),
-          "Unexpected metric description for " + metric.name());
-      assertNotNull(actual.getDimensionsList(), "Metric dimensions should not be null for " + metric.name());
-      assertEquals(
-          actual.getDimensionsList(),
-          expected.getDimensionsList(),
-          "Unexpected metric dimensions for " + metric.name());
+    while (packageUrls.hasMoreElements()) {
+      URL packageUrl = packageUrls.nextElement();
+      File packageDir = new File(packageUrl.getFile());
+      if (!packageDir.isDirectory()) {
+        continue;
+      }
+
+      File[] classFiles = packageDir.listFiles();
+      if (classFiles == null) {
+        continue;
+      }
+
+      for (File classFile: classFiles) {
+        String fileName = classFile.getName();
+        // Nested classes compile to OuterClass$InnerClass.class
+        if (!fileName.endsWith(".class") || !fileName.contains("$")) {
+          continue;
+        }
+        String fullClassName = STATS_PACKAGE + "." + fileName.replace(".class", "");
+        try {
+          Class<?> clazz = Class.forName(fullClassName);
+          if (clazz.isEnum() && ModuleMetricEntityInterface.class.isAssignableFrom(clazz)) {
+            discoveredEnumClasses.add((Class<? extends ModuleMetricEntityInterface>) clazz);
+          }
+        } catch (ClassNotFoundException e) {
+          // skip — not all nested class files may be loadable
+        }
+      }
     }
 
-    Collection<MetricEntity> expectedMetricEntities = expectedMetrics.values();
+    assertTrue(
+        !discoveredEnumClasses.isEmpty(),
+        "No ModuleMetricEntityInterface enums found in " + STATS_PACKAGE + ". Classpath scanning may be broken.");
+
+    // Build the expected set from all discovered enums
+    Collection<MetricEntity> allExpected =
+        ModuleMetricEntityInterface.getUniqueMetricEntities(discoveredEnumClasses.toArray(new Class[0]));
+
+    Collection<MetricEntity> actual = VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES;
 
     assertEquals(
-        VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES.size(),
-        expectedMetricEntities.size(),
-        "Unexpected size of CONTROLLER_SERVICE_METRIC_ENTITIES");
+        actual.size(),
+        allExpected.size(),
+        "CONTROLLER_SERVICE_METRIC_ENTITIES size mismatch. "
+            + "A ModuleMetricEntityInterface enum in the controller stats package may not be registered in "
+            + "VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES. Discovered enums: " + discoveredEnumClasses);
 
-    for (MetricEntity actual: VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES) {
+    for (MetricEntity expected: allExpected) {
       boolean found = false;
-      for (MetricEntity expected: expectedMetricEntities) {
-        if (metricEntitiesEqual(actual, expected)) {
+      for (MetricEntity entry: actual) {
+        if (metricEntitiesEqual(entry, expected)) {
           found = true;
           break;
         }
       }
-      assertTrue(found, "Unexpected MetricEntity found: " + actual.getMetricName());
+      assertTrue(found, "MetricEntity not found in CONTROLLER_SERVICE_METRIC_ENTITIES: " + expected.getMetricName());
     }
   }
 
-  private boolean metricEntitiesEqual(MetricEntity actual, MetricEntity expected) {
-    return Objects.equals(actual.getMetricName(), expected.getMetricName())
-        && actual.getMetricType() == expected.getMetricType() && actual.getUnit() == expected.getUnit()
-        && Objects.equals(actual.getDescription(), expected.getDescription())
-        && Objects.equals(actual.getDimensionsList(), expected.getDimensionsList());
+  private boolean metricEntitiesEqual(MetricEntity a, MetricEntity b) {
+    return Objects.equals(a.getMetricName(), b.getMetricName()) && a.getMetricType() == b.getMetricType()
+        && a.getUnit() == b.getUnit() && Objects.equals(a.getDescription(), b.getDescription())
+        && Objects.equals(a.getDimensionsList(), b.getDimensionsList());
   }
 }
