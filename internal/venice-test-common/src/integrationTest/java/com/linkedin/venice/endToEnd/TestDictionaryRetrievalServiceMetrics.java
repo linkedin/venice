@@ -58,7 +58,7 @@ public class TestDictionaryRetrievalServiceMetrics {
   @Test(timeOut = TEST_TIMEOUT)
   public void testDictionaryRetrievalMetricsAfterPush() throws Exception {
     // Create a store with ZSTD_WITH_DICT compression, which triggers dictionary download on the router
-    String storeName = veniceCluster.createStoreWithZstdDictionary(100);
+    veniceCluster.createStoreWithZstdDictionary(100);
 
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
     MetricsRepository routerMetrics = routerWrapper.getMetricsRepository();
