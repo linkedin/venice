@@ -97,7 +97,6 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       new VeniceConcurrentHashMap<>();
 
   private final int dictionaryRetrievalTimeMs;
-  private final long onlineInstanceWaitMs;
 
   // This is the ZK Listener which acts as the primary producer for finding versions which require a dictionary.
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
@@ -198,7 +197,6 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
     // How long of a timeout we allow for a node to respond to a dictionary request
     dictionaryRetrievalTimeMs = routerConfig.getDictionaryRetrievalTimeMs();
-    onlineInstanceWaitMs = routerConfig.getDictionaryRetrievalOnlineInstanceWaitMs();
 
     executor = Executors.newScheduledThreadPool(
         routerConfig.getRouterDictionaryProcessingThreads(),
@@ -333,42 +331,23 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   }
 
   private Instance getOnlineInstance(String kafkaTopic) {
-    long deadline = System.currentTimeMillis() + onlineInstanceWaitMs;
-    long sleepMs = MIN_DICTIONARY_DOWNLOAD_DELAY_TIME_MS;
-
-    while (true) {
-      try {
-        int partitionCount = onlineInstanceFinder.getNumberOfPartitions(kafkaTopic);
-        List<Instance> onlineInstances = new ArrayList<>();
-        for (int p = 0; p < partitionCount; p++) {
-          onlineInstances.addAll(onlineInstanceFinder.getReadyToServeInstances(kafkaTopic, p));
-        }
-
-        if (!onlineInstances.isEmpty()) {
-          return onlineInstances.get((int) (Math.random() * onlineInstances.size()));
-        }
-      } catch (Exception e) {
-        logWithRedundantFilter(
-            Level.WARN,
-            "Exception caught in getting online instances for resource: " + kafkaTopic + ". " + e.getMessage());
+    try {
+      int partitionCount = onlineInstanceFinder.getNumberOfPartitions(kafkaTopic);
+      List<Instance> onlineInstances = new ArrayList<>();
+      for (int p = 0; p < partitionCount; p++) {
+        onlineInstances.addAll(onlineInstanceFinder.getReadyToServeInstances(kafkaTopic, p));
       }
 
-      if (System.currentTimeMillis() >= deadline) {
-        LOGGER.warn(
-            "No ready-to-serve instances found for {} after waiting {}ms. "
-                + "HelixCustomizedViewOfflinePushRepository may not have processed the update yet.",
-            kafkaTopic,
-            onlineInstanceWaitMs);
-        return null;
+      if (!onlineInstances.isEmpty()) {
+        return onlineInstances.get((int) (Math.random() * onlineInstances.size()));
       }
-
-      LOGGER.debug("No ready-to-serve instances for {} yet, retrying in {}ms", kafkaTopic, sleepMs);
-      if (!Utils.sleep(sleepMs)) {
-        LOGGER.warn("Interrupted while waiting for ready-to-serve instances for {}", kafkaTopic);
-        return null;
-      }
-      sleepMs = Math.min(sleepMs * 2, MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS);
+    } catch (Exception e) {
+      logWithRedundantFilter(
+          Level.WARN,
+          "Exception caught in getting online instances for resource: " + kafkaTopic + ". " + e.getMessage());
     }
+
+    return null;
   }
 
   /**

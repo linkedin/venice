@@ -2037,15 +2037,6 @@ public class ConfigKeys {
   public static final String ROUTER_DICTIONARY_PROCESSING_THREADS = "router.dictionary.processing.threads";
 
   /**
-   * Maximum time in milliseconds the router will wait (with exponential backoff retries) for ready-to-serve instances
-   * to appear before giving up on a dictionary download attempt. This handles the race condition where the
-   * DictionaryRetrievalService ZK listener fires before HelixCustomizedViewOfflinePushRepository has processed the
-   * same update.
-   */
-  public static final String ROUTER_DICTIONARY_RETRIEVAL_ONLINE_INSTANCE_WAIT_MS =
-      "router.dictionary.retrieval.online.instance.wait.ms";
-
-  /**
    * A config that determines whether to use Helix customized view for hybrid store quota
    */
   public static final String HELIX_HYBRID_STORE_QUOTA_ENABLED = "helix.hybrid.store.quota.enabled";

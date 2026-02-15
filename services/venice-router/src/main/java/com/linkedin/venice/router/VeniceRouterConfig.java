@@ -30,7 +30,6 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_HANDLE_MODE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_TIMEOUT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_DICTIONARY_PROCESSING_THREADS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_DICTIONARY_RETRIEVAL_ONLINE_INSTANCE_WAIT_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_DICTIONARY_RETRIEVAL_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_DNS_CACHE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_DNS_CACHE_REFRESH_INTERVAL_MS;
@@ -199,7 +198,6 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final long httpasyncclientConnectionWarmingSleepIntervalMs;
   private final int dictionaryRetrievalTimeMs;
   private final int routerDictionaryProcessingThreads;
-  private final long dictionaryRetrievalOnlineInstanceWaitMs;
   private final int httpasyncclientConnectionWarmingLowWaterMark;
   private final int httpasyncclientConnectionWarmingExecutorThreadNum;
   private final long httpasyncclientConnectionWarmingNewInstanceDelayJoinMs;
@@ -351,8 +349,6 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       dictionaryRetrievalTimeMs =
           (int) props.getLong(ROUTER_DICTIONARY_RETRIEVAL_TIME_MS, TimeUnit.SECONDS.toMillis(30));
       routerDictionaryProcessingThreads = props.getInt(ROUTER_DICTIONARY_PROCESSING_THREADS, 3);
-      dictionaryRetrievalOnlineInstanceWaitMs =
-          props.getLong(ROUTER_DICTIONARY_RETRIEVAL_ONLINE_INSTANCE_WAIT_MS, TimeUnit.SECONDS.toMillis(60));
       httpasyncclientConnectionWarmingLowWaterMark =
           props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 60);
       httpasyncclientConnectionWarmingExecutorThreadNum =
@@ -700,10 +696,6 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public int getRouterDictionaryProcessingThreads() {
     return routerDictionaryProcessingThreads;
-  }
-
-  public long getDictionaryRetrievalOnlineInstanceWaitMs() {
-    return dictionaryRetrievalOnlineInstanceWaitMs;
   }
 
   public int getHttpasyncclientConnectionWarmingLowWaterMark() {
