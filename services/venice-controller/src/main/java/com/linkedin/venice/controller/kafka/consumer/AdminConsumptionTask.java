@@ -311,7 +311,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         new LinkedBlockingQueue<>(MAX_WORKER_QUEUE_SIZE),
         new DaemonThreadFactory(String.format("Venice-Admin-Execution-Task-%s", clusterName), admin.getLogContext()));
     this.undelegatedRecords = new LinkedList<>();
-    this.stats.setAdminConsumptionFailedPosition(failingPosition);
     this.regionName = regionName;
     this.storeRetryCountMap = new ConcurrentHashMap<>();
 
@@ -435,7 +434,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           lastUpdateTimeForConsumptionPositionLag = System.currentTimeMillis();
         }
         executeMessagesAndCollectResults();
-        stats.setAdminConsumptionFailedPosition(failingPosition);
       } catch (Exception e) {
         LOGGER.error("Exception thrown while running admin consumption task", e);
         // Unsubscribe and resubscribe in the next cycle to start over and avoid missing messages from poll.
@@ -474,7 +472,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     consumer.subscribe(adminTopicPartition, lastDelegatedPosition, true);
     isSubscribed = true;
     LOGGER.info(
-        "Subscribed to topic name: {}, with position: {} and execution id: {}. Remote consumption flag: {}",
+        "Subscribed to admin topic: {}, with position: {} and execution id: {}. Remote consumption flag: {}",
         adminTopicPartition,
         lastDelegatedPosition,
         lastPersistedExecutionId,
@@ -648,10 +646,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 if (storeQueue != null && !storeQueue.isEmpty()) {
                   AdminOperationWrapper removedOp = storeQueue.remove();
                   LOGGER.info(
-                      "Exceeded maximum retry attempts ({}) for store {} that does not exist. Skipping admin message with offset {}.",
+                      "Exceeded maximum retry attempts ({}) for store {} that does not exist. Skipping admin message with position: {}.",
                       MAX_RETRIES_FOR_NONEXISTENT_STORE,
                       storeName,
-                      removedOp.getPosition().getNumericOffset());
+                      removedOp.getPosition());
                   retryCountMap.remove(position);
                   problematicStores.remove(storeName);
                   continue;
@@ -1297,10 +1295,5 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   // Visible for testing
   long getConsumptionLagUpdateIntervalInMs() {
     return CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS;
-  }
-
-  // Visible for testing
-  AdminOperationSerializer getDeserializer() {
-    return deserializer;
   }
 }

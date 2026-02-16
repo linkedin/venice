@@ -10,9 +10,7 @@ import java.util.Set;
  * This class contains constants that represent Venice-managed ZooKeeper paths.
  */
 public class VeniceZkPaths {
-  public static final String ADMIN_TOPIC_METADATA = "adminTopicMetadata";
-  // new admin topic metadata structure is incompatible with the old one, so creating a new "v2" path
-  public static final String ADMIN_TOPIC_METADATA_V2 = "adminTopicMetadataV2";
+  public static final String ADMIN_TOPIC_METADATA = "adminTopicMetadataV2";
   public static final String CLUSTER_CONFIG = "ClusterConfig";
   public static final String DARK_CLUSTER_CONFIG = "DarkClusterConfig";
   public static final String EXECUTION_IDS = "executionids";
