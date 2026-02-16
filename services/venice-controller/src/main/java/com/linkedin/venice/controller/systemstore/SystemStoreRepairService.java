@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.stats.SystemStoreHealthCheckStats;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -28,15 +29,19 @@ public class SystemStoreRepairService extends AbstractVeniceService {
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
   private final int heartbeatWaitTimeInSeconds;
   private final int versionRefreshThresholdInDays;
+  private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private ScheduledExecutorService checkServiceExecutor;
   private final Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap =
       new VeniceConcurrentHashMap<>();
+  private HeartbeatBasedSystemStoreHealthChecker heartbeatChecker;
+  private SystemStoreHealthChecker overrideChecker;
 
   public SystemStoreRepairService(
       VeniceParentHelixAdmin parentAdmin,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository) {
     this.parentAdmin = parentAdmin;
+    this.multiClusterConfigs = multiClusterConfigs;
     this.repairTaskIntervalInSeconds =
         multiClusterConfigs.getCommonConfig().getParentSystemStoreRepairCheckIntervalSeconds();
     this.versionRefreshThresholdInDays =
@@ -55,13 +60,19 @@ public class SystemStoreRepairService extends AbstractVeniceService {
   public boolean startInner() {
     checkServiceExecutor = Executors.newScheduledThreadPool(1);
     isRunning.set(true);
+
+    heartbeatChecker = new HeartbeatBasedSystemStoreHealthChecker(parentAdmin, heartbeatWaitTimeInSeconds, isRunning);
+    overrideChecker = loadOverrideChecker();
+
     checkServiceExecutor.scheduleWithFixedDelay(
         new SystemStoreRepairTask(
             parentAdmin,
             clusterToSystemStoreHealthCheckStatsMap,
             heartbeatWaitTimeInSeconds,
             versionRefreshThresholdInDays,
-            isRunning),
+            isRunning,
+            heartbeatChecker,
+            overrideChecker),
         repairTaskIntervalInSeconds,
         repairTaskIntervalInSeconds,
         TimeUnit.SECONDS);
@@ -80,10 +91,53 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
+    closeChecker(heartbeatChecker);
+    closeChecker(overrideChecker);
     LOGGER.info("SystemStoreRepairService is shutdown.");
+  }
+
+  private SystemStoreHealthChecker loadOverrideChecker() {
+    String className = multiClusterConfigs.getCommonConfig().getSystemStoreHealthCheckOverrideClassName();
+    if (className == null || className.isEmpty()) {
+      LOGGER.info("No system store health check override configured, using heartbeat-only path.");
+      return null;
+    }
+    try {
+      Class<? extends SystemStoreHealthChecker> checkerClass = ReflectUtils.loadClass(className);
+      SystemStoreHealthChecker checker = ReflectUtils.callConstructor(
+          checkerClass,
+          new Class[] { VeniceControllerMultiClusterConfig.class },
+          new Object[] { multiClusterConfigs });
+      LOGGER.info("Loaded system store health check override: {}", className);
+      return checker;
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Failed to load system store health check override class: {}. Using heartbeat-only path.",
+          className,
+          e);
+      return null;
+    }
+  }
+
+  private void closeChecker(SystemStoreHealthChecker checker) {
+    if (checker != null) {
+      try {
+        checker.close();
+      } catch (Exception e) {
+        LOGGER.warn("Error closing system store health checker: {}", checker.getClass().getName(), e);
+      }
+    }
   }
 
   final Map<String, SystemStoreHealthCheckStats> getClusterToSystemStoreHealthCheckStatsMap() {
     return clusterToSystemStoreHealthCheckStatsMap;
+  }
+
+  HeartbeatBasedSystemStoreHealthChecker getHeartbeatChecker() {
+    return heartbeatChecker;
+  }
+
+  SystemStoreHealthChecker getOverrideChecker() {
+    return overrideChecker;
   }
 }

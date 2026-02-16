@@ -686,6 +686,13 @@ public class ConfigKeys {
       "controller.parent.system.store.version.refresh.threshold.in.days";
 
   /**
+   * Fully qualified class name of an optional {@code SystemStoreHealthChecker} override. When set, this checker runs
+   * first during system store health checks. Stores returning UNKNOWN fall back to the default heartbeat checker.
+   */
+  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_OVERRIDE_CLASS_NAME =
+      "controller.system.store.health.check.override.class.name";
+
+  /**
    * Whether to initialize system schemas when controller starts. Default is true.
    */
   public static final String SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED =
