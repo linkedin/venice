@@ -233,6 +233,28 @@ public abstract class OpenTelemetryDataTestUtils {
     assertEquals(longPointData.getAttributes(), expectedAttributes, "LongPointData attributes should match");
   }
 
+  /**
+   * Validate counter value is at least the expected minimum. Use this in integration tests
+   * where the exact count is non-deterministic (e.g., TopicCleanupService may delete
+   * additional topics beyond those the test explicitly tracks).
+   */
+  public static void validateLongPointDataFromCounterAtLeast(
+      InMemoryMetricReader inMemoryMetricReader,
+      long expectedMinValue,
+      Attributes expectedAttributes,
+      String metricName,
+      String metricPrefix) {
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    assertFalse(metricsData.isEmpty());
+
+    LongPointData longPointData = getLongPointDataFromSum(metricsData, metricName, metricPrefix, expectedAttributes);
+    assertNotNull(longPointData, "LongPointData should not be null");
+    assertTrue(
+        longPointData.getValue() >= expectedMinValue,
+        "LongPointData value should be >= " + expectedMinValue + " but was " + longPointData.getValue());
+    assertEquals(longPointData.getAttributes(), expectedAttributes, "LongPointData attributes should match");
+  }
+
   public static void validateLongPointDataFromGauge(
       InMemoryMetricReader inMemoryMetricReader,
       long expectedValue,

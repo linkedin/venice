@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
+import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_PREFIX;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
@@ -13,6 +14,7 @@ import static org.testng.AssertJUnit.fail;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -22,6 +24,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
@@ -38,11 +41,17 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -676,6 +685,28 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(metaSystemStoreRT)));
         }
       });
+
+      // Validate OTel metrics for topic cleanup
+      // TopicCleanupService runs on each child controller; validate at least 1 successful deletion was recorded
+      for (int i = 0; i < childDatacenters.size(); i++) {
+        VeniceControllerWrapper controller = childDatacenters.get(i).getControllers().values().iterator().next();
+        InMemoryMetricReader inMemoryMetricReader =
+            (InMemoryMetricReader) ((VeniceMetricsRepository) controller.getMetricRepository()).getVeniceMetricsConfig()
+                .getOtelAdditionalMetricsReader();
+
+        Attributes expectedSuccessAttrs = Attributes.builder()
+            .put(
+                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
+            .build();
+
+        OpenTelemetryDataTestUtils.validateLongPointDataFromCounterAtLeast(
+            inMemoryMetricReader,
+            1,
+            expectedSuccessAttrs,
+            TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+            CONTROLLER_SERVICE_METRIC_PREFIX);
+      }
     }
   }
 
