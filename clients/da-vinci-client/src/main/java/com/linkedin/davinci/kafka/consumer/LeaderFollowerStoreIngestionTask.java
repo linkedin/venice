@@ -25,6 +25,7 @@ import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
@@ -2069,11 +2070,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return Long.MAX_VALUE;
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      return getHeartbeatMonitoringService()
-          .getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+      return getHeartbeatMonitoringService().getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, shouldLogLag);
     } else {
-      return getHeartbeatMonitoringService()
-          .getReplicaFollowerHeartbeatLag(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+      return getHeartbeatMonitoringService().getReplicaFollowerHeartbeatLag(partitionConsumptionState, shouldLogLag);
     }
   }
 
@@ -2086,10 +2085,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       return getHeartbeatMonitoringService()
-          .getReplicaLeaderMinHeartbeatTimestamp(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+          .getReplicaLeaderMinHeartbeatTimestamp(partitionConsumptionState, shouldLogLag);
     } else {
       return getHeartbeatMonitoringService()
-          .getReplicaFollowerHeartbeatTimestamp(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+          .getReplicaFollowerHeartbeatTimestamp(partitionConsumptionState, shouldLogLag);
     }
   }
 
@@ -2521,32 +2520,54 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
       String kafkaUrl) {
-    if (getHeartbeatMonitoringService() == null) {
+    HeartbeatMonitoringService hbService = getHeartbeatMonitoringService();
+    if (hbService == null) {
       // Not enabled!
       return;
     }
+    String region;
+    long timestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
+    boolean isComplete = partitionConsumptionState.isComplete();
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      getHeartbeatMonitoringService().recordLeaderHeartbeat(
-          getStoreName(),
-          getVersionNumber(),
-          partitionConsumptionState.getPartition(),
-          getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          consumerRecord.getValue().getProducerMetadata().getMessageTimestamp(),
-          partitionConsumptionState.isComplete());
+      region = getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl);
+      HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
+      hbService.recordLeaderHeartbeat(cachedKey, timestamp, isComplete);
     } else {
-      getHeartbeatMonitoringService().recordFollowerHeartbeat(
-          getStoreName(),
-          getVersionNumber(),
-          partitionConsumptionState.getPartition(),
-          /**
-           * For Da Vinci there is no kafkaUrl mapping configured, we should refer to local region name setup in the
-           * Venice server config. This is consistent from the heartbeat lag calculation for ready-to-serve check.
-           */
-          isDaVinciClient()
-              ? getServerConfig().getRegionName()
-              : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          consumerRecord.getValue().getProducerMetadata().getMessageTimestamp(),
-          partitionConsumptionState.isComplete());
+      /**
+       * For Da Vinci there is no kafkaUrl mapping configured, we should refer to local region name setup in the
+       * Venice server config. This is consistent from the heartbeat lag calculation for ready-to-serve check.
+       */
+      region = isDaVinciClient()
+          ? getServerConfig().getRegionName()
+          : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl);
+      HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
+      hbService.recordFollowerHeartbeat(cachedKey, timestamp, isComplete);
+    }
+  }
+
+  /**
+   * Record a regular data record timestamp to the heartbeat monitoring service.
+   * Called only when record-level timestamp tracking is enabled (checked by caller).
+   */
+  @Override
+  protected void trackRecordReceived(
+      PartitionConsumptionState partitionConsumptionState,
+      DefaultPubSubMessage consumerRecord,
+      String pubSubUrl) {
+    HeartbeatMonitoringService hbService = getHeartbeatMonitoringService();
+    if (hbService == null) {
+      return;
+    }
+    String region =
+        isDaVinciClient() ? serverConfig.getRegionName() : serverConfig.getKafkaClusterUrlToAliasMap().get(pubSubUrl);
+    long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
+    boolean isComplete = partitionConsumptionState.isComplete();
+    HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
+
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+      hbService.recordLeaderRecordTimestamp(cachedKey, messageTimestamp, isComplete);
+    } else {
+      hbService.recordFollowerRecordTimestamp(cachedKey, messageTimestamp, isComplete);
     }
   }
 

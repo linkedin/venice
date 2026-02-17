@@ -2594,6 +2594,23 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
 
   /**
+   * Enable record-level timestamp tracking in heartbeat monitoring service.
+   * When enabled, the monitoring service will track timestamps for all records processed during
+   * ingestion, not just heartbeat control messages. This provides more granular visibility into
+   * ingestion progress and lag at the expense of additional memory and CPU overhead.
+   */
+  public static final String SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED = "server.record.level.timestamp.enabled";
+
+  /**
+   * Enable per-record OTel metrics emission for record-level delay tracking.
+   * When enabled, OTel metrics are emitted for every record processed during ingestion,
+   * providing real-time visibility into ingestion delays. When disabled (default), OTel metrics
+   * are only emitted periodically (every 60 seconds) with aggregated max/avg values.
+   * Requires SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED to be true.
+   */
+  public static final String SERVER_PER_RECORD_OTEL_METRICS_ENABLED = "server.per.record.otel.metrics.enabled";
+
+  /**
    * Follower replicas and DavinciClient will only consider heartbeats received within
    * this time window to mark themselves as completed. This is to avoid the cases that
    * the follower replica is marked completed based on the old heartbeat messages from

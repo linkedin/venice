@@ -33,6 +33,21 @@ public class ServerMetricEntityTest {
                 VeniceMetricsDimensions.VENICE_REPLICA_STATE)));
 
     expectedMetrics.put(
+        ServerMetricEntity.INGESTION_RECORD_DELAY,
+        new MetricEntity(
+            "ingestion.replication.record.delay",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Nearline ingestion record-level replication lag",
+            Utils.setOf(
+                VeniceMetricsDimensions.VENICE_STORE_NAME,
+                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
+                VeniceMetricsDimensions.VENICE_REGION_NAME,
+                VeniceMetricsDimensions.VENICE_VERSION_ROLE,
+                VeniceMetricsDimensions.VENICE_REPLICA_TYPE,
+                VeniceMetricsDimensions.VENICE_REPLICA_STATE)));
+
+    expectedMetrics.put(
         ServerMetricEntity.INGESTION_TASK_ERROR_COUNT,
         new MetricEntity(
             "ingestion.task.error_count",

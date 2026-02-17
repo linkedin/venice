@@ -40,6 +40,22 @@ public enum ServerMetricEntity implements ModuleMetricEntityInterface {
           VENICE_REPLICA_STATE)
   ),
 
+  /**
+   * Record-level replication delay: Tracks nearline replication lag for regular data records in milliseconds.
+   * Only populated when record-level timestamp tracking is enabled.
+   */
+  INGESTION_RECORD_DELAY(
+      "ingestion.replication.record.delay", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+      "Nearline ingestion record-level replication lag",
+      setOf(
+          VENICE_STORE_NAME,
+          VENICE_CLUSTER_NAME,
+          VENICE_REGION_NAME,
+          VENICE_VERSION_ROLE,
+          VENICE_REPLICA_TYPE,
+          VENICE_REPLICA_STATE)
+  ),
+
   INGESTION_TASK_ERROR_COUNT(
       "ingestion.task.error_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
       "Count of ingestion tasks in error state", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)

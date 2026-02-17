@@ -5,6 +5,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import com.linkedin.davinci.compression.KeyUrnCompressor;
 import com.linkedin.davinci.compression.UrnDictV1;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -301,6 +302,12 @@ public class PartitionConsumptionState {
    * In a replica's lifetime, this will only be flipped at most once.
    */
   private boolean hasResubscribedAfterBootstrapAsCurrentVersion;
+
+  /**
+   * Cached HeartbeatKey references keyed by region, populated during lag monitor setup.
+   * Eliminates HeartbeatKey creation and hash computation on the per-record recording path.
+   */
+  private final Map<String, HeartbeatKey> cachedHeartbeatKeys = new VeniceConcurrentHashMap<>(3);
 
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
@@ -1176,5 +1183,18 @@ public class PartitionConsumptionState {
 
   public void setHasResubscribedAfterBootstrapAsCurrentVersion(boolean hasResubscribedAfterBootstrapAsCurrentVersion) {
     this.hasResubscribedAfterBootstrapAsCurrentVersion = hasResubscribedAfterBootstrapAsCurrentVersion;
+  }
+
+  /**
+   * Get or create a cached HeartbeatKey for the given region.
+   * Derives storeName/version from the partition replica topic name.
+   */
+  public HeartbeatKey getOrCreateCachedHeartbeatKey(String region) {
+    return cachedHeartbeatKeys.computeIfAbsent(region, r -> {
+      String topicName = partitionReplica.getTopicName();
+      String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+      int version = Version.parseVersionFromKafkaTopicName(topicName);
+      return new HeartbeatKey(storeName, version, getPartition(), r);
+    });
   }
 }
