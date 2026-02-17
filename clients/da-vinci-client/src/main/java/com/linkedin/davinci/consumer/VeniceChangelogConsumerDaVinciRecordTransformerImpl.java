@@ -655,7 +655,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         V value,
         int partitionId,
         DaVinciRecordTransformerRecordMetadata recordMetadata) {
-      if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
+      Integer versionToServe = partitionToVersionToServe.get(partitionId);
+      if (versionToServe != null && versionToServe == getStoreVersion()) {
         ChangeEvent<V> changeEvent = new ChangeEvent<>(null, value);
         GenericRecord deserializedReplicationMetadata = null;
         if (includeDeserializedReplicationMetadata && recordMetadata.getReplicationMetadataPayload() != null
@@ -694,7 +695,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         PubSubPosition offset,
         ControlMessage controlMessage,
         long pubSubMessageTimestamp) {
-      if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
+      Integer versionToServe = partitionToVersionToServe.get(partitionId);
+      if (versionToServe != null && versionToServe == getStoreVersion()) {
         ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage =
             new ImmutableChangeCapturePubSubMessage<>(
                 null,
@@ -719,7 +721,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     private void internalAddMessageToBuffer(
         int partitionId,
         ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage) {
-      if (partitionToVersionToServe.get(partitionId) != getStoreVersion()) {
+      Integer versionToServe = partitionToVersionToServe.get(partitionId);
+      if (versionToServe == null || versionToServe != getStoreVersion()) {
         return;
       }
 
@@ -856,7 +859,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
      * Receive heartbeat timestamp for a partition and update latest seen time.
      */
     public void onHeartbeat(int partitionId, long heartbeatTimestamp) {
-      if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
+      Integer versionToServe = partitionToVersionToServe.get(partitionId);
+      if (versionToServe != null && versionToServe == getStoreVersion()) {
         currentVersionLastHeartbeat.put(partitionId, heartbeatTimestamp);
       }
     }
