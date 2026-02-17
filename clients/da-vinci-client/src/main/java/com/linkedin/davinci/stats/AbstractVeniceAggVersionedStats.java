@@ -118,7 +118,10 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     versionedStats.getAllVersionNumbers()
         .stream()
         .filter(versionNum -> !existingVersionNumbers.contains(versionNum) && versionNum != NON_EXISTING_VERSION)
-        .forEach(versionedStats::removeVersion);
+        .forEach(versionNum -> {
+          versionedStats.removeVersion(versionNum);
+          cleanupVersionResources(storeName, versionNum);
+        });
 
     int futureVersion = NON_EXISTING_VERSION;
     for (Version version: existingVersions) {
@@ -212,6 +215,18 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
    * @param futureVersion The new future version
    */
   protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
+    // no-op by default
+  }
+
+  /**
+   * Hook method for subclasses to clean up their own version-specific resources
+   * (e.g., OTel stats) when a version is removed. This is called after the internal
+   * versioned stats have been removed via {@link VeniceVersionedStats#removeVersion}.
+   *
+   * @param storeName The store whose version was removed
+   * @param version The version number that was removed
+   */
+  protected void cleanupVersionResources(String storeName, int version) {
     // no-op by default
   }
 }

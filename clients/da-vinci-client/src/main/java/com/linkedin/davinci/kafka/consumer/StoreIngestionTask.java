@@ -335,6 +335,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected int writeComputeFailureCode = 0;
 
+  void setWriteComputeFailureCode(int code) {
+    this.writeComputeFailureCode = code;
+  }
+
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
   // Do not convert it to a local variable because it is used in test.
