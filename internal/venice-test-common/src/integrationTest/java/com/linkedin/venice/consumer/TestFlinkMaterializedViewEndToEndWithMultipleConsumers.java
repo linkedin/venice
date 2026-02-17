@@ -34,10 +34,6 @@ import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.client.store.AvroSpecificStoreClient;
-import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -57,9 +53,6 @@ import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemProducer;
-import com.linkedin.venice.system.store.MetaStoreDataType;
-import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
-import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -168,23 +161,7 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
 
   @AfterMethod(alwaysRun = true)
   public void cleanupAfterTest() {
-    for (int i = testCloseables.size() - 1; i >= 0; i--) {
-      try {
-        testCloseables.get(i).close();
-      } catch (Exception e) {
-        LOGGER.warn("Failed to close resource during test cleanup", e);
-      }
-    }
-    testCloseables.clear();
-
-    for (String storeName: testStoresToDelete) {
-      try {
-        parentControllerClient.disableAndDeleteStore(storeName);
-      } catch (Exception e) {
-        LOGGER.warn("Failed to delete store {} during test cleanup", storeName, e);
-      }
-    }
-    testStoresToDelete.clear();
+    ChangelogConsumerTestUtils.cleanupAfterTest(testCloseables, testStoresToDelete, parentControllerClient, LOGGER);
   }
 
   /**
@@ -214,7 +191,7 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
     setupBatchOnlyStoreWithMaterializedView(storeName, props, keySchemaStr, valueSchemaStr);
-    waitForMetaSystemStoreToBeReady(storeName);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
     // Run the initial push - v1
     IntegrationTestPushUtils.runVPJ(props);
     waitForCurrentVersion(storeName, 1);
@@ -270,7 +247,7 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
     setupBatchOnlyStoreWithMaterializedView(storeName, props, keySchemaStr, valueSchemaStr);
-    waitForMetaSystemStoreToBeReady(storeName);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
     // Run the initial push - v1
     IntegrationTestPushUtils.runVPJ(props);
     waitForCurrentVersion(storeName, 1);
@@ -379,7 +356,7 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
     setupHybridStoreWithMaterializedView(storeName, props, keySchemaStr, valueSchemaStr);
-    waitForMetaSystemStoreToBeReady(storeName);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
 
     // Run the initial push - v1
     IntegrationTestPushUtils.runVPJ(props);
@@ -431,36 +408,6 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
   }
 
   // Helpers
-
-  /**
-   * Wait for the meta system store to be ready for the given store.
-   * This ensures that the thin client metadata repository can successfully fetch store metadata.
-   * The method waits for:
-   * 1. The meta system store push to complete
-   * 2. The meta store to be queryable via the router (verifies router has healthy routes)
-   */
-  private void waitForMetaSystemStoreToBeReady(String storeName) {
-    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    TestUtils.waitForNonDeterministicPushCompletion(
-        Version.composeKafkaTopic(metaSystemStoreName, 1),
-        childControllerClientRegion0,
-        90,
-        TimeUnit.SECONDS);
-    clusterWrapper.refreshAllRouterMetaData();
-    String routerUrl = clusterWrapper.getRandomRouterURL();
-    try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> metaStoreClient =
-        ClientFactory.getAndStartSpecificAvroClient(
-            ClientConfig.defaultSpecificClientConfig(metaSystemStoreName, StoreMetaValue.class)
-                .setVeniceURL(routerUrl))) {
-      StoreMetaKey storeClusterConfigKey =
-          MetaStoreDataType.STORE_CLUSTER_CONFIG.getStoreMetaKey(Collections.singletonMap("KEY_STORE_NAME", storeName));
-      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, false, true, () -> {
-        StoreMetaValue value = metaStoreClient.get(storeClusterConfigKey).get(30, TimeUnit.SECONDS);
-        Assert.assertNotNull(value, "Meta store should return non-null value for STORE_CLUSTER_CONFIG");
-        Assert.assertNotNull(value.storeClusterConfig, "storeClusterConfig should not be null");
-      });
-    }
-  }
 
   private void waitForMessageCount(VeniceChangelogConsumer<Integer, Utf8> consumer, int expectedCount) {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {

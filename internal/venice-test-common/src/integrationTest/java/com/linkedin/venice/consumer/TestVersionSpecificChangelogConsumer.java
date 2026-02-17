@@ -154,23 +154,6 @@ public class TestVersionSpecificChangelogConsumer {
     ChangelogConsumerTestUtils.cleanupAfterTest(testCloseables, testStoresToDelete, parentControllerClient, LOGGER);
   }
 
-  private void waitForMetaSystemStoreToBeReady(String storeName) {
-    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
-  }
-
-  private Properties buildConsumerProperties() {
-    return ChangelogConsumerTestUtils
-        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
-  }
-
-  private ChangelogClientConfig buildBaseChangelogClientConfig(Properties consumerProperties) {
-    return ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 3);
-  }
-
-  private UpdateStoreQueryParams buildDefaultStoreParams() {
-    return ChangelogConsumerTestUtils.buildDefaultStoreParams();
-  }
-
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testVersionSpecificChangeLogConsumerWithControlMessages()
       throws IOException, ExecutionException, InterruptedException {
@@ -190,15 +173,17 @@ public class TestVersionSpecificChangelogConsumer {
         clusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = STRING_SCHEMA.toString();
-    UpdateStoreQueryParams storeParms = buildDefaultStoreParams();
+    UpdateStoreQueryParams storeParms = ChangelogConsumerTestUtils.buildDefaultStoreParams();
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
-    waitForMetaSystemStoreToBeReady(storeName);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
     IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
-    Properties consumerProperties = buildConsumerProperties();
+    Properties consumerProperties = ChangelogConsumerTestUtils
+        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
     ChangelogClientConfig globalChangelogClientConfig =
-        buildBaseChangelogClientConfig(consumerProperties).setD2Client(d2Client)
+        ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 3)
+            .setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
@@ -321,15 +306,17 @@ public class TestVersionSpecificChangelogConsumer {
         clusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = STRING_SCHEMA.toString();
-    UpdateStoreQueryParams storeParms = buildDefaultStoreParams();
+    UpdateStoreQueryParams storeParms = ChangelogConsumerTestUtils.buildDefaultStoreParams();
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
-    waitForMetaSystemStoreToBeReady(storeName);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
     IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
-    Properties consumerProperties = buildConsumerProperties();
+    Properties consumerProperties = ChangelogConsumerTestUtils
+        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
     ChangelogClientConfig globalChangelogClientConfig =
-        buildBaseChangelogClientConfig(consumerProperties).setD2Client(d2Client)
+        ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 3)
+            .setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
