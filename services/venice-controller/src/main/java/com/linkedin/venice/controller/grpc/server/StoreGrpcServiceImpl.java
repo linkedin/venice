@@ -7,7 +7,6 @@ import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
 import com.linkedin.venice.controllerapi.RepushInfo;
-import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.exceptions.VeniceUnauthorizedAccessException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -178,11 +177,10 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
       String storeName = storeInfo.getStoreName();
       Optional<String> fabric = request.hasFabric() ? Optional.of(request.getFabric()) : Optional.empty();
 
-      // Call handler - returns POJO
-      RepushInfoResponse result = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
+      // Call handler - returns RepushInfo POJO directly
+      RepushInfo repushInfo = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
 
       // Convert POJO to protobuf response
-      RepushInfo repushInfo = result.getRepushInfo();
       RepushInfoGrpc.Builder repushInfoBuilder = RepushInfoGrpc.newBuilder()
           .setPubSubUrl(repushInfo.getKafkaBrokerUrl() != null ? repushInfo.getKafkaBrokerUrl() : "");
 
@@ -207,14 +205,21 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
    * Converts a Version object to protobuf VersionGrpc.
    */
   private VersionGrpc convertVersionToProto(Version version) {
-    return VersionGrpc.newBuilder()
+    VersionStatusGrpc statusGrpc = VersionStatusGrpc.forNumber(version.getStatus().getValue());
+    if (statusGrpc == null) {
+      throw new IllegalArgumentException(
+          "Unknown VersionStatus value: " + version.getStatus().getValue() + " (" + version.getStatus() + ")");
+    }
+    VersionGrpc.Builder builder = VersionGrpc.newBuilder()
         .setNumber(version.getNumber())
         .setCreatedTime(version.getCreatedTime())
-        .setStatus(VersionStatusGrpc.forNumber(version.getStatus().getValue()))
-        .setPushJobId(version.getPushJobId())
+        .setStatus(statusGrpc)
         .setPartitionCount(version.getPartitionCount())
-        .setReplicationFactor(version.getReplicationFactor())
-        .build();
+        .setReplicationFactor(version.getReplicationFactor());
+    if (version.getPushJobId() != null) {
+      builder.setPushJobId(version.getPushJobId());
+    }
+    return builder.build();
   }
 
   /**

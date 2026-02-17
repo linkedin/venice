@@ -714,12 +714,7 @@ public class StoresRoutesTest {
 
     RepushInfo mockRepushInfo = RepushInfo.createRepushInfo(version, "kafka.broker:9092", "d2-service", "zk-host");
 
-    RepushInfoResponse mockResponse = new RepushInfoResponse();
-    mockResponse.setCluster(TEST_CLUSTER);
-    mockResponse.setName(TEST_STORE_NAME);
-    mockResponse.setRepushInfo(mockRepushInfo);
-
-    when(mockRequestHandler.getRepushInfo(any(), any(), any())).thenReturn(mockResponse);
+    when(mockRequestHandler.getRepushInfo(any(), any(), any())).thenReturn(mockRepushInfo);
 
     RepushInfoResponse response = ObjectMapperFactory.getInstance()
         .readValue(route.handle(request, mock(Response.class)).toString(), RepushInfoResponse.class);
@@ -761,12 +756,7 @@ public class StoresRoutesTest {
 
     RepushInfo mockRepushInfo = RepushInfo.createRepushInfo(null, "another.kafka:9092", null, null);
 
-    RepushInfoResponse mockResponse = new RepushInfoResponse();
-    mockResponse.setCluster(TEST_CLUSTER);
-    mockResponse.setName(TEST_STORE_NAME);
-    mockResponse.setRepushInfo(mockRepushInfo);
-
-    when(mockRequestHandler.getRepushInfo(any(), any(), any())).thenReturn(mockResponse);
+    when(mockRequestHandler.getRepushInfo(any(), any(), any())).thenReturn(mockRepushInfo);
 
     RepushInfoResponse response = ObjectMapperFactory.getInstance()
         .readValue(route.handle(request, mock(Response.class)).toString(), RepushInfoResponse.class);

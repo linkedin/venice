@@ -17,7 +17,6 @@ import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
 import com.linkedin.venice.controllerapi.RepushInfo;
-import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.StoreInfo;
@@ -474,12 +473,7 @@ public class StoreGrpcServiceImplTest {
 
     RepushInfo repushInfo = RepushInfo.createRepushInfo(mockVersion, "kafka.broker:9092", "d2-service", "zk-host");
 
-    RepushInfoResponse mockResponse = new RepushInfoResponse();
-    mockResponse.setCluster(TEST_CLUSTER);
-    mockResponse.setName(TEST_STORE);
-    mockResponse.setRepushInfo(repushInfo);
-
-    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any())).thenReturn(mockResponse);
+    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any())).thenReturn(repushInfo);
 
     GetRepushInfoGrpcResponse actualResponse = blockingStub.getRepushInfo(request);
 
@@ -515,12 +509,7 @@ public class StoreGrpcServiceImplTest {
 
     RepushInfo repushInfo = RepushInfo.createRepushInfo(null, "another.kafka.broker:9092", null, null);
 
-    RepushInfoResponse mockResponse = new RepushInfoResponse();
-    mockResponse.setCluster(TEST_CLUSTER);
-    mockResponse.setName(TEST_STORE);
-    mockResponse.setRepushInfo(repushInfo);
-
-    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any())).thenReturn(mockResponse);
+    when(storeRequestHandler.getRepushInfo(anyString(), anyString(), any())).thenReturn(repushInfo);
 
     GetRepushInfoGrpcResponse actualResponse = blockingStub.getRepushInfo(request);
 

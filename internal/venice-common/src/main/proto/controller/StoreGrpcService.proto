@@ -103,26 +103,6 @@ message RepushInfoGrpc {
   optional string systemSchemaClusterD2ZkHost = 4;
 }
 
-enum VersionStatusGrpc {
-  NOT_CREATED = 0;
-  STARTED = 1;
-  PUSHED = 2;
-  ONLINE = 3;
-  ERROR = 4;
-  CREATED = 5;
-  PARTIALLY_ONLINE = 6;
-  KILLED = 7;
-}
-
-message VersionGrpc {
-  int32 number = 1;
-  int64 createdTime = 2;
-  VersionStatusGrpc status = 3;
-  string pushJobId = 4;
-  int32 partitionCount = 5;
-  int32 replicationFactor = 6;
-}
-
 message GetStoreGrpcRequest {
   ClusterStoreGrpcInfo storeInfo = 1;
 }

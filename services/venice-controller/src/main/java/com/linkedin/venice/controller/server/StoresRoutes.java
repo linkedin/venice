@@ -84,6 +84,7 @@ import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
+import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.SchemaUsageResponse;
@@ -264,13 +265,12 @@ public class StoresRoutes extends AbstractRoute {
         String fabricName = request.queryParams(FABRIC);
         Optional<String> fabric = fabricName != null ? Optional.of(fabricName) : Optional.empty();
 
-        // Call handler - returns POJO directly
-        RepushInfoResponse result = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
 
-        // Copy result to response
-        veniceResponse.setCluster(result.getCluster());
-        veniceResponse.setName(result.getName());
-        veniceResponse.setRepushInfo(result.getRepushInfo());
+        // Call handler - returns RepushInfo POJO directly
+        RepushInfo repushInfo = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
+        veniceResponse.setRepushInfo(repushInfo);
       }
     };
   }
