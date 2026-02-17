@@ -323,6 +323,29 @@ public abstract class OpenTelemetryDataTestUtils {
     assertEquals(histogramPointData.getAttributes(), expectedAttributes, "Histogram attributes should match");
   }
 
+  /**
+   * Validate ExponentialHistogramPointData has at least expectedMinCount entries with sum > 0.
+   * Use this in integration tests where the exact count is non-deterministic.
+   */
+  public static void validateExponentialHistogramPointDataAtLeast(
+      InMemoryMetricReader inMemoryMetricReader,
+      long expectedMinCount,
+      Attributes expectedAttributes,
+      String metricName,
+      String metricPrefix) {
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    assertFalse(metricsData.isEmpty());
+    ExponentialHistogramPointData histogramPointData =
+        getExponentialHistogramPointData(metricsData, metricName, metricPrefix, expectedAttributes);
+
+    assertNotNull(histogramPointData, "ExponentialHistogramPointData should not be null");
+    assertTrue(
+        histogramPointData.getCount() >= expectedMinCount,
+        "Histogram count should be >= " + expectedMinCount + " but was " + histogramPointData.getCount());
+    assertTrue(histogramPointData.getSum() > 0, "Histogram sum should be > 0");
+    assertEquals(histogramPointData.getAttributes(), expectedAttributes, "Histogram attributes should match");
+  }
+
   public static void validateHistogramPointData(
       InMemoryMetricReader inMemoryMetricReader,
       double expectedMin,

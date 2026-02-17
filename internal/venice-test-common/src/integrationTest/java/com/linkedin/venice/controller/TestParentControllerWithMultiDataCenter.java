@@ -14,9 +14,11 @@ import static org.testng.AssertJUnit.fail;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.stats.SparkServerStats;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -42,6 +44,8 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -237,6 +241,27 @@ public class TestParentControllerWithMultiDataCenter {
         PubSubTopic finalRtPubSubTopic = pubSubTopicRepository.getTopic(finalRtTopicName);
         Assert.assertFalse(topicManager.containsTopic(finalRtPubSubTopic));
       });
+    }
+
+    // Validate OTel metrics for topic cleanup
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      VeniceControllerWrapper controller = childDatacenters.get(i).getControllers().values().iterator().next();
+      InMemoryMetricReader inMemoryMetricReader =
+          (InMemoryMetricReader) ((VeniceMetricsRepository) controller.getMetricRepository()).getVeniceMetricsConfig()
+              .getOtelAdditionalMetricsReader();
+
+      Attributes expectedSuccessAttrs = Attributes.builder()
+          .put(
+              VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+              VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
+          .build();
+
+      OpenTelemetryDataTestUtils.validateLongPointDataFromCounterAtLeast(
+          inMemoryMetricReader,
+          1,
+          expectedSuccessAttrs,
+          TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+          CONTROLLER_SERVICE_METRIC_PREFIX);
     }
 
     /*
@@ -705,6 +730,46 @@ public class TestParentControllerWithMultiDataCenter {
             1,
             expectedSuccessAttrs,
             TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+            CONTROLLER_SERVICE_METRIC_PREFIX);
+      }
+
+      // Validate SparkServerStats OTel metrics — every controller HTTP call emits CALL_COUNT and CALL_TIME.
+      // Child controllers received getStore() calls during waitForNonDeterministicAssertion; validate at least 1
+      // successful call was recorded.
+      for (int i = 0; i < childDatacenters.size(); i++) {
+        VeniceControllerWrapper controller = childDatacenters.get(i).getControllers().values().iterator().next();
+        InMemoryMetricReader inMemoryMetricReader =
+            (InMemoryMetricReader) ((VeniceMetricsRepository) controller.getMetricRepository()).getVeniceMetricsConfig()
+                .getOtelAdditionalMetricsReader();
+
+        Attributes expectedCallAttrs = Attributes.builder()
+            .put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
+            .put(
+                VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
+                ControllerRoute.STORE.getDimensionValue())
+            .put(
+                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(),
+                HttpResponseStatusEnum.OK.getDimensionValue())
+            .put(
+                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                HttpResponseStatusCodeCategory.SUCCESS.getDimensionValue())
+            .put(
+                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
+            .build();
+
+        OpenTelemetryDataTestUtils.validateLongPointDataFromCounterAtLeast(
+            inMemoryMetricReader,
+            1,
+            expectedCallAttrs,
+            SparkServerStats.SparkServerOtelMetricEntity.CALL_COUNT.getMetricName(),
+            CONTROLLER_SERVICE_METRIC_PREFIX);
+
+        OpenTelemetryDataTestUtils.validateExponentialHistogramPointDataAtLeast(
+            inMemoryMetricReader,
+            1,
+            expectedCallAttrs,
+            SparkServerStats.SparkServerOtelMetricEntity.CALL_TIME.getMetricName(),
             CONTROLLER_SERVICE_METRIC_PREFIX);
       }
     }
