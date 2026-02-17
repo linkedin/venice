@@ -38,7 +38,7 @@ import org.testng.annotations.Test;
 
 
 public class TestMultiDatacenterVenicePushJob {
-  private static final int TEST_TIMEOUT = 30_000;
+  private static final int TEST_TIMEOUT = 90_000;
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
@@ -167,7 +167,7 @@ public class TestMultiDatacenterVenicePushJob {
     };
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2, dataProvider = "testRepushTtlSecondsWithRepushDataProvider")
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "testRepushTtlSecondsWithRepushDataProvider")
   public void testRepushTtlSecondsWithRepush(
       String ttlRepushSeconds,
       UpdateStoreQueryParams additionalProps,

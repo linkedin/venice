@@ -273,6 +273,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         requestContext.routeRequestMap.put(requestContext.route, routeRequestFuture);
       }
       routeRequestFuture.completeExceptionally(e);
+      valueFuture.completeExceptionally(e);
     }
 
     return valueFuture;

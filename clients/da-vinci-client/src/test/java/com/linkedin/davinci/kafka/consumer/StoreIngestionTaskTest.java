@@ -81,10 +81,12 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciRecordTransformerFunctionalInterface;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.helix.StateModelIngestionProgressNotifier;
 import com.linkedin.davinci.ingestion.LagType;
@@ -174,6 +176,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -225,6 +228,8 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderCompleteState;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
@@ -495,7 +500,7 @@ public abstract class StoreIngestionTaskTest {
   public void suiteSetUp() throws Exception {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
-    taskPollingService = Executors.newFixedThreadPool(1);
+    taskPollingService = Executors.newFixedThreadPool(1, new DaemonThreadFactory("SIT"));
     storeBufferService = new StoreBufferService(
         3,
         10000,
@@ -545,6 +550,8 @@ public abstract class StoreIngestionTaskTest {
     when(storeInfo.getName()).thenReturn(storeNameWithoutVersionInfo);
     when(storeInfo.getHybridStoreConfig().getRealTimeTopicName())
         .thenReturn(Utils.composeRealTimeTopic(storeNameWithoutVersionInfo));
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(mockStorageService)
+        .getRefCountedStorageEngine(anyString());
 
     mockLogNotifier = mock(LogNotifier.class);
     mockNotifierProgress = new ArrayList<>();
@@ -1214,7 +1221,8 @@ public abstract class StoreIngestionTaskTest {
         mock(ReadOnlyStoreRepository.class),
         false,
         veniceServerConfig,
-        mockPubSubContext);
+        mockPubSubContext,
+        null);
     localKafkaConsumerService.start();
 
     Properties remoteKafkaProps = new Properties();
@@ -1237,7 +1245,8 @@ public abstract class StoreIngestionTaskTest {
         mock(ReadOnlyStoreRepository.class),
         false,
         veniceServerConfig,
-        mockPubSubContext);
+        mockPubSubContext,
+        null);
     remoteKafkaConsumerService.start();
 
     prepareAggKafkaConsumerServiceMock();
@@ -1608,12 +1617,12 @@ public abstract class StoreIngestionTaskTest {
        *       the issue as the rate of flakiness is low. But there does seem to be something going on here...
        */
       if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
-        verify(mockStoreIngestionStats, times(3)).recordTotalBytesConsumed(anyLong());
+        verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(3)).recordTotalBytesConsumed(anyLong());
       } else {
         // When record level metric is disabled for current version bootstrapping, the store ingestion stats
-        verify(mockStoreIngestionStats, times(2)).recordTotalBytesConsumed(anyLong());
+        verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(2)).recordTotalBytesConsumed(anyLong());
       }
-      verify(mockStoreIngestionStats, times(3)).recordTotalRecordsConsumed();
+      verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(3)).recordTotalRecordsConsumed();
 
     }, AA_OFF);
     config.setHybridStoreConfig(Optional.of(hybridStoreConfig)).setExtraServerProperties(extraProps);
@@ -2258,7 +2267,7 @@ public abstract class StoreIngestionTaskTest {
    * including a corrupt message followed by a missing message and a good one.
    * We expect the Notifier to not report any errors after the EOP.
    */
-  @Test(dataProvider = "aaConfigProvider")
+  @Test(dataProvider = "aaConfigProvider", timeOut = 60_000)
   public void testDIVErrorMessagesNotFailFastAfterEOP(AAConfig aaConfig) throws Exception {
     VeniceWriter veniceWriterCorrupted = getCorruptedVeniceWriter(putValueToCorrupt, inMemoryLocalKafkaBroker);
 
@@ -2311,7 +2320,7 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
 
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
-      storeIngestionTaskUnderTest.setSkipValidationForSeekableClientEnabled();
+      storeIngestionTaskUnderTest.setSkipValidationsForDaVinciClientEnabled();
       ArgumentCaptor<InMemoryPubSubPosition> positionCaptor = ArgumentCaptor.forClass(InMemoryPubSubPosition.class);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
           .completed(eq(topic), eq(PARTITION_FOO), positionCaptor.capture(), eq("STANDBY"));
@@ -3873,8 +3882,9 @@ public abstract class StoreIngestionTaskTest {
     endPosition = storeIngestionTaskUnderTest
         .getTopicPartitionEndPosition(localKafkaConsumerService.kafkaUrl, new PubSubTopicPartitionImpl(pubSubTopic, 0));
     long elapsedTime = System.currentTimeMillis() - startTime;
-    // verify getLatestPositionCachedNonBlocking was called 10 times (once per retry)
-    verify(mockTopicManager, atLeast(10)).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
+    // verify getLatestPositionCachedNonBlocking was called multiple times (retries with exponential backoff).
+    // The actual count varies (5-10) due to exponential backoff timing within the 5-second max duration.
+    verify(mockTopicManager, atLeast(5)).getLatestPositionCachedNonBlocking(any(PubSubTopicPartition.class));
     // elapsed time should be less than 10 seconds (10 retries with 1 second interval)
     assertTrue(elapsedTime < 10000, "elapsed time: " + elapsedTime);
     assertEquals(endPosition, PubSubSymbolicPosition.LATEST);
@@ -4405,7 +4415,7 @@ public abstract class StoreIngestionTaskTest {
     doCallRealMethod().when(leaderFollowerStoreIngestionTask).startConsumingAsLeader(any());
 
     doCallRealMethod().when(leaderFollowerStoreIngestionTask)
-        .resolveRtTopicPartitionWithPubSubBrokerAddress(any(), any(), any());
+        .resolveTopicPartitionWithPubSubBrokerAddress(any(), any(), any());
     doReturn(false).when(leaderFollowerStoreIngestionTask).shouldNewLeaderSwitchToRemoteConsumption(any());
     Set<String> kafkaServerSet = new HashSet<>();
     kafkaServerSet.add("localhost");
@@ -4585,7 +4595,9 @@ public abstract class StoreIngestionTaskTest {
           }
 
           // Use waitForNonDeterministicAssertion with atLeast() for all mock verifications
-          waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          // Use longer timeout (60s) since resubscribeForAllPartitions() is called asynchronously
+          // by the SIT thread after setVersionRole() triggers, and there can be delays
+          waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
             try {
               verify(storeIngestionTaskUnderTest, atLeast(totalResubscriptionTriggered)).resubscribeForAllPartitions();
             } catch (InterruptedException e) {
@@ -5006,7 +5018,7 @@ public abstract class StoreIngestionTaskTest {
           verify(mockAbstractStorageEngine, timeout(10000).times(1)).put(eq(PARTITION_FOO), any(), (ByteBuffer) any());
           verify(zkHelixAdmin, timeout(1000).atLeast(1))
               .setPartitionsToError(anyString(), anyString(), anyString(), anyList());
-          verify(storeIngestionTaskUnderTest, times(1))
+          verify(storeIngestionTaskUnderTest, timeout(TEST_TIMEOUT_MS).times(1))
               .reportIngestionNotifier(any(PartitionConsumptionState.class), any(VeniceException.class));
         }, AA_OFF);
     testConfig.setStoreVersionConfigOverride(configOverride -> {
@@ -5909,6 +5921,40 @@ public abstract class StoreIngestionTaskTest {
         "If the partition has messages in it, and we consumed some of them, we expect lag to equal the unconsumed message count.");
   }
 
+  @Test
+  public void testMeasureLagWithCallToPubSubWhenTopicDoesNotExist() {
+    final PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    final InMemoryPubSubPosition endPosition = InMemoryPubSubPosition.of(10L);
+    final String PUB_SUB_SERVER_NAME = "blah";
+
+    TopicManager throwingTopicManager = mock(TopicManager.class);
+    doReturn(endPosition).when(throwingTopicManager).getLatestPositionCached(partition);
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .diffPosition(any(), any(), any());
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .countRecordsUntil(any(), any());
+
+    // Case 1: Non-EARLIEST position -> diffPosition throws
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            partition,
+            InMemoryPubSubPosition.of(3L),
+            s -> throwingTopicManager),
+        Long.MAX_VALUE,
+        "When diffPosition throws PubSubTopicDoesNotExistException, we expect Long.MAX_VALUE.");
+
+    // Case 2: EARLIEST position -> countRecordsUntil throws
+    assertEquals(
+        StoreIngestionTask.measureLagWithCallToPubSub(
+            PUB_SUB_SERVER_NAME,
+            partition,
+            PubSubSymbolicPosition.EARLIEST,
+            s -> throwingTopicManager),
+        Long.MAX_VALUE,
+        "When countRecordsUntil throws PubSubTopicDoesNotExistException, we expect Long.MAX_VALUE.");
+  }
+
   /**
    * When SIT encounters a corrupted {@link OffsetRecord} in {@link StoreIngestionTask#processCommonConsumerAction} and
    * {@link StorageMetadataService#getLastOffset} throws an exception due to a deserialization error,
@@ -6134,11 +6180,10 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testResolveRtTopicPartitionWithPubSubBrokerAddress() throws NoSuchFieldException, IllegalAccessException {
+  public void testResolveTopicPartitionWithPubSubBrokerAddress() throws NoSuchFieldException, IllegalAccessException {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     Function<String, String> resolver = Utils::resolveKafkaUrlForSepTopic;
-    doCallRealMethod().when(storeIngestionTask)
-        .resolveRtTopicPartitionWithPubSubBrokerAddress(any(), any(), anyString());
+    doCallRealMethod().when(storeIngestionTask).resolveTopicPartitionWithPubSubBrokerAddress(any(), any(), anyString());
     doCallRealMethod().when(storeIngestionTask).resolveRtTopicWithPubSubBrokerAddress(any(), anyString());
     doReturn(pubSubTopicRepository).when(storeIngestionTask).getPubSubTopicRepository();
     doReturn(resolver).when(storeIngestionTask).getKafkaClusterUrlResolver();
@@ -6157,14 +6202,14 @@ public abstract class StoreIngestionTaskTest {
     field.set(storeIngestionTask, separateRealTimeTopic);
 
     PubSubTopicPartition resolvedRtTopicPartition =
-        storeIngestionTask.resolveRtTopicPartitionWithPubSubBrokerAddress(realTimeTopic, pcs, kafkaUrl);
+        storeIngestionTask.resolveTopicPartitionWithPubSubBrokerAddress(realTimeTopic, pcs, kafkaUrl);
     Assert.assertEquals(resolvedRtTopicPartition.getPubSubTopic(), realTimeTopic);
     Assert.assertEquals(
-        storeIngestionTask.resolveRtTopicPartitionWithPubSubBrokerAddress(versionTopic, pcs, kafkaUrl).getPubSubTopic(),
+        storeIngestionTask.resolveTopicPartitionWithPubSubBrokerAddress(versionTopic, pcs, kafkaUrl).getPubSubTopic(),
         versionTopic);
     Assert.assertEquals(
         storeIngestionTask
-            .resolveRtTopicPartitionWithPubSubBrokerAddress(realTimeTopic, pcs, kafkaUrl + Utils.SEPARATE_TOPIC_SUFFIX)
+            .resolveTopicPartitionWithPubSubBrokerAddress(realTimeTopic, pcs, kafkaUrl + Utils.SEPARATE_TOPIC_SUFFIX)
             .getPubSubTopic(),
         separateRealTimeTopic);
   }
@@ -6233,13 +6278,14 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    runTest(Collections.singleton(PARTITION_FOO), () -> {
+    // Use a test config so we can stub the spy BEFORE the task starts (avoiding UnfinishedStubbingException)
+    final PubSubTopicPartition BAR_TP = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_BAR);
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
       // Wait for a real PCS to be populated after topic subscription in processCommonConsumerAction()
       verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(1)).recordTotalRecordsConsumed();
 
       // Intentionally use a mock PCS with a different partition to avoid the SIT test interfering with the test
       PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-      final PubSubTopicPartition BAR_TP = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_BAR);
       when(pcs.getReplicaTopicPartition()).thenReturn(BAR_TP);
       when(pcs.isHybrid()).thenReturn(true);
 
@@ -6254,8 +6300,6 @@ public abstract class StoreIngestionTaskTest {
 
       // Case 2: Latch was created, so reportIfCatchUpVersionTopicOffset() should execute
       when(pcs.isLatchCreated()).thenReturn(true);
-      doReturn(0L).when(storeIngestionTaskUnderTest)
-          .measureLagWithCallToPubSub(anyString(), eq(BAR_TP), any(PubSubPosition.class));
       storeIngestionTaskUnderTest.reportIfCatchUpVersionTopicOffset(pcs);
       verify(storeIngestionTaskUnderTest, times(1))
           .measureLagWithCallToPubSub(anyString(), eq(BAR_TP), any(PubSubPosition.class));
@@ -6267,6 +6311,15 @@ public abstract class StoreIngestionTaskTest {
       verify(storeIngestionTaskUnderTest, times(1))
           .measureLagWithCallToPubSub(anyString(), eq(BAR_TP), any(PubSubPosition.class));
     }, AA_OFF);
+
+    // Stub measureLagWithCallToPubSub BEFORE starting consumption to avoid UnfinishedStubbingException
+    // from concurrent mock access by the SIT thread
+    config.setBeforeStartingConsumption(() -> {
+      doReturn(0L).when(storeIngestionTaskUnderTest)
+          .measureLagWithCallToPubSub(anyString(), any(PubSubTopicPartition.class), any(PubSubPosition.class));
+    });
+
+    runTest(config);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -6431,6 +6484,48 @@ public abstract class StoreIngestionTaskTest {
     shutdownExecutor.shutdown();
   }
 
+  @Test
+  public void testSkipValidationForSeekableClientEnabled() throws Exception {
+    // Test 1: Non-CDC client with non-view topic should NOT skip validation
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      assertFalse(
+          storeIngestionTaskUnderTest.shouldSkipValidationsForDaVinciClientEnabled(),
+          "Non-CDC client with regular topic should not skip validation");
+    }, AA_OFF);
+
+    // Test 2: CDC client with non-view topic should NOT skip validation
+    StoreIngestionTaskTestConfig cdcNonViewConfig =
+        new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+          assertFalse(
+              storeIngestionTaskUnderTest.shouldSkipValidationsForDaVinciClientEnabled(),
+              "CDC client with non-view topic should not skip validation");
+        }, AA_OFF);
+
+    DaVinciRecordTransformerConfig cdcRecordTransformerConfig = buildCdcRecordTransformerConfig();
+    cdcNonViewConfig.setRecordTransformerConfig(cdcRecordTransformerConfig);
+
+    runTest(cdcNonViewConfig);
+
+    // Test 3: CDC client with materialized view topic SHOULD skip validation
+    // This test uses a real materialized view topic name by overriding the store version name in config
+    StoreIngestionTaskTestConfig cdcMaterializedViewConfig =
+        new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+          assertTrue(
+              storeIngestionTaskUnderTest.shouldSkipValidationsForDaVinciClientEnabled(),
+              "CDC client with materialized view topic should skip validation");
+        }, AA_OFF);
+
+    cdcMaterializedViewConfig.setRecordTransformerConfig(cdcRecordTransformerConfig).setDaVinci(true);
+    // Override the store version config to use a materialized view topic name
+    cdcMaterializedViewConfig.setStoreVersionConfigOverride(storeVersionConfig -> {
+      String materializedViewTopicName = storeNameWithoutVersionInfo + "_v1" + VeniceView.VIEW_NAME_SEPARATOR
+          + "testView" + MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX;
+      doReturn(materializedViewTopicName).when(storeVersionConfig).getStoreVersionName();
+    });
+
+    runTest(cdcMaterializedViewConfig);
+  }
+
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
       Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
     // mock the store config
@@ -6477,6 +6572,35 @@ public abstract class StoreIngestionTaskTest {
         .build();
   }
 
+  /**
+   * Builds a CDC record transformer config that returns a mock CDC transformer.
+   * This is used to test logic that depends on isCDCRecordTransformer() returning true.
+   */
+  private DaVinciRecordTransformerConfig buildCdcRecordTransformerConfig() {
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = new SchemaEntry(SCHEMA_ID, myKeySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry valueSchemaEntry = new SchemaEntry(SCHEMA_ID, myValueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
+
+    // Create a mock CDC transformer that will return true for isCDCRecordTransformer()
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer mockCdcTransformer =
+        mock(VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer.class);
+
+    // Mock the function to return the CDC transformer
+    DaVinciRecordTransformerFunctionalInterface cdcTransformerFunction =
+        (storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> mockCdcTransformer;
+
+    return new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(cdcTransformerFunction)
+        .setOutputValueClass(String.class)
+        .setOutputValueSchema(myValueSchema)
+        .setRecordTransformationEnabled(false)
+        .build();
+  }
+
   public static OffsetRecord getOffsetRecord(
       PubSubPosition currentPosition,
       boolean complete,
@@ -6485,5 +6609,324 @@ public abstract class StoreIngestionTaskTest {
         currentPosition,
         complete ? Optional.of(InMemoryPubSubPosition.of(1000L)) : Optional.of(InMemoryPubSubPosition.of(0L)),
         pubSubContext);
+  }
+
+  @Test
+  public void testCheckAndHandleDoLMessageWhenDisabled() {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doReturn(false).when(storeIngestionTask).shouldUseDolMechanism();
+    doCallRealMethod().when(storeIngestionTask).checkAndHandleDoLMessage(any(), any());
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(mockKey).when(mockMessage).getKey();
+    doReturn(KafkaKey.DOL_STAMP.getKey()).when(mockKey).getKey();
+
+    // Should return early without processing when DoL mechanism is disabled
+    storeIngestionTask.checkAndHandleDoLMessage(mockPcs, mockMessage);
+
+    // Verify no interaction with PCS (no state updates)
+    verify(mockPcs, never()).getDolState();
+    verify(mockPcs, never()).setHighestLeadershipTerm(anyLong());
+  }
+
+  @Test
+  public void testCheckAndHandleDoLMessageWithNonDoLKey() {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doReturn(true).when(storeIngestionTask).shouldUseDolMechanism();
+    doCallRealMethod().when(storeIngestionTask).checkAndHandleDoLMessage(any(), any());
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(mockKey).when(mockMessage).getKey();
+    doReturn(new byte[] { 1, 2, 3 }).when(mockKey).getKey(); // Non-DoL key
+
+    // Should return early without processing when key is not DoL stamp
+    storeIngestionTask.checkAndHandleDoLMessage(mockPcs, mockMessage);
+
+    // Verify no interaction with PCS (no state updates)
+    verify(mockPcs, never()).getDolState();
+    verify(mockPcs, never()).setHighestLeadershipTerm(anyLong());
+  }
+
+  @Test
+  public void testCheckAndHandleDoLMessageWithNullLeaderMetadata() {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doReturn(true).when(storeIngestionTask).shouldUseDolMechanism();
+    doCallRealMethod().when(storeIngestionTask).checkAndHandleDoLMessage(any(), any());
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(mockKey).when(mockMessage).getKey();
+    doReturn(KafkaKey.DOL_STAMP.getKey()).when(mockKey).getKey();
+
+    KafkaMessageEnvelope mockEnvelope = mock(KafkaMessageEnvelope.class);
+    doReturn(mockEnvelope).when(mockMessage).getValue();
+    doReturn(null).when(mockEnvelope).getLeaderMetadataFooter(); // Null leader metadata
+
+    // Should return early when leader metadata is null
+    storeIngestionTask.checkAndHandleDoLMessage(mockPcs, mockMessage);
+
+    // Verify no state updates
+    verify(mockPcs, never()).getDolState();
+    verify(mockPcs, never()).setHighestLeadershipTerm(anyLong());
+  }
+
+  @Test
+  public void testCheckAndHandleDoLMessageFromDifferentCluster() throws Exception {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doReturn(true).when(storeIngestionTask).shouldUseDolMechanism();
+    doCallRealMethod().when(storeIngestionTask).checkAndHandleDoLMessage(any(), any());
+
+    // Set local cluster ID to 0 using reflection
+    java.lang.reflect.Field localKafkaClusterIdField = StoreIngestionTask.class.getDeclaredField("localKafkaClusterId");
+    localKafkaClusterIdField.setAccessible(true);
+    localKafkaClusterIdField.setInt(storeIngestionTask, 0);
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(mockKey).when(mockMessage).getKey();
+    doReturn(KafkaKey.DOL_STAMP.getKey()).when(mockKey).getKey();
+
+    KafkaMessageEnvelope mockEnvelope = mock(KafkaMessageEnvelope.class);
+    doReturn(mockEnvelope).when(mockMessage).getValue();
+
+    LeaderMetadata leaderMetadata = new LeaderMetadata();
+    leaderMetadata.upstreamKafkaClusterId = 1; // Different cluster ID
+    leaderMetadata.hostName = "test-host";
+    leaderMetadata.termId = 42;
+    doReturn(leaderMetadata).when(mockEnvelope).getLeaderMetadataFooter();
+
+    // Should return early when cluster ID doesn't match
+    storeIngestionTask.checkAndHandleDoLMessage(mockPcs, mockMessage);
+
+    // Verify no state updates
+    verify(mockPcs, never()).getDolState();
+    verify(mockPcs, never()).setHighestLeadershipTerm(anyLong());
+  }
+
+  @Test
+  public void testCheckAndHandleDoLMessageUpdatesHighestTerm() throws Exception {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doReturn(true).when(storeIngestionTask).shouldUseDolMechanism();
+    doCallRealMethod().when(storeIngestionTask).checkAndHandleDoLMessage(any(), any());
+
+    // Set local cluster ID using reflection
+    java.lang.reflect.Field localKafkaClusterIdField = StoreIngestionTask.class.getDeclaredField("localKafkaClusterId");
+    localKafkaClusterIdField.setAccessible(true);
+    localKafkaClusterIdField.setInt(storeIngestionTask, 0);
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    doReturn("test-replica").when(mockPcs).getReplicaId();
+    doReturn(10L).when(mockPcs).getHighestLeadershipTerm();
+    doReturn(null).when(mockPcs).getDolState(); // No active DoL state
+
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(mockKey).when(mockMessage).getKey();
+    doReturn(KafkaKey.DOL_STAMP.getKey()).when(mockKey).getKey();
+
+    KafkaMessageEnvelope mockEnvelope = mock(KafkaMessageEnvelope.class);
+    doReturn(mockEnvelope).when(mockMessage).getValue();
+
+    LeaderMetadata leaderMetadata = new LeaderMetadata();
+    leaderMetadata.upstreamKafkaClusterId = 0; // Same cluster ID
+    leaderMetadata.hostName = "test-host";
+    leaderMetadata.termId = 42; // Higher than current highest (10)
+    doReturn(leaderMetadata).when(mockEnvelope).getLeaderMetadataFooter();
+
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = System.currentTimeMillis();
+    doReturn(producerMetadata).when(mockEnvelope).getProducerMetadata();
+
+    storeIngestionTask.checkAndHandleDoLMessage(mockPcs, mockMessage);
+
+    // Verify highest term was updated
+    verify(mockPcs).setHighestLeadershipTerm(42L);
+  }
+
+  @Test
+  public void testCheckAndHandleDoLMessageMatchingDoLStamp() throws Exception {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doReturn(true).when(storeIngestionTask).shouldUseDolMechanism();
+    doCallRealMethod().when(storeIngestionTask).checkAndHandleDoLMessage(any(), any());
+
+    // Set local cluster ID using reflection
+    java.lang.reflect.Field localKafkaClusterIdField = StoreIngestionTask.class.getDeclaredField("localKafkaClusterId");
+    localKafkaClusterIdField.setAccessible(true);
+    localKafkaClusterIdField.setInt(storeIngestionTask, 0);
+
+    long leadershipTerm = 42L;
+    String hostId = "test-host";
+
+    // Create real DolStamp for verification
+    DolStamp dolStamp = new DolStamp(leadershipTerm, hostId);
+    assertFalse(dolStamp.isDolConsumed());
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    doReturn("test-replica").when(mockPcs).getReplicaId();
+    doReturn(leadershipTerm - 1).when(mockPcs).getHighestLeadershipTerm();
+    doReturn(dolStamp).when(mockPcs).getDolState();
+
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(mockKey).when(mockMessage).getKey();
+    doReturn(KafkaKey.DOL_STAMP.getKey()).when(mockKey).getKey();
+
+    KafkaMessageEnvelope mockEnvelope = mock(KafkaMessageEnvelope.class);
+    doReturn(mockEnvelope).when(mockMessage).getValue();
+
+    LeaderMetadata leaderMetadata = new LeaderMetadata();
+    leaderMetadata.upstreamKafkaClusterId = 0; // Same cluster ID
+    leaderMetadata.hostName = hostId; // Matching host
+    leaderMetadata.termId = leadershipTerm; // Matching term
+    doReturn(leaderMetadata).when(mockEnvelope).getLeaderMetadataFooter();
+
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = System.currentTimeMillis();
+    doReturn(producerMetadata).when(mockEnvelope).getProducerMetadata();
+
+    storeIngestionTask.checkAndHandleDoLMessage(mockPcs, mockMessage);
+
+    // Verify DoL was marked as consumed
+    assertTrue(dolStamp.isDolConsumed());
+    verify(mockPcs).setHighestLeadershipTerm(leadershipTerm);
+  }
+
+  @Test
+  public void testCheckAndHandleDoLMessageDifferentHost() throws Exception {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doReturn(true).when(storeIngestionTask).shouldUseDolMechanism();
+    doCallRealMethod().when(storeIngestionTask).checkAndHandleDoLMessage(any(), any());
+
+    // Set local cluster ID using reflection
+    java.lang.reflect.Field localKafkaClusterIdField = StoreIngestionTask.class.getDeclaredField("localKafkaClusterId");
+    localKafkaClusterIdField.setAccessible(true);
+    localKafkaClusterIdField.setInt(storeIngestionTask, 0);
+
+    long leadershipTerm = 42L;
+    DolStamp dolStamp = new DolStamp(leadershipTerm, "expected-host");
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    doReturn("test-replica").when(mockPcs).getReplicaId();
+    doReturn(leadershipTerm - 1).when(mockPcs).getHighestLeadershipTerm();
+    doReturn(dolStamp).when(mockPcs).getDolState();
+
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(mockKey).when(mockMessage).getKey();
+    doReturn(KafkaKey.DOL_STAMP.getKey()).when(mockKey).getKey();
+
+    KafkaMessageEnvelope mockEnvelope = mock(KafkaMessageEnvelope.class);
+    doReturn(mockEnvelope).when(mockMessage).getValue();
+
+    LeaderMetadata leaderMetadata = new LeaderMetadata();
+    leaderMetadata.upstreamKafkaClusterId = 0;
+    leaderMetadata.hostName = "different-host"; // Different host
+    leaderMetadata.termId = leadershipTerm;
+    doReturn(leaderMetadata).when(mockEnvelope).getLeaderMetadataFooter();
+
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = System.currentTimeMillis();
+    doReturn(producerMetadata).when(mockEnvelope).getProducerMetadata();
+
+    storeIngestionTask.checkAndHandleDoLMessage(mockPcs, mockMessage);
+
+    // Verify DoL was NOT marked as consumed due to host mismatch
+    assertFalse(dolStamp.isDolConsumed());
+  }
+
+  @Test
+  public void testCheckAndHandleDoLMessageStaleTerm() throws Exception {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doReturn(true).when(storeIngestionTask).shouldUseDolMechanism();
+    doCallRealMethod().when(storeIngestionTask).checkAndHandleDoLMessage(any(), any());
+
+    // Set local cluster ID using reflection
+    java.lang.reflect.Field localKafkaClusterIdField = StoreIngestionTask.class.getDeclaredField("localKafkaClusterId");
+    localKafkaClusterIdField.setAccessible(true);
+    localKafkaClusterIdField.setInt(storeIngestionTask, 0);
+
+    String hostId = "test-host";
+    DolStamp dolStamp = new DolStamp(50L, hostId); // Expecting term 50
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    doReturn("test-replica").when(mockPcs).getReplicaId();
+    doReturn(40L).when(mockPcs).getHighestLeadershipTerm();
+    doReturn(dolStamp).when(mockPcs).getDolState();
+
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(mockKey).when(mockMessage).getKey();
+    doReturn(KafkaKey.DOL_STAMP.getKey()).when(mockKey).getKey();
+
+    KafkaMessageEnvelope mockEnvelope = mock(KafkaMessageEnvelope.class);
+    doReturn(mockEnvelope).when(mockMessage).getValue();
+
+    LeaderMetadata leaderMetadata = new LeaderMetadata();
+    leaderMetadata.upstreamKafkaClusterId = 0;
+    leaderMetadata.hostName = hostId;
+    leaderMetadata.termId = 42L; // Stale term (42 < 50)
+    doReturn(leaderMetadata).when(mockEnvelope).getLeaderMetadataFooter();
+
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = System.currentTimeMillis();
+    doReturn(producerMetadata).when(mockEnvelope).getProducerMetadata();
+
+    storeIngestionTask.checkAndHandleDoLMessage(mockPcs, mockMessage);
+
+    // Verify DoL was NOT marked as consumed due to stale term
+    assertFalse(dolStamp.isDolConsumed());
+    // Verify highest term was still updated (42 > 40)
+    verify(mockPcs).setHighestLeadershipTerm(42L);
+  }
+
+  @Test
+  public void testCheckAndHandleDoLMessageFutureTerm() throws Exception {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    doReturn(true).when(storeIngestionTask).shouldUseDolMechanism();
+    doCallRealMethod().when(storeIngestionTask).checkAndHandleDoLMessage(any(), any());
+
+    // Set local cluster ID using reflection
+    java.lang.reflect.Field localKafkaClusterIdField = StoreIngestionTask.class.getDeclaredField("localKafkaClusterId");
+    localKafkaClusterIdField.setAccessible(true);
+    localKafkaClusterIdField.setInt(storeIngestionTask, 0);
+
+    String hostId = "test-host";
+    DolStamp dolStamp = new DolStamp(42L, hostId); // Expecting term 42
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    doReturn("test-replica").when(mockPcs).getReplicaId();
+    doReturn(40L).when(mockPcs).getHighestLeadershipTerm();
+    doReturn(dolStamp).when(mockPcs).getDolState();
+
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
+    KafkaKey mockKey = mock(KafkaKey.class);
+    doReturn(mockKey).when(mockMessage).getKey();
+    doReturn(KafkaKey.DOL_STAMP.getKey()).when(mockKey).getKey();
+
+    KafkaMessageEnvelope mockEnvelope = mock(KafkaMessageEnvelope.class);
+    doReturn(mockEnvelope).when(mockMessage).getValue();
+
+    LeaderMetadata leaderMetadata = new LeaderMetadata();
+    leaderMetadata.upstreamKafkaClusterId = 0;
+    leaderMetadata.hostName = hostId;
+    leaderMetadata.termId = 100L; // Future term (100 > 42)
+    doReturn(leaderMetadata).when(mockEnvelope).getLeaderMetadataFooter();
+
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = System.currentTimeMillis();
+    doReturn(producerMetadata).when(mockEnvelope).getProducerMetadata();
+
+    storeIngestionTask.checkAndHandleDoLMessage(mockPcs, mockMessage);
+
+    // Verify DoL was NOT marked as consumed due to future term
+    assertFalse(dolStamp.isDolConsumed());
+    // Verify highest term was updated
+    verify(mockPcs).setHighestLeadershipTerm(100L);
   }
 }

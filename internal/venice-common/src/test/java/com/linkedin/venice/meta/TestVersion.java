@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import static com.linkedin.venice.meta.Version.VENICE_COMPLIANCE_PUSH_ID_PREFIX;
 import static com.linkedin.venice.meta.Version.VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -176,6 +177,105 @@ public class TestVersion {
         Version.generateRegularPushWithTTLRePushId(Long.toString(System.currentTimeMillis()));
     assertTrue(Version.isPushIdRegularPushWithTTLRePush(regularPushWithRePushId));
     assertFalse(Version.isPushIdRegularPushWithTTLRePush(pushId));
+  }
+
+  @Test
+  public void testCompliancePushId() {
+    // Test generating compliance push ID
+    String originalPushId = "123456_https://example.com/job";
+    String compliancePushId = Version.generateCompliancePushId(originalPushId);
+    assertEquals(compliancePushId, VENICE_COMPLIANCE_PUSH_ID_PREFIX + originalPushId);
+
+    // Test detecting compliance push ID
+    assertTrue(Version.isPushIdCompliancePush(compliancePushId));
+    assertFalse(Version.isPushIdCompliancePush(originalPushId));
+    assertFalse(Version.isPushIdCompliancePush(null));
+    assertFalse(Version.isPushIdCompliancePush(""));
+
+    // Test that compliance push is not detected as other types
+    assertFalse(Version.isPushIdRePush(compliancePushId));
+    assertFalse(Version.isPushIdTTLRePush(compliancePushId));
+    assertFalse(Version.isPushIdRegularPushWithTTLRePush(compliancePushId));
+  }
+
+  @Test
+  public void testIsKillableSystemPush() {
+    String timestamp = Long.toString(System.currentTimeMillis());
+
+    // Regular repush should be killable
+    String rePushId = Version.generateRePushId(timestamp);
+    assertTrue(Version.isKillableSystemPush(rePushId));
+    assertTrue(Version.isPushIdRePush(rePushId));
+
+    // TTL repush should NOT be killable
+    String ttlRePushId = Version.generateTTLRePushId(timestamp);
+    assertFalse(Version.isKillableSystemPush(ttlRePushId));
+    assertTrue(Version.isPushIdTTLRePush(ttlRePushId));
+
+    // Compliance push should be killable
+    String compliancePushId = Version.generateCompliancePushId(timestamp);
+    assertTrue(Version.isKillableSystemPush(compliancePushId));
+    assertTrue(Version.isPushIdCompliancePush(compliancePushId));
+
+    // Regular user push should NOT be killable
+    String userPushId = timestamp + "_https://example.com/user-job";
+    assertFalse(Version.isKillableSystemPush(userPushId));
+    assertFalse(Version.isPushIdRePush(userPushId));
+    assertFalse(Version.isPushIdTTLRePush(userPushId));
+    assertFalse(Version.isPushIdCompliancePush(userPushId));
+
+    // Regular push with TTL repush prefix should NOT be killable
+    String regularPushWithTtl = Version.generateRegularPushWithTTLRePushId(timestamp);
+    assertFalse(Version.isKillableSystemPush(regularPushWithTtl));
+
+    // Null and empty should return false
+    assertFalse(Version.isKillableSystemPush(null));
+    assertFalse(Version.isKillableSystemPush(""));
+  }
+
+  @Test
+  public void testCanIncomingPushKillExistingPush() {
+    String timestamp = Long.toString(System.currentTimeMillis());
+    String userPushId = timestamp + "_https://example.com/user-job";
+    String rePushId = Version.generateRePushId(timestamp);
+    String compliancePushId = Version.generateCompliancePushId(timestamp);
+    String ttlRePushId = Version.generateTTLRePushId(timestamp);
+
+    // User batch push can kill repush
+    assertTrue(Version.canIncomingPushKillExistingPush(rePushId, userPushId, Version.PushType.BATCH));
+
+    // User batch push can kill compliance push
+    assertTrue(Version.canIncomingPushKillExistingPush(compliancePushId, userPushId, Version.PushType.BATCH));
+
+    // User batch push cannot kill TTL repush
+    assertFalse(Version.canIncomingPushKillExistingPush(ttlRePushId, userPushId, Version.PushType.BATCH));
+
+    // User batch push cannot kill another user push
+    String anotherUserPushId = (System.currentTimeMillis() + 1) + "_https://example.com/another-job";
+    assertFalse(Version.canIncomingPushKillExistingPush(userPushId, anotherUserPushId, Version.PushType.BATCH));
+
+    // Repush cannot kill user push (system push cannot kill user push)
+    assertFalse(Version.canIncomingPushKillExistingPush(userPushId, rePushId, Version.PushType.BATCH));
+    assertFalse(Version.canIncomingPushKillExistingPush(userPushId, rePushId, Version.PushType.INCREMENTAL));
+
+    // Compliance push cannot kill user push (system push cannot kill user push)
+    assertFalse(Version.canIncomingPushKillExistingPush(userPushId, compliancePushId, Version.PushType.BATCH));
+    assertFalse(Version.canIncomingPushKillExistingPush(userPushId, compliancePushId, Version.PushType.INCREMENTAL));
+
+    // Repush cannot kill compliance push (system push cannot kill system push)
+    assertFalse(Version.canIncomingPushKillExistingPush(compliancePushId, rePushId, Version.PushType.BATCH));
+
+    // Compliance push cannot kill repush (system push cannot kill system push)
+    assertFalse(Version.canIncomingPushKillExistingPush(rePushId, compliancePushId, Version.PushType.BATCH));
+
+    // Incremental push cannot kill any push
+    assertFalse(Version.canIncomingPushKillExistingPush(rePushId, userPushId, Version.PushType.INCREMENTAL));
+    assertFalse(Version.canIncomingPushKillExistingPush(compliancePushId, userPushId, Version.PushType.INCREMENTAL));
+
+    // Stream reprocessing push (non-incremental) can kill system pushes
+    assertTrue(Version.canIncomingPushKillExistingPush(rePushId, userPushId, Version.PushType.STREAM_REPROCESSING));
+    assertTrue(
+        Version.canIncomingPushKillExistingPush(compliancePushId, userPushId, Version.PushType.STREAM_REPROCESSING));
   }
 
   @Test

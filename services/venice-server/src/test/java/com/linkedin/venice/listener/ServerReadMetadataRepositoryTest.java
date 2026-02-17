@@ -288,6 +288,63 @@ public class ServerReadMetadataRepositoryTest {
     Assert.assertTrue(response.getMessage().contains(TEST_STORE + " does not exist"));
   }
 
+  @Test
+  public void testMetadataUrlSchemeRespectsSSLSetting() {
+    // Create a non-SSL repository
+    ServerReadMetadataRepository nonSslRepo = new ServerReadMetadataRepository(
+        SRC_CLUSTER,
+        new MetricsRepository(),
+        mockMetadataRepo,
+        mockSchemaRepo,
+        storeConfigRepository,
+        Optional.of(CompletableFuture.completedFuture(mockCustomizedViewRepository)),
+        Optional.of(CompletableFuture.completedFuture(mockHelixInstanceConfigRepository)),
+        false);
+
+    String storeName = "test-store-ssl";
+    Store mockStore = new ZKStore(
+        storeName,
+        "unit-test",
+        0,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
+    mockStore.setCurrentVersion(1);
+    mockStore.setStorageNodeReadQuotaEnabled(true);
+    String topicName = Version.composeKafkaTopic(storeName, 1);
+    PartitionAssignment partitionAssignment = new PartitionAssignment(topicName, 1);
+    Partition partition = mock(Partition.class);
+    when(partition.getId()).thenReturn(0);
+    List<Instance> readyToServeInstances = Collections.singletonList(new Instance("host1", "host1", 1234));
+    doReturn(readyToServeInstances).when(partition).getReadyToServeInstances();
+    partitionAssignment.addPartition(partition);
+    String schema = "\"string\"";
+    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
+    Mockito.when(mockSchemaRepo.getKeySchema(storeName)).thenReturn(new SchemaEntry(0, schema));
+    Mockito.when(mockSchemaRepo.getValueSchemas(storeName))
+        .thenReturn(Collections.singletonList(new SchemaEntry(0, schema)));
+    Mockito.when(mockCustomizedViewRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
+    Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
+
+    // Non-SSL repo should generate http:// URLs in metadata routing info
+    MetadataResponse nonSslResponse = nonSslRepo.getMetadata(storeName);
+    Assert.assertFalse(nonSslResponse.isError());
+    // Routing info values are lists of instance URLs built via instance.getUrl(sslEnabled)
+    // With sslEnabled=false, URLs should start with "http://"
+    CharSequence nonSslUrl = nonSslResponse.getResponseRecord().getRoutingInfo().get("0").get(0);
+    Assert.assertTrue(nonSslUrl.toString().startsWith("http://"), "Expected http:// URL but got: " + nonSslUrl);
+    Assert.assertFalse(nonSslUrl.toString().startsWith("https://"), "Should not be https:// but got: " + nonSslUrl);
+
+    // Default (SSL) repo should generate https:// URLs
+    MetadataResponse sslResponse = serverReadMetadataRepository.getMetadata(storeName);
+    Assert.assertFalse(sslResponse.isError());
+    CharSequence sslUrl = sslResponse.getResponseRecord().getRoutingInfo().get("0").get(0);
+    Assert.assertTrue(sslUrl.toString().startsWith("https://"), "Expected https:// URL but got: " + sslUrl);
+  }
+
   private StoreMetaValue deserializeStoreMetaValue(byte[] bytes) {
     Schema schema = AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema();
     RecordDeserializer<StoreMetaValue> storeMetaValueRecordDeserializer =

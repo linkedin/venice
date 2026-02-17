@@ -25,6 +25,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -1602,6 +1603,304 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testIdempotentIncrementVersionWhenPreviousPushIsACompliancePushAndIncomingPushIsABatchPush() {
+    String storeName = Utils.getUniqueString("test-store");
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    VeniceHelixAdmin mockInternalAdmin = mock(VeniceHelixAdmin.class);
+
+    doReturn(mockInternalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+
+    // Create an ongoing compliance push
+    Version version = new VersionImpl(storeName, 1, Version.generateCompliancePushId("compliance_push_id"));
+    store.addVersion(version);
+    doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
+
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, config);
+
+    doReturn(
+        (LingeringStoreVersionChecker) (
+            store1,
+            version1,
+            time,
+            controllerAdmin,
+            requesterCert,
+            identityParser) -> false).when(mockParentAdmin).getLingeringStoreVersionChecker();
+    doReturn(mock(UserSystemStoreLifeCycleHelper.class)).when(mockParentAdmin).getSystemStoreLifeCycleHelper();
+    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
+    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin)
+        .getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
+
+    // User-initiated batch push should be able to kill the compliance push
+    String incomingPushId = "USER_BATCH_PUSH";
+    doCallRealMethod().when(mockParentAdmin)
+        .incrementVersionIdempotent(
+            clusterName,
+            storeName,
+            incomingPushId,
+            1,
+            1,
+            Version.PushType.BATCH,
+            false,
+            false,
+            null,
+            Optional.empty(),
+            Optional.empty(),
+            -1,
+            Optional.empty(),
+            false,
+            null,
+            -1,
+            -1);
+
+    Version version2 = new VersionImpl(storeName, 2, incomingPushId);
+    doReturn(new Pair(true, version2)).when(mockInternalAdmin)
+        .addVersionAndTopicOnly(
+            clusterName,
+            storeName,
+            incomingPushId,
+            VERSION_ID_UNSET,
+            1,
+            1,
+            false,
+            false,
+            Version.PushType.BATCH,
+            null,
+            null,
+            Optional.empty(),
+            -1,
+            1,
+            Optional.empty(),
+            false,
+            null,
+            -1,
+            DEFAULT_RT_VERSION_NUMBER,
+            -1);
+
+    HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
+    doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
+    doReturn(mock(VeniceAdminStats.class)).when(mockHelixVeniceClusterResources).getVeniceAdminStats();
+
+    mockParentAdmin.incrementVersionIdempotent(
+        clusterName,
+        storeName,
+        incomingPushId,
+        1,
+        1,
+        Version.PushType.BATCH,
+        false,
+        false,
+        null,
+        Optional.empty(),
+        Optional.empty(),
+        -1,
+        Optional.empty(),
+        false,
+        null,
+        -1,
+        -1);
+
+    // Verify that the compliance push was killed
+    verify(mockParentAdmin, times(1)).killOfflinePush(clusterName, version.kafkaTopicName(), true);
+  }
+
+  @Test
+  public void testIdempotentIncrementVersionWhenPreviousPushIsACompliancePushAndIncomingPushIsAlsoCompliancePush() {
+    String storeName = Utils.getUniqueString("test-store");
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    VeniceHelixAdmin mockInternalAdmin = mock(VeniceHelixAdmin.class);
+
+    doReturn(mockInternalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+
+    // Create an ongoing compliance push
+    Version version = new VersionImpl(storeName, 1, Version.generateCompliancePushId("compliance_push_id"));
+    store.addVersion(version);
+    doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
+
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, config);
+
+    doReturn(
+        (LingeringStoreVersionChecker) (
+            store1,
+            version1,
+            time,
+            controllerAdmin,
+            requesterCert,
+            identityParser) -> false).when(mockParentAdmin).getLingeringStoreVersionChecker();
+    doReturn(mock(UserSystemStoreLifeCycleHelper.class)).when(mockParentAdmin).getSystemStoreLifeCycleHelper();
+    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
+    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin)
+        .getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
+
+    // Another compliance push should NOT be able to kill the existing compliance push
+    String incomingPushId = Version.generateCompliancePushId("another_compliance_push");
+    doCallRealMethod().when(mockParentAdmin)
+        .incrementVersionIdempotent(
+            clusterName,
+            storeName,
+            incomingPushId,
+            1,
+            1,
+            Version.PushType.BATCH,
+            false,
+            false,
+            null,
+            Optional.empty(),
+            Optional.empty(),
+            -1,
+            Optional.empty(),
+            false,
+            null,
+            -1,
+            -1);
+
+    HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
+    doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
+    doReturn(mock(VeniceAdminStats.class)).when(mockHelixVeniceClusterResources).getVeniceAdminStats();
+
+    // Should throw ConcurrentBatchPushException
+    assertThrows(
+        VeniceException.class,
+        () -> mockParentAdmin.incrementVersionIdempotent(
+            clusterName,
+            storeName,
+            incomingPushId,
+            1,
+            1,
+            Version.PushType.BATCH,
+            false,
+            false,
+            null,
+            Optional.empty(),
+            Optional.empty(),
+            -1,
+            Optional.empty(),
+            false,
+            null,
+            -1,
+            -1));
+
+    // Verify that killOfflinePush was never called
+    verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
+  }
+
+  @Test
+  public void testCompliancePushCannotKillUserPush() {
+    String storeName = Utils.getUniqueString("test-store");
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    VeniceHelixAdmin mockInternalAdmin = mock(VeniceHelixAdmin.class);
+
+    doReturn(mockInternalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+
+    // Create an ongoing user push
+    String userPushId = System.currentTimeMillis() + "_https://example.com/user-job";
+    Version version = new VersionImpl(storeName, 1, userPushId);
+    store.addVersion(version);
+    doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
+
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, config);
+
+    doReturn(
+        (LingeringStoreVersionChecker) (
+            store1,
+            version1,
+            time,
+            controllerAdmin,
+            requesterCert,
+            identityParser) -> false).when(mockParentAdmin).getLingeringStoreVersionChecker();
+    doReturn(mock(UserSystemStoreLifeCycleHelper.class)).when(mockParentAdmin).getSystemStoreLifeCycleHelper();
+    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
+    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin)
+        .getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
+
+    // Compliance push should NOT be able to kill the user push
+    String incomingPushId = Version.generateCompliancePushId("compliance_push");
+    doCallRealMethod().when(mockParentAdmin)
+        .incrementVersionIdempotent(
+            clusterName,
+            storeName,
+            incomingPushId,
+            1,
+            1,
+            Version.PushType.BATCH,
+            false,
+            false,
+            null,
+            Optional.empty(),
+            Optional.empty(),
+            -1,
+            Optional.empty(),
+            false,
+            null,
+            -1,
+            -1);
+
+    HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
+    doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
+    doReturn(mock(VeniceAdminStats.class)).when(mockHelixVeniceClusterResources).getVeniceAdminStats();
+
+    // Should throw VeniceException because compliance push cannot kill user push
+    try {
+      mockParentAdmin.incrementVersionIdempotent(
+          clusterName,
+          storeName,
+          incomingPushId,
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          -1);
+      fail("Expected VeniceException to be thrown");
+    } catch (VeniceException e) {
+      assertTrue(e.getMessage().contains("is found and it must be terminated before another push can be started"));
+    }
+
+    // Verify that killOfflinePush was never called
+    verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
+  }
+
+  @Test
   public void testStoreVersionCleanUpWithFewerVersions() {
     String storeName = "test_store";
     Store testStore = new ZKStore(
@@ -1713,13 +2012,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     try {
       parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.STARTED);
-      Assert.fail();
+      fail();
     } catch (VeniceException e) {
     }
 
     try {
       parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.ERROR);
-      Assert.fail();
+      fail();
     } catch (VeniceException e) {
     }
 
@@ -2114,7 +2413,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           clusterName,
           storeName,
           new UpdateStoreQueryParams().setPartitionerClass(InvalidKeySchemaPartitioner.class.getName()));
-      Assert.fail("The partitioner creation should not be successful");
+      fail("The partitioner creation should not be successful");
     } catch (Exception e) {
       Assert.assertTrue(e.getClass().isAssignableFrom(VeniceHttpException.class));
       Assert.assertTrue(e instanceof VeniceHttpException);
@@ -2826,7 +3125,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
               null,
               -1,
               -1);
-          Assert.fail("Incremental push should fail if the previous batch push is not in COMPLETE state.");
+          fail("Incremental push should fail if the previous batch push is not in COMPLETE state.");
           verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
         } catch (Exception e) {
           /**
@@ -2927,7 +3226,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     try {
       parentAdmin.incrementVersionIdempotent(clusterName, storeA, "", 3, 3);
-      Assert.fail("Admin operations to a store with existing exception should be blocked");
+      fail("Admin operations to a store with existing exception should be blocked");
     } catch (VeniceException e) {
       Assert.assertTrue(e.getMessage().contains("due to existing exception"));
     }
@@ -3038,11 +3337,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testSetVersionShouldFailOnParentController() {
     try {
       parentAdmin.setStoreCurrentVersion(clusterName, "any_store", 1);
-      Assert.fail("Set version should not be allowed on parent controllers.");
+      fail("Set version should not be allowed on parent controllers.");
     } catch (VeniceUnsupportedOperationException e) {
       // Expected
     } catch (Throwable e) {
-      Assert.fail("SetVersion command on parent controller should fail with VeniceUnsupportedOperationException");
+      fail("SetVersion command on parent controller should fail with VeniceUnsupportedOperationException");
     }
   }
 
@@ -3139,7 +3438,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           "invalidRegion",
           -1,
           -1);
-      Assert.fail("Test should fail, but doesn't");
+      fail("Test should fail, but doesn't");
     } catch (VeniceException e) {
       assertEquals(
           e.getMessage(),

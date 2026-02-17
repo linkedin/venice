@@ -442,4 +442,25 @@ public class TestHelixUtils {
 
     verify(mockAdmin, times(TEST_RETRY_COUNT)).getClusters();
   }
+
+  @Test
+  public void testInstanceIdToUrlDefaultUsesHttps() {
+    assertEquals(HelixUtils.instanceIdToUrl("host1_1234"), "https://host1:1234");
+  }
+
+  @Test
+  public void testInstanceIdToUrlWithHttpsTrue() {
+    assertEquals(HelixUtils.instanceIdToUrl("host1_1234", true), "https://host1:1234");
+  }
+
+  @Test
+  public void testInstanceIdToUrlWithHttpsFalse() {
+    assertEquals(HelixUtils.instanceIdToUrl("host1_1234", false), "http://host1:1234");
+  }
+
+  @Test
+  public void testInstanceIdToUrlWithHostnameContainingDots() {
+    assertEquals(HelixUtils.instanceIdToUrl("my.host.name_8080", true), "https://my.host.name:8080");
+    assertEquals(HelixUtils.instanceIdToUrl("my.host.name_8080", false), "http://my.host.name:8080");
+  }
 }

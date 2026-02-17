@@ -169,7 +169,9 @@ public class AdminConsumptionWithProtocolRollbackIntegrationTest {
     String adminOperationSchemaStoreName = AvroProtocolDefinition.ADMIN_OPERATION.getSystemStoreName();
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 5, TimeUnit.MILLISECONDS, () -> {
       MultiSchemaResponse multiSchemaResponse = parentControllerClient.getAllValueSchema(adminOperationSchemaStoreName);
-      assert multiSchemaResponse.getSchemas().length == schemaId - 1;
+      Assert.assertFalse(multiSchemaResponse.isError(), "Failed to get schemas: " + multiSchemaResponse.getError());
+      Assert.assertNotNull(multiSchemaResponse.getSchemas(), "Schemas array is null");
+      Assert.assertEquals(multiSchemaResponse.getSchemas().length, schemaId - 1);
     });
 
     String clusterName = parentControllerClient.getStore(adminOperationSchemaStoreName).getCluster();

@@ -90,6 +90,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRE
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
+import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY;
+import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_NON_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.SERVER_CURRENT_VERSION_SEPARATE_RT_LEADER_QUOTA_RECORDS_PER_SECOND;
@@ -141,6 +144,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LAG_BASED_REPLICA_AUTO_RESUB
 import static com.linkedin.venice.ConfigKeys.SERVER_LAG_BASED_REPLICA_AUTO_RESUBSCRIBE_THRESHOLD_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LAG_MONITOR_CLEANUP_CYCLE;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOAD_CONTROLLER_ACCEPT_MULTIPLIER;
@@ -655,6 +660,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int channelOptionWriteBufferHighBytes;
   private final boolean aaWCWorkloadParallelProcessingEnabled;
   private final int aaWCWorkloadParallelProcessingThreadPoolSize;
+  private final boolean crossTpParallelProcessingEnabled;
+  private final int crossTpParallelProcessingThreadPoolSize;
+  private final boolean crossTpParallelProcessingCurrentVersionAAWCLeaderOnly;
   private final boolean isGlobalRtDivEnabled;
   private final boolean nearlineWorkloadProducerThroughputOptimizationEnabled;
   private final int zstdDictCompressionLevel;
@@ -684,6 +692,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean useMetricsBasedPositionInLagComputation;
   private final boolean useUpstreamPubSubPositionWithFallback;
   private final boolean useCheckpointedPubSubPositionWithFallback;
+  private final boolean leaderHandoverUseDoLMechanismForSystemStores;
+  private final boolean leaderHandoverUseDoLMechanismForUserStores;
   private final LogContext logContext;
   private final IngestionTaskReusableObjects.Strategy ingestionTaskReusableObjectsStrategy;
   private final boolean keyUrnCompressionEnabled;
@@ -1124,6 +1134,16 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, false);
     aaWCWorkloadParallelProcessingThreadPoolSize =
         serverProperties.getInt(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE, 8);
+    crossTpParallelProcessingEnabled = serverProperties.getBoolean(SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED, false);
+    crossTpParallelProcessingThreadPoolSize =
+        serverProperties.getInt(SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE, 4);
+    if (crossTpParallelProcessingEnabled && crossTpParallelProcessingThreadPoolSize < 1) {
+      throw new VeniceException(
+          "Invalid cross-TP parallel processing thread pool size: " + crossTpParallelProcessingThreadPoolSize
+              + ". Value must be at least 1.");
+    }
+    crossTpParallelProcessingCurrentVersionAAWCLeaderOnly =
+        serverProperties.getBoolean(SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY, false);
     nearlineWorkloadProducerThroughputOptimizationEnabled =
         serverProperties.getBoolean(SERVER_NEARLINE_WORKLOAD_PRODUCER_THROUGHPUT_OPTIMIZATION_ENABLED, true);
     zstdDictCompressionLevel =
@@ -1190,6 +1210,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SERVER_USE_UPSTREAM_PUBSUB_POSITIONS, true);
     this.useCheckpointedPubSubPositionWithFallback =
         serverProperties.getBoolean(SERVER_USE_CHECKPOINTED_PUBSUB_POSITIONS, true);
+    this.leaderHandoverUseDoLMechanismForSystemStores =
+        serverProperties.getBoolean(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES, true);
+    this.leaderHandoverUseDoLMechanismForUserStores =
+        serverProperties.getBoolean(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES, true);
     this.serverIngestionInfoLogLineLimit = serverProperties.getInt(SERVER_INGESTION_INFO_LOG_LINE_LIMIT, 20);
     this.parallelResourceShutdownEnabled =
         serverProperties.getBoolean(SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED, false);
@@ -2017,6 +2041,18 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return aaWCWorkloadParallelProcessingThreadPoolSize;
   }
 
+  public boolean isCrossTpParallelProcessingEnabled() {
+    return crossTpParallelProcessingEnabled;
+  }
+
+  public int getCrossTpParallelProcessingThreadPoolSize() {
+    return crossTpParallelProcessingThreadPoolSize;
+  }
+
+  public boolean isCrossTpParallelProcessingCurrentVersionAAWCLeaderOnly() {
+    return crossTpParallelProcessingCurrentVersionAAWCLeaderOnly;
+  }
+
   public boolean isGlobalRtDivEnabled() {
     return isGlobalRtDivEnabled;
   }
@@ -2155,6 +2191,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isUseCheckpointedPubSubPositionWithFallbackEnabled() {
     return this.useCheckpointedPubSubPositionWithFallback;
+  }
+
+  public boolean isLeaderHandoverUseDoLMechanismEnabledForSystemStores() {
+    return this.leaderHandoverUseDoLMechanismForSystemStores;
+  }
+
+  public boolean isLeaderHandoverUseDoLMechanismEnabledForUserStores() {
+    return this.leaderHandoverUseDoLMechanismForUserStores;
   }
 
   public int getServerIngestionInfoLogLineLimit() {

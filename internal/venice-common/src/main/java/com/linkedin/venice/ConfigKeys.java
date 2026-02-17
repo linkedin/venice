@@ -765,6 +765,51 @@ public class ConfigKeys {
    */
   public static final String SERVER_USE_CHECKPOINTED_PUBSUB_POSITIONS = "server.use.checkpointed.pubsub.positions";
 
+  /**
+   * Controls whether to use the Declaration of Leadership (DoL) mechanism for leader handover
+   * of system stores (meta stores, push status stores, etc.).
+   * 
+   * <p>When enabled, the new leader replica will:
+   * 1. Produce a Declaration of Leadership message to the local version topic (VT)
+   * 2. Wait until it consumes this message back from VT (loopback confirmation)
+   * 3. Only then switch to consuming from the leader source topic (remote VT during batch push,
+   *    or RT topic for hybrid stores post-EOP)
+   * 
+   * <p>This provides a deterministic guarantee that the leader has successfully written to
+   * and consumed from the local VT before transitioning to the leader source topic, eliminating
+   * the need for time-based waits.
+   * 
+   * <p>System stores typically benefit more from fast handover due to their critical role in
+   * cluster operations. Having a separate config allows independent rollout strategy.
+   *
+   * Default: true (DoL mechanism enabled for system stores)
+   */
+  public static final String SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES =
+      "server.leader.handover.use.dol.mechanism.for.system.stores";
+
+  /**
+   * Controls whether to use the Declaration of Leadership (DoL) mechanism for leader handover
+   * of user stores (regular application data stores).
+   * 
+   * <p>When enabled, the new leader replica will:
+   * 1. Produce a Declaration of Leadership message to the local version topic (VT)
+   * 2. Wait until it consumes this message back from VT (loopback confirmation)
+   * 3. Only then switch to consuming from the leader source topic (remote VT during batch push,
+   *    or RT topic for hybrid stores post-EOP)
+   * 
+   * <p>This provides a deterministic guarantee that the leader has successfully written to
+   * and consumed from the local VT before transitioning to the leader source topic, eliminating
+   * the need for time-based waits.
+   * 
+   * <p>Having a separate config from system stores allows independent rollout - typically you
+   * would enable DoL for system stores first, validate it works correctly, then roll out to
+   * user stores.
+   *
+   * Default: true (DoL mechanism enabled for user stores)
+   */
+  public static final String SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES =
+      "server.leader.handover.use.dol.mechanism.for.user.stores";
+
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
@@ -1729,6 +1774,13 @@ public class ConfigKeys {
   public static final String ROUTER_MULTIGET_TARDY_LATENCY_MS = "router.multiget.tardy.latency.ms";
   public static final String ROUTER_COMPUTE_TARDY_LATENCY_MS = "router.compute.tardy.latency.ms";
 
+  /**
+   * Threshold in milliseconds for logging slow scatter requests.
+   * When a scatter request exceeds this threshold, detailed information will be logged
+   * to help debug high P99 latency issues.
+   */
+  public static final String ROUTER_SLOW_SCATTER_REQUEST_THRESHOLD_MS = "router.slow.scatter.request.threshold.ms";
+
   public static final String ROUTER_ENABLE_READ_THROTTLING = "router.enable.read.throttling";
 
   /**
@@ -2470,9 +2522,33 @@ public class ConfigKeys {
   public static final String SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY = "server.ssl.handshake.queue.capacity";
 
   /**
-   * Number of threads for online Venice producer controlling the number of concurrent processing operations.
+   * Number of partition workers for parallel processing.
+   * Each worker handles preprocessing + dispatch for assigned partitions.
+   * Default: 4.
+   * Set to 0 to DISABLE worker threads (execute inline on caller thread).
    */
-  public static final String CLIENT_PRODUCER_THREAD_NUM = "client.producer.thread.num";
+  public static final String CLIENT_PRODUCER_WORKER_COUNT = "client.producer.worker.count";
+
+  /**
+   * Queue capacity per worker for backpressure.
+   * When full, the caller thread blocks until space is available.
+   * Default: 100000. Ignored if worker count is 0.
+   */
+  public static final String CLIENT_PRODUCER_WORKER_QUEUE_CAPACITY = "client.producer.worker.queue.capacity";
+
+  /**
+   * Number of threads for callback executor (optional).
+   * Isolates user code from Kafka callback thread.
+   * Default: 0 (DISABLED - callbacks run on Kafka thread).
+   * Set to >0 to enable callback thread pool.
+   */
+  public static final String CLIENT_PRODUCER_CALLBACK_THREAD_COUNT = "client.producer.callback.thread.count";
+
+  /**
+   * Queue capacity for callback executor.
+   * Default: 100000. Ignored if callback thread count is 0.
+   */
+  public static final String CLIENT_PRODUCER_CALLBACK_QUEUE_CAPACITY = "client.producer.callback.queue.capacity";
 
   /**
    * The refresh interval for online producer to refresh value schemas and update schemas that rely on periodic polling.
@@ -2722,6 +2798,19 @@ public class ConfigKeys {
    * Chunk size (number of partitions) for parallel routing within one multi-key request in Router.
    */
   public static final String ROUTER_PARALLEL_ROUTING_CHUNK_SIZE = "router.parallel.routing.chunk.size";
+  /**
+   * Thread pool size for response aggregation in Router. Response aggregation happens after scatter-gather
+   * completes and all sub-responses are collected. Previously this work ran on the Netty EventLoop
+   * (stageExecutor(ctx) in ScatterGatherRequestHandlerImpl); it now uses a dedicated thread pool to reduce
+   * contention and isolate aggregation load from I/O processing and other JVM components.
+   */
+  public static final String ROUTER_RESPONSE_AGGREGATION_THREAD_POOL_SIZE =
+      "router.response.aggregation.thread.pool.size";
+  /**
+   * Task queue capacity for response aggregation thread pool. Higher values allow more pending aggregation
+   * tasks but consume more memory. Lower values provide back-pressure during extreme load.
+   */
+  public static final String ROUTER_RESPONSE_AGGREGATION_QUEUE_CAPACITY = "router.response.aggregation.queue.capacity";
 
   /**
    * Server configs to enable the topic partition re-subscription during ingestion to let bottom ingestion service aware
@@ -2781,6 +2870,38 @@ public class ConfigKeys {
    */
   public static final String SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE =
       "server.aa.wc.ingestion.storage.lookup.thread.pool.size";
+
+  /**
+   * Enable cross-TP (topic-partition) parallel processing in the ConsumptionTask.
+   * When enabled, records from different topic-partitions in a single poll batch will be processed
+   * in parallel instead of sequentially. This can improve throughput when one slow TP would
+   * otherwise block all others in the same poll batch.
+   *
+   * Default: false (sequential processing, current behavior)
+   */
+  public static final String SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED =
+      "server.cross.tp.parallel.processing.enabled";
+
+  /**
+   * Thread pool size for cross-TP parallel processing.
+   * This controls the maximum number of topic-partitions that can be processed concurrently
+   * within a single poll batch.
+   *
+   * Default: 4
+   */
+  public static final String SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE =
+      "server.cross.tp.parallel.processing.thread.pool.size";
+
+  /**
+   * When enabled, cross-TP parallel processing will only be applied to the
+   * {@code ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL} consumer pool.
+   * This is useful for limiting parallel processing to the most critical pool type
+   * while keeping other pools using sequential processing.
+   *
+   * Default: false (when cross-TP parallel processing is enabled, it applies to all pools)
+   */
+  public static final String SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY =
+      "server.cross.tp.parallel.processing.current.version.aa.wc.leader.only";
 
   /**
    * Please find more details here: {@link com.linkedin.venice.reliability.LoadController}.
