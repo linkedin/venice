@@ -488,7 +488,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         DISABLED,
         producerStateMaxAgeMs);
     // Could be accessed from multiple threads since there are multiple worker threads.
-    this.consumerDiv = new DataIntegrityValidator(kafkaVersionTopic, pubSubContext.getPubSubPositionDeserializer());
+    this.consumerDiv = new DataIntegrityValidator(
+        kafkaVersionTopic,
+        pubSubContext.getPubSubPositionDeserializer(),
+        DISABLED,
+        producerStateMaxAgeMs);
     this.consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.readOnlyForBatchOnlyStoreEnabled = storeVersionConfig.isReadOnlyForBatchOnlyStoreEnabled();

@@ -212,11 +212,13 @@ public class PartitionTracker {
    */
   public void cloneVtProducerStates(PartitionTracker destProducerTracker, long maxAgeInMs) {
     long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : new Date().getTime() - maxAgeInMs;
-    for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
+    Iterator<Map.Entry<GUID, Segment>> iterator = vtSegments.entrySet().iterator();
+    while (iterator.hasNext()) {
+      Map.Entry<GUID, Segment> entry = iterator.next();
       if (entry.getValue().getLastRecordTimestamp() >= earliestAllowableTimestamp) {
         destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
       } else {
-        vtSegments.remove(entry.getKey()); // The state is eligible to be cleared.
+        iterator.remove(); // The state is eligible to be cleared.
       }
     }
     destProducerTracker.updateLatestConsumedVtPosition(latestConsumedVtPosition.get());
@@ -233,12 +235,14 @@ public class PartitionTracker {
       }
 
       final VeniceConcurrentHashMap<GUID, Segment> rtEntries = broker2Segment.getValue();
-      for (Map.Entry<GUID, Segment> rtEntry: rtEntries.entrySet()) {
+      Iterator<Map.Entry<GUID, Segment>> rtIterator = rtEntries.entrySet().iterator();
+      while (rtIterator.hasNext()) {
+        Map.Entry<GUID, Segment> rtEntry = rtIterator.next();
         if (rtEntry.getValue().getLastRecordTimestamp() >= earliestAllowableTimestamp) {
           TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, broker2Segment.getKey());
           destProducerTracker.setSegment(realTimeTopicType, rtEntry.getKey(), new Segment(rtEntry.getValue()));
         } else {
-          rtEntries.remove(rtEntry.getKey()); // The state is eligible to be cleared.
+          rtIterator.remove(); // The state is eligible to be cleared.
         }
       }
       if (broker2Segment.getValue().isEmpty()) {
