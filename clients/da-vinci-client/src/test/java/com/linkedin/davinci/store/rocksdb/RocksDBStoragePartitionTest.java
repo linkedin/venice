@@ -1142,4 +1142,85 @@ public class RocksDBStoragePartitionTest {
       removeDir(storeDir);
     }
   }
+
+  @Test
+  public void testDisableBlockCache() {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    String storeDir = getTempDatabaseDir(storeName);
+    String storeName2 = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 2);
+    String storeDir2 = getTempDatabaseDir(storeName2);
+    int partitionId = 0;
+
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+
+    RocksDBStoragePartition partitionWithCacheDisabled = null;
+    RocksDBStoragePartition partitionWithCacheEnabled = null;
+
+    try {
+      // Test with block cache disabled
+      StoragePartitionConfig configWithCacheDisabled = new StoragePartitionConfig(storeName, partitionId);
+      configWithCacheDisabled.setDeferredWrite(false);
+      configWithCacheDisabled.setDisableBlockCache(true);
+      Assert.assertTrue(
+          configWithCacheDisabled.isDisableBlockCache(),
+          "isDisableBlockCache should return true when set to true");
+
+      partitionWithCacheDisabled = new RocksDBStoragePartition(
+          configWithCacheDisabled,
+          factory,
+          DATA_BASE_DIR,
+          null,
+          ROCKSDB_THROTTLER,
+          rocksDBServerConfig);
+
+      // Write and read data to verify partition works with cache disabled
+      byte[] key1 = "key1".getBytes();
+      byte[] value1 = "value1".getBytes();
+      partitionWithCacheDisabled.put(key1, value1);
+      byte[] retrievedValue1 = partitionWithCacheDisabled.get(key1);
+      Assert.assertEquals(retrievedValue1, value1, "Retrieved value should match written value with cache disabled");
+
+      // Test with block cache enabled
+      StoragePartitionConfig configWithCacheEnabled = new StoragePartitionConfig(storeName2, partitionId);
+      configWithCacheEnabled.setDeferredWrite(false);
+      configWithCacheEnabled.setDisableBlockCache(false);
+      Assert.assertFalse(
+          configWithCacheEnabled.isDisableBlockCache(),
+          "isDisableBlockCache should return false when set to false");
+
+      partitionWithCacheEnabled = new RocksDBStoragePartition(
+          configWithCacheEnabled,
+          factory,
+          DATA_BASE_DIR,
+          null,
+          ROCKSDB_THROTTLER,
+          rocksDBServerConfig);
+
+      // Write and read data to verify partition works with cache enabled
+      byte[] key2 = "key2".getBytes();
+      byte[] value2 = "value2".getBytes();
+      partitionWithCacheEnabled.put(key2, value2);
+      byte[] retrievedValue2 = partitionWithCacheEnabled.get(key2);
+      Assert.assertEquals(retrievedValue2, value2, "Retrieved value should match written value with cache enabled");
+
+      // Verify default value is false
+      StoragePartitionConfig defaultConfig = new StoragePartitionConfig(storeName, partitionId);
+      Assert.assertFalse(defaultConfig.isDisableBlockCache(), "Default value for disableBlockCache should be false");
+
+    } finally {
+      if (partitionWithCacheDisabled != null) {
+        partitionWithCacheDisabled.close();
+        partitionWithCacheDisabled.drop();
+      }
+      if (partitionWithCacheEnabled != null) {
+        partitionWithCacheEnabled.close();
+        partitionWithCacheEnabled.drop();
+      }
+      removeDir(storeDir);
+      removeDir(storeDir2);
+    }
+  }
 }
