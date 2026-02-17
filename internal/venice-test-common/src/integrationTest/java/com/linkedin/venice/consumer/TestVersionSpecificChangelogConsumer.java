@@ -3,12 +3,8 @@ package com.linkedin.venice.consumer;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
@@ -33,10 +29,8 @@ import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.davinci.utils.ClientRmdSerDe;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
-import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
@@ -53,9 +47,6 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemProducer;
-import com.linkedin.venice.system.store.MetaStoreDataType;
-import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
-import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -67,7 +58,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -80,7 +70,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
@@ -162,82 +151,24 @@ public class TestVersionSpecificChangelogConsumer {
 
   @AfterMethod(alwaysRun = true)
   public void cleanupAfterTest() {
-    for (int i = testCloseables.size() - 1; i >= 0; i--) {
-      try {
-        testCloseables.get(i).close();
-      } catch (Exception e) {
-        LOGGER.warn("Failed to close resource during test cleanup", e);
-      }
-    }
-    testCloseables.clear();
-
-    for (String storeName: testStoresToDelete) {
-      try {
-        parentControllerClient.disableAndDeleteStore(storeName);
-      } catch (Exception e) {
-        LOGGER.warn("Failed to delete store {} during test cleanup", storeName, e);
-      }
-    }
-    testStoresToDelete.clear();
+    ChangelogConsumerTestUtils.cleanupAfterTest(testCloseables, testStoresToDelete, parentControllerClient, LOGGER);
   }
 
   private void waitForMetaSystemStoreToBeReady(String storeName) {
-    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    TestUtils.waitForNonDeterministicPushCompletion(
-        Version.composeKafkaTopic(metaSystemStoreName, 1),
-        childControllerClientRegion0,
-        90,
-        TimeUnit.SECONDS);
-    clusterWrapper.refreshAllRouterMetaData();
-    String routerUrl = clusterWrapper.getRandomRouterURL();
-    try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> metaStoreClient =
-        ClientFactory.getAndStartSpecificAvroClient(
-            ClientConfig.defaultSpecificClientConfig(metaSystemStoreName, StoreMetaValue.class)
-                .setVeniceURL(routerUrl))) {
-      StoreMetaKey storeClusterConfigKey =
-          MetaStoreDataType.STORE_CLUSTER_CONFIG.getStoreMetaKey(Collections.singletonMap("KEY_STORE_NAME", storeName));
-      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, false, true, () -> {
-        StoreMetaValue value = metaStoreClient.get(storeClusterConfigKey).get(30, TimeUnit.SECONDS);
-        Assert.assertNotNull(value, "Meta store should return non-null value for STORE_CLUSTER_CONFIG");
-        Assert.assertNotNull(value.storeClusterConfig, "storeClusterConfig should not be null");
-      });
-    }
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
   }
 
   private Properties buildConsumerProperties() {
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafka.getAddress());
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
-    return consumerProperties;
+    return ChangelogConsumerTestUtils
+        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
   }
 
   private ChangelogClientConfig buildBaseChangelogClientConfig(Properties consumerProperties) {
-    return new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-        .setControllerD2ServiceName(D2_SERVICE_NAME)
-        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-        .setLocalD2ZkHosts(localZkServer.getAddress())
-        .setControllerRequestRetryCount(3)
-        .setVersionSwapDetectionIntervalTimeInSeconds(3);
+    return ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 3);
   }
 
   private UpdateStoreQueryParams buildDefaultStoreParams() {
-    return new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(500)
-        .setHybridOffsetLagThreshold(8)
-        .setChunkingEnabled(true)
-        .setNativeReplicationEnabled(true)
-        .setPartitionCount(3);
-  }
-
-  private void waitForVersionToBeActive(String storeName, int expectedVersion) {
-    TestUtils.waitForNonDeterministicAssertion(
-        90,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            childControllerClientRegion0.getStore(storeName).getStore().getCurrentVersion(),
-            expectedVersion));
+    return ChangelogConsumerTestUtils.buildDefaultStoreParams();
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
@@ -264,8 +195,7 @@ public class TestVersionSpecificChangelogConsumer {
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
     waitForMetaSystemStoreToBeReady(storeName);
-    IntegrationTestPushUtils.runVPJ(props);
-    waitForVersionToBeActive(storeName, 1);
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
     Properties consumerProperties = buildConsumerProperties();
     ChangelogClientConfig globalChangelogClientConfig =
         buildBaseChangelogClientConfig(consumerProperties).setD2Client(d2Client)
@@ -305,8 +235,7 @@ public class TestVersionSpecificChangelogConsumer {
     // Push version 2
     version++;
     TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
-    IntegrationTestPushUtils.runVPJ(props);
-    waitForVersionToBeActive(storeName, 2);
+    IntegrationTestPushUtils.runVPJ(props, 2, childControllerClientRegion0);
 
     // Client should see VersionSwap control messages since new version is pushed
     pollAndVerify(changeLogConsumer, 1, 0, createControlMessageCountMap(0, partitionCount), partitionCount, true);
@@ -397,8 +326,7 @@ public class TestVersionSpecificChangelogConsumer {
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
     waitForMetaSystemStoreToBeReady(storeName);
-    IntegrationTestPushUtils.runVPJ(props);
-    waitForVersionToBeActive(storeName, 1);
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
     Properties consumerProperties = buildConsumerProperties();
     ChangelogClientConfig globalChangelogClientConfig =
         buildBaseChangelogClientConfig(consumerProperties).setD2Client(d2Client)
