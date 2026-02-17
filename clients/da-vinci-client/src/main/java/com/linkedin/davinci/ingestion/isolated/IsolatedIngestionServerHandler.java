@@ -331,6 +331,23 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
         case CLEAR_STORE_VERSION_STATE:
           isolatedIngestionServer.getStorageMetadataService().clearStoreVersionState(topicName);
           break;
+        case PUT_GLOBAL_RT_DIV_STATE:
+          byte[] globalRtDivPayload = ingestionStorageMetadata.payload.array();
+          isolatedIngestionServer.getStorageMetadataService()
+              .putGlobalRtDivState(
+                  topicName,
+                  partitionId,
+                  MainIngestionStorageMetadataService.deserializeGlobalRtDivBrokerUrl(globalRtDivPayload),
+                  MainIngestionStorageMetadataService.deserializeGlobalRtDivValueBytes(globalRtDivPayload));
+          break;
+        case CLEAR_GLOBAL_RT_DIV_STATE:
+          byte[] clearGlobalRtDivPayload = ingestionStorageMetadata.payload.array();
+          isolatedIngestionServer.getStorageMetadataService()
+              .clearGlobalRtDivState(
+                  topicName,
+                  partitionId,
+                  MainIngestionStorageMetadataService.deserializeGlobalRtDivBrokerUrl(clearGlobalRtDivPayload));
+          break;
         default:
           break;
       }

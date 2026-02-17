@@ -6,7 +6,8 @@ import java.util.Map;
 
 
 public enum IngestionMetadataUpdateType {
-  PUT_OFFSET_RECORD(0), CLEAR_OFFSET_RECORD(1), PUT_STORE_VERSION_STATE(2), CLEAR_STORE_VERSION_STATE(3);
+  PUT_OFFSET_RECORD(0), CLEAR_OFFSET_RECORD(1), PUT_STORE_VERSION_STATE(2), CLEAR_STORE_VERSION_STATE(3),
+  PUT_GLOBAL_RT_DIV_STATE(4), CLEAR_GLOBAL_RT_DIV_STATE(5);
 
   private static final Map<Integer, IngestionMetadataUpdateType> INGESTION_METADATA_UPDATE_TYPE_MAP =
       getIngestionMetadataUpdateTypeMap();
