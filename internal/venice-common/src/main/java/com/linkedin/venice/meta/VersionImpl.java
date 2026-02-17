@@ -481,6 +481,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public int getPreviousCurrentVersion() {
+    return this.storeVersion.previousCurrentVersion;
+  }
+
+  @Override
+  public void setPreviousCurrentVersion(int previousCurrentVersion) {
+    this.storeVersion.previousCurrentVersion = previousCurrentVersion;
+  }
+
+  @Override
   public StoreVersion dataModel() {
     return this.storeVersion;
   }
@@ -568,6 +578,7 @@ public class VersionImpl implements Version {
     clonedVersion.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
     clonedVersion.setKeyUrnFields(getKeyUrnFields());
     clonedVersion.setRepushTtlSeconds(getRepushTtlSeconds());
+    clonedVersion.setPreviousCurrentVersion(getPreviousCurrentVersion());
     return clonedVersion;
   }
 

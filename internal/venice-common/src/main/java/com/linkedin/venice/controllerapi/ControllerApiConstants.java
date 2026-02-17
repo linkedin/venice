@@ -281,6 +281,7 @@ public class ControllerApiConstants {
   public static final String STORE_LIFECYCLE_HOOKS_LIST = "store_lifecycle_hooks_list";
   public static final String KEY_URN_COMPRESSION_ENABLED = "key_urn_compression_enabled";
   public static final String KEY_URN_FIELDS = "key_urn_fields";
+  public static final String PREVIOUS_CURRENT_VERSION = "previous_current_version";
 
   /**
    * Params for repush job
