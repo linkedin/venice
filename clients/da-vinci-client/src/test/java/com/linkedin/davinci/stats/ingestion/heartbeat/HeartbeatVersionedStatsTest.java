@@ -219,7 +219,9 @@ public class HeartbeatVersionedStatsTest {
     when(mockMetadataRepository.getStoreOrThrow(newStoreName)).thenReturn(newMockStore);
 
     // Add store to leader monitors so isStoreAssignedToThisNode returns true
-    leaderMonitors.put(newStoreName, new VeniceConcurrentHashMap<>());
+    leaderMonitors.put(
+        new HeartbeatKey(newStoreName, newCurrentVersion, 0, REGION),
+        new IngestionTimestampEntry(0, false, false));
 
     // Record a metric to trigger store initialization via getVersionedStats -> addStore
     heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
@@ -301,7 +303,7 @@ public class HeartbeatVersionedStatsTest {
     when(mockMetadataRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
 
     // Add to monitors
-    leaderMonitors.put(storeName, new VeniceConcurrentHashMap<>());
+    leaderMonitors.put(new HeartbeatKey(storeName, 1, 0, REGION), new IngestionTimestampEntry(0, false, false));
 
     // Record metric to trigger initialization
     heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
@@ -334,7 +336,7 @@ public class HeartbeatVersionedStatsTest {
     when(mockStore.getVersions()).thenReturn(versions);
     when(mockMetadataRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
 
-    leaderMonitors.put(storeName, new VeniceConcurrentHashMap<>());
+    leaderMonitors.put(new HeartbeatKey(storeName, 2, 0, REGION), new IngestionTimestampEntry(0, false, false));
 
     heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
     heartbeatVersionedStats.recordLeaderLag(storeName, 2, REGION, FIXED_CURRENT_TIME - 100);

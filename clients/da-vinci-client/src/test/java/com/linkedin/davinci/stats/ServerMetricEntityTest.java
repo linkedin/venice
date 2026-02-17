@@ -46,7 +46,7 @@ public class ServerMetricEntityTest {
                 VeniceMetricsDimensions.VENICE_VERSION_ROLE,
                 VeniceMetricsDimensions.VENICE_REPLICA_TYPE,
                 VeniceMetricsDimensions.VENICE_REPLICA_STATE)));
-    
+
     expectedMetrics.put(
         ServerMetricEntity.INGESTION_TASK_ERROR_COUNT,
         new MetricEntity(

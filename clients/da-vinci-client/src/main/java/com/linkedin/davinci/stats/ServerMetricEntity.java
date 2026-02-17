@@ -55,7 +55,7 @@ public enum ServerMetricEntity implements ModuleMetricEntityInterface {
           VENICE_REPLICA_TYPE,
           VENICE_REPLICA_STATE)
   ),
-  
+
   INGESTION_TASK_ERROR_COUNT(
       "ingestion.task.error_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
       "Count of ingestion tasks in error state", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
