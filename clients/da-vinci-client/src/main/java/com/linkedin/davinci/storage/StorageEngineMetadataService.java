@@ -68,7 +68,7 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   public StoreVersionState computeStoreVersionState(
       String topicName,
       Function<StoreVersionState, StoreVersionState> mapFunction) throws VeniceException {
-    StorageEngine engine = getStorageEngineOrThrow(topicName);
+    StorageEngine<? extends AbstractStoragePartition> engine = getStorageEngineOrThrow(topicName);
     synchronized (engine) {
       StoreVersionState previousSVS = engine.getStoreVersionState();
       StoreVersionState newSVS = mapFunction.apply(previousSVS);
@@ -89,6 +89,23 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
     } catch (VeniceException e) {
       return null;
     }
+  }
+
+  @Override
+  public void putGlobalRtDivState(String topicName, int partitionId, String brokerUrl, byte[] valueBytes)
+      throws VeniceException {
+    getStorageEngineOrThrow(topicName).putGlobalRtDivState(partitionId, brokerUrl, valueBytes);
+  }
+
+  @Override
+  public Optional<byte[]> getGlobalRtDivState(String topicName, int partitionId, String brokerUrl)
+      throws VeniceException {
+    return getStorageEngineOrThrow(topicName).getGlobalRtDivState(partitionId, brokerUrl);
+  }
+
+  @Override
+  public void clearGlobalRtDivState(String topicName, int partitionId, String brokerUrl) {
+    getStorageEngineOrThrow(topicName).clearGlobalRtDivState(partitionId, brokerUrl);
   }
 
   private StorageEngine<? extends AbstractStoragePartition> getStorageEngineOrThrow(String topicName) {

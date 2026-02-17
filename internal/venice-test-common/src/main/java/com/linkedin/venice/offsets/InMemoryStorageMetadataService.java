@@ -3,6 +3,7 @@ package com.linkedin.venice.offsets;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
@@ -17,6 +18,7 @@ public class InMemoryStorageMetadataService extends InMemoryOffsetManager implem
   private static final Logger LOGGER = LogManager.getLogger(InMemoryStorageMetadataService.class);
 
   private final ConcurrentMap<String, StoreVersionState> topicToStoreVersionStateMap = new ConcurrentHashMap<>();
+  private final ConcurrentMap<String, byte[]> globalRtDivStateMap = new ConcurrentHashMap<>();
 
   @Override
   public StoreVersionState computeStoreVersionState(
@@ -41,5 +43,27 @@ public class InMemoryStorageMetadataService extends InMemoryOffsetManager implem
         topicName,
         recordToReturn);
     return recordToReturn;
+  }
+
+  @Override
+  public void putGlobalRtDivState(String topicName, int partitionId, String brokerUrl, byte[] valueBytes)
+      throws VeniceException {
+    globalRtDivStateMap.put(toGlobalRtDivKey(topicName, partitionId, brokerUrl), valueBytes.clone());
+  }
+
+  @Override
+  public Optional<byte[]> getGlobalRtDivState(String topicName, int partitionId, String brokerUrl)
+      throws VeniceException {
+    byte[] valueBytes = globalRtDivStateMap.get(toGlobalRtDivKey(topicName, partitionId, brokerUrl));
+    return valueBytes == null ? Optional.empty() : Optional.of(valueBytes.clone());
+  }
+
+  @Override
+  public void clearGlobalRtDivState(String topicName, int partitionId, String brokerUrl) {
+    globalRtDivStateMap.remove(toGlobalRtDivKey(topicName, partitionId, brokerUrl));
+  }
+
+  private String toGlobalRtDivKey(String topicName, int partitionId, String brokerUrl) {
+    return topicName + "_" + partitionId + "_" + brokerUrl;
   }
 }

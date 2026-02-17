@@ -26,21 +26,15 @@ import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
-import com.github.luben.zstd.Zstd;
-import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
-import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
-import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
-import com.linkedin.davinci.storage.chunking.ChunkingUtils;
-import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -58,11 +52,9 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -71,7 +63,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.File;
-import java.nio.ByteBuffer;
 import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Map;
@@ -492,8 +483,7 @@ public class TestGlobalRtDiv {
       if (storageEngine == null) {
         return;
       }
-      GlobalRtDivState globalRtDiv =
-          getGlobalRtDivState(testVeniceServer, storageEngine, PARTITION, globalRtDivKey, isChunkingEnabled);
+      GlobalRtDivState globalRtDiv = getGlobalRtDivState(testVeniceServer, topicName, PARTITION, globalRtDivKey);
       LOGGER.info("Global RT DIV State: {}", globalRtDiv);
       validateGlobalDivState(globalRtDiv);
     });
@@ -602,41 +592,19 @@ public class TestGlobalRtDiv {
 
   private static GlobalRtDivState getGlobalRtDivState(
       TestVeniceServer testVeniceServer,
-      StorageEngine storageEngine,
+      String topicName,
       int PARTITION,
-      String globalRtDivKey,
-      boolean isChunkingEnabled) {
-    byte[] keyBytes = globalRtDivKey.getBytes();
-    if (isChunkingEnabled) {
-      keyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
-    }
-
-    StorageEngineBackedCompressorFactory compressorFactory =
-        new StorageEngineBackedCompressorFactory(testVeniceServer.getStorageMetadataService());
-    VeniceCompressor compressor = compressorFactory
-        .getCompressor(CompressionStrategy.NO_OP, storageEngine.getStoreVersionName(), Zstd.defaultCompressionLevel());
-
-    // TODO: unify the production code with this
-    ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
-    ByteBuffer value = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
-        storageEngine,
-        PARTITION,
-        ByteBuffer.wrap(keyBytes),
-        isChunkingEnabled,
-        null,
-        null,
-        NoOpReadResponseStats.SINGLETON,
-        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
-        RawBytesStoreDeserializerCache.getInstance(),
-        compressor,
-        manifestContainer);
+      String globalRtDivKey) {
+    String brokerUrl = globalRtDivKey.substring(LeaderFollowerStoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX.length());
+    byte[] value =
+        testVeniceServer.getStorageMetadataService().getGlobalRtDivState(topicName, PARTITION, brokerUrl).orElse(null);
+    assertNotNull(value, "Global RT DIV state should be persisted in metadata storage");
 
     InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer =
         AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
 
-    GlobalRtDivState globalRtDiv = globalRtDivStateSerializer.deserialize(
-        ByteUtils.extractByteArray(value),
-        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+    GlobalRtDivState globalRtDiv = globalRtDivStateSerializer
+        .deserialize(value, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     return globalRtDiv;
   }
 

@@ -56,6 +56,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   private static final byte[] VERSION_METADATA_KEY = "VERSION_METADATA".getBytes();
   private static final String PARTITION_METADATA_PREFIX = "P_";
+  private static final String GLOBAL_RT_DIV_METADATA_PREFIX = "GRTD_";
 
   // Using a large positive number for metadata partition id instead of -1 can avoid database naming issues.
   public static final int METADATA_PARTITION_ID = 1000_000_000;
@@ -669,6 +670,57 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     metadataPartition.delete(VERSION_METADATA_KEY);
   }
 
+  @Override
+  public synchronized void putGlobalRtDivState(int partitionId, String brokerUrl, byte[] valueBytes) {
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
+    }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException(
+          "Metadata partition id should not be used as argument in putGlobalRtDivState.");
+    }
+    if (partitionId < 0) {
+      throw new IllegalArgumentException("Invalid partition id argument in putGlobalRtDivState");
+    }
+    metadataPartition.put(getGlobalRtDivMetadataKey(partitionId, brokerUrl), valueBytes);
+  }
+
+  @Override
+  public synchronized Optional<byte[]> getGlobalRtDivState(int partitionId, String brokerUrl) {
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
+    }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException(
+          "Metadata partition id should not be used as argument in getGlobalRtDivState.");
+    }
+    if (partitionId < 0) {
+      throw new IllegalArgumentException("Invalid partition id argument in getGlobalRtDivState");
+    }
+    byte[] value = metadataPartition.get(getGlobalRtDivMetadataKey(partitionId, brokerUrl));
+    return Optional.ofNullable(value);
+  }
+
+  @Override
+  public synchronized void clearGlobalRtDivState(int partitionId, String brokerUrl) {
+    if (!metadataPartitionCreated()) {
+      LOGGER.info(
+          "Metadata partition not created; there is nothing to clear for {} partition {} brokerUrl {}",
+          storeVersionName,
+          partitionId,
+          brokerUrl);
+      return;
+    }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException(
+          "Metadata partition id should not be used as argument in clearGlobalRtDivState.");
+    }
+    if (partitionId < 0) {
+      throw new IllegalArgumentException("Invalid partition id argument in clearGlobalRtDivState");
+    }
+    metadataPartition.delete(getGlobalRtDivMetadataKey(partitionId, brokerUrl));
+  }
+
   /**
    * Return true or false based on whether a given partition exists within this storage engine
    *
@@ -725,6 +777,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   private static byte[] getPartitionMetadataKey(int partitionId) {
     return (PARTITION_METADATA_PREFIX + partitionId).getBytes();
+  }
+
+  private static byte[] getGlobalRtDivMetadataKey(int partitionId, String brokerUrl) {
+    return (GLOBAL_RT_DIV_METADATA_PREFIX + partitionId + "_" + brokerUrl).getBytes();
   }
 
   private boolean metadataPartitionCreated() {

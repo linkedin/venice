@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetManager;
 import java.nio.ByteBuffer;
+import java.util.Optional;
 import java.util.function.Function;
 
 
@@ -29,6 +30,22 @@ public interface StorageMetadataService extends OffsetManager {
    * @return an instance of {@link StoreVersionState} corresponding to this topic, or null if there isn't any.
    */
   StoreVersionState getStoreVersionState(String topicName) throws VeniceException;
+
+  /**
+   * Persist serialized Global RT DIV state bytes for a specific topic-partition and upstream broker URL.
+   */
+  void putGlobalRtDivState(String topicName, int partitionId, String brokerUrl, byte[] valueBytes)
+      throws VeniceException;
+
+  /**
+   * Retrieve serialized Global RT DIV state bytes for a specific topic-partition and upstream broker URL.
+   */
+  Optional<byte[]> getGlobalRtDivState(String topicName, int partitionId, String brokerUrl) throws VeniceException;
+
+  /**
+   * Clear persisted Global RT DIV state bytes for a specific topic-partition and upstream broker URL.
+   */
+  void clearGlobalRtDivState(String topicName, int partitionId, String brokerUrl);
 
   /**
    * Tailored function for retrieving version's compression dictionary.
