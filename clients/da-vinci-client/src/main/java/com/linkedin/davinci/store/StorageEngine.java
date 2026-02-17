@@ -155,6 +155,21 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
   void clearStoreVersionState();
 
   /**
+   * Put serialized Global RT DIV state into the metadata partition.
+   */
+  void putGlobalRtDivState(int partitionId, String brokerUrl, byte[] valueBytes);
+
+  /**
+   * Retrieve serialized Global RT DIV state from the metadata partition.
+   */
+  Optional<byte[]> getGlobalRtDivState(int partitionId, String brokerUrl);
+
+  /**
+   * Clear serialized Global RT DIV state from the metadata partition.
+   */
+  void clearGlobalRtDivState(int partitionId, String brokerUrl);
+
+  /**
    * Return true or false based on whether a given partition exists within this storage engine
    *
    * @param partitionId The partition to look for
