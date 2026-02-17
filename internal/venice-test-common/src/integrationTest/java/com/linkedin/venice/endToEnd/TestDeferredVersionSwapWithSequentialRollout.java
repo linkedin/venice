@@ -45,7 +45,6 @@ import java.util.stream.IntStream;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -131,12 +130,6 @@ public class TestDeferredVersionSwapWithSequentialRollout {
         });
       });
     }
-  }
-
-  @DataProvider(name = "validationsProvider")
-  public Object[][] validationsProvider() {
-    return new Object[][] { { StoreVersionLifecycleEventOutcome.PROCEED.toString(), 2 },
-        { StoreVersionLifecycleEventOutcome.ROLLBACK.toString(), 1 } };
   }
 
   @Test(timeOut = TEST_TIMEOUT)
