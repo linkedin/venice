@@ -46,6 +46,9 @@ public class LeaderFollowerThreadPoolTest {
     int numOfController = 1;
     int numOfServers = 0;
     int numOfRouters = 1;
+
+    Properties extraProperties = new Properties();
+    extraProperties.put(ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS, 30_000);
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(numOfController)
         .numberOfServers(numOfServers)
         .numberOfRouters(numOfRouters)
@@ -53,6 +56,7 @@ public class LeaderFollowerThreadPoolTest {
         .partitionSize(partitionSize)
         .sslToStorageNodes(false)
         .sslToKafka(false)
+        .extraProperties(extraProperties)
         .build();
     cluster = ServiceFactory.getVeniceCluster(options);
   }

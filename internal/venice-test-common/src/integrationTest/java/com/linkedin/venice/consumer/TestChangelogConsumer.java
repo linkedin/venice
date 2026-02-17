@@ -125,6 +125,8 @@ public class TestChangelogConsumer {
   private ControllerClient parentControllerClient;
   private ControllerClient childControllerClientRegion0;
   private D2Client d2Client;
+  private ZkServerWrapper localZkServer;
+  private PubSubBrokerWrapper localKafka;
   private static final List<Schema> SCHEMA_HISTORY = Arrays.asList(
       NAME_RECORD_V1_SCHEMA,
       NAME_RECORD_V2_SCHEMA,
@@ -166,8 +168,8 @@ public class TestChangelogConsumer {
       StoreMetaKey storeClusterConfigKey =
           MetaStoreDataType.STORE_CLUSTER_CONFIG.getStoreMetaKey(Collections.singletonMap("KEY_STORE_NAME", storeName));
       // Wait for the meta store to be queryable
-      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> {
-        StoreMetaValue value = metaStoreClient.get(storeClusterConfigKey).get();
+      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, false, true, () -> {
+        StoreMetaValue value = metaStoreClient.get(storeClusterConfigKey).get(30, TimeUnit.SECONDS);
         Assert.assertNotNull(value, "Meta store should return non-null value for STORE_CLUSTER_CONFIG");
         Assert.assertNotNull(value.storeClusterConfig, "storeClusterConfig should not be null");
       });
@@ -197,6 +199,8 @@ public class TestChangelogConsumer {
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     clusterName = CLUSTER_NAMES[0];
     clusterWrapper = childDatacenters.get(0).getClusters().get(clusterName);
+    localZkServer = childDatacenters.get(0).getZkServerWrapper();
+    localKafka = childDatacenters.get(0).getPubSubBrokerWrapper();
 
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
@@ -214,7 +218,9 @@ public class TestChangelogConsumer {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     D2ClientUtils.shutdownClient(d2Client);
-    multiRegionMultiClusterWrapper.close();
+    Utils.closeQuietlyWithErrorLogged(parentControllerClient);
+    Utils.closeQuietlyWithErrorLogged(childControllerClientRegion0);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
     TestView.resetCounters();
   }
 
@@ -239,6 +245,70 @@ public class TestChangelogConsumer {
     testStoresToDelete.clear();
   }
 
+  private Properties buildConsumerProperties() {
+    Properties consumerProperties = new Properties();
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafka.getAddress());
+    consumerProperties.put(CLUSTER_NAME, clusterName);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    return consumerProperties;
+  }
+
+  private ChangelogClientConfig buildBaseChangelogClientConfig(Properties consumerProperties) {
+    return new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+        .setControllerD2ServiceName(D2_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setLocalD2ZkHosts(localZkServer.getAddress())
+        .setControllerRequestRetryCount(3)
+        .setVersionSwapDetectionIntervalTimeInSeconds(1);
+  }
+
+  private UpdateStoreQueryParams buildDefaultStoreParams() {
+    return new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(500)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(3);
+  }
+
+  private void waitForVersionToBeActive(String storeName, int expectedVersion) {
+    TestUtils.waitForNonDeterministicAssertion(
+        90,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(
+            childControllerClientRegion0.getStore(storeName).getStore().getCurrentVersion(),
+            expectedVersion));
+  }
+
+  private void pollAndCollectVersionSpecificMessages(
+      VeniceChangelogConsumer<Integer, Utf8> consumer,
+      Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> map,
+      int expectedCount) {
+    TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, true, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages = consumer.poll(5);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: messages) {
+        map.put(message.getKey(), message);
+      }
+      assertEquals(map.size(), expectedCount);
+    });
+  }
+
+  private void validateVersionSpecificMessages(
+      Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> map,
+      int version,
+      int numKeys) {
+    for (int i = 1; i <= numKeys; i++) {
+      ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+          (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) map.get(i);
+      assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
+      assertTrue(message.getPayloadSize() > 0);
+      assertNotNull(message.getPosition());
+      assertTrue(message.getWriterSchemaId() > 0);
+      assertNotNull(message.getReplicationMetadataPayload());
+    }
+  }
+
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testDisabledStoreVeniceChangelogConsumer() throws Exception {
     File inputDir = getTempDataDirectory();
@@ -253,12 +323,7 @@ public class TestChangelogConsumer {
         clusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = NAME_RECORD_V2_SCHEMA.toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(500)
-        .setHybridOffsetLagThreshold(8)
-        .setChunkingEnabled(true)
-        .setNativeReplicationEnabled(true)
-        .setPartitionCount(3);
+    UpdateStoreQueryParams storeParms = buildDefaultStoreParams();
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     ControllerClient setupControllerClient =
@@ -279,28 +344,12 @@ public class TestChangelogConsumer {
 
     IntegrationTestPushUtils.runVPJ(props);
     // wait until the version is active in child region
-    TestUtils.waitForNonDeterministicAssertion(
-        90,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(childControllerClientRegion0.getStore(storeName).getStore().getCurrentVersion(), 1));
-    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
-    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
-            .setLocalD2ZkHosts(localZkServer.getAddress())
-            .setControllerRequestRetryCount(3)
-            .setVersionSwapDetectionIntervalTimeInSeconds(1L)
-            .setSpecificValue(TestChangelogValue.class)
-            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+    waitForVersionToBeActive(storeName, 1);
+    Properties consumerProperties = buildConsumerProperties();
+    ChangelogClientConfig globalChangelogClientConfig = buildBaseChangelogClientConfig(consumerProperties)
+        .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
+        .setSpecificValue(TestChangelogValue.class)
+        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
     VeniceChangelogConsumer<Utf8, TestChangelogValue> specificChangelogConsumer =
@@ -403,12 +452,7 @@ public class TestChangelogConsumer {
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     props.put(KAFKA_LINGER_MS, 0);
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(500)
-        .setHybridOffsetLagThreshold(8)
-        .setChunkingEnabled(true)
-        .setNativeReplicationEnabled(true)
-        .setPartitionCount(3);
+    UpdateStoreQueryParams storeParms = buildDefaultStoreParams();
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     ControllerClient setupControllerClient =
@@ -422,38 +466,19 @@ public class TestChangelogConsumer {
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(setupControllerClient.getStore(storeName).getStore().getCurrentVersion(), 0));
 
-    ControllerClient controllerClient =
-        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-
     // Write Records to the store for version v1, the push job will contain 100 records.
     IntegrationTestPushUtils.runVPJ(props);
     // wait until the version is active in child region
-    TestUtils.waitForNonDeterministicAssertion(
-        90,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1));
+    waitForVersionToBeActive(storeName, 1);
 
     // Write Records from nearline
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
 
-    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
-    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
-    ChangelogClientConfig globalAfterImageClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
-            .setLocalD2ZkHosts(localZkServer.getAddress())
-            .setControllerRequestRetryCount(3)
-            .setVersionSwapDetectionIntervalTimeInSeconds(1L)
-            .setIsBeforeImageView(true);
+    Properties consumerProperties = buildConsumerProperties();
+    ChangelogClientConfig globalAfterImageClientConfig = buildBaseChangelogClientConfig(consumerProperties)
+        .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
+        .setIsBeforeImageView(true);
 
     VeniceChangelogConsumerClientFactory veniceAfterImageConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalAfterImageClientConfig, metricsRepository);
@@ -487,11 +512,7 @@ public class TestChangelogConsumer {
 
       // Assert the push has gone through
       int expectedVersion = i + 2;
-      TestUtils.waitForNonDeterministicAssertion(
-          90,
-          TimeUnit.SECONDS,
-          () -> Assert
-              .assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), expectedVersion));
+      waitForVersionToBeActive(storeName, expectedVersion);
 
       // poll data from version topic
       TestUtils.waitForNonDeterministicAssertion(100, TimeUnit.SECONDS, true, true, () -> {
@@ -518,12 +539,7 @@ public class TestChangelogConsumer {
         clusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = NAME_RECORD_V2_SCHEMA.toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(500)
-        .setHybridOffsetLagThreshold(8)
-        .setChunkingEnabled(true)
-        .setNativeReplicationEnabled(true)
-        .setPartitionCount(3);
+    UpdateStoreQueryParams storeParms = buildDefaultStoreParams();
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     ControllerClient setupControllerClient =
@@ -544,29 +560,13 @@ public class TestChangelogConsumer {
 
     IntegrationTestPushUtils.runVPJ(props);
     // wait until the version is active in child region
-    TestUtils.waitForNonDeterministicAssertion(
-        90,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(childControllerClientRegion0.getStore(storeName).getStore().getCurrentVersion(), 1));
-    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
-    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    waitForVersionToBeActive(storeName, 1);
+    Properties consumerProperties = buildConsumerProperties();
     consumerProperties.put(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY, true);
-    ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setLocalD2ZkHosts(localZkServer.getAddress())
-            .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
-            .setControllerRequestRetryCount(3)
-            .setVersionSwapDetectionIntervalTimeInSeconds(1L)
-            .setSpecificValue(TestChangelogValue.class)
-            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+    ChangelogClientConfig globalChangelogClientConfig = buildBaseChangelogClientConfig(consumerProperties)
+        .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
+        .setSpecificValue(TestChangelogValue.class)
+        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
     VeniceChangelogConsumer<Utf8, TestChangelogValue> specificChangelogConsumer =
@@ -647,12 +647,7 @@ public class TestChangelogConsumer {
         clusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = NAME_RECORD_V1_SCHEMA.toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(500)
-        .setHybridOffsetLagThreshold(8)
-        .setChunkingEnabled(true)
-        .setNativeReplicationEnabled(true)
-        .setPartitionCount(3);
+    UpdateStoreQueryParams storeParms = buildDefaultStoreParams();
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     ControllerClient setupControllerClient =
@@ -661,28 +656,13 @@ public class TestChangelogConsumer {
     waitForMetaSystemStoreToBeReady(storeName);
     IntegrationTestPushUtils.runVPJ(props);
     // wait until the version is active in child region
-    TestUtils.waitForNonDeterministicAssertion(
-        90,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(childControllerClientRegion0.getStore(storeName).getStore().getCurrentVersion(), 1));
-    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
-    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    waitForVersionToBeActive(storeName, 1);
+    Properties consumerProperties = buildConsumerProperties();
     // setVersionSwapDetectionIntervalTimeInSeconds also controls native metadata repository refresh interval, setting
     // it to a large value to reproduce the scenario where the newly added schema is yet to be fetched.
     ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setLocalD2ZkHosts(localZkServer.getAddress())
-            .setControllerRequestRetryCount(3)
-            .setVersionSwapDetectionIntervalTimeInSeconds(1)
-            .setD2Client(d2Client)
+        buildBaseChangelogClientConfig(consumerProperties).setD2Client(d2Client)
+            .setVersionSwapDetectionIntervalTimeInSeconds(180)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
@@ -733,12 +713,7 @@ public class TestChangelogConsumer {
         clusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = NAME_RECORD_V1_SCHEMA.toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(500)
-        .setHybridOffsetLagThreshold(8)
-        .setChunkingEnabled(true)
-        .setNativeReplicationEnabled(true)
-        .setPartitionCount(3);
+    UpdateStoreQueryParams storeParms = buildDefaultStoreParams();
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     ControllerClient setupControllerClient =
@@ -747,28 +722,10 @@ public class TestChangelogConsumer {
     waitForMetaSystemStoreToBeReady(storeName);
     IntegrationTestPushUtils.runVPJ(props);
     // wait until the version is active in child region
-    TestUtils.waitForNonDeterministicAssertion(
-        90,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(childControllerClientRegion0.getStore(storeName).getStore().getCurrentVersion(), 1));
-    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
-    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
-    // setVersionSwapDetectionIntervalTimeInSeconds also controls native metadata repository refresh interval, setting
-    // it to a large value to reproduce the scenario where the newly added schema is yet to be fetched.
+    waitForVersionToBeActive(storeName, 1);
+    Properties consumerProperties = buildConsumerProperties();
     ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setLocalD2ZkHosts(localZkServer.getAddress())
-            .setControllerRequestRetryCount(3)
-            .setVersionSwapDetectionIntervalTimeInSeconds(1)
-            .setD2Client(d2Client)
+        buildBaseChangelogClientConfig(consumerProperties).setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
             .setIsNewStatelessClientEnabled(true);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
@@ -819,12 +776,7 @@ public class TestChangelogConsumer {
         clusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = NAME_RECORD_V1_SCHEMA.toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(500)
-        .setHybridOffsetLagThreshold(8)
-        .setChunkingEnabled(true)
-        .setNativeReplicationEnabled(true)
-        .setPartitionCount(3);
+    UpdateStoreQueryParams storeParms = buildDefaultStoreParams();
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
@@ -832,26 +784,10 @@ public class TestChangelogConsumer {
     waitForMetaSystemStoreToBeReady(storeName);
     IntegrationTestPushUtils.runVPJ(props);
     // wait until the version is active in child region
-    TestUtils.waitForNonDeterministicAssertion(
-        90,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(childControllerClientRegion0.getStore(storeName).getStore().getCurrentVersion(), 1));
-    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
-    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    waitForVersionToBeActive(storeName, 1);
+    Properties consumerProperties = buildConsumerProperties();
     ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setLocalD2ZkHosts(localZkServer.getAddress())
-            .setControllerRequestRetryCount(3)
-            .setVersionSwapDetectionIntervalTimeInSeconds(1)
-            .setD2Client(d2Client)
+        buildBaseChangelogClientConfig(consumerProperties).setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
@@ -897,12 +833,7 @@ public class TestChangelogConsumer {
         clusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = STRING_SCHEMA.toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(500)
-        .setHybridOffsetLagThreshold(8)
-        .setChunkingEnabled(true)
-        .setNativeReplicationEnabled(true)
-        .setPartitionCount(partitionCount);
+    UpdateStoreQueryParams storeParms = buildDefaultStoreParams();
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
@@ -910,27 +841,11 @@ public class TestChangelogConsumer {
     waitForMetaSystemStoreToBeReady(storeName);
     IntegrationTestPushUtils.runVPJ(props);
     // wait until the version is active in child region
-    TestUtils.waitForNonDeterministicAssertion(
-        90,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(childControllerClientRegion0.getStore(storeName).getStore().getCurrentVersion(), 1));
+    waitForVersionToBeActive(storeName, 1);
 
-    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
-    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    Properties consumerProperties = buildConsumerProperties();
     ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setLocalD2ZkHosts(localZkServer.getAddress())
-            .setControllerRequestRetryCount(3)
-            .setVersionSwapDetectionIntervalTimeInSeconds(1)
-            .setD2Client(d2Client)
+        buildBaseChangelogClientConfig(consumerProperties).setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
@@ -944,27 +859,15 @@ public class TestChangelogConsumer {
         // Ensure we can "seek" multiple times on the same version
         changeLogConsumer.subscribe(Collections.singleton(partition)).get();
       }
-      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, true, () -> {
-        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-            changeLogConsumer.poll(5);
-        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-          pubSubMessagesMap.put(message.getKey(), message);
-        }
-        assertEquals(pubSubMessagesMap.size(), numKeys);
-      });
+      pollAndCollectVersionSpecificMessages(changeLogConsumer, pubSubMessagesMap, numKeys);
 
-      // All data should be from version 1
+      // All data should be from version 1; also extract partition coordinates for seek test
       for (int i = 1; i <= numKeys; i++) {
         ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
             (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
         partitionToChangeCoordinateMap.put(message.getPartition(), message.getPosition());
-
-        assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
-        assertTrue(message.getPayloadSize() > 0);
-        assertNotNull(message.getPosition());
-        assertTrue(message.getWriterSchemaId() > 0);
-        assertNotNull(message.getReplicationMetadataPayload());
       }
+      validateVersionSpecificMessages(pubSubMessagesMap, version, numKeys);
     }
 
     // Restart client and resume from the last consumed checkpoints
@@ -979,7 +882,8 @@ public class TestChangelogConsumer {
       TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> {
         Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
             changeLogConsumer.poll(5);
-        // get unique partitions
+        // After seekToCheckpoint (inclusive), we expect to re-consume at least one message (the checkpoint or later)
+        // from each partition; track the partitions we've seen so far.
         for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
           partitions.add(message.getPartition());
         }
@@ -1022,12 +926,7 @@ public class TestChangelogConsumer {
         clusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = STRING_SCHEMA.toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(500)
-        .setHybridOffsetLagThreshold(8)
-        .setChunkingEnabled(true)
-        .setNativeReplicationEnabled(true)
-        .setPartitionCount(3);
+    UpdateStoreQueryParams storeParms = buildDefaultStoreParams();
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
@@ -1035,27 +934,11 @@ public class TestChangelogConsumer {
     waitForMetaSystemStoreToBeReady(storeName);
     IntegrationTestPushUtils.runVPJ(props);
     // wait until the version is active in child region
-    TestUtils.waitForNonDeterministicAssertion(
-        90,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(childControllerClientRegion0.getStore(storeName).getStore().getCurrentVersion(), 1));
+    waitForVersionToBeActive(storeName, 1);
 
-    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
-    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    Properties consumerProperties = buildConsumerProperties();
     ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setLocalD2ZkHosts(localZkServer.getAddress())
-            .setControllerRequestRetryCount(3)
-            .setVersionSwapDetectionIntervalTimeInSeconds(1)
-            .setD2Client(d2Client)
+        buildBaseChangelogClientConfig(consumerProperties).setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
@@ -1067,25 +950,10 @@ public class TestChangelogConsumer {
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
       changeLogConsumer.subscribeAll().get();
 
-      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, true, () -> {
-        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-            changeLogConsumer.poll(5);
-        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-          pubSubMessagesMap.put(message.getKey(), message);
-        }
-        assertEquals(pubSubMessagesMap.size(), numKeys);
-      });
+      pollAndCollectVersionSpecificMessages(changeLogConsumer, pubSubMessagesMap, numKeys);
 
       // All data should be from version 1
-      for (int i = 1; i <= numKeys; i++) {
-        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
-        assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
-        assertTrue(message.getPayloadSize() > 0);
-        assertNotNull(message.getPosition());
-        assertTrue(message.getWriterSchemaId() > 0);
-        assertNotNull(message.getReplicationMetadataPayload());
-      }
+      validateVersionSpecificMessages(pubSubMessagesMap, version, numKeys);
     }
 
     // Restart client to ensure it seeks to the beginning of the topic and all record metadata is available
@@ -1094,36 +962,17 @@ public class TestChangelogConsumer {
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
       changeLogConsumer.subscribeAll().get();
 
-      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, true, () -> {
-        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-            changeLogConsumer.poll(5);
-        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-          pubSubMessagesMap.put(message.getKey(), message);
-        }
-        assertEquals(pubSubMessagesMap.size(), numKeys);
-      });
+      pollAndCollectVersionSpecificMessages(changeLogConsumer, pubSubMessagesMap, numKeys);
 
       // All data should be from version 1
-      for (int i = 1; i <= numKeys; i++) {
-        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
-        assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
-        assertTrue(message.getPayloadSize() > 0);
-        assertNotNull(message.getPosition());
-        assertTrue(message.getWriterSchemaId() > 0);
-        assertNotNull(message.getReplicationMetadataPayload());
-      }
+      validateVersionSpecificMessages(pubSubMessagesMap, version, numKeys);
 
       // Push version 2
       version++;
       TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
       IntegrationTestPushUtils.runVPJ(props);
       // wait until the version is active in child region
-      TestUtils.waitForNonDeterministicAssertion(
-          90,
-          TimeUnit.SECONDS,
-          () -> Assert
-              .assertEquals(childControllerClientRegion0.getStore(storeName).getStore().getCurrentVersion(), 2));
+      waitForVersionToBeActive(storeName, 2);
 
       // Client shouldn't be able to poll anything, since it's still on version 1
       assertEquals(changeLogConsumer.poll(5).size(), 0);
@@ -1135,25 +984,10 @@ public class TestChangelogConsumer {
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
       changeLogConsumer.subscribeAll().get();
 
-      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, true, () -> {
-        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-            changeLogConsumer.poll(5);
-        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-          pubSubMessagesMap.put(message.getKey(), message);
-        }
-        assertEquals(pubSubMessagesMap.size(), numKeys);
-      });
+      pollAndCollectVersionSpecificMessages(changeLogConsumer, pubSubMessagesMap, numKeys);
 
       // All data should be from version 1
-      for (int i = 1; i <= numKeys; i++) {
-        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
-        assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version - 1) + i);
-        assertTrue(message.getPayloadSize() > 0);
-        assertNotNull(message.getPosition());
-        assertTrue(message.getWriterSchemaId() > 0);
-        assertNotNull(message.getReplicationMetadataPayload());
-      }
+      validateVersionSpecificMessages(pubSubMessagesMap, version - 1, numKeys);
 
       // Push version 3 with deferred version swap and subscribe to the future version
       changeLogConsumer.close();
@@ -1184,15 +1018,7 @@ public class TestChangelogConsumer {
       });
 
       // All data should be from future version 3
-      for (int i = 1; i <= numKeys; i++) {
-        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessagesMap.get(i);
-        assertEquals(message.getValue().getCurrentValue().toString(), Integer.toString(version) + i);
-        assertTrue(message.getPayloadSize() > 0);
-        assertNotNull(message.getPosition());
-        assertTrue(message.getWriterSchemaId() > 0);
-        assertNotNull(message.getReplicationMetadataPayload());
-      }
+      validateVersionSpecificMessages(pubSubMessagesMap, version, numKeys);
     }
   }
 
