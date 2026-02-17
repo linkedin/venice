@@ -193,8 +193,7 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
     setupBatchOnlyStoreWithMaterializedView(storeName, props, keySchemaStr, valueSchemaStr);
     ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
     // Run the initial push - v1
-    IntegrationTestPushUtils.runVPJ(props);
-    waitForCurrentVersion(storeName, 1);
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
 
     // Consume from version topic
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -249,8 +248,7 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
     setupBatchOnlyStoreWithMaterializedView(storeName, props, keySchemaStr, valueSchemaStr);
     ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
     // Run the initial push - v1
-    IntegrationTestPushUtils.runVPJ(props);
-    waitForCurrentVersion(storeName, 1);
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
 
     // Consume from version topic
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -309,10 +307,7 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
           newPushInputDirPath,
           storeName,
           multiRegionMultiClusterWrapper.getPubSubClientProperties());
-      IntegrationTestPushUtils.runVPJ(newPushProps);
-
-      // Wait for version to be switched
-      waitForCurrentVersion(storeName, 2);
+      IntegrationTestPushUtils.runVPJ(newPushProps, 2, childControllerClientRegion0);
 
       // Consume from version topic v2
       VeniceChangelogConsumer<Integer, Utf8> versionTopicV2ChangelogConsumer =
@@ -359,8 +354,7 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
     ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
 
     // Run the initial push - v1
-    IntegrationTestPushUtils.runVPJ(props);
-    waitForCurrentVersion(storeName, 1);
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
 
     // Consume from version topic
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -535,15 +529,6 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
     int regionIndex = isSourceFabric ? 0 : 1;
     return D2TestUtils.getAndStartD2Client(
         multiRegionMultiClusterWrapper.getChildRegions().get(regionIndex).getZkServerWrapper().getAddress());
-  }
-
-  private void waitForCurrentVersion(String storeName, int expectedVersion) {
-    TestUtils.waitForNonDeterministicAssertion(
-        90,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            childControllerClientRegion0.getStore(storeName).getStore().getCurrentVersion(),
-            expectedVersion));
   }
 
   private String getMaterializedViewTopicName(String storeName, int version, String viewName) {
