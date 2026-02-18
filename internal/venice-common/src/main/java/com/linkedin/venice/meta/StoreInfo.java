@@ -80,6 +80,7 @@ public class StoreInfo {
     storeInfo.setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
+    storeInfo.setBlobBasedIngestionEnabled(store.isBlobBasedIngestionEnabled());
     storeInfo.setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
     storeInfo.setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     storeInfo.setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
@@ -361,6 +362,7 @@ public class StoreInfo {
   private boolean unusedSchemaDeletionEnabled;
 
   private boolean blobTransferEnabled;
+  private boolean blobBasedIngestionEnabled;
   private String blobTransferInServerEnable = ActivationState.NOT_SPECIFIED.name();
 
   private boolean nearlineProducerCompressionEnabled;
@@ -892,6 +894,14 @@ public class StoreInfo {
 
   public boolean isBlobTransferEnabled() {
     return this.blobTransferEnabled;
+  }
+
+  public void setBlobBasedIngestionEnabled(boolean blobBasedIngestionEnabled) {
+    this.blobBasedIngestionEnabled = blobBasedIngestionEnabled;
+  }
+
+  public boolean isBlobBasedIngestionEnabled() {
+    return this.blobBasedIngestionEnabled;
   }
 
   public void setBlobTransferInServerEnabled(String blobTransferInServerEnable) {

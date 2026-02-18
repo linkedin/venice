@@ -7,6 +7,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_BASED_INGESTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
@@ -161,6 +162,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
             .setStorageNodeReadQuotaEnabled(srcStore.isStorageNodeReadQuotaEnabled())
             .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
+            .setBlobBasedIngestionEnabled(srcStore.isBlobBasedIngestionEnabled())
             .setBlobTransferInServerEnabled(
                 ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobTransferInServerEnabled()))
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
@@ -804,6 +806,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getBlobTransferEnabled() {
     return getBoolean(BLOB_TRANSFER_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setBlobBasedIngestionEnabled(boolean blobBasedIngestionEnabled) {
+    return putBoolean(BLOB_BASED_INGESTION_ENABLED, blobBasedIngestionEnabled);
+  }
+
+  public Optional<Boolean> getBlobBasedIngestionEnabled() {
+    return getBoolean(BLOB_BASED_INGESTION_ENABLED);
   }
 
   public UpdateStoreQueryParams setBlobTransferInServerEnabled(

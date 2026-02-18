@@ -1046,6 +1046,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setSystemStores(convertSystemStores(getSystemStores()));
     storeProperties.setStorageNodeReadQuotaEnabled(isStorageNodeReadQuotaEnabled());
     storeProperties.setBlobTransferEnabled(isBlobTransferEnabled());
+    storeProperties.setBlobBasedIngestionEnabled(isBlobBasedIngestionEnabled());
     storeProperties.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
     storeProperties.setNearlineProducerCompressionEnabled(isNearlineProducerCompressionEnabled());
     storeProperties.setNearlineProducerCountPerWriter(getNearlineProducerCountPerWriter());
@@ -1654,6 +1655,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void setBlobBasedIngestionEnabled(boolean blobBasedIngestionEnabled) {
+    throw new UnsupportedOperationException("Blob based ingestion not supported");
+  }
+
+  @Override
+  public boolean isBlobBasedIngestionEnabled() {
+    return this.delegate.isBlobBasedIngestionEnabled();
+  }
+
+  @Override
   public void setBlobTransferInServerEnabled(String blobTransferInServerEnabled) {
     throw new UnsupportedOperationException("Blob transfer server not supported");
   }
@@ -1944,7 +1955,6 @@ public class ReadOnlyStore implements Store {
     storeVersion.setKeyUrnFields(version.getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
     storeVersion.setRepushTtlSeconds(version.getRepushTtlSeconds());
     storeVersion.setPreviousCurrentVersion(version.getPreviousCurrentVersion());
-    // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Version interface
     storeVersion.setBlobDbEnabled("NOT_SPECIFIED");
 
     return storeVersion;

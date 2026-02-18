@@ -336,6 +336,10 @@ public interface Store {
 
   void setBlobTransferEnabled(boolean blobTransferEnabled);
 
+  boolean isBlobBasedIngestionEnabled();
+
+  void setBlobBasedIngestionEnabled(boolean blobBasedIngestionEnabled);
+
   void setBlobTransferInServerEnabled(String blobTransferInServerEnabled);
 
   String getBlobTransferInServerEnabled();
