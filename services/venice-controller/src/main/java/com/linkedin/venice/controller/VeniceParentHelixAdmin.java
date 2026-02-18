@@ -3085,7 +3085,6 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_IN_SERVER_ENABLED))
           .orElseGet(currStore::getBlobTransferInServerEnabled);
 
-<<<<<<< HEAD
       // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Store interface
       setStore.blobDbEnabled = "NOT_SPECIFIED";
 
