@@ -81,6 +81,7 @@ public class StoreInfo {
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
     storeInfo.setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
+    storeInfo.setUncleanLeaderElectionEnabledForRTTopics(store.getUncleanLeaderElectionEnabledForRTTopics());
     storeInfo.setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     storeInfo.setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
     storeInfo.setTargetRegionSwap(store.getTargetSwapRegion());
@@ -362,6 +363,7 @@ public class StoreInfo {
 
   private boolean blobTransferEnabled;
   private String blobTransferInServerEnable = ActivationState.NOT_SPECIFIED.name();
+  private String uncleanLeaderElectionEnabledForRTTopics = ActivationState.NOT_SPECIFIED.name();
 
   private boolean nearlineProducerCompressionEnabled;
   private int nearlineProducerCountPerWriter;
@@ -900,6 +902,14 @@ public class StoreInfo {
 
   public String getBlobTransferInServerEnabled() {
     return this.blobTransferInServerEnable;
+  }
+
+  public void setUncleanLeaderElectionEnabledForRTTopics(String uncleanLeaderElectionEnabledForRTTopics) {
+    this.uncleanLeaderElectionEnabledForRTTopics = uncleanLeaderElectionEnabledForRTTopics;
+  }
+
+  public String getUncleanLeaderElectionEnabledForRTTopics() {
+    return this.uncleanLeaderElectionEnabledForRTTopics;
   }
 
   public boolean isNearlineProducerCompressionEnabled() {

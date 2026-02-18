@@ -629,4 +629,91 @@ public class ApacheKafkaAdminAdapterTest {
     assertEquals(result.get(pubSubTopicRepository.getTopic("t3_v2")).isLogCompacted(), true);
     assertEquals(result.get(pubSubTopicRepository.getTopic("t3_v2")).retentionInMs(), Optional.of(3L));
   }
+
+  @Test
+  public void testUncleanLeaderElectionEnableConfig() throws Exception {
+    // Test 1: Verify unmarshalling (marshalling from PubSubTopicConfiguration to Kafka Properties)
+    // when uncleanLeaderElectionEnable is set to false
+    PubSubTopicConfiguration configWithUncleanDisabled = new PubSubTopicConfiguration(
+        Optional.of(3600000L),
+        false,
+        Optional.of(2),
+        60000L,
+        Optional.empty(),
+        Optional.of(false));
+
+    CreateTopicsResult createTopicsResultMock = mock(CreateTopicsResult.class);
+    KafkaFuture<Void> topicCreationFutureMock = mock(KafkaFuture.class);
+
+    when(internalKafkaAdminClientMock.createTopics(any())).thenReturn(createTopicsResultMock);
+    when(createTopicsResultMock.all()).thenReturn(topicCreationFutureMock);
+    when(createTopicsResultMock.numPartitions(testPubSubTopic.getName()))
+        .thenReturn(KafkaFuture.completedFuture(NUM_PARTITIONS));
+    when(createTopicsResultMock.replicationFactor(testPubSubTopic.getName()))
+        .thenReturn(KafkaFuture.completedFuture(REPLICATION_FACTOR));
+    when(createTopicsResultMock.config(testPubSubTopic.getName()))
+        .thenReturn(KafkaFuture.completedFuture(sampleConfig));
+    when(topicCreationFutureMock.get()).thenReturn(null);
+
+    kafkaAdminAdapter.createTopic(testPubSubTopic, NUM_PARTITIONS, REPLICATION_FACTOR, configWithUncleanDisabled);
+
+    // Verify createTopics was called and capture the arguments
+    verify(internalKafkaAdminClientMock).createTopics(any());
+
+    // Test 2: Verify unmarshalling when uncleanLeaderElectionEnable is set to true
+    PubSubTopicConfiguration configWithUncleanEnabled = new PubSubTopicConfiguration(
+        Optional.of(3600000L),
+        false,
+        Optional.of(2),
+        60000L,
+        Optional.empty(),
+        Optional.of(true));
+
+    kafkaAdminAdapter.createTopic(testPubSubTopic, NUM_PARTITIONS, REPLICATION_FACTOR, configWithUncleanEnabled);
+
+    // Test 3: Verify marshalling (reading from Kafka topic and converting to PubSubTopicConfiguration)
+    DescribeConfigsResult describeConfigsResultMock = mock(DescribeConfigsResult.class);
+    KafkaFuture<Map<ConfigResource, Config>> describeConfigsKafkaFutureMock = mock(KafkaFuture.class);
+
+    List<ConfigEntry> configEntriesWithUncleanDisabled = Arrays.asList(
+        new ConfigEntry(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE),
+        new ConfigEntry(TopicConfig.RETENTION_MS_CONFIG, "1111"),
+        new ConfigEntry(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, "2222"),
+        new ConfigEntry(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3"),
+        new ConfigEntry(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG, "false"));
+    Config configWithUnclean = new Config(configEntriesWithUncleanDisabled);
+    Map<ConfigResource, Config> configMap = new HashMap<>();
+    configMap.put(new ConfigResource(ConfigResource.Type.TOPIC, testPubSubTopic.getName()), configWithUnclean);
+
+    when(internalKafkaAdminClientMock.describeConfigs(any())).thenReturn(describeConfigsResultMock);
+    when(describeConfigsResultMock.all()).thenReturn(describeConfigsKafkaFutureMock);
+    when(describeConfigsKafkaFutureMock.get()).thenReturn(configMap);
+
+    PubSubTopicConfiguration retrievedConfig = kafkaAdminAdapter.getTopicConfig(testPubSubTopic);
+
+    assertFalse(retrievedConfig.isLogCompacted());
+    assertTrue(retrievedConfig.retentionInMs().isPresent());
+    assertEquals(retrievedConfig.retentionInMs().get(), Long.valueOf(1111));
+    assertEquals(retrievedConfig.minLogCompactionLagMs(), Long.valueOf(2222));
+    assertTrue(retrievedConfig.minInSyncReplicas().isPresent());
+    assertEquals(retrievedConfig.minInSyncReplicas().get(), Integer.valueOf(3));
+    assertTrue(retrievedConfig.getUncleanLeaderElectionEnable().isPresent());
+    assertEquals(retrievedConfig.getUncleanLeaderElectionEnable().get(), Boolean.FALSE);
+
+    // Test 4: Verify that when unclean.leader.election.enable is not present, Optional.empty() is returned
+    List<ConfigEntry> configEntriesWithoutUnclean = Arrays.asList(
+        new ConfigEntry(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE),
+        new ConfigEntry(TopicConfig.RETENTION_MS_CONFIG, "1111"),
+        new ConfigEntry(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, "2222"));
+    Config configWithoutUnclean = new Config(configEntriesWithoutUnclean);
+    Map<ConfigResource, Config> configMapWithoutUnclean = new HashMap<>();
+    configMapWithoutUnclean
+        .put(new ConfigResource(ConfigResource.Type.TOPIC, testPubSubTopic.getName()), configWithoutUnclean);
+
+    when(describeConfigsKafkaFutureMock.get()).thenReturn(configMapWithoutUnclean);
+
+    PubSubTopicConfiguration retrievedConfigWithoutUnclean = kafkaAdminAdapter.getTopicConfig(testPubSubTopic);
+
+    assertFalse(retrievedConfigWithoutUnclean.getUncleanLeaderElectionEnable().isPresent());
+  }
 }

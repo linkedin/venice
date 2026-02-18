@@ -237,6 +237,7 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -3575,6 +3576,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       validateAndUpdateTopic(realTimeTopic, store, version, expectedNumOfPartitions, topicManager);
     } else {
       VeniceControllerClusterConfig clusterConfig = getControllerConfig(clusterName);
+      Optional<Boolean> uncleanLeaderElection = resolveUncleanLeaderElection(store, clusterConfig);
       topicManager.createTopic(
           realTimeTopic,
           expectedNumOfPartitions,
@@ -3583,6 +3585,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           false,
           // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
           clusterConfig.getMinInSyncReplicasRealTimeTopics(),
+          uncleanLeaderElection,
           false);
     }
     LOGGER.info(
@@ -3591,6 +3594,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store.getName(),
         version.getNumber(),
         expectedNumOfPartitions);
+  }
+
+  /**
+   * Resolves the unclean leader election config for RT topics by checking the store-level config first,
+   * then falling back to the cluster-level config.
+   *
+   * @param store the store to check for store-level ULE config
+   * @param clusterConfig the cluster config to fall back to
+   * @return the resolved ULE config
+   */
+  static Optional<Boolean> resolveUncleanLeaderElection(Store store, VeniceControllerClusterConfig clusterConfig) {
+    String storeUle = store.getUncleanLeaderElectionEnabledForRTTopics();
+    if (ConfigCommonUtils.ActivationState.ENABLED.name().equals(storeUle)) {
+      return Optional.of(true);
+    } else if (ConfigCommonUtils.ActivationState.DISABLED.name().equals(storeUle)) {
+      return Optional.of(false);
+    } else {
+      return clusterConfig.getUncleanLeaderElectionEnableRTTopics();
+    }
   }
 
   /**
@@ -5859,6 +5881,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
     Optional<String> blobTransferInServerEnabled = params.getBlobTransferInServerEnabled();
+    Optional<String> uncleanLeaderElectionEnabledForRTTopics = params.getUncleanLeaderElectionEnabledForRTTopics();
     Optional<Boolean> nearlineProducerCompressionEnabled = params.getNearlineProducerCompressionEnabled();
     Optional<Integer> nearlineProducerCountPerWriter = params.getNearlineProducerCountPerWriter();
     Optional<String> targetSwapRegion = params.getTargetSwapRegion();
@@ -6213,6 +6236,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       blobTransferInServerEnabled
           .ifPresent(aString -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
             store.setBlobTransferInServerEnabled(aString);
+            return store;
+          }));
+
+      uncleanLeaderElectionEnabledForRTTopics
+          .ifPresent(aString -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setUncleanLeaderElectionEnabledForRTTopics(aString);
             return store;
           }));
 

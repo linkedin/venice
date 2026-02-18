@@ -12,6 +12,7 @@ public class PubSubTopicConfiguration implements Cloneable {
   Long minLogCompactionLagMs;
   Optional<Long> maxLogCompactionLagMs;
   Optional<Integer> minInSyncReplicas;
+  Optional<Boolean> uncleanLeaderElectionEnable;
 
   public PubSubTopicConfiguration(
       Optional<Long> retentionInMs,
@@ -19,11 +20,28 @@ public class PubSubTopicConfiguration implements Cloneable {
       Optional<Integer> minInSyncReplicas,
       Long minLogCompactionLagMs,
       Optional<Long> maxLogCompactionLagMs) {
+    this(
+        retentionInMs,
+        isLogCompacted,
+        minInSyncReplicas,
+        minLogCompactionLagMs,
+        maxLogCompactionLagMs,
+        Optional.empty());
+  }
+
+  public PubSubTopicConfiguration(
+      Optional<Long> retentionInMs,
+      boolean isLogCompacted,
+      Optional<Integer> minInSyncReplicas,
+      Long minLogCompactionLagMs,
+      Optional<Long> maxLogCompactionLagMs,
+      Optional<Boolean> uncleanLeaderElectionEnable) {
     this.retentionInMs = retentionInMs;
     this.isLogCompacted = isLogCompacted;
     this.minInSyncReplicas = minInSyncReplicas;
     this.minLogCompactionLagMs = minLogCompactionLagMs;
     this.maxLogCompactionLagMs = maxLogCompactionLagMs;
+    this.uncleanLeaderElectionEnable = uncleanLeaderElectionEnable;
   }
 
   /**
@@ -93,15 +111,30 @@ public class PubSubTopicConfiguration implements Cloneable {
     this.maxLogCompactionLagMs = maxLogCompactionLagMs;
   }
 
+  /**
+   * @return whether unclean leader election is enabled for this topic
+   */
+  public Optional<Boolean> getUncleanLeaderElectionEnable() {
+    return uncleanLeaderElectionEnable;
+  }
+
+  /**
+   * @param uncleanLeaderElectionEnable whether unclean leader election is enabled for this topic
+   */
+  public void setUncleanLeaderElectionEnable(Optional<Boolean> uncleanLeaderElectionEnable) {
+    this.uncleanLeaderElectionEnable = uncleanLeaderElectionEnable;
+  }
+
   @Override
   public String toString() {
     return String.format(
-        "TopicConfiguration(retentionInMs = %s, isLogCompacted = %s, minInSyncReplicas = %s, minLogCompactionLagMs = %s, maxLogCompactionLagMs = %s)",
+        "TopicConfiguration(retentionInMs = %s, isLogCompacted = %s, minInSyncReplicas = %s, minLogCompactionLagMs = %s, maxLogCompactionLagMs = %s, uncleanLeaderElectionEnable = %s)",
         retentionInMs.isPresent() ? retentionInMs.get() : "not set",
         isLogCompacted,
         minInSyncReplicas.isPresent() ? minInSyncReplicas.get() : "not set",
         minLogCompactionLagMs,
-        maxLogCompactionLagMs.isPresent() ? maxLogCompactionLagMs.get() : " not set");
+        maxLogCompactionLagMs.isPresent() ? maxLogCompactionLagMs.get() : "not set",
+        uncleanLeaderElectionEnable.isPresent() ? uncleanLeaderElectionEnable.get() : "not set");
   }
 
   @Override

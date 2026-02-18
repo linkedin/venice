@@ -301,11 +301,13 @@ public class TestVeniceHelixAdmin {
         anyLong(),
         anyBoolean(),
         any(Optional.class),
+        any(Optional.class),
         anyBoolean());
 
     // Case 2: Real-time topic does not exist
     VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
     when(veniceHelixAdmin.getControllerConfig(clusterName)).thenReturn(clusterConfig);
+    when(store.getUncleanLeaderElectionEnabledForRTTopics()).thenReturn("NOT_SPECIFIED");
     when(topicManager.containsTopic(pubSubTopic)).thenReturn(false);
     veniceHelixAdmin.createOrUpdateRealTimeTopic(clusterName, store, version, pubSubTopic);
     verify(topicManager, times(1)).createTopic(
@@ -315,7 +317,42 @@ public class TestVeniceHelixAdmin {
         anyLong(),
         anyBoolean(),
         any(Optional.class),
+        any(Optional.class),
         anyBoolean());
+  }
+
+  @Test
+  public void testResolveUncleanLeaderElection() {
+    Store store = mock(Store.class);
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(clusterConfig.getUncleanLeaderElectionEnableRTTopics()).thenReturn(Optional.of(true));
+
+    // NOT_SPECIFIED -> uses cluster config (true)
+    when(store.getUncleanLeaderElectionEnabledForRTTopics()).thenReturn("NOT_SPECIFIED");
+    assertEquals(VeniceHelixAdmin.resolveUncleanLeaderElection(store, clusterConfig), Optional.of(true));
+
+    // ENABLED -> true regardless of cluster config
+    when(store.getUncleanLeaderElectionEnabledForRTTopics()).thenReturn("ENABLED");
+    assertEquals(VeniceHelixAdmin.resolveUncleanLeaderElection(store, clusterConfig), Optional.of(true));
+
+    // DISABLED -> false regardless of cluster config
+    when(store.getUncleanLeaderElectionEnabledForRTTopics()).thenReturn("DISABLED");
+    assertEquals(VeniceHelixAdmin.resolveUncleanLeaderElection(store, clusterConfig), Optional.of(false));
+
+    // NOT_SPECIFIED with cluster config disabled
+    when(clusterConfig.getUncleanLeaderElectionEnableRTTopics()).thenReturn(Optional.of(false));
+    when(store.getUncleanLeaderElectionEnabledForRTTopics()).thenReturn("NOT_SPECIFIED");
+    assertEquals(VeniceHelixAdmin.resolveUncleanLeaderElection(store, clusterConfig), Optional.of(false));
+
+    // NOT_SPECIFIED with cluster config empty
+    when(clusterConfig.getUncleanLeaderElectionEnableRTTopics()).thenReturn(Optional.empty());
+    when(store.getUncleanLeaderElectionEnabledForRTTopics()).thenReturn("NOT_SPECIFIED");
+    assertEquals(VeniceHelixAdmin.resolveUncleanLeaderElection(store, clusterConfig), Optional.empty());
+
+    // ENABLED overrides cluster config disabled
+    when(clusterConfig.getUncleanLeaderElectionEnableRTTopics()).thenReturn(Optional.of(false));
+    when(store.getUncleanLeaderElectionEnabledForRTTopics()).thenReturn("ENABLED");
+    assertEquals(VeniceHelixAdmin.resolveUncleanLeaderElection(store, clusterConfig), Optional.of(true));
   }
 
   @Test
@@ -414,6 +451,7 @@ public class TestVeniceHelixAdmin {
         anyInt(),
         anyLong(),
         anyBoolean(),
+        any(Optional.class),
         any(Optional.class),
         anyBoolean());
 
