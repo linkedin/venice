@@ -54,8 +54,8 @@ public class SystemStoreRepairServiceTest {
         new SystemStoreRepairService(parentAdmin, multiClusterConfigs, new MetricsRepository());
     service.startInner();
 
-    Assert.assertNotNull(service.getHeartbeatChecker());
-    Assert.assertNull(service.getOverrideChecker());
+    Assert.assertNotNull(service.getHealthChecker());
+    Assert.assertTrue(service.getHealthChecker() instanceof HeartbeatBasedSystemStoreHealthChecker);
 
     service.stopInner();
   }
@@ -77,9 +77,9 @@ public class SystemStoreRepairServiceTest {
         new SystemStoreRepairService(parentAdmin, multiClusterConfigs, new MetricsRepository());
     service.startInner();
 
-    // Should still have heartbeat checker, but override should be null due to loading failure
-    Assert.assertNotNull(service.getHeartbeatChecker());
-    Assert.assertNull(service.getOverrideChecker());
+    // Should fall back to heartbeat checker when override class cannot be loaded
+    Assert.assertNotNull(service.getHealthChecker());
+    Assert.assertTrue(service.getHealthChecker() instanceof HeartbeatBasedSystemStoreHealthChecker);
 
     service.stopInner();
   }
