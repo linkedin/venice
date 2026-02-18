@@ -50,7 +50,6 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -62,7 +61,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
-import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -166,11 +164,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final PubSubContext pubSubContext;
   protected final ExecutorService seekExecutorService;
 
-  // This member is a map of maps in order to accommodate view topics. If the message we consume has the appropriate
-  // footer then we'll use that to infer entry into the wrapped map and compare with it, otherwise we'll infer it from
-  // the consumed partition for the given message. We do all this because for a view topic, it may have many
-  // upstream RT partitions writing to a given view partition.
-  protected final Map<Integer, Map<Integer, List<Long>>> currentVersionHighWatermarks = new VeniceConcurrentHashMap<>();
   protected final ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
 
   protected final ChangelogClientConfig changelogClientConfig;
@@ -738,7 +731,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       // Prune out current subscriptions
       Set<PubSubTopicPartition> assignments = getTopicAssignment();
       for (PubSubTopicPartition topicPartition: assignments) {
-        currentVersionHighWatermarks.remove(topicPartition.getPartitionNumber());
         if (partitions.contains(topicPartition.getPartitionNumber())) {
           pubSubConsumer.unSubscribe(topicPartition);
         }
@@ -1524,40 +1516,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           PubSubTopic newServingVersionTopic =
               pubSubTopicRepository.getTopic(versionSwap.newServingVersionTopic.toString());
 
-          // TODO: There seems to exist a condition in the server where highwatermark offsets may regress when
-          // transmitting the version swap message it seems like this can potentially happen if a repush occurs
-          // and no data is consumed on that previous version.
-          // To make the client handle this gracefully, we instate the below condition that says the hwm in the
-          // client should never go backwards.
-          List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
-              .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
-              .getOrDefault(upstreamPartition, new ArrayList<>(4));
-
-          // Prefer position-based high watermarks if available, otherwise use legacy offset-based
-          List<ByteBuffer> positions = versionSwap.getLocalHighWatermarkPubSubPositions();
-          List<Long> highWatermarkOffsets;
-
-          if (positions != null && !positions.isEmpty()) {
-            List<Long> legacyOffsets = versionSwap.getLocalHighWatermarks();
-            highWatermarkOffsets = new ArrayList<>(positions.size());
-            for (int i = 0; i < positions.size(); i++) {
-              long fallbackOffset = (legacyOffsets != null && i < legacyOffsets.size()) ? legacyOffsets.get(i) : -1L;
-              PubSubPosition position = PubSubUtil
-                  .deserializePositionWithOffsetFallback(positions.get(i), fallbackOffset, pubSubPositionDeserializer);
-              highWatermarkOffsets.add(position.getNumericOffset());
-            }
-          } else {
-            highWatermarkOffsets = (versionSwap.getLocalHighWatermarks() != null)
-                ? versionSwap.getLocalHighWatermarks()
-                : Collections.emptyList();
-          }
-
-          if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
-            currentVersionHighWatermarks
-                .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
-            currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
-                .put(upstreamPartition, highWatermarkOffsets);
-          }
           switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
           chunkAssembler.clearBuffer();
 
@@ -1642,13 +1600,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       List<Long> recordCheckpointVector,
       PubSubTopicPartition pubSubTopicPartition,
       Integer upstreamPartition) {
-    int partitionId = pubSubTopicPartition.getPartitionNumber();
-    List<Long> localOffset = (List<Long>) currentVersionHighWatermarks.getOrDefault(partitionId, Collections.EMPTY_MAP)
-        .getOrDefault(upstreamPartition, new ArrayList<>());
-    if (recordCheckpointVector != null) {
-      return !RmdUtils.hasOffsetAdvanced(localOffset, recordCheckpointVector);
-    }
-    // Has not met version swap message after client initialization.
     return false;
   }
 

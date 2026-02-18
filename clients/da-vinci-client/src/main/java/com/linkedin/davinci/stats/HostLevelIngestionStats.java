@@ -73,11 +73,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor viewProducerLatencySensor;
   private final Sensor viewProducerAckLatencySensor;
   /**
-   * Sensors for emitting if/when we detect DCR violations (such as a backwards timestamp or receding offset vector)
-   */
-  private final LongAdderRateGauge totalTimestampRegressionDCRErrorRate;
-  private final LongAdderRateGauge totalOffsetRegressionDCRErrorRate;
-  /**
    * A gauge reporting the total the percentage of hybrid quota used.
    */
   private double hybridQuotaUsageGauge;
@@ -231,18 +226,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "tombstone_creation_dcr",
         totalStats,
         () -> totalStats.totalTombstoneCreationDCRRate,
-        time);
-
-    this.totalTimestampRegressionDCRErrorRate = registerOnlyTotalRate(
-        "timestamp_regression_dcr_error",
-        totalStats,
-        () -> totalStats.totalTimestampRegressionDCRErrorRate,
-        time);
-
-    this.totalOffsetRegressionDCRErrorRate = registerOnlyTotalRate(
-        "offset_regression_dcr_error",
-        totalStats,
-        () -> totalStats.totalOffsetRegressionDCRErrorRate,
         time);
 
     Int2ObjectMap<String> kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
@@ -710,14 +693,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordChecksumVerificationFailure() {
     checksumVerificationFailureSensor.record();
-  }
-
-  public void recordTimestampRegressionDCRError() {
-    totalTimestampRegressionDCRErrorRate.record();
-  }
-
-  public void recordOffsetRegressionDCRError() {
-    totalOffsetRegressionDCRErrorRate.record();
   }
 
   public void recordLeaderProduceLatency(double latency) {

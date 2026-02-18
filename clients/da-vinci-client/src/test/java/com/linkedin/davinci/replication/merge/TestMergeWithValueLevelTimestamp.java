@@ -3,21 +3,16 @@ package com.linkedin.davinci.replication.merge;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
-import com.linkedin.avro.fastserde.coldstart.ColdPrimitiveLongList;
-import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -278,41 +273,6 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     // validate order of operation change results in a same object
     Assert.assertEquals((long) (mergeConflictResult.getRmdRecord()).get(0), 115L);
     Assert.assertEquals(GenericData.get().compare(result1, result2, userSchemaV1), 0);
-  }
-
-  /**
-   * Data provider which provides for many list implementations because we've been hurt before :'(
-   */
-  @DataProvider(name = "Long-Lists-and-null")
-  public static Object[][] listImplementationsProvider() {
-    return new Object[][] { { new ArrayList<Long>() }, { new PrimitiveLongArrayList(0) },
-        { new ColdPrimitiveLongList(0) }, { null } };
-  }
-
-  @Test(dataProvider = "Long-Lists-and-null")
-  public void testOffsetVectorMergeAndSum(List<Long> newVector) {
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 1L, 0);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 2L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 3L, 4);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 7L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 8L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 9L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 3L, 5);
-    List<Long> expectedVector = Arrays.asList(1L, 9L, 0L, 0L, 3L, 3L);
-    Assert.assertEquals(newVector, expectedVector);
-    Assert.assertEquals(RmdUtils.sumOffsetVector(newVector), 16L);
-
-    newVector.clear();
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 3L, 5);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 9L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 1L, 0);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 2L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 3L, 4);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 7L, 1);
-    newVector = MergeUtils.mergeOffsetVectors(newVector, 8L, 1);
-    expectedVector = Arrays.asList(1L, 8L, 0L, 0L, 3L, 3L);
-    Assert.assertEquals(newVector, expectedVector);
-    Assert.assertEquals(RmdUtils.sumOffsetVector(newVector), 15L);
   }
 
   private ByteBuffer serialize(GenericRecord record) {

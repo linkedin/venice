@@ -267,6 +267,8 @@ public class VeniceChangelogConsumerImplTest {
 
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(newChangeCaptureTopic, 0);
     verify(mockPubSubConsumer).subscribe(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, true);
+    // After version swap the consumer is subscribed to the new topic which has no data yet.
+    doReturn(Collections.emptyMap()).when(mockPubSubConsumer).poll(Mockito.anyLong());
     pubSubMessages = (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer
         .poll(pollTimeoutMs);
     Assert.assertTrue(pubSubMessages.isEmpty());
@@ -692,12 +694,6 @@ public class VeniceChangelogConsumerImplTest {
   public void testHandleVersionSwapControlMessage() throws NoSuchFieldException, IllegalAccessException {
     VeniceChangelogConsumerImpl veniceChangelogConsumer = mock(VeniceChangelogConsumerImpl.class);
 
-    Map<Integer, Map<Integer, List<Long>>> currentVersionHighWatermarks = new VeniceConcurrentHashMap<>();
-    Field currentVersionHighWatermarksField =
-        VeniceChangelogConsumerImpl.class.getDeclaredField("currentVersionHighWatermarks");
-    currentVersionHighWatermarksField.setAccessible(true);
-    currentVersionHighWatermarksField.set(veniceChangelogConsumer, currentVersionHighWatermarks);
-
     ChunkAssembler chunkAssembler = mock(ChunkAssembler.class);
     Field chunkAssemblerField = VeniceChangelogConsumerImpl.class.getDeclaredField("chunkAssembler");
     chunkAssemblerField.setAccessible(true);
@@ -863,12 +859,6 @@ public class VeniceChangelogConsumerImplTest {
         VeniceChangelogConsumerImpl.class.getDeclaredField("partitionToPutMessageCount");
     partitionToPutMessageCountField.setAccessible(true);
     partitionToPutMessageCountField.set(veniceChangelogConsumer, partitionToPutMessageCount);
-
-    Map<Integer, Map<Integer, List<Long>>> currentVersionHighWatermarks = new VeniceConcurrentHashMap<>();
-    Field currentVersionHighWatermarksField =
-        VeniceChangelogConsumerImpl.class.getDeclaredField("currentVersionHighWatermarks");
-    currentVersionHighWatermarksField.setAccessible(true);
-    currentVersionHighWatermarksField.set(veniceChangelogConsumer, currentVersionHighWatermarks);
 
     int partition = 0;
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));

@@ -21,7 +21,6 @@ import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_CONSUMED_
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_PRODUCED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LOCAL_BROKER_TO_FOLLOWER_CONSUMER_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY;
-import static com.linkedin.davinci.stats.IngestionStats.OFFSET_REGRESSION_DCR_ERROR;
 import static com.linkedin.davinci.stats.IngestionStats.PRODUCER_CALLBACK_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.PRODUCER_TO_LOCAL_BROKER_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.PRODUCER_TO_SOURCE_BROKER_LATENCY;
@@ -29,7 +28,6 @@ import static com.linkedin.davinci.stats.IngestionStats.RECORDS_CONSUMED_METRIC_
 import static com.linkedin.davinci.stats.IngestionStats.SOURCE_BROKER_TO_LEADER_CONSUMER_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.STORAGE_QUOTA_USED;
 import static com.linkedin.davinci.stats.IngestionStats.SUBSCRIBE_ACTION_PREP_LATENCY;
-import static com.linkedin.davinci.stats.IngestionStats.TIMESTAMP_REGRESSION_DCR_ERROR;
 import static com.linkedin.davinci.stats.IngestionStats.TOMBSTONE_CREATION_DCR;
 import static com.linkedin.davinci.stats.IngestionStats.TOTAL_DCR;
 import static com.linkedin.davinci.stats.IngestionStats.TOTAL_DUPLICATE_KEY_UPDATE_COUNT;
@@ -268,14 +266,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
       registerSensor(new IngestionStatsGauge(this, () -> getStats().getTotalDCRRate(), 0, TOTAL_DCR));
       registerSensor(
           new IngestionStatsGauge(this, () -> getStats().getTombstoneCreationDCRRate(), 0, TOMBSTONE_CREATION_DCR));
-      registerSensor(
-          new IngestionStatsGauge(
-              this,
-              () -> getStats().getTimestampRegressionDCRRate(),
-              0,
-              TIMESTAMP_REGRESSION_DCR_ERROR));
-      registerSensor(
-          new IngestionStatsGauge(this, () -> getStats().getOffsetRegressionDCRRate(), 0, OFFSET_REGRESSION_DCR_ERROR));
       registerSensor(
           new IngestionStatsGauge(
               this,

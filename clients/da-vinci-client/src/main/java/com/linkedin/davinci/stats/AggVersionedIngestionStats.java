@@ -113,10 +113,6 @@ public class AggVersionedIngestionStats
     recordVersionedAndTotalStat(storeName, version, IngestionStats::recordTimestampRegressionDCRError);
   }
 
-  public void recordOffsetRegressionDCRError(String storeName, int version) {
-    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordOffsetRegressionDCRError);
-  }
-
   public void recordTombStoneCreationDCR(String storeName, int version) {
     recordVersionedAndTotalStat(storeName, version, IngestionStats::recordTombStoneCreationDCR);
   }

@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
@@ -95,7 +96,7 @@ public final class ChunkingTestUtils {
         kafkaKey,
         messageEnvelope,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.of(newOffset),
+        InMemoryPubSubPosition.of(newOffset),
         0,
         20);
   }
@@ -105,7 +106,9 @@ public final class ChunkingTestUtils {
       DefaultPubSubMessage firstMessage,
       int numberOfChunks,
       PubSubTopicPartition pubSubTopicPartition) {
-    long newOffset = firstMessage.getPosition().getNumericOffset() + numberOfChunks;
+    InMemoryPubSubPosition firstMessagePosition = (InMemoryPubSubPosition) firstMessage.getPosition();
+
+    long newOffset = firstMessagePosition.getInternalOffset() + numberOfChunks;
     byte[] chunkKeyWithSuffix = KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializedKey);
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, chunkKeyWithSuffix);
     KafkaMessageEnvelope messageEnvelope = createKafkaMessageEnvelope(

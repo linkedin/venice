@@ -575,10 +575,7 @@ public class MergeConflictResolver {
      */
     GenericRecord newRmd = newRmdCreator.apply(newValueSchemaID);
     newRmd.put(TIMESTAMP_FIELD_POS, putOperationTimestamp);
-    // A record which didn't come from an RT topic or has null metadata should have no offset vector.
-    newRmd.put(
-        REPLICATION_CHECKPOINT_VECTOR_FIELD_POS,
-        MergeUtils.mergeOffsetVectors(null, newValueSourcePosition.getNumericOffset(), newValueSourceBrokerID));
+    newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS, new ArrayList<>());
 
     if (useFieldLevelTimestamp) {
       Schema valueSchema = getValueSchema(newValueSchemaID);
@@ -603,9 +600,7 @@ public class MergeConflictResolver {
     final int valueSchemaID = storeSchemaCache.getSupersetOrLatestValueSchema().getId();
     GenericRecord newRmd = newRmdCreator.apply(valueSchemaID);
     newRmd.put(TIMESTAMP_FIELD_POS, deleteOperationTimestamp);
-    newRmd.put(
-        REPLICATION_CHECKPOINT_VECTOR_FIELD_POS,
-        MergeUtils.mergeOffsetVectors(null, newValueSourcePosition.getNumericOffset(), deleteOperationSourceBrokerID));
+    newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS, new ArrayList<>());
     if (useFieldLevelTimestamp) {
       Schema valueSchema = getValueSchema(valueSchemaID);
       newRmd = createOldValueAndRmd(valueSchema, valueSchemaID, valueSchemaID, Lazy.of(() -> null), newRmd).getRmd();

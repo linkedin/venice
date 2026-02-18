@@ -36,14 +36,13 @@ import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -92,14 +91,14 @@ public class TestKafkaTopicDumper {
     when(storeResponse.getStore()).thenReturn(storeInfo);
 
     int assignedPartition = 0;
-    ApacheKafkaOffsetPosition startPosition = ApacheKafkaOffsetPosition.of(0L);
-    ApacheKafkaOffsetPosition endPosition = ApacheKafkaOffsetPosition.of(4L);
+    InMemoryPubSubPosition startPosition = InMemoryPubSubPosition.of(0L);
+    InMemoryPubSubPosition endPosition = InMemoryPubSubPosition.of(4L);
     String keyString = "test";
     byte[] serializedKey = TopicMessageFinder.serializeKey(keyString, schemaStr);
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(topic), assignedPartition);
 
-    ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
+    PubSubConsumerAdapter apacheKafkaConsumer = mock(PubSubConsumerAdapter.class);
     long startTimestamp = 10;
     long endTimestamp = 20;
     when(apacheKafkaConsumer.getPositionByTimestamp(pubSubTopicPartition, startTimestamp)).thenReturn(startPosition);
@@ -198,14 +197,14 @@ public class TestKafkaTopicDumper {
     when(storeResponse.getStore()).thenReturn(storeInfo);
 
     int assignedPartition = 0;
-    ApacheKafkaOffsetPosition startPosition = ApacheKafkaOffsetPosition.of(0L);
-    ApacheKafkaOffsetPosition endPosition = ApacheKafkaOffsetPosition.of(4L);
+    InMemoryPubSubPosition startPosition = InMemoryPubSubPosition.of(0L);
+    InMemoryPubSubPosition endPosition = InMemoryPubSubPosition.of(4L);
     String keyString = "test";
     byte[] serializedKey = keySerializer.serialize(keyString);
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(topic), assignedPartition);
 
-    ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
+    PubSubConsumerAdapter apacheKafkaConsumer = mock(PubSubConsumerAdapter.class);
     long startTimestamp = 10;
     long endTimestamp = 20;
     when(apacheKafkaConsumer.getPositionByTimestamp(pubSubTopicPartition, startTimestamp)).thenReturn(startPosition);
@@ -294,7 +293,7 @@ public class TestKafkaTopicDumper {
         kafkaKey,
         messageEnvelope,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.of(120),
+        InMemoryPubSubPosition.of(120),
         0,
         0,
         null);
@@ -316,7 +315,7 @@ public class TestKafkaTopicDumper {
         kafkaKey,
         messageEnvelope,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.of(120),
+        InMemoryPubSubPosition.of(120),
         0,
         0,
         null);
@@ -329,7 +328,7 @@ public class TestKafkaTopicDumper {
         regularMsgKey,
         null,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.of(120),
+        InMemoryPubSubPosition.of(120),
         0,
         0,
         null);
@@ -344,8 +343,8 @@ public class TestKafkaTopicDumper {
     // Case 1: When start timestamp is non-negative and start position is non-negative; positionForTime is
     // non-null then it should be used as the start position.
     long startTimestamp = 123456789L;
-    ApacheKafkaOffsetPosition positionForTime = ApacheKafkaOffsetPosition.of(1234L);
-    ApacheKafkaOffsetPosition startPosition = ApacheKafkaOffsetPosition.of(0L);
+    InMemoryPubSubPosition positionForTime = InMemoryPubSubPosition.of(1234L);
+    InMemoryPubSubPosition startPosition = InMemoryPubSubPosition.of(0L);
     when(consumerAdapter.getPositionByTimestamp(topicPartition, startTimestamp)).thenReturn(positionForTime);
     when(consumerAdapter.beginningPosition(eq(topicPartition))).thenReturn(startPosition);
     doAnswer(invocation -> {
@@ -374,7 +373,7 @@ public class TestKafkaTopicDumper {
 
     // Case 3: When start timestamp is non-negative and start position is non-negative; but beginning position is higher
     // than positionForTime, beginning position should be used as the start position.
-    startPosition = ApacheKafkaOffsetPosition.of(12356L);
+    startPosition = InMemoryPubSubPosition.of(12356L);
     when(consumerAdapter.getPositionByTimestamp(topicPartition, startTimestamp))
         .thenReturn(PubSubSymbolicPosition.EARLIEST);
     when(consumerAdapter.beginningPosition(eq(topicPartition))).thenReturn(startPosition);
@@ -383,10 +382,10 @@ public class TestKafkaTopicDumper {
     assertEquals(actualStartPosition, startPosition);
 
     // Case 4: When start timestamp is negative and start position > beginning position, start position should be used.
-    startPosition = ApacheKafkaOffsetPosition.of(1234L);
+    startPosition = InMemoryPubSubPosition.of(1234L);
     startTimestamp = -1;
     when(consumerAdapter.getPositionByTimestamp(topicPartition, startTimestamp)).thenReturn(null);
-    when(consumerAdapter.beginningPosition(eq(topicPartition))).thenReturn(ApacheKafkaOffsetPosition.of(0L));
+    when(consumerAdapter.beginningPosition(eq(topicPartition))).thenReturn(InMemoryPubSubPosition.of(0L));
     actualStartPosition =
         KafkaTopicDumper.calculateStartingPosition(consumerAdapter, topicPartition, startPosition, startTimestamp);
     assertEquals(actualStartPosition, startPosition);
@@ -398,7 +397,7 @@ public class TestKafkaTopicDumper {
 
     // Test Case 1: endTimestamp is -1, should return endPosition
     PubSubConsumerAdapter mockConsumer = mock(PubSubConsumerAdapter.class);
-    ApacheKafkaOffsetPosition endPos = ApacheKafkaOffsetPosition.of(100L);
+    InMemoryPubSubPosition endPos = InMemoryPubSubPosition.of(100L);
     when(mockConsumer.endPosition(partition)).thenReturn(endPos);
     PubSubPosition endPosition = KafkaTopicDumper.calculateEndingPosition(mockConsumer, partition, -1);
     assertEquals(endPosition, endPos, "Should return the endPosition when endTimestamp is -1");
@@ -407,7 +406,7 @@ public class TestKafkaTopicDumper {
 
     // Test Case 2: Valid endTimestamp with positionForTime returning a value
     mockConsumer = mock(PubSubConsumerAdapter.class);
-    ApacheKafkaOffsetPosition p80 = ApacheKafkaOffsetPosition.of(80L);
+    InMemoryPubSubPosition p80 = InMemoryPubSubPosition.of(80L);
     when(mockConsumer.getPositionByTimestamp(partition, 200L)).thenReturn(p80);
     endPosition = KafkaTopicDumper.calculateEndingPosition(mockConsumer, partition, 200L);
     assertEquals(endPosition, p80, "Should return the position for the specified timestamp");
@@ -416,7 +415,7 @@ public class TestKafkaTopicDumper {
 
     // Test Case 3: Valid endTimestamp but positionForTime returns null
     mockConsumer = mock(PubSubConsumerAdapter.class);
-    ApacheKafkaOffsetPosition endPos3 = ApacheKafkaOffsetPosition.of(100L);
+    InMemoryPubSubPosition endPos3 = InMemoryPubSubPosition.of(100L);
     when(mockConsumer.endPosition(partition)).thenReturn(endPos3);
     when(mockConsumer.getPositionByTimestamp(partition, 300L)).thenReturn(null);
     endPosition = KafkaTopicDumper.calculateEndingPosition(mockConsumer, partition, 300L);
@@ -432,8 +431,8 @@ public class TestKafkaTopicDumper {
     KafkaTopicDumper dumper = new KafkaTopicDumper(mockConsumer, topicPartition, 3);
 
     KafkaTopicDumper spyDumper = spy(dumper);
-    ApacheKafkaOffsetPosition p0 = ApacheKafkaOffsetPosition.of(0L);
-    ApacheKafkaOffsetPosition p10 = ApacheKafkaOffsetPosition.of(10L);
+    InMemoryPubSubPosition p0 = InMemoryPubSubPosition.of(0L);
+    InMemoryPubSubPosition p10 = InMemoryPubSubPosition.of(10L);
 
     // Mock positionDifference for the dumper's consumer
     doAnswer(invocation -> {
@@ -472,7 +471,7 @@ public class TestKafkaTopicDumper {
     mockMessages = createMockMessages(4, 0);
     mockPollResult.put(topicPartition, mockMessages);
     when(mockConsumer.poll(5000L)).thenReturn(mockPollResult);
-    ApacheKafkaOffsetPosition p3 = ApacheKafkaOffsetPosition.of(3L);
+    InMemoryPubSubPosition p3 = InMemoryPubSubPosition.of(3L);
     processedCount = spyDumper.fetchAndProcess(p0, p3, 5);
     assertEquals(processedCount, 3, "Should process all messages up to endPosition (positions 0,1,2,3)");
 
@@ -484,7 +483,7 @@ public class TestKafkaTopicDumper {
     List<DefaultPubSubMessage> messages = new ArrayList<>();
     for (int i = 0; i < count; i++) {
       DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
-      PubSubPosition pubSubPosition = ApacheKafkaOffsetPosition.of(startPosition + i);
+      PubSubPosition pubSubPosition = InMemoryPubSubPosition.of(startPosition + i);
       when(message.getPosition()).thenReturn(pubSubPosition);
       messages.add(message);
     }
