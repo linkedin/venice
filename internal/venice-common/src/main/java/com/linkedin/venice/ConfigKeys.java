@@ -768,17 +768,17 @@ public class ConfigKeys {
   /**
    * Controls whether to use the Declaration of Leadership (DoL) mechanism for leader handover
    * of system stores (meta stores, push status stores, etc.).
-   * 
+   *
    * <p>When enabled, the new leader replica will:
    * 1. Produce a Declaration of Leadership message to the local version topic (VT)
    * 2. Wait until it consumes this message back from VT (loopback confirmation)
    * 3. Only then switch to consuming from the leader source topic (remote VT during batch push,
    *    or RT topic for hybrid stores post-EOP)
-   * 
+   *
    * <p>This provides a deterministic guarantee that the leader has successfully written to
    * and consumed from the local VT before transitioning to the leader source topic, eliminating
    * the need for time-based waits.
-   * 
+   *
    * <p>System stores typically benefit more from fast handover due to their critical role in
    * cluster operations. Having a separate config allows independent rollout strategy.
    *
@@ -790,17 +790,17 @@ public class ConfigKeys {
   /**
    * Controls whether to use the Declaration of Leadership (DoL) mechanism for leader handover
    * of user stores (regular application data stores).
-   * 
+   *
    * <p>When enabled, the new leader replica will:
    * 1. Produce a Declaration of Leadership message to the local version topic (VT)
    * 2. Wait until it consumes this message back from VT (loopback confirmation)
    * 3. Only then switch to consuming from the leader source topic (remote VT during batch push,
    *    or RT topic for hybrid stores post-EOP)
-   * 
+   *
    * <p>This provides a deterministic guarantee that the leader has successfully written to
    * and consumed from the local VT before transitioning to the leader source topic, eliminating
    * the need for time-based waits.
-   * 
+   *
    * <p>Having a separate config from system stores allows independent rollout - typically you
    * would enable DoL for system stores first, validate it works correctly, then roll out to
    * user stores.
@@ -1134,6 +1134,12 @@ public class ConfigKeys {
    * Config to enable parallel resource shutdown operation to speed up overall ingestion task shutdown.
    */
   public static final String SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED = "server.parallel.resource.shutdown.enabled";
+
+  /**
+   * Config to control the thread pool size used for parallel ingestion task shutdown.
+   * Default is 16 to avoid creating too many threads.
+   */
+  public static final String SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE = "server.parallel.shutdown.thread.pool.size";
 
   /**
    * Config for adaptive throttler signal refresh interval in seconds.
