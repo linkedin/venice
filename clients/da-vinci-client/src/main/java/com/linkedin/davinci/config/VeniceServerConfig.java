@@ -134,6 +134,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_INFO_LOG_LINE_LIMI
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_OTEL_STATS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
@@ -554,6 +555,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long optimizeDatabaseForBackupVersionNoReadThresholdMS;
   private final long optimizeDatabaseServiceScheduleIntervalSeconds;
   private final boolean unregisterMetricForDeletedStoreEnabled;
+  private final boolean ingestionOtelStatsEnabled;
   protected final boolean readOnlyForBatchOnlyStoreEnabled; // TODO: remove this config as its never used in prod
   private final boolean resetErrorReplicaEnabled;
 
@@ -1003,6 +1005,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         .getLong(SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS, TimeUnit.MINUTES.toSeconds(1));
     unregisterMetricForDeletedStoreEnabled =
         serverProperties.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
+    ingestionOtelStatsEnabled = serverProperties.getBoolean(SERVER_INGESTION_OTEL_STATS_ENABLED, true);
     fastAvroFieldLimitPerMethod = serverProperties.getInt(FAST_AVRO_FIELD_LIMIT_PER_METHOD, 100);
 
     forkedProcessJvmArgList =
@@ -1709,6 +1712,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isUnregisterMetricForDeletedStoreEnabled() {
     return unregisterMetricForDeletedStoreEnabled;
+  }
+
+  public boolean isIngestionOtelStatsEnabled() {
+    return ingestionOtelStatsEnabled;
   }
 
   public boolean isReadOnlyForBatchOnlyStoreEnabled() {

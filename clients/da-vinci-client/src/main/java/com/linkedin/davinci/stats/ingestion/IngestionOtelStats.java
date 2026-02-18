@@ -45,6 +45,7 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -101,6 +102,42 @@ public class IngestionOtelStats {
 
   // Metrics with VersionRole + SourceComponent + DestinationComponent dimensions
   private final MetricEntityStateThreeEnums<VersionRole, VeniceIngestionSourceComponent, VeniceIngestionDestinationComponent> timeBetweenComponentsMetric;
+
+  /**
+   * Package-private no-arg constructor for {@link NoOpIngestionOtelStats}.
+   * Initializes all final fields to null/empty defaults. Safe because the no-op subclass
+   * overrides every public method, so these null fields are never dereferenced.
+   */
+  IngestionOtelStats() {
+    this.emitOtelMetrics = false;
+    this.otelRepository = null;
+    this.baseDimensionsMap = null;
+    this.ingestionTasksByVersion = Collections.emptyMap();
+    this.pushTimeoutByVersion = Collections.emptyMap();
+    this.idleTimeByVersion = Collections.emptyMap();
+    this.taskErrorCountByRole = null;
+    this.pushTimeoutCountByRole = null;
+    this.diskQuotaUsedByRole = null;
+    this.consumerIdleTimeByRole = null;
+    this.subscribePrepTimeMetric = null;
+    this.ingestionTimeMetric = null;
+    this.preprocessingLeaderTimeMetric = null;
+    this.preprocessingInternalTimeMetric = null;
+    this.producerTimeMetric = null;
+    this.batchProcessingRequestCountMetric = null;
+    this.batchProcessingRequestRecordCountMetric = null;
+    this.batchProcessingRequestErrorCountMetric = null;
+    this.batchProcessingRequestTimeMetric = null;
+    this.dcrTotalCountMetric = null;
+    this.duplicateKeyUpdateCountMetric = null;
+    this.recordsConsumedMetric = null;
+    this.recordsProducedMetric = null;
+    this.bytesConsumedMetric = null;
+    this.bytesProducedMetric = null;
+    this.producerCallbackTimeMetric = null;
+    this.dcrEventCountMetric = null;
+    this.timeBetweenComponentsMetric = null;
+  }
 
   public IngestionOtelStats(MetricsRepository metricsRepository, String storeName, String clusterName) {
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelSetup =

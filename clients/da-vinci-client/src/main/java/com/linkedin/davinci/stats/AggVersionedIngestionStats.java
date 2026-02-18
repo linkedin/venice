@@ -3,6 +3,7 @@ package com.linkedin.davinci.stats;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.stats.ingestion.IngestionOtelStats;
+import com.linkedin.davinci.stats.ingestion.NoOpIngestionOtelStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
@@ -27,6 +28,7 @@ public class AggVersionedIngestionStats
 
   private final Map<String, IngestionOtelStats> otelStatsMap = new VeniceConcurrentHashMap<>();
   private final String clusterName;
+  private final boolean emitOtelIngestionStats;
 
   public AggVersionedIngestionStats(
       MetricsRepository metricsRepository,
@@ -39,6 +41,7 @@ public class AggVersionedIngestionStats
         IngestionStatsReporter::new,
         serverConfig.isUnregisterMetricForDeletedStoreEnabled());
     this.clusterName = serverConfig.getClusterName();
+    this.emitOtelIngestionStats = serverConfig.isIngestionOtelStatsEnabled();
   }
 
   @Override
@@ -73,6 +76,9 @@ public class AggVersionedIngestionStats
   }
 
   private IngestionOtelStats getIngestionOtelStats(String storeName) {
+    if (!emitOtelIngestionStats) {
+      return NoOpIngestionOtelStats.INSTANCE;
+    }
     return otelStatsMap.computeIfAbsent(storeName, k -> {
       IngestionOtelStats stats = new IngestionOtelStats(getMetricsRepository(), k, clusterName);
       stats.updateVersionInfo(getCurrentVersion(k), getFutureVersion(k));
