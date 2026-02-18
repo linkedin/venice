@@ -11,6 +11,7 @@ import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.StoreUtils;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -1002,7 +1003,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
 
   @Override
   public String getUncleanLeaderElectionEnabledForRTTopics() {
-    return this.storeProperties.uncleanLeaderElectionEnabledForRTTopics.toString();
+    CharSequence value = this.storeProperties.uncleanLeaderElectionEnabledForRTTopics;
+    return value == null ? ActivationState.NOT_SPECIFIED.name() : value.toString();
   }
 
   @Override
