@@ -7,7 +7,9 @@ import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import java.io.File;
+import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
@@ -43,7 +45,15 @@ public class ControllerMetricEntityTest {
 
     while (packageUrls.hasMoreElements()) {
       URL packageUrl = packageUrls.nextElement();
-      File packageDir = new File(packageUrl.getFile());
+      if (!"file".equals(packageUrl.getProtocol())) {
+        continue;
+      }
+      File packageDir;
+      try {
+        packageDir = Paths.get(packageUrl.toURI()).toFile();
+      } catch (URISyntaxException e) {
+        continue;
+      }
       if (!packageDir.isDirectory()) {
         continue;
       }
