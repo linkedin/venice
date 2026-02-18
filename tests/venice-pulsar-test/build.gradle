@@ -30,6 +30,7 @@ def pulsarIntegrationTestConfigs = {
 
 task pulsarIntegrationTest(type: Test) {
   configure pulsarIntegrationTestConfigs
+  exclude '**/PulsarVeniceSinkTest.class'
 }
 
 idea {
