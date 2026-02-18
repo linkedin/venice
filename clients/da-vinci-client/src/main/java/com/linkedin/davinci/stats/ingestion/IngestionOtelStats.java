@@ -22,7 +22,6 @@ import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_TASK_ERROR
 import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_TASK_PUSH_TIMEOUT_COUNT;
 import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_TIME;
 import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_TIME_BETWEEN_COMPONENTS;
-import static com.linkedin.davinci.stats.ServerMetricEntity.WRITE_COMPUTE_OPERATION_FAILURE_CODE;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -75,7 +74,6 @@ public class IngestionOtelStats {
   private final AsyncMetricEntityStateOneEnum<VersionRole> pushTimeoutCountByRole;
   private final AsyncMetricEntityStateOneEnum<VersionRole> diskQuotaUsedByRole;
   private final AsyncMetricEntityStateOneEnum<VersionRole> consumerIdleTimeByRole;
-  private final AsyncMetricEntityStateOneEnum<VersionRole> writeComputeFailureCodeByRole;
 
   // Non-ASYNC_GAUGE metrics
   // Metrics with only VersionRole dimension
@@ -148,13 +146,6 @@ public class IngestionOtelStats {
         baseDimensionsMap,
         VersionRole.class,
         role -> () -> getIdleTimeForRole(role));
-
-    writeComputeFailureCodeByRole = AsyncMetricEntityStateOneEnum.create(
-        WRITE_COMPUTE_OPERATION_FAILURE_CODE.getMetricEntity(),
-        otelRepository,
-        baseDimensionsMap,
-        VersionRole.class,
-        role -> () -> getWriteComputeFailureCodeForRole(role));
 
     // Initialize metrics with only VersionRole dimension
     subscribePrepTimeMetric = createOneEnumMetric(INGESTION_SUBSCRIBE_PREP_TIME.getMetricEntity());
@@ -255,10 +246,6 @@ public class IngestionOtelStats {
     }
     AtomicLong idleTime = idleTimeByVersion.get(version);
     return idleTime != null ? idleTime.get() : 0;
-  }
-
-  private long getWriteComputeFailureCodeForRole(VersionRole role) {
-    return IngestionStatsUtils.getWriteComputeErrorCode(getTaskForRole(role));
   }
 
   // Task management methods

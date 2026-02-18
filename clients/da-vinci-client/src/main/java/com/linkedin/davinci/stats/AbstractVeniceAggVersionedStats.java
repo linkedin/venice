@@ -223,6 +223,11 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
    * (e.g., OTel stats) when a version is removed. This is called after the internal
    * versioned stats have been removed via {@link VeniceVersionedStats#removeVersion}.
    *
+   * <p><b>WARNING:</b> This method may be called from within a {@code ConcurrentHashMap.computeIfAbsent}
+   * lambda in {@link #addStore(Store)}. Implementations MUST NOT access {@code aggStats} (e.g., via
+   * {@link #getVersionedStats}, {@link #getCurrentVersion}, {@link #getFutureVersion}) as this would
+   * re-enter the ConcurrentHashMap and cause a deadlock (JDK 8) or IllegalStateException (JDK 9+).
+   *
    * @param storeName The store whose version was removed
    * @param version The version number that was removed
    */
