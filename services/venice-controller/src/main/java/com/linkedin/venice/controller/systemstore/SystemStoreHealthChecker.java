@@ -12,7 +12,7 @@ import java.util.Set;
  * cycle. Alternative implementations (e.g., metrics-based) can be plugged in via the
  * {@code controller.system.store.health.check.override.class.name} config.
  *
- * <p>Implementations must provide a public constructor with the following signature:
+ * <p>Custom implementations must provide a public constructor with the following signature:
  * <pre>{@code
  * public MyHealthChecker(VeniceControllerMultiClusterConfig config)
  * }</pre>
