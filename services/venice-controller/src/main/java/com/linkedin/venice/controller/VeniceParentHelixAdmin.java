@@ -348,7 +348,7 @@ public class VeniceParentHelixAdmin implements Admin {
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
   private final Map<String, VeniceWriter<byte[], byte[], byte[]>> veniceWriterMap;
-  private final AdminTopicMetadataAccessor adminTopicMetadataAccessor;
+  private volatile AdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private final byte[] emptyKeyByteArr = new byte[0];
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -6370,5 +6370,10 @@ public class VeniceParentHelixAdmin implements Admin {
   @VisibleForTesting
   public AdminOperationSerializer getAdminOperationSerializer() {
     return adminOperationSerializer;
+  }
+
+  @VisibleForTesting
+  void setAdminTopicMetadataAccessor(AdminTopicMetadataAccessor accessor) {
+    this.adminTopicMetadataAccessor = accessor;
   }
 }
