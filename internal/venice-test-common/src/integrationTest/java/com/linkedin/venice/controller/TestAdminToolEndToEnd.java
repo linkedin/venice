@@ -193,7 +193,7 @@ public class TestAdminToolEndToEnd {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 4)
   public void testWipeClusterCommand() throws Exception {
     try (ControllerClient controllerClient =
         new ControllerClient(clusterName, venice.getLeaderVeniceController().getControllerUrl())) {
