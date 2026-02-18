@@ -193,7 +193,7 @@ public class TestVeniceChunkedPayloadTTLFilter {
     regularValue.chunkedKeySuffix = ByteBuffer
         .wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX));
     regularValue.schemaId = schemaId;
-    regularValue.offset = offset.getNumericOffset();
+    regularValue.offset = -1;
     regularValue.value = valueBytes == null ? ByteBuffer.wrap(new byte[0]) : ByteBuffer.wrap(valueBytes);
     regularValue.valueType = valueType;
     regularValue.replicationMetadataPayload =
