@@ -36,7 +36,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.EXTENDED_SCHEMA_VAL
 import static com.linkedin.venice.vpj.VenicePushJobConstants.HADOOP_TMP_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_ID;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_EXEC_URL;
@@ -245,6 +244,7 @@ public class VenicePushJob implements AutoCloseable {
   private ControllerClient livenessHeartbeatStoreControllerClient;
 
   private DataWriterComputeJob dataWriterComputeJob = null;
+  private long incrementalPushThrottledTimeMs = 0;
 
   private InputDataInfoProvider inputDataInfoProvider;
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
@@ -371,10 +371,6 @@ public class VenicePushJob implements AutoCloseable {
     }
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
-
-    // Incremental push write quota settings
-    pushJobSettingToReturn.incrementalPushWriteQuotaRecordsPerSecond =
-        props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, -1);
 
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     pushJobSettingToReturn.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
@@ -1213,8 +1209,16 @@ public class VenicePushJob implements AutoCloseable {
       }
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED);
     } finally {
+      if (dataWriterComputeJob != null && dataWriterComputeJob.getTaskTracker() != null) {
+        incrementalPushThrottledTimeMs = dataWriterComputeJob.getTaskTracker().getIncrementalPushThrottledTimeMs();
+      }
       Utils.closeQuietlyWithErrorLogged(dataWriterComputeJob);
     }
+  }
+
+  @VisibleForTesting
+  public long getIncrementalPushThrottledTimeMs() {
+    return incrementalPushThrottledTimeMs;
   }
 
   @VisibleForTesting

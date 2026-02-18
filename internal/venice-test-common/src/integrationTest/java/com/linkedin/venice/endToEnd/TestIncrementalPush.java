@@ -33,6 +33,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -536,18 +537,15 @@ public class TestIncrementalPush {
       // Set a very low quota - if throttling were applied, the push would be very slow
       vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, 1);
 
-      String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
-      // Record wall-clock time. With quota of 1 rec/sec and ~100 records, a throttled push would take ~100s.
-      // An unthrottled push should finish well under 30s, so this timing bound distinguishes the two cases.
-      long vpjStartTime = System.currentTimeMillis();
-      try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
-        // This should complete quickly because throttling is skipped for separate RT
-        IntegrationTestPushUtils.runVPJ(vpjProperties, 1, childControllerClient);
+      String jobName = Utils.getUniqueString("venice-push-job-throttle-sep-rt");
+      try (VenicePushJob vpj = new VenicePushJob(jobName, vpjProperties)) {
+        vpj.run();
+        // Verify no throttle time was recorded, confirming throttling was skipped for separate RT
+        Assert.assertEquals(
+            vpj.getIncrementalPushThrottledTimeMs(),
+            0L,
+            "Incremental push to separate RT topic should not have any throttle time");
       }
-      long vpjElapsedSeconds = (System.currentTimeMillis() - vpjStartTime) / 1000;
-      Assert.assertTrue(
-          vpjElapsedSeconds < 30,
-          "Incremental push to separate RT topic should not be throttled, but took " + vpjElapsedSeconds + "s");
 
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
       veniceClusterWrapper.waitVersion(storeName, 1);

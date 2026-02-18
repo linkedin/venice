@@ -26,7 +26,6 @@ public class MRJobCounterHelper {
   private static final String RECORD_TOO_LARGE_FAILURES = "record too large failures";
   private static final String UNCOMPRESSED_RECORD_TOO_LARGE_FAILURES = "uncompressed record too large failures";
   private static final String INCREMENTAL_PUSH_THROTTLE_TIME_MS = "incremental push throttle time (ms)";
-  private static final String INCREMENTAL_PUSH_THROTTLE_TIME = "incremental push throttle time";
 
   private static final String COUNTER_GROUP_DATA_QUALITY = "Data quality";
   private static final String DUPLICATE_KEY_WITH_IDENTICAL_VALUE = "duplicate key with identical value";
@@ -275,26 +274,6 @@ public class MRJobCounterHelper {
 
   public static void incrRepushTtlFilterCount(Reporter reporter, long amount) {
     incrAmountWithGroupCounterName(reporter, REPUSH_TTL_FILTER_COUNT_GROUP_COUNTER_NAME, amount);
-  }
-
-  /**
-   * Report Repush TTL filtered count
-   */
-  public static void reportRepushTtlFilterCount(Reporter reporter) {
-    reporter.incrCounter(
-        REPUSH_TTL_FILTER_COUNT_GROUP_COUNTER_NAME.getGroupName(),
-        REPUSH_TTL_FILTER_COUNT_GROUP_COUNTER_NAME.getCounterName(),
-        1);
-  }
-
-  /**
-   * Report incremental push throttle time in milliseconds
-   */
-  public static void reportIncrementalPushThrottleTime(Reporter reporter, long timeMs) {
-    reporter.incrCounter(
-        INCREMENTAL_PUSH_THROTTLE_TIME_GROUP_COUNTER_NAME.getGroupName(),
-        INCREMENTAL_PUSH_THROTTLE_TIME_GROUP_COUNTER_NAME.getCounterName(),
-        timeMs);
   }
 
   /**

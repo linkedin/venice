@@ -251,6 +251,10 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   // Incremental push write quota throttlers
   private boolean isIncrementalPush = false;
   private EventThrottler recordsThrottler = null;
+  /**
+   * Accumulated throttle time across all calls. Only accessed from the single-threaded
+   * {@link #processValuesForKey} call path, so no synchronization is needed (class is @NotThreadsafe).
+   */
   private long totalThrottleTimeMs = 0;
 
   /**
@@ -457,7 +461,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     if (throttleTime > 0) {
       totalThrottleTimeMs += throttleTime;
       dataWriterTaskTracker.trackIncrementalPushThrottledTime(throttleTime);
-      if (messageSent % telemetryMessageInterval == 0) {
+      if ((messageSent + 1) % telemetryMessageInterval == 0) {
         LOGGER.info(
             "Incremental push throttling active: throttled for {} ms this interval, total throttle time: {} ms",
             throttleTime,

@@ -18,6 +18,7 @@ import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import java.util.Properties;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -101,6 +102,29 @@ public class AbstractPartitionWriterThrottlingTest {
 
     assertTrue(partitionWriter.isIncrementalPushThrottlingEnabled(), "Throttling should be enabled");
     assertNotNull(partitionWriter.getRecordsThrottler(), "Records throttler should be initialized");
+  }
+
+  @DataProvider(name = "invalidQuotaValues")
+  public Object[][] invalidQuotaValues() {
+    return new Object[][] { { "-1" }, { "0" } };
+  }
+
+  @Test(dataProvider = "invalidQuotaValues")
+  public void testThrottlingDisabledForInvalidQuotaValues(String recordsPerSecond) {
+    Properties props = createBaseProperties();
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, recordsPerSecond);
+    setupMockConfigProvider(props);
+
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    assertFalse(
+        partitionWriter.isIncrementalPushThrottlingEnabled(),
+        "Throttling should not be enabled when recordsPerSecond is " + recordsPerSecond);
+    assertNull(
+        partitionWriter.getRecordsThrottler(),
+        "Records throttler should not be initialized when recordsPerSecond is " + recordsPerSecond);
   }
 
   @Test

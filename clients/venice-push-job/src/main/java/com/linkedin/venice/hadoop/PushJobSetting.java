@@ -84,9 +84,6 @@ public class PushJobSetting implements Serializable {
   public boolean isZstdDictCreationRequired;
   public boolean isZstdDictCreationSuccess;
 
-  // Incremental push write quota settings
-  public long incrementalPushWriteQuotaRecordsPerSecond;
-
   // Multiple compute engine support
   public Class<? extends DataWriterComputeJob> dataWriterComputeJobClass;
 
