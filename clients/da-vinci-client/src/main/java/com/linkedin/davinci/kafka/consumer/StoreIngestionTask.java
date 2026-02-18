@@ -290,7 +290,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * to local VT. This will also be used to send DIV snapshots to the drainer to persist the VT + RT DIV on-disk.
    */
   protected final DataIntegrityValidator consumerDiv;
-  /** Map of broker URL to the total bytes consumed by ConsumptionTask since the last Global RT DIV sync */
+  /** Map of (RT broker URL | VT name) to the total bytes consumed by ConsumptionTask since the last Global RT DIV sync */
   // TODO: clear it out when the sync is done
   protected final VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync;
   protected final HostLevelIngestionStats hostLevelIngestionStats;
@@ -1426,7 +1426,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
       if (isGlobalRtDivEnabled()) {
-        consumedBytesSinceLastSync.compute(kafkaUrl, (k, v) -> (v == null) ? recordSize : v + recordSize);
+        // Key by version topic name when consuming from VT, else by RT broker URL
+        PubSubTopic topic = topicPartition.getPubSubTopic();
+        String consumedBytesKey = versionTopic.equals(topic) ? versionTopic.getName() : kafkaUrl;
+        consumedBytesSinceLastSync.compute(consumedBytesKey, (k, v) -> (v == null) ? recordSize : v + recordSize);
       }
     }
 

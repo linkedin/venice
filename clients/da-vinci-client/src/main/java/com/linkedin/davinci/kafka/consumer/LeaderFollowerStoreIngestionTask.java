@@ -2804,9 +2804,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
       CompletableFuture<Void> lastFuture = pcs.getLastQueuedRecordPersistedFuture();
       storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
-      // Reset the counter so that the size-based condition in shouldSyncOffsetFromSnapshot does not keep
-      // firing for every subsequent record until the drainer thread resets it.
-      pcs.resetProcessedRecordSizeSinceLastSync();
+      // Reset consumer-side VT bytes so the size-based condition in shouldSyncOffsetFromSnapshot does not keep
+      // firing for every subsequent record.
+      getConsumedBytesSinceLastSync().put(getVersionTopic().getName(), 0L);
 
       // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
       LOGGER.info(
@@ -2837,7 +2837,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // must be greater than the interval in shouldSendGlobalRtDiv() to not interfere
     final long syncBytesInterval = getSyncBytesInterval(pcs); // size-based sync condition
-    return syncBytesInterval > 0 && (pcs.getProcessedRecordSizeSinceLastSync() >= 2 * syncBytesInterval);
+    long vtConsumedBytesSinceLastSync = getConsumedBytesSinceLastSync().getOrDefault(getVersionTopic().getName(), 0L);
+    return syncBytesInterval > 0 && (vtConsumedBytesSinceLastSync >= 2 * syncBytesInterval);
   }
 
   /**
