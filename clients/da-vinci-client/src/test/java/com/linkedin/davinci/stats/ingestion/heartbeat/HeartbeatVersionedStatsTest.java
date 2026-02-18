@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_HEARTBEAT_DELAY;
+import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_RECORD_DELAY;
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
@@ -44,8 +45,8 @@ import org.testng.annotations.Test;
 
 
 /**
- * Unit tests for HeartbeatVersionedStats that verify both Tehuti and OTel metrics
- * receive consistent data when recording heartbeat delays.
+ * Unit tests for HeartbeatVersionedStats that verify Tehuti heartbeat metrics and
+ * OTel metrics (heartbeat + record-level) receive consistent data when recording delays.
  */
 public class HeartbeatVersionedStatsTest {
   private static final String STORE_NAME = "test_store";
@@ -60,8 +61,8 @@ public class HeartbeatVersionedStatsTest {
   private VeniceMetricsRepository metricsRepository;
   private ReadOnlyStoreRepository mockMetadataRepository;
   private HeartbeatVersionedStats heartbeatVersionedStats;
-  private Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMonitors;
-  private Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerMonitors;
+  private Map<HeartbeatKey, IngestionTimestampEntry> leaderMonitors;
+  private Map<HeartbeatKey, IngestionTimestampEntry> followerMonitors;
   private Set<String> regions;
 
   @BeforeMethod
@@ -95,7 +96,9 @@ public class HeartbeatVersionedStatsTest {
 
     leaderMonitors = new VeniceConcurrentHashMap<>();
     followerMonitors = new VeniceConcurrentHashMap<>();
-    leaderMonitors.put(STORE_NAME, new VeniceConcurrentHashMap<>());
+    // Add a dummy entry so isStoreAssignedToThisNode returns true for STORE_NAME
+    leaderMonitors
+        .put(new HeartbeatKey(STORE_NAME, CURRENT_VERSION, 0, REGION), new IngestionTimestampEntry(0, false, false));
 
     regions = new HashSet<>();
     regions.add(REGION);
@@ -216,7 +219,9 @@ public class HeartbeatVersionedStatsTest {
     when(mockMetadataRepository.getStoreOrThrow(newStoreName)).thenReturn(newMockStore);
 
     // Add store to leader monitors so isStoreAssignedToThisNode returns true
-    leaderMonitors.put(newStoreName, new VeniceConcurrentHashMap<>());
+    leaderMonitors.put(
+        new HeartbeatKey(newStoreName, newCurrentVersion, 0, REGION),
+        new IngestionTimestampEntry(0, false, false));
 
     // Record a metric to trigger store initialization via getVersionedStats -> addStore
     heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
@@ -298,7 +303,7 @@ public class HeartbeatVersionedStatsTest {
     when(mockMetadataRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
 
     // Add to monitors
-    leaderMonitors.put(storeName, new VeniceConcurrentHashMap<>());
+    leaderMonitors.put(new HeartbeatKey(storeName, 1, 0, REGION), new IngestionTimestampEntry(0, false, false));
 
     // Record metric to trigger initialization
     heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
@@ -331,7 +336,7 @@ public class HeartbeatVersionedStatsTest {
     when(mockStore.getVersions()).thenReturn(versions);
     when(mockMetadataRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
 
-    leaderMonitors.put(storeName, new VeniceConcurrentHashMap<>());
+    leaderMonitors.put(new HeartbeatKey(storeName, 2, 0, REGION), new IngestionTimestampEntry(0, false, false));
 
     heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
     heartbeatVersionedStats.recordLeaderLag(storeName, 2, REGION, FIXED_CURRENT_TIME - 100);
@@ -373,5 +378,121 @@ public class HeartbeatVersionedStatsTest {
         buildAttributes(replicaType, replicaState),
         INGESTION_HEARTBEAT_DELAY.getMetricEntity().getMetricName(),
         TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordLeaderRecordLag() {
+    heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
+
+    // Record multiple leader record lags (delays: 100ms, 200ms, 150ms)
+    heartbeatVersionedStats.recordLeaderRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 100);
+    heartbeatVersionedStats.recordLeaderRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 200);
+    heartbeatVersionedStats.recordLeaderRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 150);
+
+    // Verify OTel accumulated correctly (min=100, max=200, count=3, sum=450)
+    validateRecordOtelHistogram(ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, 100.0, 200.0, 3, 450.0);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRecordFollowerRecordLag(boolean isReadyToServe) {
+    heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
+
+    // Record multiple follower record lags (delays: 100ms, 200ms, 150ms)
+    heartbeatVersionedStats
+        .recordFollowerRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 100, isReadyToServe);
+    heartbeatVersionedStats
+        .recordFollowerRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 200, isReadyToServe);
+    heartbeatVersionedStats
+        .recordFollowerRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 150, isReadyToServe);
+
+    // Verify OTel metrics: active has min=100, max=200, count=3, sum=450; squelched has all 0s
+    validateRecordOtelHistogram(
+        ReplicaType.FOLLOWER,
+        ReplicaState.READY_TO_SERVE,
+        isReadyToServe ? 100.0 : 0.0,
+        isReadyToServe ? 200.0 : 0.0,
+        3,
+        isReadyToServe ? 450.0 : 0.0);
+    validateRecordOtelHistogram(
+        ReplicaType.FOLLOWER,
+        ReplicaState.CATCHING_UP,
+        isReadyToServe ? 0.0 : 100.0,
+        isReadyToServe ? 0.0 : 200.0,
+        3,
+        isReadyToServe ? 0.0 : 450.0);
+  }
+
+  private void validateRecordOtelHistogram(
+      ReplicaType replicaType,
+      ReplicaState replicaState,
+      double expectedMin,
+      double expectedMax,
+      int expectedCount,
+      double expectedSum) {
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        expectedMin,
+        expectedMax,
+        expectedCount,
+        expectedSum,
+        buildAttributes(replicaType, replicaState),
+        INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testEmitPerRecordLeaderOtelMetric() {
+    heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
+
+    // Initialize the OTel stats for this store by calling recordLeaderRecordLag first
+    // This simulates the normal flow where periodic emission initializes the stats
+    heartbeatVersionedStats.recordLeaderRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 50);
+
+    // Now emit per-record leader OTel metrics immediately (delays: 100ms, 200ms, 150ms)
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 100);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 200);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 150);
+
+    // Verify OTel accumulated correctly: initial 50 + 100 + 200 + 150 = 500 sum, count=4
+    validateRecordOtelHistogram(ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, 50.0, 200.0, 4, 500.0);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testEmitPerRecordFollowerOtelMetric(boolean isReadyToServe) {
+    heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
+
+    // Initialize the OTel stats for this store by calling recordFollowerRecordLag first
+    // Note: recordFollowerRecordLag records to BOTH states (one with actual value, one with 0)
+    heartbeatVersionedStats
+        .recordFollowerRecordLag(STORE_NAME, CURRENT_VERSION, REGION, FIXED_CURRENT_TIME - 50, isReadyToServe);
+
+    // Now emit per-record follower OTel metrics (delays: 100ms, 200ms, 150ms)
+    // Note: emitPerRecordFollowerOtelMetric only records to the active state (no squelching)
+    heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 100, isReadyToServe);
+    heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 200, isReadyToServe);
+    heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 150, isReadyToServe);
+
+    // Verify OTel metrics:
+    // - recordFollowerRecordLag: records 50 to active state, 0 to inactive state (count=1 each)
+    // - emitPerRecordFollowerOtelMetric x3: records 100, 200, 150 ONLY to active state (count=3)
+    // Active state: 50 + 100 + 200 + 150 = 500, count=4
+    // Inactive state: 0, count=1 (only from initial recordFollowerRecordLag)
+    if (isReadyToServe) {
+      validateRecordOtelHistogram(ReplicaType.FOLLOWER, ReplicaState.READY_TO_SERVE, 50.0, 200.0, 4, 500.0);
+      validateRecordOtelHistogram(ReplicaType.FOLLOWER, ReplicaState.CATCHING_UP, 0.0, 0.0, 1, 0.0);
+    } else {
+      validateRecordOtelHistogram(ReplicaType.FOLLOWER, ReplicaState.CATCHING_UP, 50.0, 200.0, 4, 500.0);
+      validateRecordOtelHistogram(ReplicaType.FOLLOWER, ReplicaState.READY_TO_SERVE, 0.0, 0.0, 1, 0.0);
+    }
+  }
+
+  @Test
+  public void testEmitPerRecordOtelMetricWhenStoreNotInitialized() {
+    // Test that emitting metrics for an unknown store doesn't throw exception
+    // This tests the null check fast path - should be a graceful no-op
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric("unknown_store", 1, REGION, 100);
+    heartbeatVersionedStats.emitPerRecordFollowerOtelMetric("unknown_store", 1, REGION, 100, true);
+    // No exception should be thrown - this is a graceful no-op
+    // The stats won't be recorded since recordOtelStatsMap.get() returns null
   }
 }

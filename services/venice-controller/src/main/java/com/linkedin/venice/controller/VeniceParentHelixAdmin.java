@@ -55,6 +55,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONER_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PREVIOUS_CURRENT_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
@@ -347,7 +348,7 @@ public class VeniceParentHelixAdmin implements Admin {
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
   private final Map<String, VeniceWriter<byte[], byte[], byte[]>> veniceWriterMap;
-  private final AdminTopicMetadataAccessor adminTopicMetadataAccessor;
+  private volatile AdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private final byte[] emptyKeyByteArr = new byte[0];
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -3078,6 +3079,13 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.blobTransferInServerEnabled = params.getBlobTransferInServerEnabled()
           .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_IN_SERVER_ENABLED))
           .orElseGet(currStore::getBlobTransferInServerEnabled);
+
+      // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Store interface
+      setStore.blobDbEnabled = "NOT_SPECIFIED";
+
+      setStore.previousCurrentVersion = params.getPreviousCurrentVersion()
+          .map(addToUpdatedConfigList(updatedConfigsList, PREVIOUS_CURRENT_VERSION))
+          .orElseGet(currStore::getPreviousCurrentVersion);
 
       setStore.separateRealTimeTopicEnabled =
           separateRealTimeTopicEnabled.map(addToUpdatedConfigList(updatedConfigsList, SEPARATE_REAL_TIME_TOPIC_ENABLED))
@@ -6362,5 +6370,10 @@ public class VeniceParentHelixAdmin implements Admin {
   @VisibleForTesting
   public AdminOperationSerializer getAdminOperationSerializer() {
     return adminOperationSerializer;
+  }
+
+  @VisibleForTesting
+  void setAdminTopicMetadataAccessor(AdminTopicMetadataAccessor accessor) {
+    this.adminTopicMetadataAccessor = accessor;
   }
 }

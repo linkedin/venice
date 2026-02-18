@@ -583,7 +583,8 @@ public class RouterServer extends AbstractVeniceService {
         sslFactoryForRequests,
         metadataRepository,
         storageNodeClient,
-        compressorFactory);
+        compressorFactory,
+        metricsRepository);
 
     VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository, routerStats, healthMonitor);
 
