@@ -213,13 +213,18 @@ public class PartitionTracker {
   public void cloneVtProducerStates(PartitionTracker destProducerTracker, long maxAgeInMs) {
     long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : new Date().getTime() - maxAgeInMs;
     Iterator<Map.Entry<GUID, Segment>> iterator = vtSegments.entrySet().iterator();
+    int removedCount = 0;
     while (iterator.hasNext()) {
       Map.Entry<GUID, Segment> entry = iterator.next();
       if (entry.getValue().getLastRecordTimestamp() >= earliestAllowableTimestamp) {
         destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
       } else {
         iterator.remove(); // The state is eligible to be cleared.
+        removedCount++;
       }
+    }
+    if (removedCount > 0 && !REDUNDANT_LOGGING_FILTER.isRedundantException(topicName + "-cloneVtProducerStates")) {
+      logger.info("event=globalRtDiv Removed {} stale VT producer state(s) for store {}", removedCount, topicName);
     }
     destProducerTracker.updateLatestConsumedVtPosition(latestConsumedVtPosition.get());
   }
@@ -229,6 +234,7 @@ public class PartitionTracker {
    */
   public void cloneRtProducerStates(PartitionTracker destProducerTracker, String brokerUrl, long maxAgeInMs) {
     long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : new Date().getTime() - maxAgeInMs;
+    int removedCount = 0;
     for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> broker2Segment: rtSegments.entrySet()) {
       if (!brokerUrl.equals(broker2Segment.getKey())) {
         continue; // filter by the specified brokerUrl
@@ -243,11 +249,15 @@ public class PartitionTracker {
           destProducerTracker.setSegment(realTimeTopicType, rtEntry.getKey(), new Segment(rtEntry.getValue()));
         } else {
           rtIterator.remove(); // The state is eligible to be cleared.
+          removedCount++;
         }
       }
       if (broker2Segment.getValue().isEmpty()) {
         rtSegments.remove(broker2Segment.getKey());
       }
+    }
+    if (removedCount > 0 && !REDUNDANT_LOGGING_FILTER.isRedundantException(topicName + "-cloneRtProducerStates")) {
+      logger.info("event=globalRtDiv Removed {} stale RT producer state(s) for store {}", removedCount, topicName);
     }
   }
 
