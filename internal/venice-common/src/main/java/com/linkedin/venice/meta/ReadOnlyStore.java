@@ -1954,8 +1954,11 @@ public class ReadOnlyStore implements Store {
     storeVersion.setKeyUrnCompressionEnabled(version.isKeyUrnCompressionEnabled());
     storeVersion.setKeyUrnFields(version.getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
     storeVersion.setRepushTtlSeconds(version.getRepushTtlSeconds());
+<<<<<<< HEAD
     storeVersion.setPreviousCurrentVersion(version.getPreviousCurrentVersion());
     // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Version interface
+=======
+>>>>>>> 9eb159ee9 ([store] Fix blobDbEnabled NPE in StoreVersion/UpdateStore serialization)
     storeVersion.setBlobDbEnabled("NOT_SPECIFIED");
 
     return storeVersion;
