@@ -338,7 +338,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertNotNull(metricPrefix, "Metric prefix should not be null");
     assertEquals(metricPrefix, "venice.test_prefix", "Metric prefix should match the configured value");
 
-    MetricEntity metricEntity = MetricEntity.createInternalMetricEntityWithoutDimensions(
+    MetricEntity metricEntity = MetricEntity.createWithNoDimensions(
         "test_metric",
         MetricType.COUNTER,
         MetricUnit.NUMBER,

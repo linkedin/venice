@@ -19,8 +19,10 @@ import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentControll
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
-import com.linkedin.venice.controller.stats.ControllerMetricEntity;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
+import com.linkedin.venice.controller.stats.PushJobStatusStats;
+import com.linkedin.venice.controller.stats.SparkServerStats;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
@@ -70,7 +72,11 @@ public class VeniceController {
   public static final String CONTROLLER_SERVICE_NAME = "venice-controller";
   public static final String CONTROLLER_SERVICE_METRIC_PREFIX = "controller";
   public static final Collection<MetricEntity> CONTROLLER_SERVICE_METRIC_ENTITIES =
-      ModuleMetricEntityInterface.getUniqueMetricEntities(ControllerMetricEntity.class);
+      ModuleMetricEntityInterface.getUniqueMetricEntities(
+          SparkServerStats.SparkServerOtelMetricEntity.class,
+          LogCompactionStats.LogCompactionOtelMetricEntity.class,
+          PushJobStatusStats.PushJobOtelMetricEntity.class,
+          TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.class);
 
   // services
   private final VeniceControllerService controllerService;

@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats.metrics;
 
+import com.google.common.annotations.VisibleForTesting;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -50,4 +51,8 @@ public interface ModuleMetricEntityInterface {
     return uniqueMetricsByName.values();
   }
 
+  @VisibleForTesting
+  default String getMetricName() {
+    return getMetricEntity().getMetricName();
+  }
 }

@@ -100,8 +100,13 @@ public class MetricEntityStateGeneric extends MetricEntityState {
   private void validateRequiredDimensions(
       MetricEntity metricEntity,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
+    Set<VeniceMetricsDimensions> requiredDimensionsList = metricEntity.getDimensionsList();
+    if (requiredDimensionsList.isEmpty()) {
+      throw new IllegalArgumentException(
+          "MetricEntity without dimensions should only be used with MetricEntityStateBase, not MetricEntityStateGeneric"
+              + " for metric: " + metricEntity.getMetricName());
+    }
     if (baseDimensionsMap != null) {
-      Set<VeniceMetricsDimensions> requiredDimensionsList = metricEntity.getDimensionsList();
       // check if all required dimensions are present in baseDimensionsMap itself
       if (baseDimensionsMap.keySet().size() >= requiredDimensionsList.size()) {
         // if the baseDimensionsMap has all dimensions, MetricEntityStateBase should be used instead
