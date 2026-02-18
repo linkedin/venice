@@ -68,10 +68,13 @@ public class AggVersionedIngestionStats
 
   @Override
   public void handleStoreDeleted(String storeName) {
-    super.handleStoreDeleted(storeName);
-    IngestionOtelStats otelStats = otelStatsMap.remove(storeName);
-    if (otelStats != null) {
-      otelStats.close();
+    try {
+      super.handleStoreDeleted(storeName);
+    } finally {
+      IngestionOtelStats otelStats = otelStatsMap.remove(storeName);
+      if (otelStats != null) {
+        otelStats.close();
+      }
     }
   }
 
