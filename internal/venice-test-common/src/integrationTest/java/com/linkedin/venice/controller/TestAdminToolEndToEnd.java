@@ -244,9 +244,9 @@ public class TestAdminToolEndToEnd {
 
       TopicManager topicManager = venice.getLeaderVeniceController().getVeniceAdmin().getTopicManager();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        assertFalse(topicManager.containsTopic(testStoreTopic1));
-        assertFalse(topicManager.containsTopic(testStoreTopic2));
-        assertFalse(topicManager.containsTopic(testStoreTopic3));
+        assertFalse(topicManager.containsTopicWithExpectationAndRetry(testStoreTopic1, 3, false));
+        assertFalse(topicManager.containsTopicWithExpectationAndRetry(testStoreTopic2, 3, false));
+        assertFalse(topicManager.containsTopicWithExpectationAndRetry(testStoreTopic3, 3, false));
       });
 
       // Redo fabric buildup. Create the store and version again.
