@@ -766,9 +766,6 @@ public class PartitionTracker {
   @VisibleForTesting
   VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<GUID, Segment>> getRtSegmentsForTesting() {
     return rtSegments;
-    // return rtSegments.entrySet()
-    // .stream()
-    // .collect(Collectors.toMap(Map.Entry::getKey, entry -> Collections.unmodifiableMap(entry.getValue())));
   }
 
   @VisibleForTesting
