@@ -130,8 +130,13 @@ public class TestDumpIngestionContext {
           .getHeartbeatInfo(Version.composeKafkaTopic(storeName, 1), -1, false);
       LOGGER.info("Heartbeat Info with topic filtering:\n" + heartbeatInfoMap);
       Assert.assertEquals(heartbeatInfoMap.keySet().stream().filter(x -> x.endsWith("dc-0")).count(), 3);
+      // With the flat heartbeat map, A/A followers also have entries for all regions (dc-0 and dc-1)
+      long leaderDc1Count = heartbeatInfoMap.entrySet()
+          .stream()
+          .filter(e -> e.getKey().contains("dc-1") && e.getValue().getLeaderState().equals("LEADER"))
+          .count();
       Assert.assertEquals(
-          heartbeatInfoMap.keySet().stream().filter(x -> x.contains("dc-1")).count() * 2,
+          leaderDc1Count * 2,
           heartbeatInfoMap.values().stream().filter(x -> x.getLeaderState().equals("LEADER")).count());
 
       heartbeatInfoMap = serverWrapper.getVeniceServer()
