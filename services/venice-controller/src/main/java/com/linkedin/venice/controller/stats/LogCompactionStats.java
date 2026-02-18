@@ -7,7 +7,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.google.common.collect.ImmutableMap;
-import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
@@ -183,7 +182,6 @@ public class LogCompactionStats extends AbstractVeniceStats {
     );
 
     private final MetricEntity metricEntity;
-    private final String metricName;
 
     LogCompactionOtelMetricEntity(
         String metricName,
@@ -191,13 +189,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
         MetricUnit unit,
         String description,
         Set<VeniceMetricsDimensions> dimensionsList) {
-      this.metricName = metricName;
       this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
-    }
-
-    @VisibleForTesting
-    public String getMetricName() {
-      return metricName;
     }
 
     public MetricEntity getMetricEntity() {

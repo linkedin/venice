@@ -3,7 +3,6 @@ package com.linkedin.venice.controller.stats;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.utils.Utils.setOf;
 
-import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
@@ -21,7 +20,9 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 
 
 public class TopicCleanupServiceStats extends AbstractVeniceStats {
@@ -107,11 +108,9 @@ public class TopicCleanupServiceStats extends AbstractVeniceStats {
     );
 
     private final MetricEntity metricEntity;
-    private final String metricName;
 
     TopicCleanupOtelMetricEntity(String metricName, MetricType metricType, MetricUnit unit, String description) {
-      this.metricName = metricName;
-      this.metricEntity = MetricEntity.createWithNoDimensions(metricName, metricType, unit, description);
+      this(metricName, metricType, unit, description, Collections.emptySet());
     }
 
     TopicCleanupOtelMetricEntity(
@@ -119,14 +118,10 @@ public class TopicCleanupServiceStats extends AbstractVeniceStats {
         MetricType metricType,
         MetricUnit unit,
         String description,
-        java.util.Set<VeniceMetricsDimensions> dimensionsList) {
-      this.metricName = metricName;
-      this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
-    }
-
-    @VisibleForTesting
-    public String getMetricName() {
-      return metricName;
+        Set<VeniceMetricsDimensions> dimensionsList) {
+      this.metricEntity = dimensionsList.isEmpty()
+          ? MetricEntity.createWithNoDimensions(metricName, metricType, unit, description)
+          : new MetricEntity(metricName, metricType, unit, description, dimensionsList);
     }
 
     public MetricEntity getMetricEntity() {

@@ -7,7 +7,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.utils.Utils.setOf;
 
-import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
@@ -221,7 +220,6 @@ public class SparkServerStats extends AbstractVeniceStats {
     );
 
     private final MetricEntity metricEntity;
-    private final String metricName;
 
     SparkServerOtelMetricEntity(
         String metricName,
@@ -229,13 +227,7 @@ public class SparkServerStats extends AbstractVeniceStats {
         MetricUnit unit,
         String description,
         Set<VeniceMetricsDimensions> dimensionsList) {
-      this.metricName = metricName;
       this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
-    }
-
-    @VisibleForTesting
-    public String getMetricName() {
-      return metricName;
     }
 
     public MetricEntity getMetricEntity() {
