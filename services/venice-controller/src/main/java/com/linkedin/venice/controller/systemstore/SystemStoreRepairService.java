@@ -33,8 +33,7 @@ public class SystemStoreRepairService extends AbstractVeniceService {
   private ScheduledExecutorService checkServiceExecutor;
   private final Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap =
       new VeniceConcurrentHashMap<>();
-  private HeartbeatBasedSystemStoreHealthChecker heartbeatChecker;
-  private SystemStoreHealthChecker overrideChecker;
+  private SystemStoreHealthChecker healthChecker;
 
   public SystemStoreRepairService(
       VeniceParentHelixAdmin parentAdmin,
@@ -61,18 +60,15 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     checkServiceExecutor = Executors.newScheduledThreadPool(1);
     isRunning.set(true);
 
-    heartbeatChecker = new HeartbeatBasedSystemStoreHealthChecker(parentAdmin, heartbeatWaitTimeInSeconds, isRunning);
-    overrideChecker = loadOverrideChecker();
+    healthChecker = loadHealthChecker();
 
     checkServiceExecutor.scheduleWithFixedDelay(
         new SystemStoreRepairTask(
             parentAdmin,
             clusterToSystemStoreHealthCheckStatsMap,
-            heartbeatWaitTimeInSeconds,
             versionRefreshThresholdInDays,
             isRunning,
-            heartbeatChecker,
-            overrideChecker),
+            healthChecker),
         repairTaskIntervalInSeconds,
         repairTaskIntervalInSeconds,
         TimeUnit.SECONDS);
@@ -91,32 +87,30 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
-    closeChecker(heartbeatChecker);
-    closeChecker(overrideChecker);
+    closeChecker(healthChecker);
     LOGGER.info("SystemStoreRepairService is shutdown.");
   }
 
-  private SystemStoreHealthChecker loadOverrideChecker() {
+  private SystemStoreHealthChecker loadHealthChecker() {
     String className = multiClusterConfigs.getCommonConfig().getSystemStoreHealthCheckOverrideClassName();
-    if (className == null || className.isEmpty()) {
-      LOGGER.info("No system store health check override configured, using heartbeat-only path.");
-      return null;
+    if (className != null && !className.isEmpty()) {
+      try {
+        Class<? extends SystemStoreHealthChecker> checkerClass = ReflectUtils.loadClass(className);
+        SystemStoreHealthChecker checker = ReflectUtils.callConstructor(
+            checkerClass,
+            new Class[] { VeniceControllerMultiClusterConfig.class },
+            new Object[] { multiClusterConfigs });
+        LOGGER.info("Loaded system store health checker: {}", className);
+        return checker;
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Failed to load system store health checker class: {}. Falling back to heartbeat checker.",
+            className,
+            e);
+      }
     }
-    try {
-      Class<? extends SystemStoreHealthChecker> checkerClass = ReflectUtils.loadClass(className);
-      SystemStoreHealthChecker checker = ReflectUtils.callConstructor(
-          checkerClass,
-          new Class[] { VeniceControllerMultiClusterConfig.class },
-          new Object[] { multiClusterConfigs });
-      LOGGER.info("Loaded system store health check override: {}", className);
-      return checker;
-    } catch (Exception e) {
-      LOGGER.warn(
-          "Failed to load system store health check override class: {}. Using heartbeat-only path.",
-          className,
-          e);
-      return null;
-    }
+    LOGGER.info("Using default heartbeat-based system store health checker.");
+    return new HeartbeatBasedSystemStoreHealthChecker(parentAdmin, heartbeatWaitTimeInSeconds, isRunning);
   }
 
   private void closeChecker(SystemStoreHealthChecker checker) {
@@ -133,11 +127,7 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     return clusterToSystemStoreHealthCheckStatsMap;
   }
 
-  HeartbeatBasedSystemStoreHealthChecker getHeartbeatChecker() {
-    return heartbeatChecker;
-  }
-
-  SystemStoreHealthChecker getOverrideChecker() {
-    return overrideChecker;
+  SystemStoreHealthChecker getHealthChecker() {
+    return healthChecker;
   }
 }

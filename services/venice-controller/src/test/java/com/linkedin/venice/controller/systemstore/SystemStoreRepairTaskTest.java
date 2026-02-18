@@ -170,38 +170,8 @@ public class SystemStoreRepairTaskTest {
   }
 
   @Test
-  public void testCheckSystemStoresHealthNoOverride() {
-    // When no override is configured, all candidates go through heartbeat checker
-    SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
-    String cluster = "venice";
-
-    Set<String> candidates = new HashSet<>(Arrays.asList("store_a", "store_b"));
-    doCallRealMethod().when(task).checkSystemStoresHealth(anyString(), anySet());
-    doReturn(candidates).when(task).preFilterSystemStores(anyString(), anySet());
-    doReturn(null).when(task).getOverrideChecker();
-
-    HeartbeatBasedSystemStoreHealthChecker heartbeatChecker = mock(HeartbeatBasedSystemStoreHealthChecker.class);
-    Map<String, HealthCheckResult> heartbeatResults = new HashMap<>();
-    heartbeatResults.put("store_a", HealthCheckResult.HEALTHY);
-    heartbeatResults.put("store_b", HealthCheckResult.UNHEALTHY);
-    doReturn(heartbeatResults).when(heartbeatChecker).checkHealth(eq(cluster), anySet());
-    doReturn(heartbeatChecker).when(task).getHeartbeatChecker();
-
-    SystemStoreHealthCheckStats stats = mock(SystemStoreHealthCheckStats.class);
-    when(stats.getBadMetaSystemStoreCounter()).thenReturn(new java.util.concurrent.atomic.AtomicLong(0));
-    when(stats.getBadPushStatusSystemStoreCounter()).thenReturn(new java.util.concurrent.atomic.AtomicLong(0));
-    doReturn(stats).when(task).getClusterSystemStoreHealthCheckStats(cluster);
-
-    Set<String> unhealthySet = new HashSet<>();
-    task.checkSystemStoresHealth(cluster, unhealthySet);
-
-    Assert.assertEquals(unhealthySet.size(), 1);
-    Assert.assertTrue(unhealthySet.contains("store_b"));
-  }
-
-  @Test
-  public void testCheckSystemStoresHealthWithOverride() {
-    // Override returns mixed results: HEALTHY, UNHEALTHY, UNKNOWN
+  public void testCheckSystemStoresHealthMixedResults() {
+    // Checker returns HEALTHY, UNHEALTHY, and UNKNOWN; UNKNOWN is treated as unhealthy
     SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
     String cluster = "venice";
 
@@ -209,20 +179,13 @@ public class SystemStoreRepairTaskTest {
     doCallRealMethod().when(task).checkSystemStoresHealth(anyString(), anySet());
     doReturn(candidates).when(task).preFilterSystemStores(anyString(), anySet());
 
-    SystemStoreHealthChecker overrideChecker = mock(SystemStoreHealthChecker.class);
-    Map<String, HealthCheckResult> overrideResults = new HashMap<>();
-    overrideResults.put("store_a", HealthCheckResult.HEALTHY);
-    overrideResults.put("store_b", HealthCheckResult.UNHEALTHY);
-    overrideResults.put("store_c", HealthCheckResult.UNKNOWN);
-    doReturn(overrideResults).when(overrideChecker).checkHealth(eq(cluster), anySet());
-    doReturn(overrideChecker).when(task).getOverrideChecker();
-
-    HeartbeatBasedSystemStoreHealthChecker heartbeatChecker = mock(HeartbeatBasedSystemStoreHealthChecker.class);
-    // store_c falls back to heartbeat and comes back UNHEALTHY
-    Map<String, HealthCheckResult> heartbeatResults = new HashMap<>();
-    heartbeatResults.put("store_c", HealthCheckResult.UNHEALTHY);
-    doReturn(heartbeatResults).when(heartbeatChecker).checkHealth(eq(cluster), anySet());
-    doReturn(heartbeatChecker).when(task).getHeartbeatChecker();
+    SystemStoreHealthChecker checker = mock(SystemStoreHealthChecker.class);
+    Map<String, HealthCheckResult> results = new HashMap<>();
+    results.put("store_a", HealthCheckResult.HEALTHY);
+    results.put("store_b", HealthCheckResult.UNHEALTHY);
+    results.put("store_c", HealthCheckResult.UNKNOWN);
+    doReturn(results).when(checker).checkHealth(eq(cluster), anySet());
+    doReturn(checker).when(task).getHealthChecker();
 
     SystemStoreHealthCheckStats stats = mock(SystemStoreHealthCheckStats.class);
     when(stats.getBadMetaSystemStoreCounter()).thenReturn(new java.util.concurrent.atomic.AtomicLong(0));
@@ -233,14 +196,13 @@ public class SystemStoreRepairTaskTest {
     task.checkSystemStoresHealth(cluster, unhealthySet);
 
     Assert.assertEquals(unhealthySet.size(), 2);
+    Assert.assertFalse(unhealthySet.contains("store_a"));
     Assert.assertTrue(unhealthySet.contains("store_b"));
     Assert.assertTrue(unhealthySet.contains("store_c"));
-    Assert.assertFalse(unhealthySet.contains("store_a"));
   }
 
   @Test
-  public void testCheckSystemStoresHealthOverrideAllHealthy() {
-    // When override returns all HEALTHY, no heartbeat calls should be made
+  public void testCheckSystemStoresHealthAllHealthy() {
     SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
     String cluster = "venice";
 
@@ -248,15 +210,12 @@ public class SystemStoreRepairTaskTest {
     doCallRealMethod().when(task).checkSystemStoresHealth(anyString(), anySet());
     doReturn(candidates).when(task).preFilterSystemStores(anyString(), anySet());
 
-    SystemStoreHealthChecker overrideChecker = mock(SystemStoreHealthChecker.class);
-    Map<String, HealthCheckResult> overrideResults = new HashMap<>();
-    overrideResults.put("store_a", HealthCheckResult.HEALTHY);
-    overrideResults.put("store_b", HealthCheckResult.HEALTHY);
-    doReturn(overrideResults).when(overrideChecker).checkHealth(eq(cluster), anySet());
-    doReturn(overrideChecker).when(task).getOverrideChecker();
-
-    HeartbeatBasedSystemStoreHealthChecker heartbeatChecker = mock(HeartbeatBasedSystemStoreHealthChecker.class);
-    doReturn(heartbeatChecker).when(task).getHeartbeatChecker();
+    SystemStoreHealthChecker checker = mock(SystemStoreHealthChecker.class);
+    Map<String, HealthCheckResult> results = new HashMap<>();
+    results.put("store_a", HealthCheckResult.HEALTHY);
+    results.put("store_b", HealthCheckResult.HEALTHY);
+    doReturn(results).when(checker).checkHealth(eq(cluster), anySet());
+    doReturn(checker).when(task).getHealthChecker();
 
     SystemStoreHealthCheckStats stats = mock(SystemStoreHealthCheckStats.class);
     when(stats.getBadMetaSystemStoreCounter()).thenReturn(new java.util.concurrent.atomic.AtomicLong(0));
@@ -267,43 +226,6 @@ public class SystemStoreRepairTaskTest {
     task.checkSystemStoresHealth(cluster, unhealthySet);
 
     Assert.assertTrue(unhealthySet.isEmpty());
-    // heartbeat should NOT have been called since override resolved everything
-    verify(heartbeatChecker, never()).checkHealth(anyString(), anySet());
-  }
-
-  @Test
-  public void testCheckSystemStoresHealthOverrideThrowsException() {
-    // When override throws, all candidates fall back to heartbeat
-    SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
-    String cluster = "venice";
-
-    Set<String> candidates = new HashSet<>(Arrays.asList("store_a", "store_b"));
-    doCallRealMethod().when(task).checkSystemStoresHealth(anyString(), anySet());
-    doReturn(candidates).when(task).preFilterSystemStores(anyString(), anySet());
-
-    SystemStoreHealthChecker overrideChecker = mock(SystemStoreHealthChecker.class);
-    doThrow(new RuntimeException("metrics unavailable")).when(overrideChecker).checkHealth(anyString(), anySet());
-    doReturn(overrideChecker).when(task).getOverrideChecker();
-
-    HeartbeatBasedSystemStoreHealthChecker heartbeatChecker = mock(HeartbeatBasedSystemStoreHealthChecker.class);
-    Map<String, HealthCheckResult> heartbeatResults = new HashMap<>();
-    heartbeatResults.put("store_a", HealthCheckResult.HEALTHY);
-    heartbeatResults.put("store_b", HealthCheckResult.UNHEALTHY);
-    doReturn(heartbeatResults).when(heartbeatChecker).checkHealth(eq(cluster), anySet());
-    doReturn(heartbeatChecker).when(task).getHeartbeatChecker();
-
-    SystemStoreHealthCheckStats stats = mock(SystemStoreHealthCheckStats.class);
-    when(stats.getBadMetaSystemStoreCounter()).thenReturn(new java.util.concurrent.atomic.AtomicLong(0));
-    when(stats.getBadPushStatusSystemStoreCounter()).thenReturn(new java.util.concurrent.atomic.AtomicLong(0));
-    doReturn(stats).when(task).getClusterSystemStoreHealthCheckStats(cluster);
-
-    Set<String> unhealthySet = new HashSet<>();
-    task.checkSystemStoresHealth(cluster, unhealthySet);
-
-    Assert.assertEquals(unhealthySet.size(), 1);
-    Assert.assertTrue(unhealthySet.contains("store_b"));
-    // heartbeat should have been called with all candidates
-    verify(heartbeatChecker).checkHealth(eq(cluster), eq(candidates));
   }
 
   @Test
@@ -319,7 +241,6 @@ public class SystemStoreRepairTaskTest {
     doReturn(parentHelixAdmin).when(systemStoreRepairTask).getParentAdmin();
 
     doReturn(1).when(systemStoreRepairTask).getRepairJobCheckIntervalInSeconds();
-    doReturn(1).when(systemStoreRepairTask).getHeartbeatWaitTimeInSeconds();
     doReturn(3).when(systemStoreRepairTask).getRepairJobCheckTimeoutInSeconds();
 
     String systemStore = VeniceSystemStoreUtils.getMetaStoreName("testStore");

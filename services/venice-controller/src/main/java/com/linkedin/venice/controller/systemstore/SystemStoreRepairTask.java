@@ -34,8 +34,8 @@ import org.apache.logging.log4j.Logger;
  * 3. If system store failed any of the check in (1) / (2), it will try to run empty push to repair the system store.
  * It will emit metrics to indicate bad system store counts per cluster and how many stores are not fixable by the task.
  *
- * When an override {@link SystemStoreHealthChecker} is configured, it runs first on all candidates. Stores returning
- * {@link HealthCheckResult#UNKNOWN} fall back to the default heartbeat checker.
+ * A pluggable {@link SystemStoreHealthChecker} is used to determine system store health. Stores returning
+ * {@link HealthCheckResult#UNKNOWN} are treated as unhealthy and will be repaired.
  */
 public class SystemStoreRepairTask implements Runnable {
   public static final Logger LOGGER = LogManager.getLogger(SystemStoreRepairTask.class);
@@ -44,29 +44,23 @@ public class SystemStoreRepairTask implements Runnable {
   private static final int DEFAULT_REPAIR_JOB_CHECK_TIMEOUT_IN_SECONDS = 3600;
   private static final int DEFAULT_REPAIR_JOB_CHECK_INTERVAL_IN_SECONDS = 30;
 
-  private final int heartbeatWaitTimeInSeconds;
   private final int versionRefreshThresholdInDays;
   private final VeniceParentHelixAdmin parentAdmin;
   private final AtomicBoolean isRunning;
   private final Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap;
-  private final HeartbeatBasedSystemStoreHealthChecker heartbeatChecker;
-  private final SystemStoreHealthChecker overrideChecker; // nullable
+  private final SystemStoreHealthChecker healthChecker;
 
   public SystemStoreRepairTask(
       VeniceParentHelixAdmin parentAdmin,
       Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap,
-      int heartbeatWaitTimeInSeconds,
       int versionRefreshThresholdInDays,
       AtomicBoolean isRunning,
-      HeartbeatBasedSystemStoreHealthChecker heartbeatChecker,
-      SystemStoreHealthChecker overrideChecker) {
+      SystemStoreHealthChecker healthChecker) {
     this.parentAdmin = parentAdmin;
     this.clusterToSystemStoreHealthCheckStatsMap = clusterToSystemStoreHealthCheckStatsMap;
-    this.heartbeatWaitTimeInSeconds = heartbeatWaitTimeInSeconds;
     this.versionRefreshThresholdInDays = versionRefreshThresholdInDays;
     this.isRunning = isRunning;
-    this.heartbeatChecker = heartbeatChecker;
-    this.overrideChecker = overrideChecker;
+    this.healthChecker = healthChecker;
   }
 
   @Override
@@ -117,14 +111,11 @@ public class SystemStoreRepairTask implements Runnable {
   }
 
   /**
-   * Check health of all system stores in the cluster using a two-phase approach:
+   * Check health of all system stores in the cluster:
    * 1. Pre-filter to get candidate stores (stores already known unhealthy are added directly).
-   * 2. If an override checker is configured, run it on candidates first; triage results.
-   * 3. Run the heartbeat checker on remaining stores (UNKNOWN from override, or all candidates if no override).
-   * 4. Add UNHEALTHY stores to the repair set.
+   * 2. Run the health checker on candidates. HEALTHY stores are skipped; UNHEALTHY and UNKNOWN are repaired.
    */
   void checkSystemStoresHealth(String clusterName, Set<String> unhealthySystemStoreSet) {
-    // Phase 1: Pre-filter to identify candidates and directly-unhealthy stores
     Set<String> candidates = preFilterSystemStores(clusterName, unhealthySystemStoreSet);
 
     if (candidates.isEmpty()) {
@@ -132,57 +123,30 @@ public class SystemStoreRepairTask implements Runnable {
       return;
     }
 
-    Set<String> heartbeatCandidates;
-
-    // Phase 2: Run override checker if configured
-    if (getOverrideChecker() != null) {
-      try {
-        Map<String, HealthCheckResult> overrideResults = getOverrideChecker().checkHealth(clusterName, candidates);
-        heartbeatCandidates = new HashSet<>();
-        for (String storeName: candidates) {
-          HealthCheckResult result = overrideResults.getOrDefault(storeName, HealthCheckResult.UNKNOWN);
-          switch (result) {
-            case HEALTHY:
-              // Store is healthy, skip it
-              break;
-            case UNHEALTHY:
-              unhealthySystemStoreSet.add(storeName);
-              break;
-            case UNKNOWN:
-            default:
-              // Fall back to heartbeat checker
-              heartbeatCandidates.add(storeName);
-              break;
-          }
-        }
-        LOGGER.info(
-            "Override checker for cluster {} returned: {} healthy, {} unhealthy, {} unknown (fallback to heartbeat)",
-            clusterName,
-            candidates.size() - unhealthySystemStoreSet.size() - heartbeatCandidates.size(),
-            unhealthySystemStoreSet.size(),
-            heartbeatCandidates.size());
-      } catch (Exception e) {
-        LOGGER.warn(
-            "Override checker failed for cluster {}, falling back to heartbeat for all {} candidates.",
-            clusterName,
-            candidates.size(),
-            e);
-        heartbeatCandidates = candidates;
-      }
-    } else {
-      heartbeatCandidates = candidates;
-    }
-
-    // Phase 3: Run heartbeat checker on remaining candidates
-    if (!heartbeatCandidates.isEmpty()) {
-      Map<String, HealthCheckResult> heartbeatResults =
-          getHeartbeatChecker().checkHealth(clusterName, heartbeatCandidates);
-      for (Map.Entry<String, HealthCheckResult> entry: heartbeatResults.entrySet()) {
-        if (entry.getValue() == HealthCheckResult.UNHEALTHY) {
-          unhealthySystemStoreSet.add(entry.getKey());
+    Map<String, HealthCheckResult> results = getHealthChecker().checkHealth(clusterName, candidates);
+    int healthyCount = 0;
+    int unhealthyCount = 0;
+    int unknownCount = 0;
+    for (String storeName: candidates) {
+      HealthCheckResult result = results.getOrDefault(storeName, HealthCheckResult.UNKNOWN);
+      if (result == HealthCheckResult.HEALTHY) {
+        healthyCount++;
+      } else {
+        // UNHEALTHY and UNKNOWN are both treated as unhealthy
+        unhealthySystemStoreSet.add(storeName);
+        if (result == HealthCheckResult.UNHEALTHY) {
+          unhealthyCount++;
+        } else {
+          unknownCount++;
         }
       }
     }
+    LOGGER.info(
+        "Health checker for cluster {} returned: {} healthy, {} unhealthy, {} unknown (treated as unhealthy)",
+        clusterName,
+        healthyCount,
+        unhealthyCount,
+        unknownCount);
 
     updateBadSystemStoreCount(clusterName, unhealthySystemStoreSet);
   }
@@ -421,19 +385,11 @@ public class SystemStoreRepairTask implements Runnable {
     return DEFAULT_REPAIR_JOB_CHECK_INTERVAL_IN_SECONDS;
   }
 
-  int getHeartbeatWaitTimeInSeconds() {
-    return heartbeatWaitTimeInSeconds;
-  }
-
   int getVersionRefreshThresholdInDays() {
     return versionRefreshThresholdInDays;
   }
 
-  HeartbeatBasedSystemStoreHealthChecker getHeartbeatChecker() {
-    return heartbeatChecker;
-  }
-
-  SystemStoreHealthChecker getOverrideChecker() {
-    return overrideChecker;
+  SystemStoreHealthChecker getHealthChecker() {
+    return healthChecker;
   }
 }
