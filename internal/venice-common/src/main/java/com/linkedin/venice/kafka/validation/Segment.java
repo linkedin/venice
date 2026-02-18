@@ -139,6 +139,7 @@ public class Segment {
     this.aggregates = segment.aggregates;
     this.registered = segment.registered;
     this.lastRecordProducerTimestamp = segment.lastRecordProducerTimestamp;
+    this.lastRecordTimestamp = segment.lastRecordTimestamp;
   }
 
   public int getSegmentNumber() {
