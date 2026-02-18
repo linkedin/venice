@@ -1219,8 +1219,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.serverIngestionInfoLogLineLimit = serverProperties.getInt(SERVER_INGESTION_INFO_LOG_LINE_LIMIT, 20);
     this.parallelResourceShutdownEnabled =
         serverProperties.getBoolean(SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED, false);
-    this.parallelShutdownThreadPoolSize = serverProperties
-        .getInt(SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors() * 2);
+    this.parallelShutdownThreadPoolSize = serverProperties.getInt(SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE, 16);
     this.lagMonitorCleanupCycle =
         serverProperties.getInt(SERVER_LAG_MONITOR_CLEANUP_CYCLE, DEFAULT_LAG_MONITOR_CLEANUP_CYCLE);
     this.readQuotaInitializationFallbackEnabled =

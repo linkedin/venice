@@ -199,11 +199,11 @@ public class VeniceServerConfigTest {
     // Test default value
     Properties props = populatedBasicProperties();
     VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
-    assertEquals(config.getParallelShutdownThreadPoolSize(), Runtime.getRuntime().availableProcessors() * 2);
+    assertEquals(config.getParallelShutdownThreadPoolSize(), 16);
 
     // Test custom value
-    props.put(SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE, "16");
+    props.put(SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE, "4");
     config = new VeniceServerConfig(new VeniceProperties(props));
-    assertEquals(config.getParallelShutdownThreadPoolSize(), 16);
+    assertEquals(config.getParallelShutdownThreadPoolSize(), 4);
   }
 }
