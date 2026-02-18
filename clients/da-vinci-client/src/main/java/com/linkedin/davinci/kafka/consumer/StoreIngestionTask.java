@@ -1127,12 +1127,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // Set blob-db config from version level config
-    Store store = storeRepository.getStoreOrThrow(storeName);
-    Version version = store.getVersion(versionNumber);
-    if (version != null) {
-      storagePartitionConfig.setBlobDbEnabled(ActivationState.valueOf(version.getBlobDbEnabled()));
+    Store store = storeRepository.getStore(storeName);
+    if (store != null) {
+      Version version = store.getVersion(versionNumber);
+      if (version != null) {
+        String blobDbEnabledStr = version.getBlobDbEnabled();
+        if (blobDbEnabledStr != null) {
+          try {
+            storagePartitionConfig.setBlobDbEnabled(ActivationState.valueOf(blobDbEnabledStr));
+          } catch (IllegalArgumentException e) {
+            // Invalid value, fall back to NOT_SPECIFIED which uses cluster-level config
+            storagePartitionConfig.setBlobDbEnabled(ActivationState.NOT_SPECIFIED);
+          }
+        }
+      }
     }
-    // If version not found, leave default NOT_SPECIFIED which falls back to cluster-level config
+    // If store or version not found, or blobDbEnabled is invalid, leave default NOT_SPECIFIED which falls back to
+    // cluster-level config
 
     return storagePartitionConfig;
   }

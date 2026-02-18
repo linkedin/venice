@@ -104,7 +104,7 @@ public class StoragePartitionConfig {
   }
 
   public void setBlobDbEnabled(ActivationState blobDbEnabled) {
-    this.blobDbEnabled = blobDbEnabled;
+    this.blobDbEnabled = blobDbEnabled != null ? blobDbEnabled : ActivationState.NOT_SPECIFIED;
   }
 
   @Override
@@ -119,7 +119,7 @@ public class StoragePartitionConfig {
     return partitionId == that.partitionId && deferredWrite == that.deferredWrite && readOnly == that.readOnly
         && writeOnlyConfig == that.writeOnlyConfig && storeName.equals(that.storeName)
         && readWriteLeaderForDefaultCF == that.readWriteLeaderForDefaultCF
-        && readWriteLeaderForRMDCF == that.readWriteLeaderForRMDCF;
+        && readWriteLeaderForRMDCF == that.readWriteLeaderForRMDCF && blobDbEnabled == that.blobDbEnabled;
   }
 
   @Override
@@ -131,15 +131,16 @@ public class StoragePartitionConfig {
         readOnly,
         writeOnlyConfig,
         readWriteLeaderForDefaultCF,
-        readWriteLeaderForRMDCF);
+        readWriteLeaderForRMDCF,
+        blobDbEnabled);
   }
 
   @Override
   public String toString() {
-    String toStringResult =
-        "Replica: " + Utils.getReplicaId(storeName, partitionId) + ", deferred-write: " + deferredWrite
-            + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", read-write leader for default CF: "
-            + readWriteLeaderForDefaultCF + ", read-write leader for RMD CF: " + readWriteLeaderForRMDCF;
+    String toStringResult = "Replica: " + Utils.getReplicaId(storeName, partitionId) + ", deferred-write: "
+        + deferredWrite + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig
+        + ", read-write leader for default CF: " + readWriteLeaderForDefaultCF + ", read-write leader for RMD CF: "
+        + readWriteLeaderForRMDCF + ", blob-db-enabled: " + blobDbEnabled;
 
     if (blobTransferInProgress) {
       toStringResult += ", blob transfer in progress: true.";
