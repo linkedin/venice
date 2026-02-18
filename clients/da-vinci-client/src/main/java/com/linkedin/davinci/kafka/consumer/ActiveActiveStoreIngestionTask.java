@@ -46,7 +46,6 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
@@ -62,7 +61,6 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -495,10 +493,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         beforeProcessingBatchRecordsTimestampMs);
 
     final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
-    List<Long> recordTimestampsPreOperation = rmdWithValueSchemaID != null
-        ? RmdUtils.extractTimestampFromRmd(rmdWithValueSchemaID.getRmdRecord())
-        : Collections.singletonList(0L);
-
     // get the source offset and the id
     PubSubPosition sourcePosition = consumerRecord.getPosition();
     final MergeConflictResult mergeConflictResult;
@@ -576,7 +570,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (rmdWithValueSchemaID != null) {
         aggVersionedIngestionStats.recordTotalDuplicateKeyUpdate(storeName, versionNumber);
       }
-      validatePostOperationResultsAndRecord(mergeConflictResult, recordTimestampsPreOperation);
 
       final ByteBuffer updatedValueBytes = maybeCompressData(
           consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -734,15 +727,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       return kme.producerMetadata.logicalTimestamp;
     } else {
       return kme.producerMetadata.messageTimestamp;
-    }
-  }
-
-  private void validatePostOperationResultsAndRecord(
-      MergeConflictResult mergeConflictResult,
-      List<Long> timestampsPreOperation) {
-    // Nothing was applied, no harm no foul
-    if (mergeConflictResult.isUpdateIgnored()) {
-      return;
     }
   }
 

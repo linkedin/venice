@@ -2,7 +2,6 @@ package com.linkedin.venice.schema.rmd;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
-import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
@@ -40,30 +39,6 @@ public class RmdUtils {
       return Collections.emptyList();
     }
     return (List<Long>) offsetVector;
-  }
-
-  public static List<Long> extractTimestampFromRmd(GenericRecord replicationMetadataRecord) {
-    // TODO: This function needs a heuristic to work on field level timestamps. At time of writing, this function
-    // is only for recording the previous value of a record's timestamp, so we could consider specifying the incoming
-    // operation to identify if we care about the record level timestamp, or, certain fields and then returning an
-    // ordered
-    // list of those timestamps to compare post resolution. I hesitate to commit to an implementation here prior to
-    // putting
-    // the full write compute resolution into uncommented fleshed out glory. So we'll effectively ignore operations
-    // that aren't root level until then.
-    if (replicationMetadataRecord == null) {
-      return Collections.singletonList(0L);
-    }
-    Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD_POS);
-    RmdTimestampType rmdTimestampType = getRmdTimestampType(timestampObject);
-
-    if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
-      return Collections.singletonList((Long) timestampObject);
-    } else {
-      // not supported yet so ignore it
-      // TODO Must clone the results when PER_FIELD_TIMESTAMP mode is enabled to return the list.
-      return Collections.singletonList(0L);
-    }
   }
 
   static public long getLastUpdateTimestamp(Object object) {

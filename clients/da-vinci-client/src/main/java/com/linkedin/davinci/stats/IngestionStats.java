@@ -35,7 +35,6 @@ public class IngestionStats {
   protected static final String TOTAL_DCR = "total_dcr";
   protected static final String TOTAL_DUPLICATE_KEY_UPDATE_COUNT = "total_duplicate_key_update_count";
   protected static final String TIMESTAMP_REGRESSION_DCR_ERROR = "timestamp_regression_dcr_error";
-  protected static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
   protected static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
 
   /**
@@ -144,7 +143,6 @@ public class IngestionStats {
   // Measure the total number of incoming conflict resolutions
   private final LongAdderRateGauge totalConflictResolutionCountSensor = new LongAdderRateGauge();
   private final LongAdderRateGauge timestampRegressionDCRErrorSensor = new LongAdderRateGauge();
-  private final LongAdderRateGauge offsetRegressionDCRErrorSensor = new LongAdderRateGauge();
   private final LongAdderRateGauge tombstoneCreationDCRSensor = new LongAdderRateGauge();
 
   private final Count totalDuplicateKeyUpdateCount = new Count();
@@ -230,7 +228,6 @@ public class IngestionStats {
     registerSensor(localMetricRepository, UPDATE_IGNORED_DCR, conflictResolutionUpdateIgnoredSensor);
     registerSensor(localMetricRepository, TOTAL_DCR, totalConflictResolutionCountSensor);
     registerSensor(localMetricRepository, TIMESTAMP_REGRESSION_DCR_ERROR, timestampRegressionDCRErrorSensor);
-    registerSensor(localMetricRepository, OFFSET_REGRESSION_DCR_ERROR, offsetRegressionDCRErrorSensor);
     registerSensor(localMetricRepository, TOMBSTONE_CREATION_DCR, tombstoneCreationDCRSensor);
     registerSensor(localMetricRepository, IDLE_TIME, idleTimeSensor);
 
@@ -386,10 +383,6 @@ public class IngestionStats {
     timestampRegressionDCRErrorSensor.record();
   }
 
-  public void recordOffsetRegressionDCRError() {
-    offsetRegressionDCRErrorSensor.record();
-  }
-
   public void recordTombStoneCreationDCR() {
     tombstoneCreationDCRSensor.record();
   }
@@ -440,10 +433,6 @@ public class IngestionStats {
 
   public double getTimestampRegressionDCRRate() {
     return timestampRegressionDCRErrorSensor.getRate();
-  }
-
-  public double getOffsetRegressionDCRRate() {
-    return offsetRegressionDCRErrorSensor.getRate();
   }
 
   public void recordLeaderRecordsProduced(long value) {

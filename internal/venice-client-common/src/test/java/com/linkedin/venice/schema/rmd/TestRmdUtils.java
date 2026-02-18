@@ -97,17 +97,6 @@ public class TestRmdUtils {
   }
 
   @Test
-  public void testExtractTimestampFromRmd() {
-    List<Long> valueFieldTimeStamp = RmdUtils.extractTimestampFromRmd(rmdRecordWithValueLevelTimeStamp);
-    Assert.assertEquals(1, valueFieldTimeStamp.size());
-    Assert.assertEquals(20, valueFieldTimeStamp.get(0).intValue());
-
-    List<Long> perFieldTimeStamp = RmdUtils.extractTimestampFromRmd(rmdRecordWithPerFieldLevelTimeStamp);
-    Assert.assertEquals(1, perFieldTimeStamp.size());
-    Assert.assertEquals(0, perFieldTimeStamp.get(0).intValue()); // not supported yet so just return 0
-  }
-
-  @Test
   public void testExtractOffsetVectorFromRmd() {
     List<Long> vector = RmdUtils.extractOffsetVectorFromRmd(rmdRecordWithValueLevelTimeStamp);
     Assert.assertEquals(vector, Arrays.asList(1L, 2L, 3L));
