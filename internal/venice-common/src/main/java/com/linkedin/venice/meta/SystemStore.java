@@ -848,6 +848,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public int getPreviousCurrentVersion() {
+    return zkSharedStore.getPreviousCurrentVersion();
+  }
+
+  @Override
+  public void setPreviousCurrentVersion(int previousCurrentVersion) {
+    throwUnsupportedOperationException("setPreviousCurrentVersion");
+  }
+
+  @Override
   public boolean isGlobalRtDivEnabled() {
     return zkSharedStore.isGlobalRtDivEnabled();
   }

@@ -22,12 +22,6 @@ public class InMemoryAdminTopicMetadataAccessor extends AdminTopicMetadataAccess
     if (metadataDelta.getExecutionId() != null) {
       inMemoryMetadata.setExecutionId(metadataDelta.getExecutionId());
     }
-    if (metadataDelta.getOffset() != null) {
-      inMemoryMetadata.setOffset(metadataDelta.getOffset());
-    }
-    if (metadataDelta.getUpstreamOffset() != null) {
-      inMemoryMetadata.setUpstreamOffset(metadataDelta.getUpstreamOffset());
-    }
     if (!metadataDelta.getAdminOperationProtocolVersion().equals(UNDEFINED_VALUE)) {
       inMemoryMetadata.setAdminOperationProtocolVersion(metadataDelta.getAdminOperationProtocolVersion());
     }

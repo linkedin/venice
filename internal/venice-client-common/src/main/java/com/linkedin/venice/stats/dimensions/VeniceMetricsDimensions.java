@@ -72,7 +72,40 @@ public enum VeniceMetricsDimensions {
   VENICE_REPLICA_TYPE("venice.replica.type"),
 
   /** {@link ReplicaState} */
-  VENICE_REPLICA_STATE("venice.replica.state");
+  VENICE_REPLICA_STATE("venice.replica.state"),
+
+  /** {@link VeniceDCREvent} */
+  VENICE_DCR_EVENT("venice.dcr.event"),
+
+  /** {@link VeniceRegionLocality} */
+  VENICE_REGION_LOCALITY("venice.region.locality"),
+
+  /** Source region for hybrid region consumption */
+  VENICE_SOURCE_REGION("venice.source.region"),
+
+  /** Destination region for hybrid region consumption */
+  VENICE_DESTINATION_REGION("venice.destination.region"),
+
+  /** {@link VeniceIngestionSourceComponent} source component */
+  VENICE_INGESTION_SOURCE_COMPONENT("venice.ingestion.source.component"),
+
+  /** {@link VeniceIngestionDestinationComponent} destination component */
+  VENICE_INGESTION_DESTINATION_COMPONENT("venice.ingestion.destination.component"),
+
+  /** {@link VenicePushType} */
+  VENICE_PUSH_JOB_TYPE("venice.push_job.type"),
+
+  /** {@link VenicePushJobStatus} */
+  VENICE_PUSH_JOB_STATUS("venice.push_job.status"),
+
+  /** {@link VeniceSystemStoreType} */
+  VENICE_SYSTEM_STORE_TYPE("venice.system_store.type"),
+
+  /** {@link AdminMessageProcessingPhase} */
+  VENICE_ADMIN_MESSAGE_PROCESSING_PHASE("venice.admin_message.processing_phase"),
+
+  /** AdminMessageType */
+  VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

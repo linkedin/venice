@@ -389,4 +389,8 @@ public interface Store {
   void setKeyUrnFields(List<String> keyUrnFields);
 
   List<String> getKeyUrnFields();
+
+  int getPreviousCurrentVersion();
+
+  void setPreviousCurrentVersion(int previousCurrentVersion);
 }

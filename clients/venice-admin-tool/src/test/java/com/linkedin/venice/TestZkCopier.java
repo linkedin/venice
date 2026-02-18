@@ -62,22 +62,22 @@ public class TestZkCopier {
     Assert.assertFalse(venicePaths.contains("/venice/storeConfigs"));
     Assert.assertFalse(venicePaths.contains("/venice/cluster1"));
     Assert.assertFalse(venicePaths.contains("/venice/cluster1/storeConfigs"));
-    Assert.assertFalse(venicePaths.contains("/venice/cluster1/adminTopicMetadata"));
-    Assert.assertFalse(venicePaths.contains("/venice/cluster1/adminTopicMetadata/file1"));
-    Assert.assertFalse(venicePaths.contains("/venice/cluster1/adminTopicMetadata/file2/file3"));
+    Assert.assertFalse(venicePaths.contains("/venice/cluster1/adminTopicMetadataV2"));
+    Assert.assertFalse(venicePaths.contains("/venice/cluster1/adminTopicMetadataV2/file1"));
+    Assert.assertFalse(venicePaths.contains("/venice/cluster1/adminTopicMetadataV2/file2/file3"));
     Assert.assertFalse(venicePaths.contains("/venice-parent/cluster1/storeConfigs"));
-    Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/adminTopicMetadata/file1"));
-    Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/adminTopicMetadata/file2"));
-    Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/adminTopicMetadata/file2/file3"));
+    Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/adminTopicMetadataV2/file1"));
+    Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/adminTopicMetadataV2/file2"));
+    Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/adminTopicMetadataV2/file2/file3"));
     Assert.assertFalse(venicePaths.contains("/venice-parent/cluster2/storeConfigs"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/executionids/file1"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/executionids/file2"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/executionids/file2/file3"));
     Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster"));
     Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster/storeConfigs"));
-    Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster/adminTopicMetadata"));
-    Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster/adminTopicMetadata/file1"));
-    Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster/adminTopicMetadata/file2/file3"));
+    Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster/adminTopicMetadataV2"));
+    Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster/adminTopicMetadataV2/file1"));
+    Assert.assertFalse(venicePaths.contains("/venice-parent/helix-cluster/adminTopicMetadataV2/file2/file3"));
     testVenicePathsContainsAsserts(venicePaths);
   }
 
@@ -116,14 +116,14 @@ public class TestZkCopier {
     Assert.assertTrue(venicePaths.contains("/venice-parent"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/storeConfigs"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1"));
-    Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/adminTopicMetadata"));
+    Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/adminTopicMetadataV2"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/executionids"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/ParentOfflinePushes"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/routers"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/StoreGraveyard"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster1/Stores"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2"));
-    Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/adminTopicMetadata"));
+    Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/adminTopicMetadataV2"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/executionids"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/ParentOfflinePushes"));
     Assert.assertTrue(venicePaths.contains("/venice-parent/cluster2/routers"));
@@ -146,16 +146,16 @@ public class TestZkCopier {
     zkPaths.add("/venice/storeConfigs");
     zkPaths.add("/venice/cluster1");
     zkPaths.add("/venice/cluster1/storeConfigs");
-    zkPaths.add("/venice/cluster1/adminTopicMetadata");
-    zkPaths.add("/venice/cluster1/adminTopicMetadata/file1");
-    zkPaths.add("/venice/cluster1/adminTopicMetadata/file2/file3");
+    zkPaths.add("/venice/cluster1/adminTopicMetadataV2");
+    zkPaths.add("/venice/cluster1/adminTopicMetadataV2/file1");
+    zkPaths.add("/venice/cluster1/adminTopicMetadataV2/file2/file3");
     zkPaths.add("/venice-parent");
     zkPaths.add("/venice-parent/storeConfigs");
     zkPaths.add("/venice-parent/cluster1");
     zkPaths.add("/venice-parent/cluster1/storeConfigs");
-    zkPaths.add("/venice-parent/cluster1/adminTopicMetadata");
-    zkPaths.add("/venice-parent/cluster1/adminTopicMetadata/file1");
-    zkPaths.add("/venice-parent/cluster1/adminTopicMetadata/file2/file3");
+    zkPaths.add("/venice-parent/cluster1/adminTopicMetadataV2");
+    zkPaths.add("/venice-parent/cluster1/adminTopicMetadataV2/file1");
+    zkPaths.add("/venice-parent/cluster1/adminTopicMetadataV2/file2/file3");
     zkPaths.add("/venice-parent/cluster1/executionids");
     zkPaths.add("/venice-parent/cluster1/ParentOfflinePushes");
     zkPaths.add("/venice-parent/cluster1/routers");
@@ -163,7 +163,7 @@ public class TestZkCopier {
     zkPaths.add("/venice-parent/cluster1/Stores");
     zkPaths.add("/venice-parent/cluster2");
     zkPaths.add("/venice-parent/cluster2/storeConfigs");
-    zkPaths.add("/venice-parent/cluster2/adminTopicMetadata");
+    zkPaths.add("/venice-parent/cluster2/adminTopicMetadataV2");
     zkPaths.add("/venice-parent/cluster2/executionids");
     zkPaths.add("/venice-parent/cluster2/executionids/file1");
     zkPaths.add("/venice-parent/cluster2/executionids/file2/file3");
@@ -173,9 +173,9 @@ public class TestZkCopier {
     zkPaths.add("/venice-parent/cluster2/Stores");
     zkPaths.add("/venice-parent/helix-cluster");
     zkPaths.add("/venice-parent/helix-cluster/storeConfigs");
-    zkPaths.add("/venice-parent/helix-cluster/adminTopicMetadata");
-    zkPaths.add("/venice-parent/helix-cluster/adminTopicMetadata/file1");
-    zkPaths.add("/venice-parent/helix-cluster/adminTopicMetadata/file2/file3");
+    zkPaths.add("/venice-parent/helix-cluster/adminTopicMetadataV2");
+    zkPaths.add("/venice-parent/helix-cluster/adminTopicMetadataV2/file1");
+    zkPaths.add("/venice-parent/helix-cluster/adminTopicMetadataV2/file2/file3");
     return zkPaths;
   }
 }

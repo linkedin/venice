@@ -1045,6 +1045,111 @@ public class TestParentControllerWithMultiDataCenter {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUserPushKillsCompliancePush() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("testCompliancePushKill");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      // Create a new store
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+      // Start a compliance push
+      String compliancePushId = Version.generateCompliancePushId("test-compliance-push");
+      VersionCreationResponse compliancePushResponse =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, compliancePushId);
+      Assert.assertFalse(
+          compliancePushResponse.isError(),
+          "Compliance push creation failed: " + compliancePushResponse.getError());
+      int compliancePushVersion = compliancePushResponse.getVersion();
+
+      // Start a user-initiated batch push - this should kill the compliance push
+      String userPushId = "user-initiated-push-" + System.currentTimeMillis();
+      VersionCreationResponse userPushResponse =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, userPushId);
+      Assert.assertFalse(userPushResponse.isError(), "User push creation failed: " + userPushResponse.getError());
+      int userPushVersion = userPushResponse.getVersion();
+
+      // User push should have created a new version (compliance push was killed)
+      Assert.assertEquals(
+          userPushVersion,
+          compliancePushVersion + 1,
+          "User push should create version " + (compliancePushVersion + 1) + " after killing compliance push");
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCompliancePushCannotKillAnotherCompliancePush() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("testCompliancePushNoKill");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      // Create a new store
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+      // Start a compliance push
+      String compliancePushId1 = Version.generateCompliancePushId("test-compliance-push-1");
+      VersionCreationResponse compliancePushResponse1 =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, compliancePushId1);
+      Assert.assertFalse(
+          compliancePushResponse1.isError(),
+          "First compliance push creation failed: " + compliancePushResponse1.getError());
+
+      // Start another compliance push - this should NOT kill the first one (should fail with concurrent push error)
+      String compliancePushId2 = Version.generateCompliancePushId("test-compliance-push-2");
+      VersionCreationResponse compliancePushResponse2 =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, compliancePushId2);
+      Assert.assertTrue(
+          compliancePushResponse2.isError(),
+          "Second compliance push should fail because system pushes cannot kill other system pushes");
+      Assert.assertTrue(
+          compliancePushResponse2.getError().contains("An ongoing push") && compliancePushResponse2.getError()
+              .contains("is found and it must be terminated before another push can be started"),
+          "Error should indicate an ongoing push must be terminated: " + compliancePushResponse2.getError());
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCompliancePushCannotKillUserPush() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("testCompliancePushNoKillUser");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      // Create a new store
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+      // Start a user push (regular push ID without any system prefix)
+      String userPushId = System.currentTimeMillis() + "_https://example.com/user-push-job";
+      VersionCreationResponse userPushResponse =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, userPushId);
+      Assert.assertFalse(userPushResponse.isError(), "User push creation failed: " + userPushResponse.getError());
+
+      // Start a compliance push - this should NOT kill the user push (should fail with concurrent push error)
+      String compliancePushId = Version.generateCompliancePushId("test-compliance-push");
+      VersionCreationResponse compliancePushResponse =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, compliancePushId);
+      Assert.assertTrue(
+          compliancePushResponse.isError(),
+          "Compliance push should fail because system pushes cannot kill user pushes");
+      Assert.assertTrue(
+          compliancePushResponse.getError().contains("An ongoing push") && compliancePushResponse.getError()
+              .contains("is found and it must be terminated before another push can be started"),
+          "Error should indicate an ongoing push must be terminated: " + compliancePushResponse.getError());
+    }
+  }
+
   static PubSubTopic getVersionPubsubTopic(String storeName, ControllerResponse response) {
     assertFalse(response.isError(), "Failed to perform empty push on test store");
     String versionTopic = null;

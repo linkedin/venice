@@ -33,12 +33,9 @@ public class AdminMetadataJSONSerializer implements VeniceSerializer<AdminMetada
   private static AdminMetadataJSON toAdminMetadataJSON(AdminMetadata adminMetadata) {
     AdminMetadataJSON adminMetadataJSON = new AdminMetadataJSON();
     adminMetadataJSON.executionId = adminMetadata.getExecutionId();
-    adminMetadataJSON.offset = adminMetadata.getOffset();
-    adminMetadataJSON.upstreamOffset = adminMetadata.getUpstreamOffset();
     adminMetadataJSON.adminOperationProtocolVersion = adminMetadata.getAdminOperationProtocolVersion();
     adminMetadataJSON.pubSubPositionJsonWireFormat = adminMetadata.getPosition().toJsonWireFormat();
     adminMetadataJSON.pubSubUpstreamPositionJsonWireFormat = adminMetadata.getUpstreamPosition().toJsonWireFormat();
-
     return adminMetadataJSON;
   }
 
@@ -49,14 +46,12 @@ public class AdminMetadataJSONSerializer implements VeniceSerializer<AdminMetada
 
   private AdminMetadata toAdminMetadata(AdminMetadataJSON adminMetadataJSON) {
     AdminMetadata adminMetadata = new AdminMetadata();
-    adminMetadata.setOffset(adminMetadataJSON.offset);
-    adminMetadata.setUpstreamOffset(adminMetadataJSON.upstreamOffset);
     adminMetadata.setAdminOperationProtocolVersion(adminMetadataJSON.adminOperationProtocolVersion);
     adminMetadata.setExecutionId(adminMetadataJSON.executionId);
+    // Only use position fields; offset fields (if present in old data) are ignored.
     adminMetadata.setPubSubPosition(jsonWireFormatToPosition(adminMetadataJSON.pubSubPositionJsonWireFormat));
     adminMetadata
         .setUpstreamPubSubPosition(jsonWireFormatToPosition(adminMetadataJSON.pubSubUpstreamPositionJsonWireFormat));
-
     return adminMetadata;
   }
 
@@ -67,10 +62,12 @@ public class AdminMetadataJSONSerializer implements VeniceSerializer<AdminMetada
             ByteBuffer.wrap(PubSubUtil.getBase64DecodedBytes(pubSubPositionJsonWireFormat.getBase64PositionBytes()))));
   }
 
-  private static final class AdminMetadataJSON {
+  /**
+   * JSON representation of AdminMetadata for ZooKeeper storage.
+   * Only contains position-based fields; numeric offset fields have been removed.
+   */
+  static final class AdminMetadataJSON {
     public Long executionId;
-    public Long offset;
-    public Long upstreamOffset;
     public Long adminOperationProtocolVersion;
     public PubSubPositionJsonWireFormat pubSubPositionJsonWireFormat;
     public PubSubPositionJsonWireFormat pubSubUpstreamPositionJsonWireFormat;

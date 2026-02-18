@@ -95,6 +95,7 @@ public class StoreInfo {
     storeInfo.setKeyUrnCompressionEnabled(store.isKeyUrnCompressionEnabled());
     storeInfo.setKeyUrnFields(store.getKeyUrnFields());
     storeInfo.setFlinkVeniceViewsEnabled(store.isFlinkVeniceViewsEnabled());
+    storeInfo.setPreviousCurrentVersion(store.getPreviousCurrentVersion());
     return storeInfo;
   }
 
@@ -380,6 +381,7 @@ public class StoreInfo {
   private boolean keyUrnCompressionEnabled = false;
   private List<String> keyUrnFields = new ArrayList<>();
   private boolean flinkVeniceViewsEnabled = false;
+  private int previousCurrentVersion = -1;
 
   public StoreInfo() {
   }
@@ -1028,5 +1030,13 @@ public class StoreInfo {
 
   public void setKeyUrnFields(List<String> keyUrnFields) {
     this.keyUrnFields = keyUrnFields;
+  }
+
+  public int getPreviousCurrentVersion() {
+    return previousCurrentVersion;
+  }
+
+  public void setPreviousCurrentVersion(int previousCurrentVersion) {
+    this.previousCurrentVersion = previousCurrentVersion;
   }
 }

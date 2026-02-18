@@ -76,6 +76,39 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REPLICA_STATE:
           assertEquals(dimension.getDimensionName(format), "venice.replica.state");
           break;
+        case VENICE_DCR_EVENT:
+          assertEquals(dimension.getDimensionName(format), "venice.dcr.event");
+          break;
+        case VENICE_REGION_LOCALITY:
+          assertEquals(dimension.getDimensionName(format), "venice.region.locality");
+          break;
+        case VENICE_SOURCE_REGION:
+          assertEquals(dimension.getDimensionName(format), "venice.source.region");
+          break;
+        case VENICE_DESTINATION_REGION:
+          assertEquals(dimension.getDimensionName(format), "venice.destination.region");
+          break;
+        case VENICE_INGESTION_SOURCE_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.ingestion.source.component");
+          break;
+        case VENICE_INGESTION_DESTINATION_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.ingestion.destination.component");
+          break;
+        case VENICE_PUSH_JOB_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.push_job.type");
+          break;
+        case VENICE_PUSH_JOB_STATUS:
+          assertEquals(dimension.getDimensionName(format), "venice.push_job.status");
+          break;
+        case VENICE_SYSTEM_STORE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.system_store.type");
+          break;
+        case VENICE_ADMIN_MESSAGE_PROCESSING_PHASE:
+          assertEquals(dimension.getDimensionName(format), "venice.admin_message.processing_phase");
+          break;
+        case VENICE_ADMIN_MESSAGE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.admin_message.type");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -150,6 +183,39 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REPLICA_STATE:
           assertEquals(dimension.getDimensionName(format), "venice.replica.state");
           break;
+        case VENICE_DCR_EVENT:
+          assertEquals(dimension.getDimensionName(format), "venice.dcr.event");
+          break;
+        case VENICE_REGION_LOCALITY:
+          assertEquals(dimension.getDimensionName(format), "venice.region.locality");
+          break;
+        case VENICE_SOURCE_REGION:
+          assertEquals(dimension.getDimensionName(format), "venice.source.region");
+          break;
+        case VENICE_DESTINATION_REGION:
+          assertEquals(dimension.getDimensionName(format), "venice.destination.region");
+          break;
+        case VENICE_INGESTION_SOURCE_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.ingestion.source.component");
+          break;
+        case VENICE_INGESTION_DESTINATION_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.ingestion.destination.component");
+          break;
+        case VENICE_PUSH_JOB_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.pushJob.type");
+          break;
+        case VENICE_PUSH_JOB_STATUS:
+          assertEquals(dimension.getDimensionName(format), "venice.pushJob.status");
+          break;
+        case VENICE_SYSTEM_STORE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.systemStore.type");
+          break;
+        case VENICE_ADMIN_MESSAGE_PROCESSING_PHASE:
+          assertEquals(dimension.getDimensionName(format), "venice.adminMessage.processingPhase");
+          break;
+        case VENICE_ADMIN_MESSAGE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.adminMessage.type");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -223,6 +289,39 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_REPLICA_STATE:
           assertEquals(dimension.getDimensionName(format), "Venice.Replica.State");
+          break;
+        case VENICE_DCR_EVENT:
+          assertEquals(dimension.getDimensionName(format), "Venice.Dcr.Event");
+          break;
+        case VENICE_REGION_LOCALITY:
+          assertEquals(dimension.getDimensionName(format), "Venice.Region.Locality");
+          break;
+        case VENICE_SOURCE_REGION:
+          assertEquals(dimension.getDimensionName(format), "Venice.Source.Region");
+          break;
+        case VENICE_DESTINATION_REGION:
+          assertEquals(dimension.getDimensionName(format), "Venice.Destination.Region");
+          break;
+        case VENICE_INGESTION_SOURCE_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "Venice.Ingestion.Source.Component");
+          break;
+        case VENICE_INGESTION_DESTINATION_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "Venice.Ingestion.Destination.Component");
+          break;
+        case VENICE_PUSH_JOB_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.PushJob.Type");
+          break;
+        case VENICE_PUSH_JOB_STATUS:
+          assertEquals(dimension.getDimensionName(format), "Venice.PushJob.Status");
+          break;
+        case VENICE_SYSTEM_STORE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.SystemStore.Type");
+          break;
+        case VENICE_ADMIN_MESSAGE_PROCESSING_PHASE:
+          assertEquals(dimension.getDimensionName(format), "Venice.AdminMessage.ProcessingPhase");
+          break;
+        case VENICE_ADMIN_MESSAGE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.AdminMessage.Type");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

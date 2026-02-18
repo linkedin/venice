@@ -710,6 +710,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public int getPreviousCurrentVersion() {
+      return this.delegate.getPreviousCurrentVersion();
+    }
+
+    @Override
+    public void setPreviousCurrentVersion(int previousCurrentVersion) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public Version cloneVersion() {
       return this.delegate.cloneVersion();
     }
@@ -1046,6 +1056,9 @@ public class ReadOnlyStore implements Store {
     storeProperties.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
     storeProperties.setKeyUrnFields(getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
     storeProperties.setUncleanLeaderElectionEnabledForRTTopics(getUncleanLeaderElectionEnabledForRTTopics());
+    storeProperties.setPreviousCurrentVersion(getPreviousCurrentVersion());
+    // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Store interface
+    storeProperties.setBlobDbEnabled("NOT_SPECIFIED");
 
     return storeProperties;
   }
@@ -1777,6 +1790,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public int getPreviousCurrentVersion() {
+    return this.delegate.getPreviousCurrentVersion();
+  }
+
+  @Override
+  public void setPreviousCurrentVersion(int previousCurrentVersion) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public String toString() {
     return this.delegate.toString();
   }
@@ -1931,6 +1954,9 @@ public class ReadOnlyStore implements Store {
     storeVersion.setKeyUrnCompressionEnabled(version.isKeyUrnCompressionEnabled());
     storeVersion.setKeyUrnFields(version.getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
     storeVersion.setRepushTtlSeconds(version.getRepushTtlSeconds());
+    storeVersion.setPreviousCurrentVersion(version.getPreviousCurrentVersion());
+    // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Version interface
+    storeVersion.setBlobDbEnabled("NOT_SPECIFIED");
 
     return storeVersion;
   }

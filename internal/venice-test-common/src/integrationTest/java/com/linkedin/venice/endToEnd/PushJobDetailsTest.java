@@ -8,6 +8,8 @@ import static com.linkedin.venice.PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR
 import static com.linkedin.venice.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE;
 import static com.linkedin.venice.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED;
 import static com.linkedin.venice.PushJobCheckpoints.START_DATA_WRITER_JOB;
+import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_PREFIX;
+import static com.linkedin.venice.controller.stats.ControllerMetricEntity.PUSH_JOB_COUNT;
 import static com.linkedin.venice.status.PushJobDetailsStatus.COMPLETED;
 import static com.linkedin.venice.status.PushJobDetailsStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
@@ -42,15 +44,22 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VenicePushJobStatus;
+import com.linkedin.venice.stats.dimensions.VenicePushType;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -78,6 +87,7 @@ public class PushJobDetailsTest {
   private String inputDirPathForIncPush;
   private String inputDirPathWithDupKeys;
   private MetricsRepository metricsRepository;
+  private InMemoryMetricReader inMemoryMetricReader;
 
   private void setUp(boolean useCustomCheckpoints) throws IOException {
     Properties serverProperties = new Properties();
@@ -119,6 +129,8 @@ public class PushJobDetailsTest {
     childRegionClusterWrapper = childRegionMultiClusterWrapper.getClusters().get(clusterName);
     metricsRepository =
         multiRegionMultiClusterWrapper.getChildRegions().get(0).getLeaderController(clusterName).getMetricRepository();
+    inMemoryMetricReader = (InMemoryMetricReader) ((VeniceMetricsRepository) metricsRepository).getVeniceMetricsConfig()
+        .getOtelAdditionalMetricsReader();
     controllerClient = new ControllerClient(clusterName, childRegionMultiClusterWrapper.getControllerConnectString());
     parentControllerClient =
         new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString());
@@ -175,11 +187,17 @@ public class PushJobDetailsTest {
       boolean isSucceeded,
       boolean isUserError,
       boolean isIncrementalPush,
-      HashMap<String, Double> metricsExpectedCount) {
+      HashMap<String, Double> metricsExpectedCount,
+      String storeName,
+      HashMap<String, Long> otelExpectedCount) {
     // create a map for expected metrics for CountSinceLastMeasurement type which will be reset after each measurement
     HashMap<String, Double> metricsExpectedCountSinceLastMeasurement = new HashMap<>();
 
+    VenicePushType expectedPushType = isIncrementalPush ? VenicePushType.INCREMENTAL : VenicePushType.BATCH;
+    VenicePushJobStatus expectedPushStatus;
+
     if (isSucceeded) {
+      expectedPushStatus = VenicePushJobStatus.SUCCESS;
       if (isIncrementalPush) {
         metricsExpectedCount.compute("incremental_push_job_success", (key, value) -> (value == null) ? 1.0 : value + 1);
         metricsExpectedCountSinceLastMeasurement.computeIfAbsent("incremental_push_job_success", k -> 1.0);
@@ -189,6 +207,7 @@ public class PushJobDetailsTest {
       }
     } else {
       if (isUserError) {
+        expectedPushStatus = VenicePushJobStatus.USER_ERROR;
         if (isIncrementalPush) {
           metricsExpectedCount
               .compute("incremental_push_job_failed_user_error", (key, value) -> (value == null) ? 1.0 : value + 1);
@@ -199,6 +218,7 @@ public class PushJobDetailsTest {
           metricsExpectedCountSinceLastMeasurement.computeIfAbsent("batch_push_job_failed_user_error", k -> 1.0);
         }
       } else {
+        expectedPushStatus = VenicePushJobStatus.SYSTEM_ERROR;
         if (isIncrementalPush) {
           metricsExpectedCount
               .compute("incremental_push_job_failed_non_user_error", (key, value) -> (value == null) ? 1.0 : value + 1);
@@ -212,7 +232,25 @@ public class PushJobDetailsTest {
       }
     }
 
+    // Track OTel expected cumulative counts keyed by "pushType|pushStatus"
+    String otelKey = expectedPushType.getDimensionValue() + "|" + expectedPushStatus.getDimensionValue();
+    otelExpectedCount.compute(otelKey, (key, value) -> (value == null) ? 1L : value + 1);
+
+    // Capture final refs for use inside lambda
+    long expectedOtelValue = otelExpectedCount.get(otelKey);
+    Attributes expectedOtelAttributes = Attributes.builder()
+        .put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), "venice-cluster0")
+        .put(VeniceMetricsDimensions.VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(
+            VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(),
+            expectedPushType.getDimensionValue())
+        .put(
+            VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
+            expectedPushStatus.getDimensionValue())
+        .build();
+
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // Validate Tehuti metrics
       verifyMetric("batch_push_job_success", metricsExpectedCount, metricsExpectedCountSinceLastMeasurement);
       verifyMetric("incremental_push_job_success", metricsExpectedCount, metricsExpectedCountSinceLastMeasurement);
       verifyMetric("batch_push_job_failed_user_error", metricsExpectedCount, metricsExpectedCountSinceLastMeasurement);
@@ -229,6 +267,14 @@ public class PushJobDetailsTest {
           metricsExpectedCount,
           metricsExpectedCountSinceLastMeasurement);
     });
+
+    // Validate OTel metrics
+    OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        expectedOtelValue,
+        expectedOtelAttributes,
+        PUSH_JOB_COUNT.getMetricName(),
+        CONTROLLER_SERVICE_METRIC_PREFIX);
   }
 
   private void validatePushJobDetailsStatus(
@@ -338,8 +384,9 @@ public class PushJobDetailsTest {
         parentControllerClient.emptyPush(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), "xxx", 100000);
         childRegionClusterWrapper.waitVersion(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), 2);
       }
-      // create a map for expected metrics for Count type which will be incremented through the test
+      // create maps for expected metrics: Tehuti Count and OTel cumulative counter
       HashMap<String, Double> metricsExpectedCount = new HashMap<>();
+      HashMap<String, Long> otelExpectedCount = new HashMap<>();
 
       // case 1: successful batch push job
       String testStoreName = "test-push-store" + useCustomCheckpoints;
@@ -371,7 +418,7 @@ public class PushJobDetailsTest {
           PushJobDetailsStatus.DATA_WRITER_COMPLETED.getValue(),
           COMPLETED.getValue());
       validatePushJobDetailsStatus(false, testStoreName, 1, expectedStatuses, JOB_STATUS_POLLING_COMPLETED, true, "");
-      validatePushJobMetrics(true, false, false, metricsExpectedCount);
+      validatePushJobMetrics(true, false, false, metricsExpectedCount, testStoreName, otelExpectedCount);
 
       // case 2: successful incremental push job
       Properties pushJobPropsInc =
@@ -388,7 +435,7 @@ public class PushJobDetailsTest {
           PushJobDetailsStatus.DATA_WRITER_COMPLETED.getValue(),
           COMPLETED.getValue());
       validatePushJobDetailsStatus(true, testStoreName, 1, expectedStatuses, JOB_STATUS_POLLING_COMPLETED, true, "");
-      validatePushJobMetrics(true, false, true, metricsExpectedCount);
+      validatePushJobMetrics(true, false, true, metricsExpectedCount, testStoreName, otelExpectedCount);
 
       // case 3: failed batch push job, non-user error:
       // setting the quota to be 0, hadoop job client cannot fetch counters properly and should fail the job
@@ -409,7 +456,7 @@ public class PushJobDetailsTest {
           START_DATA_WRITER_JOB,
           false,
           "com.linkedin.venice.exceptions.VeniceException: Exception or error caught during VenicePushJob: java.io.IOException: Job failed!");
-      validatePushJobMetrics(false, false, false, metricsExpectedCount);
+      validatePushJobMetrics(false, false, false, metricsExpectedCount, testStoreName, otelExpectedCount);
 
       // case 4: failed incremental push job, non-user error
       pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForIncPush, testStoreName);
@@ -427,7 +474,7 @@ public class PushJobDetailsTest {
           START_DATA_WRITER_JOB,
           false,
           "com.linkedin.venice.exceptions.VeniceException: Exception or error caught during VenicePushJob: java.io.IOException: Job failed!");
-      validatePushJobMetrics(false, false, true, metricsExpectedCount);
+      validatePushJobMetrics(false, false, true, metricsExpectedCount, testStoreName, otelExpectedCount);
 
       // case 5: failed batch push job, user error: data with duplicate keys
       UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams().setStorageQuotaInByte(-1);
@@ -446,7 +493,13 @@ public class PushJobDetailsTest {
           DUP_KEY_WITH_DIFF_VALUE,
           false,
           "com.linkedin.venice.exceptions.VeniceException: Input data has at least 9 keys that appear more than once but have different values");
-      validatePushJobMetrics(false, !useCustomCheckpoints, false, metricsExpectedCount);
+      validatePushJobMetrics(
+          false,
+          !useCustomCheckpoints,
+          false,
+          metricsExpectedCount,
+          testStoreName,
+          otelExpectedCount);
 
       // case 6: failed incremental push job, user error
       pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathWithDupKeys, testStoreName);
@@ -464,7 +517,13 @@ public class PushJobDetailsTest {
           DUP_KEY_WITH_DIFF_VALUE,
           false,
           "com.linkedin.venice.exceptions.VeniceException: Input data has at least 9 keys that appear more than once but have different values");
-      validatePushJobMetrics(false, !useCustomCheckpoints, true, metricsExpectedCount);
+      validatePushJobMetrics(
+          false,
+          !useCustomCheckpoints,
+          true,
+          metricsExpectedCount,
+          testStoreName,
+          otelExpectedCount);
     } finally {
       cleanUp();
     }

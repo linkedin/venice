@@ -55,6 +55,7 @@ public class AdminOperationSerializerTest {
     updateStore.blobDbEnabled = "NOT_SPECIFIED";
     updateStore.uncleanLeaderElectionEnabledForRTTopics = "NOT_SPECIFIED";
     updateStore.keyUrnFields = Collections.emptyList();
+    updateStore.blobDbEnabled = "NOT_SPECIFIED";
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;

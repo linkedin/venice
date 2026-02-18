@@ -15,10 +15,12 @@ WORKDIR ${VENICE_DIR}
 
 COPY venice-push-job-all.jar bin/venice-push-job-all.jar
 COPY venice-thin-client-all.jar bin/venice-thin-client-all.jar
+COPY venice-client-all.jar bin/venice-client-all.jar
 COPY venice-admin-tool-all.jar bin/venice-admin-tool-all.jar
 COPY sample-data sample-data
 COPY run-vpj.sh .
 COPY fetch.sh .
+COPY fast-client-fetch.sh .
 COPY create-store.sh .
 COPY avro-to-json.sh .
 RUN chmod +x *.sh

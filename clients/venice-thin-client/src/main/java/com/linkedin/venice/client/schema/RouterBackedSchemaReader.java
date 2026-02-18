@@ -277,7 +277,8 @@ public class RouterBackedSchemaReader implements SchemaReader {
       try {
         refreshSchemaExecutor.awaitTermination(60, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
-        LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
+        Thread.currentThread().interrupt();
+        LOGGER.warn("Caught InterruptedException while closing the schema refresh ExecutorService", e);
       }
     }
     if (!externalClient) {

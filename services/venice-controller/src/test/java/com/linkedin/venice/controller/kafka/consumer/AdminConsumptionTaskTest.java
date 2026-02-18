@@ -103,6 +103,7 @@ import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.utils.ConfigCommonUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -122,7 +123,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -182,7 +182,7 @@ public class AdminConsumptionTaskTest {
     clusterName = Utils.getUniqueString("test-cluster");
     topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
-    executor = Executors.newCachedThreadPool();
+    executor = Executors.newCachedThreadPool(new DaemonThreadFactory("test"));
     inMemoryPubSubBroker = new InMemoryPubSubBroker("local");
     inMemoryPubSubBroker.createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC);
     veniceWriter = getVeniceWriter(inMemoryPubSubBroker);
@@ -551,7 +551,6 @@ public class AdminConsumptionTaskTest {
       Assert.assertEquals(task.getFailingPosition(), InMemoryPubSubPosition.of(1L));
     });
 
-    verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumptionFailedPosition(any());
     verify(mockStats, timeout(100).atLeastOnce()).recordPendingAdminMessagesCount(2D);
     verify(mockStats, timeout(100).atLeastOnce()).recordStoresWithPendingAdminMessagesCount(1D);
     verify(mockStats, timeout(100).atLeastOnce()).recordAdminConsumptionCycleDurationMs(anyDouble());
@@ -956,7 +955,7 @@ public class AdminConsumptionTaskTest {
     doReturn(false).when(admin).hasStore(clusterName, storeName1);
     doReturn(false).when(admin).hasStore(clusterName, storeName2);
     AdminMetadata newMetadata = new AdminMetadata();
-    newMetadata.setOffset(1L);
+    newMetadata.setPubSubPosition(InMemoryPubSubPosition.of(1L));
     newMetadata.setExecutionId(1L);
     adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
 
@@ -1016,9 +1015,8 @@ public class AdminConsumptionTaskTest {
           AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
       final long executionId = i;
       TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName).toLegacyMap();
-        return AdminTopicMetadataAccessor.getOffsets(metaData).getFirst() == executionId
-            && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
+        AdminMetadata metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+        return AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
       });
 
       Assert.assertEquals(
@@ -1056,9 +1054,8 @@ public class AdminConsumptionTaskTest {
           pubSubMessageHeaders);
       final long executionId = i;
       TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName).toLegacyMap();
-        return AdminTopicMetadataAccessor.getOffsets(metaData).getFirst() == executionId
-            && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
+        AdminMetadata metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+        return AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
       });
 
       Assert.assertEquals(
@@ -1109,6 +1106,7 @@ public class AdminConsumptionTaskTest {
     setStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.ENABLED.name();
     setStore.uncleanLeaderElectionEnabledForRTTopics = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     setStore.keyUrnFields = Collections.emptyList();
+    setStore.blobDbEnabled = "NOT_SPECIFIED";
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;
