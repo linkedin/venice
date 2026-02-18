@@ -314,6 +314,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   List<String> getKeyUrnFields();
 
+  int getPreviousCurrentVersion();
+
+  void setPreviousCurrentVersion(int previousCurrentVersion);
+
   /**
    * Kafka topic name is composed by store name and version.
    * <p>

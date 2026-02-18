@@ -659,12 +659,16 @@ public class PartialUpdateTest {
         }
       });
       // Validate RMD bytes after PUT requests.
-      validateRmdData(rmdSerDe, kafkaTopic_v1, key, rmdWithValueSchemaId -> {
-        GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
-        GenericRecord collectionFieldTimestampRecord = (GenericRecord) timestampRecord.get(listFieldName);
-        List<Long> activeElementsTimestamps =
-            (List<Long>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME);
-        assertEquals(activeElementsTimestamps.size(), totalUpdateCount * singleUpdateEntryCount);
+      // Use waitForNonDeterministicAssertion because RMD is read directly from storage engine
+      // which may not be in sync with the router-served value read above.
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        validateRmdData(rmdSerDe, kafkaTopic_v1, key, rmdWithValueSchemaId -> {
+          GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
+          GenericRecord collectionFieldTimestampRecord = (GenericRecord) timestampRecord.get(listFieldName);
+          List<Long> activeElementsTimestamps =
+              (List<Long>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME);
+          assertEquals(activeElementsTimestamps.size(), totalUpdateCount * singleUpdateEntryCount);
+        });
       });
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
         Assert.assertNotNull(valueManifest);
@@ -714,12 +718,14 @@ public class PartialUpdateTest {
       });
       // Validate RMD bytes after PUT requests.
       String kafkaTopic_v2 = Version.composeKafkaTopic(storeName, 2);
-      validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
-        GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
-        GenericRecord collectionFieldTimestampRecord = (GenericRecord) timestampRecord.get(listFieldName);
-        List<Long> activeElementsTimestamps =
-            (List<Long>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME);
-        assertEquals(activeElementsTimestamps.size(), totalUpdateCount * singleUpdateEntryCount);
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
+          GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
+          GenericRecord collectionFieldTimestampRecord = (GenericRecord) timestampRecord.get(listFieldName);
+          List<Long> activeElementsTimestamps =
+              (List<Long>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME);
+          assertEquals(activeElementsTimestamps.size(), totalUpdateCount * singleUpdateEntryCount);
+        });
       });
 
       // Send DELETE record that partially removes data.
@@ -732,15 +738,17 @@ public class PartialUpdateTest {
         assertEquals(((List<Float>) (valueRecord.get(listFieldName))).size(), singleUpdateEntryCount);
       });
 
-      validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
-        GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
-        GenericRecord collectionFieldTimestampRecord = (GenericRecord) timestampRecord.get(listFieldName);
-        List<Long> activeElementsTimestamps =
-            (List<Long>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME);
-        assertEquals(activeElementsTimestamps.size(), singleUpdateEntryCount);
-        List<Long> deletedElementsTimestamps =
-            (List<Long>) collectionFieldTimestampRecord.get(DELETED_ELEM_TS_FIELD_NAME);
-        assertEquals(deletedElementsTimestamps.size(), 0);
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
+          GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
+          GenericRecord collectionFieldTimestampRecord = (GenericRecord) timestampRecord.get(listFieldName);
+          List<Long> activeElementsTimestamps =
+              (List<Long>) collectionFieldTimestampRecord.get(ACTIVE_ELEM_TS_FIELD_NAME);
+          assertEquals(activeElementsTimestamps.size(), singleUpdateEntryCount);
+          List<Long> deletedElementsTimestamps =
+              (List<Long>) collectionFieldTimestampRecord.get(DELETED_ELEM_TS_FIELD_NAME);
+          assertEquals(deletedElementsTimestamps.size(), 0);
+        });
       });
 
       // Send DELETE record that fully removes data.
@@ -750,11 +758,13 @@ public class PartialUpdateTest {
         boolean nullRecord = (valueRecord == null);
         assertTrue(nullRecord);
       });
-      validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
-        Assert.assertTrue(rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME) instanceof GenericRecord);
-        GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
-        GenericRecord collectionFieldTimestampRecord = (GenericRecord) timestampRecord.get(listFieldName);
-        assertEquals(collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), (long) (totalUpdateCount) * 10);
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
+          Assert.assertTrue(rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME) instanceof GenericRecord);
+          GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
+          GenericRecord collectionFieldTimestampRecord = (GenericRecord) timestampRecord.get(listFieldName);
+          assertEquals(collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), (long) (totalUpdateCount) * 10);
+        });
       });
     }
 

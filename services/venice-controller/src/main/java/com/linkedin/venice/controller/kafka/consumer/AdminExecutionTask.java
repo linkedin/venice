@@ -578,7 +578,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setFlinkVeniceViewsEnabled(message.flinkVeniceViewsEnabled)
         .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed)
         .setKeyUrnCompressionEnabled(message.keyUrnCompressionEnabled)
-        .setKeyUrnFields(message.keyUrnFields.stream().map(Object::toString).collect(Collectors.toList()));
+        .setKeyUrnFields(message.keyUrnFields.stream().map(Object::toString).collect(Collectors.toList()))
+        .setPreviousCurrentVersion(message.previousCurrentVersion);
 
     if (message.storeLifecycleHooks.isEmpty()) {
       params.setStoreLifecycleHooks(Collections.emptyList());

@@ -94,6 +94,21 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_INGESTION_DESTINATION_COMPONENT:
           assertEquals(dimension.getDimensionName(format), "venice.ingestion.destination.component");
           break;
+        case VENICE_PUSH_JOB_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.push_job.type");
+          break;
+        case VENICE_PUSH_JOB_STATUS:
+          assertEquals(dimension.getDimensionName(format), "venice.push_job.status");
+          break;
+        case VENICE_SYSTEM_STORE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.system_store.type");
+          break;
+        case VENICE_ADMIN_MESSAGE_PROCESSING_PHASE:
+          assertEquals(dimension.getDimensionName(format), "venice.admin_message.processing_phase");
+          break;
+        case VENICE_ADMIN_MESSAGE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.admin_message.type");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -186,6 +201,21 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_INGESTION_DESTINATION_COMPONENT:
           assertEquals(dimension.getDimensionName(format), "venice.ingestion.destination.component");
           break;
+        case VENICE_PUSH_JOB_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.pushJob.type");
+          break;
+        case VENICE_PUSH_JOB_STATUS:
+          assertEquals(dimension.getDimensionName(format), "venice.pushJob.status");
+          break;
+        case VENICE_SYSTEM_STORE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.systemStore.type");
+          break;
+        case VENICE_ADMIN_MESSAGE_PROCESSING_PHASE:
+          assertEquals(dimension.getDimensionName(format), "venice.adminMessage.processingPhase");
+          break;
+        case VENICE_ADMIN_MESSAGE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.adminMessage.type");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -277,6 +307,21 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_INGESTION_DESTINATION_COMPONENT:
           assertEquals(dimension.getDimensionName(format), "Venice.Ingestion.Destination.Component");
+          break;
+        case VENICE_PUSH_JOB_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.PushJob.Type");
+          break;
+        case VENICE_PUSH_JOB_STATUS:
+          assertEquals(dimension.getDimensionName(format), "Venice.PushJob.Status");
+          break;
+        case VENICE_SYSTEM_STORE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.SystemStore.Type");
+          break;
+        case VENICE_ADMIN_MESSAGE_PROCESSING_PHASE:
+          assertEquals(dimension.getDimensionName(format), "Venice.AdminMessage.ProcessingPhase");
+          break;
+        case VENICE_ADMIN_MESSAGE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.AdminMessage.Type");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

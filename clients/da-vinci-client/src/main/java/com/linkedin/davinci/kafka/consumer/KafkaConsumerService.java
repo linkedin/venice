@@ -164,7 +164,9 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           pubSubConsumerAdapterFactory.create(contextBuilder.build()),
           aggStats,
           this::recordPartitionsPerConsumerSensor,
-          this::handleUnsubscription);
+          this::handleUnsubscription,
+          serverConfig.getRegionName(),
+          i);
 
       Supplier<Map<PubSubTopicPartition, List<DefaultPubSubMessage>>> pollFunction =
           liveConfigBasedKafkaThrottlingEnabled

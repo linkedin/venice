@@ -1,3 +1,7 @@
+plugins {
+  id 'com.github.johnrengelman.shadow'
+}
+
 dependencies {
   // For helix-based metadata impl, and this will be removed before onboarding any customers.
   implementation project(':internal:venice-common')
@@ -33,6 +37,24 @@ dependencies {
   testImplementation project(':internal:venice-test-common')
   testImplementation libraries.kafkaClients
   testImplementation libraries.openTelemetryTestSdk
+}
+
+shadowJar {
+  mergeServiceFiles()
+}
+
+artifacts {
+  archives shadowJar
+}
+
+jar {
+  manifest {
+    attributes = [
+        'Implementation-Title': 'Venice Fast Client',
+        'Implementation-Version': project.version,
+        'Main-Class': 'com.linkedin.venice.fastclient.FastClientQueryTool'
+    ]
+  }
 }
 
 ext {

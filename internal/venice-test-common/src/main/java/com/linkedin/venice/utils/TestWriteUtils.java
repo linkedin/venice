@@ -928,7 +928,7 @@ public class TestWriteUtils {
     props.put(INPUT_PATH_PROP, inputDirPath);
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
-    props.put(POLL_JOB_STATUS_INTERVAL_MS, 1000);
+    props.put(POLL_JOB_STATUS_INTERVAL_MS, 10);
     props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, "test");
     props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, "test");
     props.setProperty(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, "test");

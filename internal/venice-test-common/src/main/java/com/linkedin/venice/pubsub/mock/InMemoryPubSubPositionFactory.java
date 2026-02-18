@@ -2,6 +2,7 @@ package com.linkedin.venice.pubsub.mock;
 
 import static com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition.*;
 
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -34,5 +35,9 @@ public class InMemoryPubSubPositionFactory extends PubSubPositionFactory {
     Int2ObjectMap<String> typeIdToFactory = new Int2ObjectOpenHashMap<>(1);
     typeIdToFactory.put(INMEMORY_PUBSUB_POSITION_TYPE_ID, InMemoryPubSubPositionFactory.class.getName());
     return new PubSubPositionTypeRegistry(typeIdToFactory);
+  }
+
+  public static PubSubPositionDeserializer getPubSubPositionDeserializerWithInMemoryPosition() {
+    return new PubSubPositionDeserializer(getPositionTypeRegistryWithInMemoryPosition());
   }
 }

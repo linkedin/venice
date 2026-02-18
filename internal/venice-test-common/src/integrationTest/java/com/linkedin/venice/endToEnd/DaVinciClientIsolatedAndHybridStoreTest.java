@@ -537,16 +537,18 @@ public class DaVinciClientIsolatedAndHybridStoreTest {
       });
 
       // Verify the incremental push status is END_OF_INCREMENTAL_PUSH_RECEIVED
-      cluster.useControllerClient(controllerClient -> {
-        String versionTopic = Version.composeKafkaTopic(storeName, 1);
-        JobStatusQueryResponse statusQueryResponse =
-            controllerClient.queryJobStatus(versionTopic, Optional.of(incrementalPushVersion));
-        if (statusQueryResponse.isError()) {
-          throw new VeniceException(statusQueryResponse.getError());
-        }
-        assertEquals(
-            ExecutionStatus.valueOf(statusQueryResponse.getStatus()),
-            ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
+      String versionTopic = Version.composeKafkaTopic(storeName, 1);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        cluster.useControllerClient(controllerClient -> {
+          JobStatusQueryResponse statusQueryResponse =
+              controllerClient.queryJobStatus(versionTopic, Optional.of(incrementalPushVersion));
+          if (statusQueryResponse.isError()) {
+            throw new VeniceException(statusQueryResponse.getError());
+          }
+          assertEquals(
+              ExecutionStatus.valueOf(statusQueryResponse.getStatus()),
+              ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
+        });
       });
     }
   }

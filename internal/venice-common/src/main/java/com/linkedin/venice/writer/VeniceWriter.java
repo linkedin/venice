@@ -12,6 +12,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
+import com.linkedin.venice.guid.DoLStampGuidGenerator;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -560,6 +561,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   public GUID getProducerGUID() {
     return producerGUID;
+  }
+
+  public String getWriterId() {
+    return writerId;
   }
 
   /**
@@ -1617,7 +1622,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubMessageHeaders pubSubMessageHeaders) {
     if (isClosed) {
       CompletableFuture<PubSubProduceResult> future = CompletableFuture.completedFuture(null);
-      logger.warn("VeniceWriter already closed for replica {}" + Utils.getReplicaId(topicName, partition));
+      logger.warn("VeniceWriter already closed for replica: {}", Utils.getReplicaId(topicName, partition));
       return future;
     }
     synchronized (this.partitionLocks[partition]) {
@@ -2191,6 +2196,80 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
   }
 
+  /**
+   * Constructs a KafkaMessageEnvelope for Declaration of Leadership (DoL) stamp messages.
+   *
+   * @param leadershipTerm unique timestamp identifying the leader session
+   * @param writerId identifier of the writer/host producing this message
+   * @param dolStampMessage the control message payload (typically a START_OF_SEGMENT)
+   * @return a KafkaMessageEnvelope configured with DoL-specific metadata
+   */
+  public static KafkaMessageEnvelope getDoLStampKME(
+      long leadershipTerm,
+      int localPubSubClusterId,
+      String writerId,
+      ControlMessage dolStampMessage) {
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.producerGUID = DoLStampGuidGenerator.getInstance().getGuid();
+    producerMetadata.segmentNumber = 0;
+    producerMetadata.messageSequenceNumber = 0;
+    producerMetadata.messageTimestamp = System.currentTimeMillis();
+    producerMetadata.logicalTimestamp = VENICE_DEFAULT_LOGICAL_TS;
+
+    LeaderMetadata leaderMetadataFooter = new LeaderMetadata();
+    leaderMetadataFooter.hostName = writerId;
+    leaderMetadataFooter.termId = leadershipTerm;
+    leaderMetadataFooter.upstreamOffset = -1; // Indicate no upstream offset
+    leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    leaderMetadataFooter.upstreamKafkaClusterId = localPubSubClusterId;
+
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
+    kafkaMessageEnvelope.producerMetadata = producerMetadata;
+    kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadataFooter;
+    kafkaMessageEnvelope.payloadUnion = dolStampMessage;
+
+    return kafkaMessageEnvelope;
+  }
+
+  /**
+   * Sends a Declaration of Leadership (DoL) stamp message during STANDBY to LEADER transition.
+   * The new leader produces this message to the local VT and waits to consume it back, ensuring
+   * the replica is fully caught up with the VT before switching over to consume from remote VT or RT.
+   *
+   * @param topicPartition the topic-partition to send the DoL stamp to
+   * @param callback callback to invoke when the produce completes
+   * @param leadershipTerm unique timestamp identifying this leader session
+   * @return a future that completes when the message is acknowledged by the broker
+   */
+  public CompletableFuture<PubSubProduceResult> sendDoLStamp(
+      PubSubTopicPartition topicPartition,
+      PubSubProducerCallback callback,
+      long leadershipTerm,
+      int localPubSubClusterId) {
+    // DoL stamps reuse the same ControlMessage payload structure as heartbeats (StartOfSegment).
+    // The messages are distinguished by their KafkaKey (DOL_STAMP vs HEART_BEAT) and GUID.
+    // This reuse is intentional to avoid creating a new ControlMessage type for DoL.
+    ControlMessage dolStampPayload = heartBeatMessage;
+    KafkaMessageEnvelope kafkaMessageEnvelope =
+        getDoLStampKME(leadershipTerm, localPubSubClusterId, writerId, dolStampPayload);
+
+    logger.info(
+        "Sending DoL stamp message to topic-partition {} for leadership term {} kme: {}",
+        topicPartition,
+        leadershipTerm,
+        kafkaMessageEnvelope);
+    synchronized (this.partitionLocks[topicPartition.getPartitionNumber()]) {
+      return producerAdapter.sendMessage(
+          topicPartition.getPubSubTopic().getName(),
+          topicPartition.getPartitionNumber(),
+          KafkaKey.DOL_STAMP,
+          kafkaMessageEnvelope,
+          EmptyPubSubMessageHeaders.SINGLETON,
+          callback);
+    }
+  }
+
   public static KafkaMessageEnvelope getHeartbeatKME(
       long originTimeStampMs,
       LeaderMetadataWrapper leaderMetadataWrapper,
@@ -2227,10 +2306,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       LeaderCompleteState leaderCompleteState,
       long originTimeStampMs) {
     if (isClosed) {
-      CompletableFuture<PubSubProduceResult> future = new CompletableFuture<>();
-      future.completedFuture(null);
-      logger.warn("VeniceWriter already closed for topic partition " + topicPartition);
-      return future;
+      logger.warn("VeniceWriter already closed for topic-partition: {}", topicPartition);
+      return CompletableFuture.completedFuture(null);
     }
     KafkaMessageEnvelope kafkaMessageEnvelope =
         getHeartbeatKME(originTimeStampMs, leaderMetadataWrapper, heartBeatMessage, writerId);

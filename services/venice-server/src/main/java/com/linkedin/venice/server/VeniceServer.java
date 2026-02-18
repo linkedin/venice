@@ -31,6 +31,7 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.BackupVersionOptimizationService;
@@ -39,6 +40,7 @@ import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.d2.D2ConfigUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -72,6 +74,7 @@ import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -462,7 +465,8 @@ public class VeniceServer {
         schemaRepo,
         veniceMetadataRepositoryBuilder.getStoreConfigRepo(),
         Optional.of(customizedViewFuture),
-        Optional.of(helixInstanceFuture));
+        Optional.of(helixInstanceFuture),
+        sslFactory.isPresent());
 
     // create and add ListenerServer for handling GET requests
     ListenerService listenerService = createListenerService(
@@ -857,8 +861,25 @@ public class VeniceServer {
   }
 
   public static void run(VeniceConfigLoader veniceConfigService, boolean joinThread) throws Exception {
-    VeniceServerContext serverContext =
-        new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService).build();
+    List<ServiceDiscoveryAnnouncer> d2Servers = new ArrayList<>();
+    VeniceProperties props = veniceConfigService.getCombinedProperties();
+
+    if (props.getBoolean("server.d2.announce.enabled", false)) {
+      String zkAddress = props.getString(ConfigKeys.ZOOKEEPER_ADDRESS);
+      int port = props.getInt(ConfigKeys.LISTENER_PORT);
+      String announceHost = props.getString("server.d2.announce.host", "localhost");
+      String localUri = "http://" + announceHost + ":" + port;
+
+      String d2ServiceName = props.getString("server.d2.service.name", "venice-server-d2");
+      String d2ClusterName = d2ServiceName + "_d2_cluster";
+      D2ConfigUtils.setupD2Config(zkAddress, false, d2ClusterName, d2ServiceName);
+      d2Servers.addAll(D2ConfigUtils.getD2Servers(zkAddress, d2ClusterName, localUri));
+      LOGGER.info("Server D2 announcement enabled for service {} at URI: {}", d2ServiceName, localUri);
+    }
+
+    VeniceServerContext serverContext = new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService)
+        .setServiceDiscoveryAnnouncers(d2Servers)
+        .build();
     final VeniceServer server = new VeniceServer(serverContext);
     if (!server.isStarted()) {
       server.start();

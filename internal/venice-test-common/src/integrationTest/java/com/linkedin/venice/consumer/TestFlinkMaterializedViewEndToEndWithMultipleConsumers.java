@@ -69,6 +69,7 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -79,13 +80,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
 public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
+  private static final Logger LOGGER =
+      LogManager.getLogger(TestFlinkMaterializedViewEndToEndWithMultipleConsumers.class);
   private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
@@ -98,10 +104,16 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
   private static final int STORE_PARTITION_COUNT = 3;
   private static final int VIEW_PARTITION_COUNT = 1;
 
+  private final List<AutoCloseable> testCloseables = new ArrayList<>();
+  private final List<String> testStoresToDelete = new ArrayList<>();
+
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private String clusterName;
+  private VeniceClusterWrapper clusterWrapper;
+  private ControllerClient parentControllerClient;
+  private ControllerClient childControllerClientRegion0;
   private D2Client d2Client;
 
   @BeforeClass(alwaysRun = true)
@@ -127,6 +139,10 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     clusterName = CLUSTER_NAMES[0];
+    clusterWrapper = childDatacenters.get(0).getClusters().get(clusterName);
+    parentControllerClient = new ControllerClient(clusterName, parentControllers.get(0).getControllerUrl());
+    childControllerClientRegion0 =
+        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     d2Client = new D2ClientBuilder()
         .setZkHosts(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress())
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
@@ -137,7 +153,15 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    multiRegionMultiClusterWrapper.close();
+    D2ClientUtils.shutdownClient(d2Client);
+    Utils.closeQuietlyWithErrorLogged(parentControllerClient);
+    Utils.closeQuietlyWithErrorLogged(childControllerClientRegion0);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+  }
+
+  @AfterMethod(alwaysRun = true)
+  public void cleanupAfterTest() {
+    ChangelogConsumerTestUtils.cleanupAfterTest(testCloseables, testStoresToDelete, parentControllerClient, LOGGER);
   }
 
   /**
@@ -154,6 +178,7 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
   @Test(timeOut = TEST_TIMEOUT)
   public void testBatchOnlyStoreWithStatelessCDCClient() throws IOException, ExecutionException, InterruptedException {
     String storeName = Utils.getUniqueString("batchStore");
+    testStoresToDelete.add(storeName);
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
@@ -166,8 +191,9 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
     setupBatchOnlyStoreWithMaterializedView(storeName, props, keySchemaStr, valueSchemaStr);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
     // Run the initial push - v1
-    IntegrationTestPushUtils.runVPJ(props);
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
 
     // Consume from version topic
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -207,6 +233,7 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
   @Test(timeOut = TEST_TIMEOUT)
   public void testBatchOnlyStoreWithDVCConsumer() throws IOException, ExecutionException, InterruptedException {
     String storeName = Utils.getUniqueString("batchStore");
+    testStoresToDelete.add(storeName);
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
@@ -219,8 +246,9 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
     setupBatchOnlyStoreWithMaterializedView(storeName, props, keySchemaStr, valueSchemaStr);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
     // Run the initial push - v1
-    IntegrationTestPushUtils.runVPJ(props);
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
 
     // Consume from version topic
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -279,10 +307,7 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
           newPushInputDirPath,
           storeName,
           multiRegionMultiClusterWrapper.getPubSubClientProperties());
-      IntegrationTestPushUtils.runVPJ(newPushProps);
-
-      // Wait for version to be switched
-      waitForCurrentVersion(storeName, 2);
+      IntegrationTestPushUtils.runVPJ(newPushProps, 2, childControllerClientRegion0);
 
       // Consume from version topic v2
       VeniceChangelogConsumer<Integer, Utf8> versionTopicV2ChangelogConsumer =
@@ -313,6 +338,7 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
   @Test(timeOut = TEST_TIMEOUT)
   public void testHybridStoreWithStatelessCDCClient() throws IOException, ExecutionException, InterruptedException {
     String storeName = Utils.getUniqueString("hybridStore");
+    testStoresToDelete.add(storeName);
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
@@ -325,9 +351,10 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
     setupHybridStoreWithMaterializedView(storeName, props, keySchemaStr, valueSchemaStr);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
 
     // Run the initial push - v1
-    IntegrationTestPushUtils.runVPJ(props);
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
 
     // Consume from version topic
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -502,16 +529,6 @@ public class TestFlinkMaterializedViewEndToEndWithMultipleConsumers {
     int regionIndex = isSourceFabric ? 0 : 1;
     return D2TestUtils.getAndStartD2Client(
         multiRegionMultiClusterWrapper.getChildRegions().get(regionIndex).getZkServerWrapper().getAddress());
-  }
-
-  private void waitForCurrentVersion(String storeName, int expectedVersion) {
-    ControllerClient controllerClient =
-        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    TestUtils.waitForNonDeterministicAssertion(
-        5,
-        TimeUnit.SECONDS,
-        () -> Assert
-            .assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), expectedVersion));
   }
 
   private String getMaterializedViewTopicName(String storeName, int version, String viewName) {

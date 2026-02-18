@@ -82,13 +82,13 @@ public class DefaultIngestionBackend implements IngestionBackend {
       int partition,
       Optional<PubSubPosition> pubSubPosition) {
     String storeVersion = storeConfig.getStoreVersionName();
-    LOGGER.info("Retrieving storage engine for store {} partition {}", storeVersion, partition);
+    String replicaId = Utils.getReplicaId(storeVersion, partition);
+    LOGGER.info("Retrieving storage engine for replica {}", replicaId);
+
     StoreVersionInfo storeAndVersion =
         Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
     Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
     syncStoreVersionConfig(storeAndVersion.getStore(), storeConfig);
-
-    String replicaId = Utils.getReplicaId(storeVersion, partition);
 
     if (!isIsolatedIngestion) {
       ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
@@ -120,15 +120,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
         }
         return storageEngineAtomicReference;
       });
-      LOGGER.info(
-          "Retrieved storage engine for store {} partition {}. Starting consumption in ingestion service",
-          storeVersion,
-          partition);
+      LOGGER.info("Retrieved storage engine for replica {}. Starting consumption in ingestion service", replicaId);
       getStoreIngestionService().startConsumption(storeConfig, partition, pubSubPosition);
-      LOGGER.info(
-          "Completed starting consumption in ingestion service for store {} partition {}",
-          storeVersion,
-          partition);
+      LOGGER.info("Completed starting consumption in ingestion service for replica {}", replicaId);
     };
 
     boolean blobTransferActiveInReceiver = shouldEnableBlobTransfer(storeAndVersion.getStore());
@@ -586,6 +580,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
       // Poll until the blob transfer reaches final state (null or TRANSFER_COMPLETED or TRANSFER_CANCELLED)
       final int waitIntervalInSecond = 1;
       final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
+
+      BlobTransferStatus initialStatus =
+          blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId);
+
+      BlobTransferStatus previousStatus = initialStatus;
       int retries = 0;
       while (!blobTransferManager.getTransferStatusTrackingManager().isTransferInFinalState(replicaId)
           && retries < maxRetry) {
@@ -594,12 +593,17 @@ public class DefaultIngestionBackend implements IngestionBackend {
           retries++;
           BlobTransferStatus currentStatus =
               blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId);
-          LOGGER.info(
-              "Waiting for blob transfer to complete for replica {} (attempt {}/{}). Current status: {}",
-              replicaId,
-              retries,
-              maxRetry,
-              currentStatus);
+
+          if (currentStatus != previousStatus) {
+            LOGGER.info(
+                "Blob transfer status changed for replica {} (attempt {}/{}): {} -> {}",
+                replicaId,
+                retries,
+                maxRetry,
+                previousStatus,
+                currentStatus);
+            previousStatus = currentStatus;
+          }
         } catch (InterruptedException e) {
           LOGGER.warn("Interrupted while waiting for blob transfer to complete for replica {}", replicaId, e);
           Thread.currentThread().interrupt();
@@ -607,10 +611,14 @@ public class DefaultIngestionBackend implements IngestionBackend {
         }
       }
 
+      BlobTransferStatus finalStatus =
+          blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId);
       LOGGER.info(
-          "Blob transfer for replica {} (final status: {}), proceeding with partition drop",
+          "Blob transfer wait completed for replica {} after {} attempts. Status transition: {} -> {}, proceeding with partition drop",
           replicaId,
-          blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId));
+          retries,
+          initialStatus,
+          finalStatus);
     } finally {
       blobTransferManager.getTransferStatusTrackingManager().clearTransferStatusEnum(replicaId);
       consumptionLocks.remove(replicaId);

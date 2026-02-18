@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.stats;
 
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -48,7 +47,6 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
    * The number of admin messages with future protocol version that deserialized with future schema from system store.
    */
   final private Sensor adminMessagesWithFutureProtocolVersionCountSensor;
-  private PubSubPosition adminConsumptionFailedPosition;
   /**
    * A gauge reporting the total number of pending admin messages remaining in the internal queue at the end of each
    * consumption cycle. Pending messages could be caused by blocked admin operations or insufficient resources.
@@ -78,12 +76,6 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminConsumeFailCountSensor = registerSensor("failed_admin_messages", new Count());
     adminConsumeFailRetriableMessageCountSensor = registerSensor("failed_retriable_admin_messages", new Count());
     adminTopicDIVErrorReportCountSensor = registerSensor("admin_message_div_error_report_count", new Count());
-    registerSensor(
-        new AsyncGauge(
-            (ignored, ignored2) -> adminConsumptionFailedPosition == null
-                ? 0L
-                : adminConsumptionFailedPosition.getNumericOffset(),
-            "failed_admin_message_offset"));
     adminConsumptionCycleDurationMsSensor =
         registerSensor("admin_consumption_cycle_duration_ms", new Avg(), new Min(), new Max());
     registerSensor(
@@ -136,10 +128,6 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
 
   public void recordStoresWithPendingAdminMessagesCount(double value) {
     this.storesWithPendingAdminMessagesCountGauge = value;
-  }
-
-  public void setAdminConsumptionFailedPosition(PubSubPosition adminConsumptionFailedPosition) {
-    this.adminConsumptionFailedPosition = adminConsumptionFailedPosition;
   }
 
   public void recordAdminMessageMMLatency(double value) {

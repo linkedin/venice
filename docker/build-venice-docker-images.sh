@@ -16,6 +16,7 @@ version=$oss_release
 cp *py venice-client/
 cp ../clients/venice-push-job/build/libs/venice-push-job-all.jar venice-client/
 cp ../clients/venice-thin-client/build/libs/venice-thin-client-all.jar venice-client/
+cp ../clients/venice-client/build/libs/venice-client-all.jar venice-client/
 cp ../clients/venice-admin-tool/build/libs/venice-admin-tool-all.jar venice-client/
 cp *py venice-client-jupyter/
 cp ../clients/venice-push-job/build/libs/venice-push-job-all.jar venice-client-jupyter/
@@ -51,6 +52,7 @@ done
 
 rm -f venice-client/venice-push-job-all.jar
 rm -f venice-client/venice-thin-client-all.jar
+rm -f venice-client/venice-client-all.jar
 rm -f venice-client/venice-admin-tool-all.jar
 rm -f venice-client-jupyter/venice-push-job-all.jar
 rm -f venice-client-jupyter/venice-thin-client-all.jar

@@ -359,7 +359,7 @@ public class TestSeparateRealtimeTopicIngestion {
           heartbeatMonitoringService.getHeartbeatInfo(topicName, partition, false);
       leaderSepRTTopicCount += heartbeatInfoMap.keySet().stream().filter(x -> x.endsWith("_sep")).count();
     }
-    Assert.assertEquals(leaderSepRTTopicCount, NUMBER_OF_CHILD_DATACENTERS);
+    Assert.assertEquals(leaderSepRTTopicCount, NUMBER_OF_CHILD_DATACENTERS * REPLICATION_FACTOR);
   }
 
   private byte[] serializeStringKeyToByteArray(String key) {

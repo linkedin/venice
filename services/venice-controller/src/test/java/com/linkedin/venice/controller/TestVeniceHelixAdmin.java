@@ -68,7 +68,6 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -982,7 +981,7 @@ public class TestVeniceHelixAdmin {
 
     // Case 1: Not store name provided
     AdminMetadata remoteMetadata = new AdminMetadata();
-    remoteMetadata.setPubSubPosition(ApacheKafkaOffsetPosition.of(10L));
+    remoteMetadata.setPubSubPosition(InMemoryPubSubPosition.of(10L));
     remoteMetadata.setExecutionId(1L);
     remoteMetadata.setAdminOperationProtocolVersion(1L);
     AdminConsumerService adminConsumerService = mock(AdminConsumerService.class);

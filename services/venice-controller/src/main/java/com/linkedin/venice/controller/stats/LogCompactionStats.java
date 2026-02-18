@@ -1,5 +1,11 @@
 package com.linkedin.venice.controller.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.STORE_REPUSH_TRIGGER_SOURCE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.utils.Utils.setOf;
+
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
@@ -7,13 +13,18 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 
 
 /**
@@ -44,7 +55,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
     this.baseDimensionsMap = otelData.getBaseDimensionsMap();
 
     repushCallCountMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.STORE_REPUSH_CALL_COUNT.getMetricEntity(),
+        LogCompactionOtelMetricEntity.STORE_REPUSH_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.REPUSH_CALL_COUNT,
@@ -52,7 +63,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
         baseDimensionsMap);
 
     compactionEligibleMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.STORE_COMPACTION_ELIGIBLE_STATE.getMetricEntity(),
+        LogCompactionOtelMetricEntity.STORE_COMPACTION_ELIGIBLE_STATE.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.COMPACTION_ELIGIBLE_STATE,
@@ -60,7 +71,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
         baseDimensionsMap);
 
     storeNominatedForCompactionCountMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.STORE_COMPACTION_NOMINATED_COUNT.getMetricEntity(),
+        LogCompactionOtelMetricEntity.STORE_COMPACTION_NOMINATED_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.STORE_NOMINATED_FOR_COMPACTION_COUNT,
@@ -68,7 +79,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
         baseDimensionsMap);
 
     storeCompactionTriggeredCountMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.STORE_COMPACTION_TRIGGERED_COUNT.getMetricEntity(),
+        LogCompactionOtelMetricEntity.STORE_COMPACTION_TRIGGERED_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.STORE_COMPACTION_TRIGGERED_COUNT,
@@ -121,13 +132,13 @@ public class LogCompactionStats extends AbstractVeniceStats {
   }
 
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    /** for {@link ControllerMetricEntity#STORE_REPUSH_CALL_COUNT} */
+    /** for {@link LogCompactionOtelMetricEntity#STORE_REPUSH_CALL_COUNT} */
     REPUSH_CALL_COUNT,
-    /** for {@link ControllerMetricEntity#STORE_COMPACTION_ELIGIBLE_STATE} */
+    /** for {@link LogCompactionOtelMetricEntity#STORE_COMPACTION_ELIGIBLE_STATE} */
     COMPACTION_ELIGIBLE_STATE,
-    /** for {@link ControllerMetricEntity#STORE_COMPACTION_NOMINATED_COUNT} */
+    /** for {@link LogCompactionOtelMetricEntity#STORE_COMPACTION_NOMINATED_COUNT} */
     STORE_NOMINATED_FOR_COMPACTION_COUNT,
-    /** for {@link ControllerMetricEntity#STORE_COMPACTION_TRIGGERED_COUNT} */
+    /** for {@link LogCompactionOtelMetricEntity#STORE_COMPACTION_TRIGGERED_COUNT} */
     STORE_COMPACTION_TRIGGERED_COUNT;
 
     private final String metricName;
@@ -139,6 +150,50 @@ public class LogCompactionStats extends AbstractVeniceStats {
     @Override
     public String getMetricName() {
       return this.metricName;
+    }
+  }
+
+  public enum LogCompactionOtelMetricEntity implements ModuleMetricEntityInterface {
+    /** Count of all requests to repush a store */
+    STORE_REPUSH_CALL_COUNT(
+        "store.repush.call_count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of all requests to repush a store",
+        setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY, VENICE_CLUSTER_NAME, STORE_REPUSH_TRIGGER_SOURCE)
+    ),
+    /** Count of stores nominated for scheduled compaction */
+    STORE_COMPACTION_NOMINATED_COUNT(
+        "store.compaction.nominated_count", MetricType.COUNTER, MetricUnit.NUMBER,
+        "Count of stores nominated for scheduled compaction", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
+    ),
+    /**
+     * Track the state from the time a store is nominated for compaction to the
+     * time the repush is completed to finish compaction. stays 1 after nomination
+     * and becomes 0 when the compaction is compacted
+     */
+    STORE_COMPACTION_ELIGIBLE_STATE(
+        "store.compaction.eligible_state", MetricType.GAUGE, MetricUnit.NUMBER,
+        "Track the state from the time a store is nominated for compaction to the time the repush is completed",
+        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
+    ),
+    /** Count of log compaction repush triggered for a store after it becomes eligible */
+    STORE_COMPACTION_TRIGGERED_COUNT(
+        "store.compaction.triggered_count", MetricType.COUNTER, MetricUnit.NUMBER,
+        "Count of log compaction repush triggered for a store after it becomes eligible",
+        setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY, VENICE_CLUSTER_NAME)
+    );
+
+    private final MetricEntity metricEntity;
+
+    LogCompactionOtelMetricEntity(
+        String metricName,
+        MetricType metricType,
+        MetricUnit unit,
+        String description,
+        Set<VeniceMetricsDimensions> dimensionsList) {
+      this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
+    }
+
+    public MetricEntity getMetricEntity() {
+      return metricEntity;
     }
   }
 }
