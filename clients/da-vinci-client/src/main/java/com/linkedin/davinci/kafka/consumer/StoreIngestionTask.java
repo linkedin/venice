@@ -168,6 +168,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -410,6 +411,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
   protected final AtomicBoolean recordLevelMetricEnabled;
+  protected final boolean recordLevelTimestampEnabled;
   protected final boolean isGlobalRtDivEnabled;
   protected volatile VersionRole versionRole;
   protected volatile boolean versionBootstrapCompleted;
@@ -689,6 +691,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.recordLevelMetricEnabled = new AtomicBoolean(
         serverConfig.isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled()
             || !this.isCurrentVersion.getAsBoolean());
+    this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
     this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
@@ -1818,38 +1821,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Thread.sleep(this.readCycleDelayMs);
       }
 
-      List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
-
-      /**
-       * Speed shutdown by closing partitions concurrently. For Server it is controlled by server config, for DaVinci
-       * client it is always enabled.
-       */
-      boolean enableParallelShutdown = serverConfig.isParallelResourceShutdownEnabled() || isDaVinciClient;
-      ExecutorService shutdownExecutor =
-          enableParallelShutdown ? Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2) : null;
-
-      for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
-        /**
-         * Now, there are two threads, which could potentially trigger {@link #syncOffset(String, PartitionConsumptionState)}:
-         * 1. {@link #processConsumerRecord} that will sync offset based on the consumed byte size.
-         * 2. The main thread of ingestion task here, which will checkpoint when gracefully shutting down;
-         *
-         * We would like to make sure the syncOffset invocation is sequential with the message processing, so here
-         * will try to drain all the messages before checkpointing.
-         * Here is the detail::
-         * If the checkpointing happens in different threads concurrently, there is no guarantee the atomicity of
-         * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
-         * hasn't been applied yet, when checkpointing happens in current thread.
-         */
-        executeShutdownRunnable(entry.getValue(), shutdownFutures, shutdownExecutor);
-      }
-      if (enableParallelShutdown) {
-        /**
-         * Shutdown shouldn't take that long because of high concurrency, and it is fine to specify a high timeout here
-         * to avoid infinite wait in case there is some regression.
-         */
-        CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
-      }
+      shutdownPartitionConsumptionStates();
       // Release the latch after all the shutdown completes in DVC/Server.
       shutdownLatch.countDown();
     } catch (VeniceIngestionTaskKilledException e) {
@@ -1898,6 +1870,54 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       handleIngestionThrowable(t);
     } finally {
       internalClose(doFlush);
+    }
+  }
+
+  /**
+   * Shuts down all partition consumption states, optionally in parallel. Creates a thread pool if parallel shutdown is
+   * enabled and ensures it is always terminated via a finally block.
+   */
+  void shutdownPartitionConsumptionStates() throws InterruptedException, ExecutionException, TimeoutException {
+    List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(getPartitionConsumptionStateMap().size());
+
+    /**
+     * Speed shutdown by closing partitions concurrently. For Server it is controlled by server config, for DaVinci
+     * client it is always enabled.
+     */
+    boolean enableParallelShutdown = getServerConfig().isParallelResourceShutdownEnabled() || isDaVinciClient();
+    ExecutorService shutdownExecutor = enableParallelShutdown
+        ? Executors.newFixedThreadPool(
+            getServerConfig().getParallelShutdownThreadPoolSize(),
+            new DaemonThreadFactory("StoreIngestionTask-shutdown"))
+        : null;
+
+    try {
+      for (Map.Entry<Integer, PartitionConsumptionState> entry: getPartitionConsumptionStateMap().entrySet()) {
+        /**
+         * Now, there are two threads, which could potentially trigger {@link #syncOffset(String, PartitionConsumptionState)}:
+         * 1. {@link #processConsumerRecord} that will sync offset based on the consumed byte size.
+         * 2. The main thread of ingestion task here, which will checkpoint when gracefully shutting down;
+         *
+         * We would like to make sure the syncOffset invocation is sequential with the message processing, so here
+         * will try to drain all the messages before checkpointing.
+         * Here is the detail::
+         * If the checkpointing happens in different threads concurrently, there is no guarantee the atomicity of
+         * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
+         * hasn't been applied yet, when checkpointing happens in current thread.
+         */
+        executeShutdownRunnable(entry.getValue(), shutdownFutures, shutdownExecutor);
+      }
+      if (enableParallelShutdown) {
+        /**
+         * Shutdown shouldn't take that long because of high concurrency, and it is fine to specify a high timeout here
+         * to avoid infinite wait in case there is some regression.
+         */
+        CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
+      }
+    } finally {
+      if (shutdownExecutor != null) {
+        shutdownExecutor.shutdownNow();
+      }
     }
   }
 
@@ -2594,6 +2614,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return partitionConsumptionStateMap.get(partitionId);
   }
 
+  public Collection<PartitionConsumptionState> getPartitionConsumptionStates() {
+    return partitionConsumptionStateMap.values();
+  }
+
   public boolean hasAnyPartitionConsumptionState(Predicate<PartitionConsumptionState> pcsPredicate) {
     for (Map.Entry<Integer, PartitionConsumptionState> partitionToConsumptionState: partitionConsumptionStateMap
         .entrySet()) {
@@ -2838,6 +2862,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
       String kafkaUrl) {
+    // No Op
+  }
+
+  /**
+   * Hook for recording regular data record timestamps. Override in subclasses that support
+   * record-level timestamp tracking.
+   */
+  protected void trackRecordReceived(
+      PartitionConsumptionState partitionConsumptionState,
+      DefaultPubSubMessage consumerRecord,
+      String pubSubUrl) {
     // No Op
   }
 
@@ -3579,6 +3614,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             versionNumber,
             LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingRecordTimestampNs),
             currentTimeMs);
+        if (recordLevelTimestampEnabled) {
+          try {
+            trackRecordReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
+          } catch (Exception e) {
+            String msg =
+                "Failed to record regular record timestamp for replica " + partitionConsumptionState.getReplicaId();
+            if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+              LOGGER.error(msg, e);
+            }
+          }
+        }
       }
     } catch (DuplicateDataException e) {
       divErrorMetricCallback.accept(e);

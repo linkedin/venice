@@ -768,17 +768,17 @@ public class ConfigKeys {
   /**
    * Controls whether to use the Declaration of Leadership (DoL) mechanism for leader handover
    * of system stores (meta stores, push status stores, etc.).
-   * 
+   *
    * <p>When enabled, the new leader replica will:
    * 1. Produce a Declaration of Leadership message to the local version topic (VT)
    * 2. Wait until it consumes this message back from VT (loopback confirmation)
    * 3. Only then switch to consuming from the leader source topic (remote VT during batch push,
    *    or RT topic for hybrid stores post-EOP)
-   * 
+   *
    * <p>This provides a deterministic guarantee that the leader has successfully written to
    * and consumed from the local VT before transitioning to the leader source topic, eliminating
    * the need for time-based waits.
-   * 
+   *
    * <p>System stores typically benefit more from fast handover due to their critical role in
    * cluster operations. Having a separate config allows independent rollout strategy.
    *
@@ -790,17 +790,17 @@ public class ConfigKeys {
   /**
    * Controls whether to use the Declaration of Leadership (DoL) mechanism for leader handover
    * of user stores (regular application data stores).
-   * 
+   *
    * <p>When enabled, the new leader replica will:
    * 1. Produce a Declaration of Leadership message to the local version topic (VT)
    * 2. Wait until it consumes this message back from VT (loopback confirmation)
    * 3. Only then switch to consuming from the leader source topic (remote VT during batch push,
    *    or RT topic for hybrid stores post-EOP)
-   * 
+   *
    * <p>This provides a deterministic guarantee that the leader has successfully written to
    * and consumed from the local VT before transitioning to the leader source topic, eliminating
    * the need for time-based waits.
-   * 
+   *
    * <p>Having a separate config from system stores allows independent rollout - typically you
    * would enable DoL for system stores first, validate it works correctly, then roll out to
    * user stores.
@@ -1134,6 +1134,12 @@ public class ConfigKeys {
    * Config to enable parallel resource shutdown operation to speed up overall ingestion task shutdown.
    */
   public static final String SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED = "server.parallel.resource.shutdown.enabled";
+
+  /**
+   * Config to control the thread pool size used for parallel ingestion task shutdown.
+   * Default is 16 to avoid creating too many threads.
+   */
+  public static final String SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE = "server.parallel.shutdown.thread.pool.size";
 
   /**
    * Config for adaptive throttler signal refresh interval in seconds.
@@ -2603,6 +2609,23 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
 
   /**
+   * Enable record-level timestamp tracking in heartbeat monitoring service.
+   * When enabled, the monitoring service will track timestamps for all records processed during
+   * ingestion, not just heartbeat control messages. This provides more granular visibility into
+   * ingestion progress and lag at the expense of additional memory and CPU overhead.
+   */
+  public static final String SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED = "server.record.level.timestamp.enabled";
+
+  /**
+   * Enable per-record OTel metrics emission for record-level delay tracking.
+   * When enabled, OTel metrics are emitted for every record processed during ingestion,
+   * providing real-time visibility into ingestion delays. When disabled (default), OTel metrics
+   * are only emitted periodically (every 60 seconds) with aggregated max/avg values.
+   * Requires SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED to be true.
+   */
+  public static final String SERVER_PER_RECORD_OTEL_METRICS_ENABLED = "server.per.record.otel.metrics.enabled";
+
+  /**
    * Follower replicas and DavinciClient will only consider heartbeats received within
    * this time window to mark themselves as completed. This is to avoid the cases that
    * the follower replica is marked completed based on the old heartbeat messages from
@@ -2966,7 +2989,6 @@ public class ConfigKeys {
       "controller.enable.realtime.topic.versioning";
 
   public static final boolean DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING = false;
-  public final static String USE_V2_ADMIN_TOPIC_METADATA = "controller.use.v2.admin.topic.metadata";
   public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
       "controller.enable.hybrid.store.partition.count.update";
   public static final String PUSH_JOB_VIEW_CONFIGS = "push.job.view.configs";

@@ -40,6 +40,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_FOR_VERSION_INFO_MS
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_STORAGE_THREAD_NUM;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
@@ -298,7 +299,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
               IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL)
           .put(SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS, 1)
           .put(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, serverDeleteUnassignedPartitionsOnStartup)
-          .put(OTEL_VENICE_METRICS_ENABLED, Boolean.TRUE.toString());
+          .put(OTEL_VENICE_METRICS_ENABLED, Boolean.TRUE.toString())
+          .put(SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED, Boolean.TRUE.toString());
       if (sslToKafka) {
         serverPropsBuilder.put(PUBSUB_SECURITY_PROTOCOL_LEGACY, PubSubSecurityProtocol.SSL.name());
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
