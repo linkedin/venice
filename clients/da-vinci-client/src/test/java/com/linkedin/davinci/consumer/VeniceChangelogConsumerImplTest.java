@@ -694,12 +694,6 @@ public class VeniceChangelogConsumerImplTest {
   public void testHandleVersionSwapControlMessage() throws NoSuchFieldException, IllegalAccessException {
     VeniceChangelogConsumerImpl veniceChangelogConsumer = mock(VeniceChangelogConsumerImpl.class);
 
-    Map<Integer, Map<Integer, List<Long>>> currentVersionHighWatermarks = new VeniceConcurrentHashMap<>();
-    Field currentVersionHighWatermarksField =
-        VeniceChangelogConsumerImpl.class.getDeclaredField("currentVersionHighWatermarks");
-    currentVersionHighWatermarksField.setAccessible(true);
-    currentVersionHighWatermarksField.set(veniceChangelogConsumer, currentVersionHighWatermarks);
-
     ChunkAssembler chunkAssembler = mock(ChunkAssembler.class);
     Field chunkAssemblerField = VeniceChangelogConsumerImpl.class.getDeclaredField("chunkAssembler");
     chunkAssemblerField.setAccessible(true);
@@ -865,12 +859,6 @@ public class VeniceChangelogConsumerImplTest {
         VeniceChangelogConsumerImpl.class.getDeclaredField("partitionToPutMessageCount");
     partitionToPutMessageCountField.setAccessible(true);
     partitionToPutMessageCountField.set(veniceChangelogConsumer, partitionToPutMessageCount);
-
-    Map<Integer, Map<Integer, List<Long>>> currentVersionHighWatermarks = new VeniceConcurrentHashMap<>();
-    Field currentVersionHighWatermarksField =
-        VeniceChangelogConsumerImpl.class.getDeclaredField("currentVersionHighWatermarks");
-    currentVersionHighWatermarksField.setAccessible(true);
-    currentVersionHighWatermarksField.set(veniceChangelogConsumer, currentVersionHighWatermarks);
 
     int partition = 0;
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));

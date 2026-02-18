@@ -50,7 +50,6 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -165,11 +164,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final PubSubContext pubSubContext;
   protected final ExecutorService seekExecutorService;
 
-  // This member is a map of maps in order to accommodate view topics. If the message we consume has the appropriate
-  // footer then we'll use that to infer entry into the wrapped map and compare with it, otherwise we'll infer it from
-  // the consumed partition for the given message. We do all this because for a view topic, it may have many
-  // upstream RT partitions writing to a given view partition.
-  protected final Map<Integer, Map<Integer, List<Long>>> currentVersionHighWatermarks = new VeniceConcurrentHashMap<>();
   protected final ConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
 
   protected final ChangelogClientConfig changelogClientConfig;
@@ -737,7 +731,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       // Prune out current subscriptions
       Set<PubSubTopicPartition> assignments = getTopicAssignment();
       for (PubSubTopicPartition topicPartition: assignments) {
-        currentVersionHighWatermarks.remove(topicPartition.getPartitionNumber());
         if (partitions.contains(topicPartition.getPartitionNumber())) {
           pubSubConsumer.unSubscribe(topicPartition);
         }
@@ -1523,29 +1516,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           PubSubTopic newServingVersionTopic =
               pubSubTopicRepository.getTopic(versionSwap.newServingVersionTopic.toString());
 
-          // Prefer position-based high watermarks if available, otherwise use legacy offset-based
-          List<ByteBuffer> positions = versionSwap.getLocalHighWatermarkPubSubPositions();
-          List<Long> highWatermarkOffsets;
-
-          if (positions != null && !positions.isEmpty()) {
-            List<Long> legacyOffsets = versionSwap.getLocalHighWatermarks();
-            highWatermarkOffsets = new ArrayList<>(positions.size());
-            for (int i = 0; i < positions.size(); i++) {
-              long fallbackOffset = (legacyOffsets != null && i < legacyOffsets.size()) ? legacyOffsets.get(i) : -1L;
-              PubSubPosition position = PubSubUtil
-                  .deserializePositionWithOffsetFallback(positions.get(i), fallbackOffset, pubSubPositionDeserializer);
-              highWatermarkOffsets.add(position.getNumericOffset());
-            }
-          } else {
-            highWatermarkOffsets = (versionSwap.getLocalHighWatermarks() != null)
-                ? versionSwap.getLocalHighWatermarks()
-                : Collections.emptyList();
-          }
-
-          currentVersionHighWatermarks
-              .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
-          currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
-              .put(upstreamPartition, highWatermarkOffsets);
           switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
           chunkAssembler.clearBuffer();
 
