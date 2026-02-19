@@ -415,9 +415,16 @@ public class ConfigKeys {
   public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "controller.repush.orchestrator.class.name";
 
   /**
-   * Class names of the implementation of interface {@link com.linkedin.venice.controller.logcompaction.CandidateFilter} in {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
+   * Class names of the implementation of interface {@link com.linkedin.venice.controller.logcompaction.RepushCandidateFilter} in {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
+   * These are prerequisite filters evaluated with AND logic (all must pass).
    */
   public static final String REPUSH_CANDIDATE_FILTER_CLASS_NAMES = "controller.repush.candidate.filter.class.names";
+
+  /**
+   * Class names of the implementation of interface {@link com.linkedin.venice.controller.logcompaction.RepushCandidateTrigger} in {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
+   * These are trigger conditions evaluated with OR logic (any must pass).
+   */
+  public static final String REPUSH_CANDIDATE_TRIGGER_CLASS_NAMES = "controller.repush.candidate.trigger.class.names";
 
   /**
    * Prefix of configs to configure RepushOrchestrator
