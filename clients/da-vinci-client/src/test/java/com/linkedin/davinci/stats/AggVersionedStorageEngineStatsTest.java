@@ -18,10 +18,12 @@ public class AggVersionedStorageEngineStatsTest {
     String storeName = "testStore";
     MetricsRepository metricsRepository = new MetricsRepository();
     ReadOnlyStoreRepository metadataRepository = mock(ReadOnlyStoreRepository.class);
-    doReturn(mock(Store.class)).when(metadataRepository).getStoreOrThrow(anyString());
+    Store mockStore = mock(Store.class);
+    doReturn(storeName).when(mockStore).getName();
+    doReturn(mockStore).when(metadataRepository).getStoreOrThrow(anyString());
     AggVersionedStorageEngineStats stats =
         new AggVersionedStorageEngineStats(metricsRepository, metadataRepository, false);
-    stats.addStore(storeName);
+    stats.addStore(mockStore);
     stats.getStats(storeName, 1).getKeyCountEstimate();
     Metric metric = metricsRepository.getMetric(".testStore_total--rocksdb_key_count_estimate.Gauge");
     Assert.assertEquals(metric.value(), 0.0);

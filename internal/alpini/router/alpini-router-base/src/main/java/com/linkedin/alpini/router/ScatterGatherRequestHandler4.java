@@ -61,19 +61,38 @@ public class ScatterGatherRequestHandler4<H, P extends ResourcePath<K>, K, R> ex
     implements AsyncFullHttpRequestHandler.RequestHandler {
   public static final AsciiString X_STACKTRACE = AsciiString.of("text/x-stacktrace");
 
+  /**
+   * Creates a new ScatterGatherRequestHandler4.
+   *
+   * @param scatterGatherHelper the scatter-gather helper
+   * @param timeoutProcessor the timeout processor
+   * @param executor UNUSED - kept for backward compatibility. Response aggregation executor is obtained from
+   *                 {@link ScatterGatherHelper#getResponseAggregationExecutor()} instead. If that returns null,
+   *                 response aggregation runs on the Netty EventLoop (ctx.executor()).
+   */
   public ScatterGatherRequestHandler4(
       @Nonnull ScatterGatherHelper<H, P, K, R, BasicFullHttpRequest, FullHttpResponse, HttpResponseStatus> scatterGatherHelper,
       @Nonnull RouterTimeoutProcessor timeoutProcessor,
-      @Nonnull Executor executor) {
-    super(scatterGatherHelper, timeoutProcessor);
+      @SuppressWarnings("unused") @Nonnull Executor executor) {
+    super(scatterGatherHelper, timeoutProcessor, scatterGatherHelper.getResponseAggregationExecutor());
   }
 
+  /**
+   * Creates a new ScatterGatherRequestHandler4.
+   *
+   * @param scatterGatherHelper the scatter-gather helper
+   * @param timeoutProcessor the timeout processor
+   * @param executor UNUSED - kept for backward compatibility. Response aggregation executor is obtained from
+   *                 {@link ScatterGatherHelper#getResponseAggregationExecutor()} instead. If that returns null,
+   *                 response aggregation runs on the Netty EventLoop (ctx.executor()).
+   * @deprecated Use constructor with {@link RouterTimeoutProcessor} instead
+   */
   @Deprecated
   public ScatterGatherRequestHandler4(
       @Nonnull ScatterGatherHelper<H, P, K, R, BasicFullHttpRequest, FullHttpResponse, HttpResponseStatus> scatterGatherHelper,
       @Nonnull TimeoutProcessor timeoutProcessor,
-      @Nonnull Executor executor) {
-    super(scatterGatherHelper, timeoutProcessor);
+      @SuppressWarnings("unused") @Nonnull Executor executor) {
+    super(scatterGatherHelper, timeoutProcessor, scatterGatherHelper.getResponseAggregationExecutor());
   }
 
   protected @Override @Nonnull BasicFullHttpRequest retainRequest(@Nonnull BasicFullHttpRequest request) {

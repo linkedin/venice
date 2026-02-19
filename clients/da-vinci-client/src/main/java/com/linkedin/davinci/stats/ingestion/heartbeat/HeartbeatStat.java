@@ -12,6 +12,7 @@ public class HeartbeatStat {
   Map<String, WritePathLatencySensor> readyToServeLeaderSensors = new VeniceConcurrentHashMap<>();
   Map<String, WritePathLatencySensor> readyToServeFollowerSensors = new VeniceConcurrentHashMap<>();
   Map<String, WritePathLatencySensor> catchingUpFollowerSensors = new VeniceConcurrentHashMap<>();
+
   WritePathLatencySensor defaultSensor;
 
   public HeartbeatStat(MetricConfig metricConfig, Set<String> regions) {
@@ -21,6 +22,7 @@ public class HeartbeatStat {
      */
     MetricsRepository localRepository = new MetricsRepository(metricConfig);
     for (String region: regions) {
+      // Heartbeat message sensors
       readyToServeLeaderSensors
           .put(region, new WritePathLatencySensor(localRepository, metricConfig, "leader-" + region));
       readyToServeFollowerSensors

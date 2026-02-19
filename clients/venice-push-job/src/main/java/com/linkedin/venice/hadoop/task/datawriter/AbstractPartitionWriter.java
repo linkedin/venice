@@ -326,7 +326,9 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     VeniceRecordWithMetadata valueRecord = values.next();
     byte[] valueBytes = valueRecord.getValue();
-    ByteBuffer rmd = valueRecord.getRmd() == null ? null : ByteBuffer.wrap(valueRecord.getRmd());
+    // Handle empty RMD the same way as null - don't wrap empty byte array into ByteBuffer
+    byte[] rmdBytes = valueRecord.getRmd();
+    ByteBuffer rmd = (rmdBytes == null || rmdBytes.length == 0) ? null : ByteBuffer.wrap(rmdBytes);
 
     if (duplicateKeyPrinter == null) {
       throw new VeniceException("'DuplicateKeyPrinter' is not initialized properly");

@@ -1,7 +1,7 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_HEARTBEAT_DELAY;
-import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelStats.SERVER_METRIC_ENTITIES;
+import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
@@ -12,6 +12,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
 import static org.testng.Assert.*;
 
+import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -463,15 +464,15 @@ public class HeartbeatOtelStatsTest {
   public void testClassifyVersionWithNonExistingVersionInputReturnsBackup() {
     heartbeatOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     assertSame(
-        HeartbeatOtelStats.classifyVersion(NON_EXISTING_VERSION, heartbeatOtelStats.getVersionInfo()),
+        OtelVersionedStatsUtils.classifyVersion(NON_EXISTING_VERSION, heartbeatOtelStats.getVersionInfo()),
         VersionRole.BACKUP);
     assertSame(
-        HeartbeatOtelStats.classifyVersion(CURRENT_VERSION, heartbeatOtelStats.getVersionInfo()),
+        OtelVersionedStatsUtils.classifyVersion(CURRENT_VERSION, heartbeatOtelStats.getVersionInfo()),
         VersionRole.CURRENT);
     assertSame(
-        HeartbeatOtelStats.classifyVersion(FUTURE_VERSION, heartbeatOtelStats.getVersionInfo()),
+        OtelVersionedStatsUtils.classifyVersion(FUTURE_VERSION, heartbeatOtelStats.getVersionInfo()),
         VersionRole.FUTURE);
-    assertSame(HeartbeatOtelStats.classifyVersion(10, heartbeatOtelStats.getVersionInfo()), VersionRole.BACKUP);
+    assertSame(OtelVersionedStatsUtils.classifyVersion(10, heartbeatOtelStats.getVersionInfo()), VersionRole.BACKUP);
   }
 
   @Test

@@ -68,7 +68,6 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -982,7 +981,7 @@ public class TestVeniceHelixAdmin {
 
     // Case 1: Not store name provided
     AdminMetadata remoteMetadata = new AdminMetadata();
-    remoteMetadata.setPubSubPosition(ApacheKafkaOffsetPosition.of(10L));
+    remoteMetadata.setPubSubPosition(InMemoryPubSubPosition.of(10L));
     remoteMetadata.setExecutionId(1L);
     remoteMetadata.setAdminOperationProtocolVersion(1L);
     AdminConsumerService adminConsumerService = mock(AdminConsumerService.class);
@@ -1733,6 +1732,62 @@ public class TestVeniceHelixAdmin {
     verify(admin, times(1)).getMultiClusterConfigs();
     verify(admin, times(1)).isParent();
     assertTrue(shouldSkip);
+  }
+
+  @Test
+  public void testUpdateStoreTTLRepushFlag() {
+    Store store = mock(Store.class);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+
+    // TTL repush should set flag to true when currently false
+    String ttlRepushId = Version.generateTTLRePushId("test-push");
+    when(store.isTTLRepushEnabled()).thenReturn(false);
+    VeniceHelixAdmin.updateStoreTTLRepushFlag(ttlRepushId, store, repository);
+    verify(store).setTTLRepushEnabled(true);
+    verify(repository).updateStore(store);
+
+    reset(store, repository);
+
+    // TTL repush should not update when flag is already true
+    when(store.isTTLRepushEnabled()).thenReturn(true);
+    VeniceHelixAdmin.updateStoreTTLRepushFlag(ttlRepushId, store, repository);
+    verify(store, never()).setTTLRepushEnabled(anyBoolean());
+    verify(repository, never()).updateStore(any());
+
+    reset(store, repository);
+
+    // Regular push with TTL repush should set flag to false when currently true
+    String regularPushWithTtlId = Version.generateRegularPushWithTTLRePushId("test-push");
+    when(store.isTTLRepushEnabled()).thenReturn(true);
+    VeniceHelixAdmin.updateStoreTTLRepushFlag(regularPushWithTtlId, store, repository);
+    verify(store).setTTLRepushEnabled(false);
+    verify(repository).updateStore(store);
+
+    reset(store, repository);
+
+    // Regular push with TTL repush should not update when flag is already false
+    when(store.isTTLRepushEnabled()).thenReturn(false);
+    VeniceHelixAdmin.updateStoreTTLRepushFlag(regularPushWithTtlId, store, repository);
+    verify(store, never()).setTTLRepushEnabled(anyBoolean());
+    verify(repository, never()).updateStore(any());
+
+    reset(store, repository);
+
+    // Compliance push should not affect the TTL flag
+    String compliancePushId = Version.generateCompliancePushId("test-push");
+    when(store.isTTLRepushEnabled()).thenReturn(true);
+    VeniceHelixAdmin.updateStoreTTLRepushFlag(compliancePushId, store, repository);
+    verify(store, never()).setTTLRepushEnabled(anyBoolean());
+    verify(repository, never()).updateStore(any());
+
+    reset(store, repository);
+
+    // Regular user push should not affect the TTL flag
+    String userPushId = System.currentTimeMillis() + "_https://example.com/user-push";
+    when(store.isTTLRepushEnabled()).thenReturn(true);
+    VeniceHelixAdmin.updateStoreTTLRepushFlag(userPushId, store, repository);
+    verify(store, never()).setTTLRepushEnabled(anyBoolean());
+    verify(repository, never()).updateStore(any());
   }
 
 }

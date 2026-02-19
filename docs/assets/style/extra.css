@@ -1,0 +1,49 @@
+/* Venice Documentation Custom Styles */
+/* Brand colors: Black and White */
+
+:root {
+  --venice-black: #000000;
+  --venice-white: #ffffff;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: var(--venice-black);
+  --md-accent-fg-color: var(--venice-white);
+}
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: var(--venice-black);
+  --md-accent-fg-color: var(--venice-black);
+}
+
+.md-typeset table:not([class]) {
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.md-button {
+  border-radius: 0.5rem;
+}
+
+.md-typeset code {
+  border-radius: 0.25rem;
+}
+
+.md-typeset pre > code {
+  border-radius: 0.5rem;
+}
+
+/* Hide permalink icon by default, show only on heading hover */
+.md-typeset .headerlink {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.md-typeset h1:hover .headerlink,
+.md-typeset h2:hover .headerlink,
+.md-typeset h3:hover .headerlink,
+.md-typeset h4:hover .headerlink,
+.md-typeset h5:hover .headerlink,
+.md-typeset h6:hover .headerlink {
+  opacity: 1;
+}

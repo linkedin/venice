@@ -42,6 +42,13 @@ public final class VenicePushJobConstants {
   // This is a temporary config used to rollout the native input format for Spark. This will be removed soon
   public static final String SPARK_NATIVE_INPUT_FORMAT_ENABLED = "spark.native.input.format.enabled";
 
+  /**
+   * Feature flag to enable Spark for KIF (Kafka Input Format) repush jobs.
+   * When false (default), KIF repush jobs fall back to MapReduce even when a Spark compute job class is configured.
+   * This allows gradual rollout of Spark for KIF repush without affecting all jobs at once.
+   */
+  public static final String SPARK_KIF_REPUSH_ENABLED = "spark.kif.repush.enabled";
+
   // Vson input configs
   // Vson files store key/value schema on file header. key / value fields are optional
   // and should be specified only when key / value schema is the partial of the files.
@@ -356,6 +363,15 @@ public final class VenicePushJobConstants {
   public static final String REPUSH_TTL_POLICY = "repush.ttl.policy";
   public static final String REPUSH_TTL_SECONDS = "repush.ttl.seconds";
   public static final String REPUSH_TTL_START_TIMESTAMP = "repush.ttl.start.timestamp";
+
+  /**
+   * Config to indicate this is a compliance push which could be used for a variety of reasons
+   * by the operator like purging or updating a subset/all the data for compliance purposes.
+   * Compliance pushes can be killed by user-initiated pushes, allowing users to preempt
+   * long-running compliance workflows.
+   */
+  public static final String COMPLIANCE_PUSH = "compliance.push";
+
   public static final String RMD_SCHEMA_DIR = "rmd.schema.dir";
   public static final String VALUE_SCHEMA_DIR = "value.schema.dir";
   public static final int NOT_SET = -1;
