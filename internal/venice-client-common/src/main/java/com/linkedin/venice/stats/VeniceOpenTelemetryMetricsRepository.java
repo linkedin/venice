@@ -231,19 +231,22 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   /**
-   * To create only one metric per name and type: Venice code will try to initialize the same metric multiple times as
-   * it will get called from per store path, per request type path, etc. This will ensure that we only have one metric
-   * per name and use dimensions to differentiate between them.
+   * Deduplication maps for <b>synchronous</b> instruments only. Venice code initializes the same
+   * metric multiple times (per store, per request type, etc.), so all callers share a single
+   * instrument object and call {@code .record()} / {@code .add()} on it directly. The map lookup
+   * at init time is cheap and avoids creating redundant SDK instrument handles for the same metric.
+   *
+   * <p><b>Async (observable) instruments are intentionally excluded from deduplication.</b>
+   * Each {@code buildWithCallback} call creates a new SDK instrument handle with its own callback.
+   * The OTel SDK natively aggregates data points from multiple instruments sharing the same name
+   * during the export pipeline's collection cycle. This design is simpler and avoids the
+   * multi-callback data-loss bug that deduplication via {@code computeIfAbsent} would cause
+   * for observable instruments (where the callback is bound at construction time).
    */
   private final VeniceConcurrentHashMap<String, DoubleHistogram> histogramMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongUpDownCounter> upDownCounterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongGauge> gaugeMap = new VeniceConcurrentHashMap<>();
-  private final VeniceConcurrentHashMap<String, ObservableLongGauge> asyncGaugeMap = new VeniceConcurrentHashMap<>();
-  private final VeniceConcurrentHashMap<String, ObservableLongCounter> asyncCounterMap =
-      new VeniceConcurrentHashMap<>();
-  private final VeniceConcurrentHashMap<String, ObservableLongUpDownCounter> asyncUpDownCounterMap =
-      new VeniceConcurrentHashMap<>();
 
   MetricExporter getOtlpHttpMetricExporter(VeniceMetricsConfig metricsConfig) {
     OtlpHttpMetricExporterBuilder exporterBuilder =
@@ -392,8 +395,10 @@ public class VeniceOpenTelemetryMetricsRepository {
   /**
    * Asynchronous gauge that will call the callback during metrics collection.
    * This is useful for metrics that are not updated frequently or require expensive computation.
-   * For now, the attributes are passed in as a parameter while creating the gauge, ie, only
-   * {@link MetricEntityStateBase} is supported for now.
+   *
+   * <p>Each call creates a new SDK instrument handle via {@code buildWithCallback} — there is no
+   * deduplication. Multiple callers (e.g., different stores) can register callbacks for the same
+   * metric name; the OTel SDK natively aggregates all their data points during collection.
    */
   public ObservableLongGauge createAsyncLongGauge(
       MetricEntity metricEntity,
@@ -402,24 +407,20 @@ public class VeniceOpenTelemetryMetricsRepository {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
-    return asyncGaugeMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
-      String fullMetricName = getFullMetricName(metricEntity);
-      LongGaugeBuilder builder = meter.gaugeBuilder(fullMetricName)
-          .setUnit(metricEntity.getUnit().name())
-          .setDescription(getMetricDescription(metricEntity, metricsConfig))
-          .ofLongs();
-
-      return builder.buildWithCallback(measurement -> {
-        long v;
-        try {
-          v = asyncCallback.getAsLong();
-        } catch (Exception e) {
-          recordFailureMetric(metricEntity, e);
-          return;
-        }
-        measurement.record(v, attributes);
-      });
-    });
+    return meter.gaugeBuilder(getFullMetricName(metricEntity))
+        .setUnit(metricEntity.getUnit().name())
+        .setDescription(getMetricDescription(metricEntity, metricsConfig))
+        .ofLongs()
+        .buildWithCallback(measurement -> {
+          long v;
+          try {
+            v = asyncCallback.getAsLong();
+          } catch (Exception e) {
+            recordFailureMetric(metricEntity, e);
+            return;
+          }
+          measurement.record(v, attributes);
+        });
   }
 
   public Object createInstrument(MetricEntity metricEntity, LongSupplier asyncCallback, Attributes attributes) {
@@ -469,6 +470,10 @@ public class VeniceOpenTelemetryMetricsRepository {
    * OpenTelemetry's metric collection cycle. The callback should iterate over all
    * accumulated values and report them via the provided {@link ObservableLongMeasurement}.
    *
+   * <p>Each call creates a new SDK instrument handle via {@code buildWithCallback} — there is no
+   * deduplication. The OTel SDK natively aggregates data points from multiple instruments sharing
+   * the same name during the export pipeline's collection cycle.
+   *
    * @param metricEntity the metric entity definition
    * @param reportCallback callback that reports all accumulated values to the measurement
    * @return the created ObservableLongCounter, or null if OTel metrics are disabled
@@ -484,13 +489,10 @@ public class VeniceOpenTelemetryMetricsRepository {
           "registerObservableLongCounter should only be called for ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics, but got: "
               + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
     }
-    return asyncCounterMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
-      String fullMetricName = getFullMetricName(metricEntity);
-      return meter.counterBuilder(fullMetricName)
-          .setUnit(metricEntity.getUnit().name())
-          .setDescription(getMetricDescription(metricEntity, metricsConfig))
-          .buildWithCallback(reportCallback::accept);
-    });
+    return meter.counterBuilder(getFullMetricName(metricEntity))
+        .setUnit(metricEntity.getUnit().name())
+        .setDescription(getMetricDescription(metricEntity, metricsConfig))
+        .buildWithCallback(reportCallback);
   }
 
   /**
@@ -502,6 +504,10 @@ public class VeniceOpenTelemetryMetricsRepository {
    * OpenTelemetry's metric collection cycle. The callback should iterate over all
    * accumulated values and report them via the provided {@link ObservableLongMeasurement}.
    * Unlike ASYNC_COUNTER_FOR_HIGH_PERF_CASES, this supports both positive and negative values.
+   *
+   * <p>Each call creates a new SDK instrument handle via {@code buildWithCallback} — there is no
+   * deduplication. The OTel SDK natively aggregates data points from multiple instruments sharing
+   * the same name during the export pipeline's collection cycle.
    *
    * @param metricEntity the metric entity definition
    * @param reportCallback callback that reports all accumulated values to the measurement
@@ -518,13 +524,10 @@ public class VeniceOpenTelemetryMetricsRepository {
           "registerObservableLongUpDownCounter should only be called for ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES metrics, but got: "
               + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
     }
-    return asyncUpDownCounterMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
-      String fullMetricName = getFullMetricName(metricEntity);
-      return meter.upDownCounterBuilder(fullMetricName)
-          .setUnit(metricEntity.getUnit().name())
-          .setDescription(getMetricDescription(metricEntity, metricsConfig))
-          .buildWithCallback(reportCallback::accept);
-    });
+    return meter.upDownCounterBuilder(getFullMetricName(metricEntity))
+        .setUnit(metricEntity.getUnit().name())
+        .setDescription(getMetricDescription(metricEntity, metricsConfig))
+        .buildWithCallback(reportCallback);
   }
 
   public String getDimensionName(VeniceMetricsDimensions dimension) {

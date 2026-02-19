@@ -23,6 +23,7 @@ import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controller.stats.SparkServerStats;
+import com.linkedin.venice.controller.stats.StoreBackupVersionCleanupServiceStats;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
@@ -77,6 +78,7 @@ public class VeniceController {
           SparkServerStats.SparkServerOtelMetricEntity.class,
           LogCompactionStats.LogCompactionOtelMetricEntity.class,
           PushJobStatusStats.PushJobOtelMetricEntity.class,
+          StoreBackupVersionCleanupServiceStats.BackupVersionCleanupOtelMetricEntity.class,
           TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.class,
           VeniceAdminStats.VeniceAdminOtelMetricEntity.class);
 

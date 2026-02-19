@@ -386,4 +386,72 @@ public abstract class OpenTelemetryDataTestUtils {
     assertEquals(longPointData.getValue(), expectedValue, "Observable counter value should be " + expectedValue);
     assertEquals(longPointData.getAttributes(), expectedAttributes, "Observable counter attributes should match");
   }
+
+  /**
+   * Validate that at least one Sum (counter) data point exists with value >= minValue,
+   * across all attribute combinations. Use this in integration tests where the exact
+   * attributes are non-deterministic (e.g., replica type depends on leader election).
+   *
+   * <p>Note: When validating multiple metrics, prefer collecting once via
+   * {@code reader.collectAllMetrics()} and calling the {@code Collection<MetricData>}
+   * overload to avoid draining async counter adders between calls.
+   */
+  public static void validateAnySumDataPointAtLeast(
+      InMemoryMetricReader inMemoryMetricReader,
+      long minValue,
+      String metricName,
+      String metricPrefix) {
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    validateAnySumDataPointAtLeast(metricsData, minValue, metricName, metricPrefix);
+  }
+
+  public static void validateAnySumDataPointAtLeast(
+      Collection<MetricData> metricsData,
+      long minValue,
+      String metricName,
+      String metricPrefix) {
+    assertFalse(metricsData.isEmpty());
+
+    String fullMetricName = DEFAULT_METRIC_PREFIX + metricPrefix + "." + metricName;
+    MetricData data =
+        metricsData.stream().filter(metricData -> metricData.getName().equals(fullMetricName)).findFirst().orElse(null);
+    assertNotNull(data, "MetricData for " + fullMetricName + " should not be null");
+
+    boolean found = data.getLongSumData().getPoints().stream().anyMatch(p -> p.getValue() >= minValue);
+    assertTrue(found, fullMetricName + " should have at least one data point with value >= " + minValue);
+  }
+
+  /**
+   * Validate that at least one Gauge data point exists with value >= minValue,
+   * across all attribute combinations. Use this in integration tests where the exact
+   * attributes are non-deterministic.
+   *
+   * <p>Note: When validating multiple metrics, prefer collecting once via
+   * {@code reader.collectAllMetrics()} and calling the {@code Collection<MetricData>}
+   * overload to avoid draining async counter adders between calls.
+   */
+  public static void validateAnyGaugeDataPointAtLeast(
+      InMemoryMetricReader inMemoryMetricReader,
+      long minValue,
+      String metricName,
+      String metricPrefix) {
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    validateAnyGaugeDataPointAtLeast(metricsData, minValue, metricName, metricPrefix);
+  }
+
+  public static void validateAnyGaugeDataPointAtLeast(
+      Collection<MetricData> metricsData,
+      long minValue,
+      String metricName,
+      String metricPrefix) {
+    assertFalse(metricsData.isEmpty());
+
+    String fullMetricName = DEFAULT_METRIC_PREFIX + metricPrefix + "." + metricName;
+    MetricData data =
+        metricsData.stream().filter(metricData -> metricData.getName().equals(fullMetricName)).findFirst().orElse(null);
+    assertNotNull(data, "MetricData for " + fullMetricName + " should not be null");
+
+    boolean found = data.getLongGaugeData().getPoints().stream().anyMatch(p -> p.getValue() >= minValue);
+    assertTrue(found, fullMetricName + " should have at least one data point with value >= " + minValue);
+  }
 }

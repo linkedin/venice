@@ -64,6 +64,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.server.VeniceServerContext;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
@@ -77,6 +78,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
+import io.tehuti.metrics.JmxReporter;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
@@ -106,7 +108,7 @@ import org.testng.Assert;
 public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerWrapper.class);
   public static final String SERVICE_NAME = VeniceComponent.SERVER.getName();
-  private static final String SERVICE_METRIC_PREFIX = "server";
+  public static final String SERVICE_METRIC_PREFIX = "server";
 
   /**
    *  Possible config options which are not included in {@link com.linkedin.venice.ConfigKeys}.
@@ -580,13 +582,15 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   private static VeniceMetricsRepository getVeniceMetricRepositoryForServer(VeniceProperties serverProps) {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
-    VeniceMetricsRepository veniceMetricsRepository = VeniceMetricsRepository.getVeniceMetricsRepository(
-        SERVICE_NAME,
-        SERVICE_METRIC_PREFIX,
-        SERVER_METRIC_ENTITIES,
-        serverProps.getAsMap(),
-        true);
-    veniceMetricsRepository.getVeniceMetricsConfig().setOtelAdditionalMetricsReader(inMemoryMetricReader);
+    VeniceMetricsRepository veniceMetricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(SERVICE_NAME)
+            .setMetricPrefix(SERVICE_METRIC_PREFIX)
+            .setMetricEntities(SERVER_METRIC_ENTITIES)
+            .extractAndSetOtelConfigs(serverProps.getAsMap())
+            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
+            .build());
+    veniceMetricsRepository.addReporter(new JmxReporter(SERVICE_NAME));
     return veniceMetricsRepository;
   }
 
