@@ -270,4 +270,34 @@ public class RouterHttpRequestStatsTest {
             .setOtelAdditionalMetricsReader(additionalMetricReader)
             .build());
   }
+
+  @Test
+  public void testBodyAggregationLatencySensorRecords() {
+    String storeName = "test-store";
+    String clusterName = "test-cluster";
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    MockTehutiReporter reporter = new MockTehutiReporter();
+    metricsRepository.addReporter(reporter);
+
+    RouterHttpRequestStats stats = new RouterHttpRequestStats(
+        metricsRepository,
+        storeName,
+        clusterName,
+        RequestType.MULTI_GET_STREAMING,
+        mock(ScatterGatherStats.class),
+        false,
+        null);
+
+    for (int i = 1; i <= 100; i++) {
+      stats.recordBodyAggregationLatency(i);
+    }
+
+    String prefix = "multiget_streaming_";
+    double p50 =
+        reporter.query("." + storeName + "--" + prefix + "body_aggregation_latency" + ".50thPercentile").value();
+    double p99 =
+        reporter.query("." + storeName + "--" + prefix + "body_aggregation_latency" + ".99thPercentile").value();
+    assertEquals((int) p50, 50);
+    assertEquals((int) p99, 99);
+  }
 }

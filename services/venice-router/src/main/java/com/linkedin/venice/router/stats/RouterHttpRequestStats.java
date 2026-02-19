@@ -124,6 +124,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor scatterLatencySensor;
   private final Sensor queueLatencySensor;
   private final Sensor dispatchLatencySensor;
+  private final Sensor bodyAggregationLatencySensor;
   private final Sensor unAvailableRequestSensor;
   private final Sensor readQuotaUsageSensor;
   private final Sensor inFlightRequestSensor;
@@ -457,6 +458,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     dispatchLatencySensor = registerSensor(
         "dispatch_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("dispatch_latency")));
+    bodyAggregationLatencySensor = registerSensor(
+        "body_aggregation_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("body_aggregation_latency")));
 
     unAvailableRequestSensor = registerSensor("unavailable_request", new Count());
 
@@ -747,6 +751,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordDispatchLatency(double latency) {
     dispatchLatencySensor.record(latency);
+  }
+
+  public void recordBodyAggregationLatency(double latency) {
+    bodyAggregationLatencySensor.record(latency);
   }
 
   public void recordUnavailableRequest() {
