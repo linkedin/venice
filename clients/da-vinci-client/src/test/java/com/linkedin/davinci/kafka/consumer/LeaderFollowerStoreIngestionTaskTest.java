@@ -370,7 +370,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
     when(materializedViewWriter.getViewWriterType()).thenReturn(VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW);
     viewWriterMap.put("testView", materializedViewWriter);
-    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt(), any())).thenReturn(viewWriterMap);
+    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt())).thenReturn(viewWriterMap);
     CompletableFuture<Void> viewWriterFuture = new CompletableFuture<>();
     when(materializedViewWriter.processRecord(any(), any(), anyInt(), any(), any())).thenReturn(viewWriterFuture);
     setUp();
@@ -412,7 +412,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
     MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
     viewWriterMap.put("testView", materializedViewWriter);
-    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt(), any())).thenReturn(viewWriterMap);
+    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt())).thenReturn(viewWriterMap);
     setUp();
     CompletableFuture<Void> lastVTProduceCallFuture = new CompletableFuture<>();
     doReturn(lastVTProduceCallFuture).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
@@ -476,7 +476,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
     MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
     viewWriterMap.put("testView", materializedViewWriter);
-    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt(), any())).thenReturn(viewWriterMap);
+    when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt())).thenReturn(viewWriterMap);
     setUp();
     PubSubMessageProcessedResultWrapper firstCM = getMockMessage(1);
     PubSubMessageProcessedResultWrapper secondCM = getMockMessage(2);

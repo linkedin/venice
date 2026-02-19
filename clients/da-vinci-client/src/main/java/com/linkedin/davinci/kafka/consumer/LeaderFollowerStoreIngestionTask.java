@@ -304,11 +304,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()
         && !store.isFlinkVeniceViewsEnabled()) {
-      viewWriters = builder.getVeniceViewWriterFactory()
-          .buildStoreViewWriters(
-              store,
-              version.getNumber(),
-              schemaRepository.getKeySchema(store.getName()).getSchema());
+      viewWriters = builder.getVeniceViewWriterFactory().buildStoreViewWriters(store, version.getNumber());
       boolean tmpValueForHasComplexVenicePartitioner = false;
       for (Map.Entry<String, VeniceViewWriter> viewWriter: viewWriters.entrySet()) {
         if (viewWriter.getValue().getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {

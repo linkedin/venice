@@ -1,6 +1,5 @@
 package com.linkedin.davinci.store.view;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.MaterializedViewParameters;
@@ -19,7 +18,6 @@ import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.avro.Schema;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -27,7 +25,6 @@ import org.testng.annotations.Test;
 
 public class VeniceViewWriterFactoryTest {
   public static final String TEST_STORE = "testStore";
-  private static final Schema SCHEMA = AvroCompatibilityHelper.parse("\"string\"");
 
   @Test
   public void testConstructStoreViewWriters() {
@@ -61,7 +58,7 @@ public class VeniceViewWriterFactoryTest {
     VeniceWriterFactory mockVeniceWriterFactory = Mockito.mock(VeniceWriterFactory.class);
     VeniceViewWriterFactory viewWriterFactory =
         new VeniceViewWriterFactory(mockVeniceConfigLoader, mockVeniceWriterFactory);
-    Map<String, VeniceViewWriter> viewWriterMap = viewWriterFactory.buildStoreViewWriters(mockStore, 1, SCHEMA);
+    Map<String, VeniceViewWriter> viewWriterMap = viewWriterFactory.buildStoreViewWriters(mockStore, 1);
 
     Assert.assertTrue(viewWriterMap.get("view1") instanceof MaterializedViewWriter);
     Assert.assertTrue(viewWriterMap.get("view2") instanceof MaterializedViewWriter);
