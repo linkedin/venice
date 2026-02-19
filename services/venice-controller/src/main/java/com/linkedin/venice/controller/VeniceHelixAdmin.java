@@ -74,7 +74,7 @@ import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.logcompaction.RepushCandidateFilter;
 import com.linkedin.venice.controller.logcompaction.RepushCandidateTrigger;
 import com.linkedin.venice.controller.logcompaction.StoreRepushCandidateFilter;
-import com.linkedin.venice.controller.logcompaction.VersionStalenessFilter;
+import com.linkedin.venice.controller.logcompaction.VersionStalenessTrigger;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
@@ -928,7 +928,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Set<RepushCandidateTrigger> candidateTriggers = new HashSet<>();
 
     // Default trigger: version staleness
-    candidateTriggers.add(new VersionStalenessFilter(multiClusterConfigs));
+    candidateTriggers.add(new VersionStalenessTrigger(multiClusterConfigs));
 
     // Additional triggers from config
     for (String candidateTriggerClassName: multiClusterConfigs.getRepushCandidateTriggerClassNames()) {

@@ -76,7 +76,7 @@ public class CompactionManagerTest {
     Set<RepushCandidateFilter> candidateFilters =
         Collections.singleton(new StoreRepushCandidateFilter(multiClusterConfig));
     Set<RepushCandidateTrigger> candidateTriggers =
-        Collections.singleton(new VersionStalenessFilter(multiClusterConfig));
+        Collections.singleton(new VersionStalenessTrigger(multiClusterConfig));
 
     testCompactionManager =
         new CompactionManager(mockRepushOrchestrator, candidateFilters, candidateTriggers, statsMap);

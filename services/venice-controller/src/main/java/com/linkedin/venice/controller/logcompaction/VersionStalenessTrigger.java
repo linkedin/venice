@@ -16,12 +16,12 @@ import org.apache.logging.log4j.Logger;
  * As a {@link RepushCandidateTrigger}, this participates in OR logic with other triggers — if any
  * trigger passes, the store is scheduled for compaction (provided all prerequisite filters also pass).
  */
-public class VersionStalenessFilter implements RepushCandidateTrigger {
-  private static final Logger LOGGER = LogManager.getLogger(VersionStalenessFilter.class);
+public class VersionStalenessTrigger implements RepushCandidateTrigger {
+  private static final Logger LOGGER = LogManager.getLogger(VersionStalenessTrigger.class);
 
   private final Map<String, Long> versionStalenessThresholdsByCluster = new HashMap<>();
 
-  public VersionStalenessFilter(VeniceControllerMultiClusterConfig multiClusterConfig) {
+  public VersionStalenessTrigger(VeniceControllerMultiClusterConfig multiClusterConfig) {
     for (String clusterName: multiClusterConfig.getClusters()) {
       VeniceControllerClusterConfig config = multiClusterConfig.getControllerConfig(clusterName);
       this.versionStalenessThresholdsByCluster.put(clusterName, config.getLogCompactionVersionStalenessThresholdMS());
