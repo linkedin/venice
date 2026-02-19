@@ -7,6 +7,7 @@ service VeniceReadService {
   rpc get (VeniceClientRequest) returns (VeniceServerResponse) {}
   rpc batchGet(VeniceClientRequest) returns (VeniceServerResponse) {}
   rpc countByValue(CountByValueRequest) returns (CountByValueResponse) {}
+  rpc getMetadata(VeniceMetadataRequest) returns (VeniceMetadataResponse) {}
 }
 
 message VeniceClientRequest {
@@ -47,4 +48,17 @@ message CountByValueResponse {
 
 message ValueCount {
   map<string, int32> valueToCounts = 1;
+}
+
+message VeniceMetadataRequest {
+  string storeName = 1;
+}
+
+message VeniceMetadataResponse {
+  // Avro-serialized MetadataResponseRecord bytes
+  bytes metadata = 1;
+  // Schema version of the MetadataResponseRecord Avro protocol
+  int32 responseSchemaId = 2;
+  uint32 errorCode = 3;
+  string errorMessage = 4;
 }

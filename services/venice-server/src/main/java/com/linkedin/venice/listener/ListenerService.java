@@ -169,7 +169,7 @@ public class ListenerService extends AbstractVeniceService {
       grpcExecutor = createThreadPool(serverConfig.getGrpcWorkerThreadCount(), "GrpcWorkerThread", nettyBacklogSize);
 
       VeniceGrpcServerConfig.Builder grpcServerBuilder = new VeniceGrpcServerConfig.Builder().setPort(grpcPort)
-          .addService(new VeniceReadServiceImpl(requestProcessor))
+          .addService(new VeniceReadServiceImpl(requestProcessor, readMetadataRetriever))
           .setExecutor(grpcExecutor)
           .setInterceptors(interceptors);
 
