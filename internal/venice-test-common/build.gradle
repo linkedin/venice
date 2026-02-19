@@ -168,7 +168,8 @@ def integrationTestBuckets = [
     "5": [
         "com.linkedin.venice.endToEnd.DaVinciClientSubscribeTest",
         "com.linkedin.venice.endToEnd.DaVinciClientRecordTransformerTest",
-        "com.linkedin.venice.router.TestRouterAsyncStart"
+        "com.linkedin.venice.router.TestRouterAsyncStart",
+        "com.linkedin.venice.endToEnd.DaVinciClientP2PBlobTransferTest1"
     ],
     "6": [
         "com.linkedin.venice.endToEnd.DaVinciClientP2PBlobTransferTest",
