@@ -95,7 +95,13 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
     for (MetricAttributesData holder: allData) {
       if (holder.hasAdder()) {
         long value = holder.sumThenReset();
-        measurement.record(value, holder.getAttributes());
+        // Skip zero values to avoid polluting metrics with stale attribute combinations
+        // (e.g., from deleted stores) rather than trying to clean up all the registered
+        // callbacks which could be complex. For delta-temporality async counters, omitting
+        // a zero report correctly means "no change in this period."
+        if (value != 0) {
+          measurement.record(value, holder.getAttributes());
+        }
       }
     }
   }
