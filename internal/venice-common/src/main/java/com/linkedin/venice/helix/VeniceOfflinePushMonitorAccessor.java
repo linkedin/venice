@@ -397,11 +397,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       return merged;
     });
 
-    LOGGER.debug(
-        "Updated partition status for topic {} partition {} in cluster {}",
-        kafkaTopic,
-        partitionId,
-        clusterName);
+    LOGGER
+        .info("Updated partition status for topic {} partition {} in cluster {}", kafkaTopic, partitionId, clusterName);
   }
 
   /**
