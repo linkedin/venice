@@ -15,6 +15,7 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -165,7 +166,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
         // Get current instances assigned to this partition
         Partition partition = partitionAssignment.getPartition(partitionId);
         if (partition == null) {
-          LOGGER.warn("Partition {} not found in partition assignment for topic {}", partitionId, kafkaTopic);
+          LOGGER.warn("Partition assignment for topic {}", Utils.getReplicaId(kafkaTopic, partitionId));
           continue;
         }
 
