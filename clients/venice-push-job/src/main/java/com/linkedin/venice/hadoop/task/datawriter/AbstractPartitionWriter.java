@@ -103,9 +103,19 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     private final byte[] rmd;
 
+    private final int valueSchemaId;
+
+    private final int rmdVersionId;
+
     public VeniceRecordWithMetadata(byte[] value, byte[] rmd) {
+      this(value, rmd, -1, -1);
+    }
+
+    public VeniceRecordWithMetadata(byte[] value, byte[] rmd, int valueSchemaId, int rmdVersionId) {
       this.value = value;
       this.rmd = rmd;
+      this.valueSchemaId = valueSchemaId;
+      this.rmdVersionId = rmdVersionId;
     }
 
     public byte[] getValue() {
@@ -114,6 +124,14 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     public byte[] getRmd() {
       return rmd;
+    }
+
+    public int getValueSchemaId() {
+      return valueSchemaId;
+    }
+
+    public int getRmdVersionId() {
+      return rmdVersionId;
     }
   }
 
@@ -330,16 +348,34 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     byte[] rmdBytes = valueRecord.getRmd();
     ByteBuffer rmd = (rmdBytes == null || rmdBytes.length == 0) ? null : ByteBuffer.wrap(rmdBytes);
 
+    // Convert empty byte[] to null so VeniceWriterMessage calls writer.delete().
+    // SparkPubSubInputPartitionReader emits null for DELETEs, but this guards against any
+    // code path that might inadvertently produce empty byte arrays.
+    if (valueBytes != null && valueBytes.length == 0) {
+      valueBytes = null;
+    }
+
+    // Drop the record entirely if both value and RMD are null since it doesn't carry any information.
+    // This can happen when the input is from Kafka and the record is a tombstone (null value) without replication
+    // metadata.
+    if (valueBytes == null && rmd == null) {
+      return null;
+    }
+
     if (duplicateKeyPrinter == null) {
       throw new VeniceException("'DuplicateKeyPrinter' is not initialized properly");
     }
     duplicateKeyPrinter.detectAndHandleDuplicateKeys(valueBytes, values, dataWriterTaskTracker);
 
+    // Use per-record schema IDs if available, otherwise fall back to global IDs
+    int effectiveValueSchemaId = valueRecord.getValueSchemaId() > 0 ? valueRecord.getValueSchemaId() : valueSchemaId;
+    int effectiveRmdVersionId = valueRecord.getRmdVersionId() > 0 ? valueRecord.getRmdVersionId() : rmdSchemaId;
+
     return new VeniceWriterMessage(
         keyBytes,
         valueBytes,
-        valueSchemaId,
-        rmdSchemaId,
+        effectiveValueSchemaId,
+        effectiveRmdVersionId,
         rmd,
         getCallback(),
         isEnableWriteCompute(),

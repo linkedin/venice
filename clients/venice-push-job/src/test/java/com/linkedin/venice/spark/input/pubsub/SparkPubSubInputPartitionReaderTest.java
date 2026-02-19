@@ -168,7 +168,7 @@ public class SparkPubSubInputPartitionReaderTest {
     assertEquals(row.getLong(2), 200L, "Offset should match");
     assertEquals(row.getInt(3), MessageType.DELETE.getValue(), "Message type should be DELETE");
     assertEquals(row.getInt(4), 10, "Schema ID should match");
-    assertEquals(row.getBinary(6).length, 0, "DELETE message should have empty value");
+    assertTrue(row.isNullAt(6), "DELETE message should have null value");
 
     assertFalse(reader.next(), "Reader should return false when no more messages");
     reader.close();
@@ -543,8 +543,8 @@ public class SparkPubSubInputPartitionReaderTest {
     byte[] keyBytes = row.getBinary(5);
     assertTrue(Arrays.equals(keyBytes, userKeyBytes), "Key field should contain only the user key (without suffix)");
 
-    // Verify DELETE has empty value
-    assertEquals(row.getBinary(6).length, 0, "DELETE message should have empty value");
+    // Verify DELETE has null value
+    assertTrue(row.isNullAt(6), "DELETE message should have null value");
 
     // Verify the chunked_key_suffix is populated
     assertFalse(row.isNullAt(9), "chunked_key_suffix should NOT be null for chunked DELETE");

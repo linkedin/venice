@@ -30,11 +30,19 @@ public class TestSparkPartitionWriter extends SparkPartitionWriter {
     public final byte[] key;
     public final byte[] value;
     public final byte[] rmd;
+    public final int valueSchemaId;
+    public final int rmdVersionId;
 
     public TestRecord(byte[] key, byte[] value, byte[] rmd) {
+      this(key, value, rmd, -1, -1);
+    }
+
+    public TestRecord(byte[] key, byte[] value, byte[] rmd, int valueSchemaId, int rmdVersionId) {
       this.key = key;
       this.value = value;
       this.rmd = rmd;
+      this.valueSchemaId = valueSchemaId;
+      this.rmdVersionId = rmdVersionId;
     }
   }
 
@@ -68,8 +76,22 @@ public class TestSparkPartitionWriter extends SparkPartitionWriter {
         valueRecordsForKey = new ArrayList<>();
       }
 
+      int schemaId = -1;
+      int rmdVersionId = -1;
+      try {
+        schemaId = row.getAs("__schema_id__");
+      } catch (IllegalArgumentException e) {
+        // Column not present
+      }
+      try {
+        rmdVersionId = row.getAs("__replication_metadata_version_id__");
+      } catch (IllegalArgumentException e) {
+        // Column not present
+      }
+
       byte[] incomingValue = row.getAs("value");
-      valueRecordsForKey.add(new AbstractPartitionWriter.VeniceRecordWithMetadata(incomingValue, rmd));
+      valueRecordsForKey
+          .add(new AbstractPartitionWriter.VeniceRecordWithMetadata(incomingValue, rmd, schemaId, rmdVersionId));
     }
 
     if (key != null) {
@@ -85,13 +107,25 @@ public class TestSparkPartitionWriter extends SparkPartitionWriter {
     // Capture the records instead of writing to Kafka
     while (values.hasNext()) {
       AbstractPartitionWriter.VeniceRecordWithMetadata record = values.next();
-      captureRecord(testName, key, record.getValue(), record.getRmd());
+      captureRecord(
+          testName,
+          key,
+          record.getValue(),
+          record.getRmd(),
+          record.getValueSchemaId(),
+          record.getRmdVersionId());
     }
   }
 
-  private static void captureRecord(String testName, byte[] key, byte[] value, byte[] rmd) {
+  private static void captureRecord(
+      String testName,
+      byte[] key,
+      byte[] value,
+      byte[] rmd,
+      int valueSchemaId,
+      int rmdVersionId) {
     CAPTURED_RECORDS.computeIfAbsent(testName, k -> Collections.synchronizedList(new ArrayList<>()))
-        .add(new TestRecord(key, value, rmd));
+        .add(new TestRecord(key, value, rmd, valueSchemaId, rmdVersionId));
   }
 
   public static List<TestRecord> getCapturedRecords(String testName) {

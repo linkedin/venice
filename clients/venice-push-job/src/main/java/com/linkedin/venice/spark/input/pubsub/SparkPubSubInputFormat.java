@@ -1,5 +1,6 @@
 package com.linkedin.venice.spark.input.pubsub;
 
+import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 
@@ -87,7 +88,7 @@ public class SparkPubSubInputFormat implements Scan, Batch {
 
   @Override
   public StructType readSchema() {
-    return null;
+    return RAW_PUBSUB_INPUT_TABLE_SCHEMA;
   }
 
   @Override

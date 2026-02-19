@@ -56,6 +56,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
@@ -76,9 +77,9 @@ import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.spark.chunk.SparkChunkAssembler;
 import com.linkedin.venice.spark.datawriter.compression.SparkCompressionReEncoder;
 import com.linkedin.venice.spark.datawriter.partition.PartitionSorter;
@@ -244,6 +245,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         // Currently, we only support one policy. Thus, we don't allow overriding it.
         jobConf.set(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue());
         jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
+        jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       }
       // Pass the compression strategy of source version to repush MR job
       jobConf.set(
@@ -252,6 +254,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       jobConf.set(
           KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED,
           pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled());
+      jobConf.set(SYSTEM_SCHEMA_READER_ENABLED, pushJobSetting.isSystemSchemaReaderEnabled);
     } else {
       jobConf.set(VALUE_SCHEMA_ID_PROP, pushJobSetting.valueSchemaId);
       jobConf.set(DERIVED_SCHEMA_ID_PROP, pushJobSetting.derivedSchemaId);
@@ -386,11 +389,13 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
             MESSAGE_TYPE + " as " + MESSAGE_TYPE_COLUMN_NAME,
             CHUNKED_KEY_SUFFIX_COLUMN_NAME + " as " + CHUNKED_KEY_SUFFIX_COLUMN_NAME);
       } else {
-        // Non-chunked: don't need offset/message_type or schema IDs
+        // Non-chunked: keep schema IDs for per-record schema fidelity in partition writer
         return processedInput.selectExpr(
             KEY_COLUMN_NAME,
             VALUE_COLUMN_NAME,
-            "CAST(" + REPLICATION_METADATA_PAYLOAD + " AS BINARY) as " + RMD_COLUMN_NAME);
+            "CAST(" + REPLICATION_METADATA_PAYLOAD + " AS BINARY) as " + RMD_COLUMN_NAME,
+            SCHEMA_ID_COLUMN_NAME,
+            RMD_VERSION_ID_COLUMN_NAME);
       }
     } else {
       return getUserInputDataFrame();
@@ -427,61 +432,67 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         pushJobSetting.repushTTLStartTimeMs,
         isChunkingEnabled);
 
-    try (JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext())) {
-      // Create properties for TTL filter
-      Properties filterProps = new Properties();
-      this.sparkSession.conf().getAll().foreach(entry -> filterProps.setProperty(entry._1, entry._2));
+    JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
 
-      // Broadcast the filter configuration
-      Broadcast<Properties> broadcastFilterProps = sparkContext.broadcast(filterProps);
+    // Create properties for TTL filter
+    Properties filterProps = new Properties();
+    this.sparkSession.conf().getAll().foreach(entry -> filterProps.setProperty(entry._1, entry._2));
 
-      // Get schema for the encoder
-      StructType schema = dataFrame.schema();
-      ExpressionEncoder<Row> encoder = RowEncoder.apply(schema);
+    // Broadcast the filter configuration
+    Broadcast<Properties> broadcastFilterProps = sparkContext.broadcast(filterProps);
 
-      final LongAccumulator ttlFilteredAcc = accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter;
+    // Get schema for the encoder
+    StructType schema = dataFrame.schema();
+    ExpressionEncoder<Row> encoder = RowEncoder.apply(schema);
 
-      // Apply filter using mapPartitions for efficiency (one filter instance per partition)
-      dataFrame = dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
-        SparkKafkaInputTTLFilter ttlFilter =
-            new SparkKafkaInputTTLFilter(new VeniceProperties(broadcastFilterProps.value()));
-        try {
-          // Filter rows in this partition
-          return Iterators.filter(iterator, row -> {
-            int schemaId = row.getInt(4); // schema_id is at index 4 in RAW_PUBSUB_INPUT_TABLE_SCHEMA
+    final LongAccumulator ttlFilteredAcc = accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter;
 
-            // If chunking enabled, skip chunk/manifest records - they will be assembled first
-            if (isChunkingEnabled && (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
-                || schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion())) {
-              return true; // Keep chunk/manifest records for assembly
-            }
+    // Apply filter using mapPartitions for efficiency (one filter instance per partition)
+    dataFrame = dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
+      SparkKafkaInputTTLFilter ttlFilter =
+          new SparkKafkaInputTTLFilter(new VeniceProperties(broadcastFilterProps.value()));
+      try {
+        // Filter rows in this partition
+        return Iterators.filter(iterator, row -> {
+          int messageType = row.getInt(3); // message_type is at index 3 in RAW_PUBSUB_INPUT_TABLE_SCHEMA
+          int schemaId = row.getInt(4); // schema_id is at index 4 in RAW_PUBSUB_INPUT_TABLE_SCHEMA
 
-            // shouldFilter returns true if record should be removed
-            // We negate to keep records that should NOT be filtered
-            boolean shouldRemove = ttlFilter.shouldFilter(row);
+          // Skip DELETE records — they are tombstones with no value payload and may lack RMD.
+          // TTL filtering only applies to PUT records (matching MR behavior where DELETEs are
+          // handled separately in the reducer, not in the mapper's TTL filter chain).
+          if (messageType == MessageType.DELETE.getValue()) {
+            return true; // Keep DELETE records unchanged
+          }
 
-            if (shouldRemove) {
-              // Increment counter for filtered records
-              ttlFilteredAcc.add(1);
-            }
+          // If chunking is enabled, skip ALL records in the raw TTL filter. TTL filtering
+          // will be handled post-assembly in applyChunkAssembly() instead. This avoids
+          // double-filtering where the raw filter's value/RMD modifications for
+          // PARTIALLY_UPDATED records are lost
+          if (isChunkingEnabled) {
+            return true;
+          }
 
-            return !shouldRemove; // Keep if NOT filtered
-          });
-        } catch (Exception e) {
-          LOGGER.error("Error during TTL filtering", e);
-          throw new VeniceException("TTL filtering failed", e);
-        } finally {
-          ttlFilter.close();
-        }
-      }, encoder);
+          // shouldFilter returns true if record should be removed
+          // We negate to keep records that should NOT be filtered
+          boolean shouldRemove = ttlFilter.shouldFilter(row);
 
-      LOGGER.info("TTL filtering applied successfully");
-      return dataFrame;
+          if (shouldRemove) {
+            // Increment counter for filtered records
+            ttlFilteredAcc.add(1);
+          }
 
-    } catch (Exception e) {
-      LOGGER.error("Failed to apply TTL filter", e);
-      throw new VeniceException("Failed to apply TTL filter", e);
-    }
+          return !shouldRemove; // Keep if NOT filtered
+        });
+      } catch (Exception e) {
+        LOGGER.error("Error during TTL filtering", e);
+        throw new VeniceException("TTL filtering failed", e);
+      } finally {
+        ttlFilter.close();
+      }
+    }, encoder);
+
+    LOGGER.info("TTL filtering applied successfully");
+    return dataFrame;
   }
 
   /**
@@ -640,7 +651,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     DataWriterAccumulators accumulators = accumulatorsForDataWriterJob;
 
     // Optimization: if strategies and dictionaries are the same and metrics are disabled, skip the map stage
-    if (sourceStrategy == destStrategy && java.util.Arrays.equals(sourceDict, destDict)) {
+    if (sourceStrategy == destStrategy && java.util.Arrays.equals(sourceDict, destDict) && !metricEnabled) {
       LOGGER.info("Source and destination compression are identical ({}). Skipping re-encoding stage.", sourceStrategy);
       return dataFrame;
     }
@@ -652,6 +663,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         metricEnabled);
     ExpressionEncoder<Row> encoder = RowEncoder.apply(dataFrame.schema());
     int valueIdx = dataFrame.schema().fieldIndex(VALUE_COLUMN_NAME);
+    int keyIdx = dataFrame.schema().fieldIndex(KEY_COLUMN_NAME);
     StructType schema = dataFrame.schema();
 
     return dataFrame.mapPartitions((MapPartitionsFunction<Row, Row>) iterator -> {
@@ -662,6 +674,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
           destDict,
           schema,
           valueIdx,
+          keyIdx,
           metricEnabled,
           accumulators);
       return Iterators.transform(iterator, row -> {
@@ -732,9 +745,9 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         // Apply compression re-encoding if needed (source vs destination compression)
         dataFrame = applyCompressionReEncoding(dataFrame);
 
-        // Drop schema ID columns (current behavior - no writer changes)
-        LOGGER.info("Dropping schema ID columns before writing");
-        dataFrame = dataFrame.drop(SCHEMA_ID_COLUMN_NAME, RMD_VERSION_ID_COLUMN_NAME);
+        // Keep schema ID columns — SparkPartitionWriter extracts per-record schema IDs
+        // to preserve schema fidelity for AA replication and materialized views
+        LOGGER.info("Preserving per-record schema ID columns for partition writer");
       } else {
         // For HDFS input, convert all rows to byte[], byte[] pairs (compressed if compression is enabled)
         dataFrame = dataFrame

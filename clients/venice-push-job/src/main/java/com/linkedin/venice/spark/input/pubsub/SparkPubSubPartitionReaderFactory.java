@@ -36,31 +36,13 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
 
   private final VeniceProperties jobConfig;
   private final boolean isChunkingEnabled;
-  private final transient ChunkKeyValueTransformer keyTransformer;
 
   public SparkPubSubPartitionReaderFactory(final VeniceProperties jobConfig) {
     this.jobConfig = jobConfig;
 
-    // Determine if chunking is enabled by checking if source kafka input info is available
-    boolean chunkingEnabled = false;
-    ChunkKeyValueTransformer transformer = null;
-    try {
-      String keySchemaString = jobConfig.getString(VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, "");
-      if (!keySchemaString.isEmpty()) {
-        Schema keySchema = new Schema.Parser().parse(keySchemaString);
-        transformer = new ChunkKeyValueTransformerImpl(keySchema);
-        chunkingEnabled = true;
-        LOGGER.info("Chunking is enabled for Spark PubSub input with key schema");
-      } else {
-        LOGGER.info("Chunking is disabled for Spark PubSub input (no key schema found)");
-      }
-    } catch (Exception e) {
-      LOGGER.warn("Failed to initialize key transformer for chunking. Assuming chunking is disabled.", e);
-      throw new RuntimeException(e);
-    }
-
-    this.isChunkingEnabled = chunkingEnabled;
-    this.keyTransformer = transformer;
+    this.isChunkingEnabled =
+        jobConfig.getBoolean(VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, false);
+    LOGGER.info("Chunking is {} for Spark PubSub input", isChunkingEnabled ? "enabled" : "disabled");
   }
 
   @Override
@@ -96,13 +78,25 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
     boolean shouldUseLocallyBuiltIndexAsOffset = configWithSsl.getBoolean(
         PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX,
         DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_LOCAL_LOGICAL_INDEX);
+
+    // Create key transformer on the executor side. ChunkKeyValueTransformerImpl is not Serializable
+    // (it contains a RecordDeserializer), so it must be created here rather than stored as a field.
+    ChunkKeyValueTransformer transformer = null;
+    if (isChunkingEnabled) {
+      String keySchemaString = jobConfig.getString(VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, "");
+      if (!keySchemaString.isEmpty()) {
+        Schema keySchema = new Schema.Parser().parse(keySchemaString);
+        transformer = new ChunkKeyValueTransformerImpl(keySchema);
+      }
+    }
+
     SparkPubSubInputPartitionReader reader = new SparkPubSubInputPartitionReader(
         inputPartition,
         pubSubConsumer,
         regionName,
         shouldUseLocallyBuiltIndexAsOffset,
         isChunkingEnabled,
-        keyTransformer);
+        transformer);
     LOGGER.info(
         "Created SparkPubSubInputPartitionReader for topic-partition: {} with consumer: {} to read from region: {} (chunking={})",
         topicPartition,
