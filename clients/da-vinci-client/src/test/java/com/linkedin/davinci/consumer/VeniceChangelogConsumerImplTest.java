@@ -1249,6 +1249,29 @@ public class VeniceChangelogConsumerImplTest {
     return new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, mockPubSubPosition, 0, 0);
   }
 
+  @Test
+  public void testSwitchToNewTopic() {
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    // Mock the consumer assignment to include the old version topic partition 0
+    PubSubTopicPartition subscribedPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+    doReturn(Collections.synchronizedSet(new HashSet<>(Collections.singleton(subscribedPartition))))
+        .when(mockPubSubConsumer)
+        .getAssignment();
+
+    // switchToNewTopic with the same topic should return false (no-op)
+    assertFalse(veniceChangelogConsumer.switchToNewTopic(oldVersionTopic, 0));
+
+    // switchToNewTopic with a different topic on the same partition should return true
+    PubSubTopic newVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
+    assertTrue(veniceChangelogConsumer.switchToNewTopic(newVersionTopic, 0));
+  }
+
   private ChangelogClientConfig getChangelogClientConfig() {
     ChangelogClientConfig changelogClientConfig =
         new ChangelogClientConfig<>().setD2ControllerClient(mockD2ControllerClient)
