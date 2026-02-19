@@ -72,7 +72,9 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.logcompaction.RepushCandidateFilter;
+import com.linkedin.venice.controller.logcompaction.RepushCandidateTrigger;
 import com.linkedin.venice.controller.logcompaction.StoreRepushCandidateFilter;
+import com.linkedin.venice.controller.logcompaction.VersionStalenessTrigger;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
@@ -872,11 +874,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               e);
         }
 
-        // Add candidate filters for compaction manager
+        // Add candidate filters and triggers for compaction manager
         Set<RepushCandidateFilter> candidateFilters =
             getRepushCandidateFiltersFromControllerConfig(multiClusterConfigs);
+        Set<RepushCandidateTrigger> candidateTriggers =
+            getRepushCandidateTriggersFromControllerConfig(multiClusterConfigs);
 
-        this.compactionManager = new CompactionManager(repushOrchestrator, candidateFilters, logCompactionStatsMap);
+        this.compactionManager =
+            new CompactionManager(repushOrchestrator, candidateFilters, candidateTriggers, logCompactionStatsMap);
       }
     }
 
@@ -890,13 +895,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private Set<RepushCandidateFilter> getRepushCandidateFiltersFromControllerConfig(
       VeniceControllerMultiClusterConfig multiClusterConfigs) {
 
-    // Add candidate filters for compaction manager
     Set<RepushCandidateFilter> candidateFilters = new HashSet<>();
 
-    // Default filter
+    // Default prerequisite filter
     candidateFilters.add(new StoreRepushCandidateFilter(multiClusterConfigs));
 
-    // Additional filters from config
+    // Additional prerequisite filters from config
     for (String candidateFilterClassName: multiClusterConfigs.getRepushCandidateFilterClassNames()) {
       try {
         Class<? extends RepushCandidateFilter> candidateFilterClass = ReflectUtils.loadClass(candidateFilterClassName);
@@ -916,6 +920,37 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     return candidateFilters;
+  }
+
+  private Set<RepushCandidateTrigger> getRepushCandidateTriggersFromControllerConfig(
+      VeniceControllerMultiClusterConfig multiClusterConfigs) {
+
+    Set<RepushCandidateTrigger> candidateTriggers = new HashSet<>();
+
+    // Default trigger: version staleness
+    candidateTriggers.add(new VersionStalenessTrigger(multiClusterConfigs));
+
+    // Additional triggers from config
+    for (String candidateTriggerClassName: multiClusterConfigs.getRepushCandidateTriggerClassNames()) {
+      try {
+        Class<? extends RepushCandidateTrigger> candidateTriggerClass =
+            ReflectUtils.loadClass(candidateTriggerClassName);
+
+        RepushCandidateTrigger candidateTrigger = ReflectUtils.callConstructor(
+            candidateTriggerClass,
+            new Class[] { VeniceControllerMultiClusterConfig.class },
+            new Object[] { multiClusterConfigs });
+
+        candidateTriggers.add(candidateTrigger);
+        LOGGER.info("Successfully loaded repush candidate trigger class: {}", candidateTriggerClassName);
+      } catch (Exception e) {
+        throw new VeniceException(
+            "Failed to load repush candidate trigger class through reflect: " + candidateTriggerClassName,
+            e);
+      }
+    }
+
+    return candidateTriggers;
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {

@@ -415,9 +415,25 @@ public class ConfigKeys {
   public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "controller.repush.orchestrator.class.name";
 
   /**
-   * Class names of the implementation of interface {@link com.linkedin.venice.controller.logcompaction.CandidateFilter} in {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
+   * Class names of the implementation of interface
+   * {@link com.linkedin.venice.controller.logcompaction.RepushCandidateFilter} used by
+   * {@link com.linkedin.venice.controller.logcompaction.CompactionManager}.
+   *
+   * <p>Filters are chained with AND logic: <b>all</b> filters must pass for a store to remain a candidate.
+   * They enforce exclusion criteria such as cluster config, store eligibility, and migration status.</p>
    */
   public static final String REPUSH_CANDIDATE_FILTER_CLASS_NAMES = "controller.repush.candidate.filter.class.names";
+
+  /**
+   * Class names of the implementation of interface
+   * {@link com.linkedin.venice.controller.logcompaction.RepushCandidateTrigger} used by
+   * {@link com.linkedin.venice.controller.logcompaction.CompactionManager}.
+   *
+   * <p>Triggers are chained with OR logic: at least <b>one</b> trigger must pass for a store to be scheduled.
+   * They represent conditions that independently justify compaction (e.g., version staleness,
+   * high duplicate key ratio). A store is scheduled when all filters pass AND any trigger passes.</p>
+   */
+  public static final String REPUSH_CANDIDATE_TRIGGER_CLASS_NAMES = "controller.repush.candidate.trigger.class.names";
 
   /**
    * Prefix of configs to configure RepushOrchestrator
