@@ -11,7 +11,6 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
-import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -375,14 +374,13 @@ public class StoreRequestHandlerTest {
   }
 
   @Test(dataProvider = "storeStatusMaps")
-  public void testGetClusterHealthStores(Map<String, String> expectedStatusMap) {
+  public void testGetStoreStatuses(Map<String, String> expectedStatusMap) {
     when(admin.getAllStoreStatuses("testCluster")).thenReturn(expectedStatusMap);
 
-    MultiStoreStatusResponse response = storeRequestHandler.getClusterHealthStores("testCluster");
+    Map<String, String> response = storeRequestHandler.getStoreStatuses("testCluster");
 
     verify(admin, times(1)).getAllStoreStatuses("testCluster");
-    assertEquals(response.getCluster(), "testCluster");
-    assertEquals(response.getStoreStatusMap(), expectedStatusMap);
+    assertEquals(response, expectedStatusMap);
   }
 
   @DataProvider(name = "blankClusterNames")
@@ -391,8 +389,8 @@ public class StoreRequestHandlerTest {
   }
 
   @Test(dataProvider = "blankClusterNames", expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
-  public void testGetClusterHealthStoresWithBlankClusterName(String clusterName) {
-    storeRequestHandler.getClusterHealthStores(clusterName);
+  public void testGetStoreStatusesWithBlankClusterName(String clusterName) {
+    storeRequestHandler.getStoreStatuses(clusterName);
   }
 
   @Test

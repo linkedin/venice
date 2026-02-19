@@ -3,7 +3,6 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.StoreDeletedValidation;
-import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
@@ -263,9 +262,9 @@ public class StoreRequestHandler {
   /**
    * Gets the health status of all stores in the specified cluster.
    * @param clusterName the name of the cluster
-   * @return response containing the cluster name and map of store names to their statuses
+   * @return map of store names to their statuses
    */
-  public MultiStoreStatusResponse getClusterHealthStores(String clusterName) {
+  public Map<String, String> getStoreStatuses(String clusterName) {
     if (StringUtils.isBlank(clusterName)) {
       throw new IllegalArgumentException("Cluster name is required");
     }
@@ -274,10 +273,7 @@ public class StoreRequestHandler {
     Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);
     LOGGER.debug("Found {} stores with health status in cluster: {}", storeStatusMap.size(), clusterName);
 
-    MultiStoreStatusResponse response = new MultiStoreStatusResponse();
-    response.setCluster(clusterName);
-    response.setStoreStatusMap(storeStatusMap);
-    return response;
+    return storeStatusMap;
   }
 
   /**

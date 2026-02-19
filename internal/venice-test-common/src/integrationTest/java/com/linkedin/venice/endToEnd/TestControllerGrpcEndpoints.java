@@ -49,6 +49,8 @@ import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
 import io.grpc.StatusRuntimeException;
 import java.security.cert.X509Certificate;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -392,61 +394,58 @@ public class TestControllerGrpcEndpoints {
   }
 
   @Test(timeOut = TIMEOUT_MS)
-  public void testGetClusterHealthStoresGrpcEndpoint() {
+  public void testGetStoreStatusesGrpcEndpoint() {
     String storeName1 = Utils.getUniqueString("test_health_stores_1");
     String storeName2 = Utils.getUniqueString("test_health_stores_2");
     String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
     ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
-    StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub = StoreGrpcServiceGrpc.newBlockingStub(channel);
+    try {
+      StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub =
+          StoreGrpcServiceGrpc.newBlockingStub(channel);
 
-    // Step 1: Create two stores
-    CreateStoreGrpcRequest createStoreRequest1 = CreateStoreGrpcRequest.newBuilder()
-        .setStoreInfo(
-            ClusterStoreGrpcInfo.newBuilder()
-                .setClusterName(veniceCluster.getClusterName())
-                .setStoreName(storeName1)
-                .build())
-        .setOwner("owner")
-        .setKeySchema(DEFAULT_KEY_SCHEMA)
-        .setValueSchema("\"string\"")
-        .build();
-    CreateStoreGrpcResponse createResponse1 = storeBlockingStub.createStore(createStoreRequest1);
-    assertNotNull(createResponse1, "Response should not be null");
+      // Step 1: Create two stores
+      createTestStore(storeBlockingStub, veniceCluster.getClusterName(), storeName1);
+      createTestStore(storeBlockingStub, veniceCluster.getClusterName(), storeName2);
 
-    CreateStoreGrpcRequest createStoreRequest2 = CreateStoreGrpcRequest.newBuilder()
-        .setStoreInfo(
-            ClusterStoreGrpcInfo.newBuilder()
-                .setClusterName(veniceCluster.getClusterName())
-                .setStoreName(storeName2)
-                .build())
-        .setOwner("owner")
-        .setKeySchema(DEFAULT_KEY_SCHEMA)
-        .setValueSchema("\"string\"")
-        .build();
-    CreateStoreGrpcResponse createResponse2 = storeBlockingStub.createStore(createStoreRequest2);
-    assertNotNull(createResponse2, "Response should not be null");
+      // Step 2: Get store statuses
+      GetStoreStatusRequest healthRequest =
+          GetStoreStatusRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
 
-    // Step 2: Get cluster health stores
-    GetStoreStatusRequest healthRequest =
-        GetStoreStatusRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+      GetStoreStatusResponse healthResponse = storeBlockingStub.getStoreStatuses(healthRequest);
+      assertNotNull(healthResponse, "Response should not be null");
+      assertEquals(healthResponse.getClusterName(), veniceCluster.getClusterName());
 
-    GetStoreStatusResponse healthResponse = storeBlockingStub.getClusterHealthStores(healthRequest);
-    assertNotNull(healthResponse, "Response should not be null");
-    assertEquals(healthResponse.getClusterName(), veniceCluster.getClusterName());
+      // Convert repeated StoreStatus to map for easier verification
+      Map<String, String> storeStatusMap = new HashMap<>();
+      for (StoreStatus status: healthResponse.getStoreStatusesList()) {
+        storeStatusMap.put(status.getStoreName(), status.getStatus());
+      }
 
-    // Convert repeated StoreStatus to map for easier verification
-    java.util.Map<String, String> storeStatusMap = new java.util.HashMap<>();
-    for (StoreStatus status: healthResponse.getStoreStatusesList()) {
-      storeStatusMap.put(status.getStoreName(), status.getStatus());
+      // Verify the stores we created are in the status map
+      assertTrue(storeStatusMap.containsKey(storeName1), "Store status map should contain " + storeName1);
+      assertTrue(storeStatusMap.containsKey(storeName2), "Store status map should contain " + storeName2);
+
+      // Verify the statuses are not null/empty
+      assertNotNull(storeStatusMap.get(storeName1), "Status for " + storeName1 + " should not be null");
+      assertNotNull(storeStatusMap.get(storeName2), "Status for " + storeName2 + " should not be null");
+    } finally {
+      channel.shutdownNow();
     }
+  }
 
-    // Verify the stores we created are in the status map
-    assertTrue(storeStatusMap.containsKey(storeName1), "Store status map should contain " + storeName1);
-    assertTrue(storeStatusMap.containsKey(storeName2), "Store status map should contain " + storeName2);
-
-    // Verify the statuses are not null/empty
-    assertNotNull(storeStatusMap.get(storeName1), "Status for " + storeName1 + " should not be null");
-    assertNotNull(storeStatusMap.get(storeName2), "Status for " + storeName2 + " should not be null");
+  private CreateStoreGrpcResponse createTestStore(
+      StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub stub,
+      String clusterName,
+      String storeName) {
+    CreateStoreGrpcRequest request = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build())
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse response = stub.createStore(request);
+    assertNotNull(response, "Response should not be null");
+    return response;
   }
 
   @Test(timeOut = TIMEOUT_MS)

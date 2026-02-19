@@ -14,7 +14,7 @@ service StoreGrpcService {
   rpc checkResourceCleanupForStoreCreation(ClusterStoreGrpcInfo) returns (ResourceCleanupCheckGrpcResponse) {}
   rpc validateStoreDeleted(ValidateStoreDeletedGrpcRequest) returns (ValidateStoreDeletedGrpcResponse);
   rpc listStores(ListStoresGrpcRequest) returns (ListStoresGrpcResponse);
-  rpc getClusterHealthStores(GetStoreStatusRequest) returns (GetStoreStatusResponse);
+  rpc getStoreStatuses(GetStoreStatusRequest) returns (GetStoreStatusResponse);
   rpc getStore(GetStoreGrpcRequest) returns (GetStoreGrpcResponse);
 }
 

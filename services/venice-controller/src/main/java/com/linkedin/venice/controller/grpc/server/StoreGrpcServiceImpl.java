@@ -6,7 +6,6 @@ import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK
 
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
-import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.exceptions.VeniceUnauthorizedAccessException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
@@ -33,6 +32,7 @@ import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
+import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -161,21 +161,21 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
    * No ACL check; any user can query store health statuses.
    */
   @Override
-  public void getClusterHealthStores(
+  public void getStoreStatuses(
       GetStoreStatusRequest grpcRequest,
       StreamObserver<GetStoreStatusResponse> responseObserver) {
-    LOGGER.debug("Received getClusterHealthStores with args: {}", grpcRequest);
+    LOGGER.debug("Received getStoreStatuses with args: {}", grpcRequest);
     String clusterName = grpcRequest.getClusterName();
-    handleRequest(StoreGrpcServiceGrpc.getGetClusterHealthStoresMethod(), () -> {
-      MultiStoreStatusResponse response = storeRequestHandler.getClusterHealthStores(clusterName);
+    handleRequest(StoreGrpcServiceGrpc.getGetStoreStatusesMethod(), () -> {
+      Map<String, String> storeStatusMap = storeRequestHandler.getStoreStatuses(clusterName);
 
       // Convert map to repeated StoreStatus entries
-      GetStoreStatusResponse.Builder responseBuilder =
-          GetStoreStatusResponse.newBuilder().setClusterName(response.getCluster());
+      GetStoreStatusResponse.Builder responseBuilder = GetStoreStatusResponse.newBuilder().setClusterName(clusterName);
 
-      if (response.getStoreStatusMap() != null) {
-        response.getStoreStatusMap().forEach((storeName, status) -> {
-          responseBuilder.addStoreStatuses(StoreStatus.newBuilder().setStoreName(storeName).setStatus(status).build());
+      if (storeStatusMap != null) {
+        storeStatusMap.forEach((storeName, status) -> {
+          responseBuilder.addStoreStatuses(
+              StoreStatus.newBuilder().setStoreName(storeName).setStatus(status != null ? status : "").build());
         });
       }
 

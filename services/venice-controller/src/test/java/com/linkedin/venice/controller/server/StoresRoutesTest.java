@@ -704,10 +704,7 @@ public class StoresRoutesTest {
     storeStatusMap.put("store1", "ONLINE");
     storeStatusMap.put("store2", "DEGRADED");
     storeStatusMap.put("store3", "UNAVAILABLE");
-    MultiStoreStatusResponse handlerResponse = new MultiStoreStatusResponse();
-    handlerResponse.setCluster(TEST_CLUSTER);
-    handlerResponse.setStoreStatusMap(storeStatusMap);
-    when(mockRequestHandler.getClusterHealthStores(TEST_CLUSTER)).thenReturn(handlerResponse);
+    when(mockRequestHandler.getStoreStatuses(TEST_CLUSTER)).thenReturn(storeStatusMap);
 
     MultiStoreStatusResponse response = ObjectMapperFactory.getInstance()
         .readValue(
@@ -721,10 +718,7 @@ public class StoresRoutesTest {
     Assert.assertEquals(response.getStoreStatusMap().get("store3"), "UNAVAILABLE");
 
     // Case 2: Empty response
-    MultiStoreStatusResponse emptyHandlerResponse = new MultiStoreStatusResponse();
-    emptyHandlerResponse.setCluster(TEST_CLUSTER);
-    emptyHandlerResponse.setStoreStatusMap(new HashMap<>());
-    when(mockRequestHandler.getClusterHealthStores(TEST_CLUSTER)).thenReturn(emptyHandlerResponse);
+    when(mockRequestHandler.getStoreStatuses(TEST_CLUSTER)).thenReturn(new HashMap<>());
 
     response = ObjectMapperFactory.getInstance()
         .readValue(
@@ -735,8 +729,8 @@ public class StoresRoutesTest {
     Assert.assertTrue(response.getStoreStatusMap().isEmpty());
 
     // Case 3: Handler throws exception
-    String errorMessage = "Failed to get cluster health stores";
-    when(mockRequestHandler.getClusterHealthStores(TEST_CLUSTER)).thenThrow(new VeniceException(errorMessage));
+    String errorMessage = "Failed to get store statuses";
+    when(mockRequestHandler.getStoreStatuses(TEST_CLUSTER)).thenThrow(new VeniceException(errorMessage));
 
     response = ObjectMapperFactory.getInstance()
         .readValue(
