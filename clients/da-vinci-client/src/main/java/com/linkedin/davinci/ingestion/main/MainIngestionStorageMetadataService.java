@@ -21,6 +21,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutorService;
@@ -45,6 +46,7 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
   private final Map<String, Map<Integer, OffsetRecord>> topicPartitionOffsetRecordMap = new VeniceConcurrentHashMap<>();
   private final Map<String, StoreVersionState> topicStoreVersionStateMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, byte[]> globalRtDivStateMap = new VeniceConcurrentHashMap<>();
   private final ExecutorService metadataUpdateService = Executors.newSingleThreadExecutor();
   private final Queue<IngestionStorageMetadata> metadataUpdateQueue = new ConcurrentLinkedDeque<>();
   private final MetadataUpdateStats metadataUpdateStats;
@@ -157,6 +159,36 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
     return offsetRecord;
   }
 
+  @Override
+  public void putGlobalRtDivState(String topicName, int partitionId, String brokerUrl, byte[] valueBytes)
+      throws VeniceException {
+    globalRtDivStateMap.put(toGlobalRtDivKey(topicName, partitionId, brokerUrl), valueBytes.clone());
+    IngestionStorageMetadata ingestionStorageMetadata = new IngestionStorageMetadata();
+    ingestionStorageMetadata.metadataUpdateType = IngestionMetadataUpdateType.PUT_GLOBAL_RT_DIV_STATE.getValue();
+    ingestionStorageMetadata.topicName = topicName;
+    ingestionStorageMetadata.partitionId = partitionId;
+    ingestionStorageMetadata.payload = ByteBuffer.wrap(serializeGlobalRtDivPayload(brokerUrl, valueBytes));
+    updateRemoteStorageMetadataService(ingestionStorageMetadata);
+  }
+
+  @Override
+  public Optional<byte[]> getGlobalRtDivState(String topicName, int partitionId, String brokerUrl)
+      throws VeniceException {
+    byte[] valueBytes = globalRtDivStateMap.get(toGlobalRtDivKey(topicName, partitionId, brokerUrl));
+    return valueBytes == null ? Optional.empty() : Optional.of(valueBytes.clone());
+  }
+
+  @Override
+  public void clearGlobalRtDivState(String topicName, int partitionId, String brokerUrl) {
+    globalRtDivStateMap.remove(toGlobalRtDivKey(topicName, partitionId, brokerUrl));
+    IngestionStorageMetadata ingestionStorageMetadata = new IngestionStorageMetadata();
+    ingestionStorageMetadata.metadataUpdateType = IngestionMetadataUpdateType.CLEAR_GLOBAL_RT_DIV_STATE.getValue();
+    ingestionStorageMetadata.topicName = topicName;
+    ingestionStorageMetadata.partitionId = partitionId;
+    ingestionStorageMetadata.payload = ByteBuffer.wrap(serializeGlobalRtDivPayload(brokerUrl, new byte[0]));
+    updateRemoteStorageMetadataService(ingestionStorageMetadata);
+  }
+
   /**
    * putOffsetRecord will only put OffsetRecord into in-memory state, without persisting into metadata RocksDB partition.
    */
@@ -175,6 +207,36 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
     LOGGER.info("Updating StoreVersionState for {}", topicName);
     topicStoreVersionStateMap.put(topicName, record);
     storeVersionStateSyncer.accept(topicName, record);
+  }
+
+  public static byte[] serializeGlobalRtDivPayload(String brokerUrl, byte[] valueBytes) {
+    byte[] brokerUrlBytes = brokerUrl.getBytes();
+    ByteBuffer payload = ByteBuffer.allocate(Integer.BYTES + brokerUrlBytes.length + valueBytes.length);
+    payload.putInt(brokerUrlBytes.length);
+    payload.put(brokerUrlBytes);
+    payload.put(valueBytes);
+    return payload.array();
+  }
+
+  public static String deserializeGlobalRtDivBrokerUrl(byte[] payloadBytes) {
+    ByteBuffer payload = ByteBuffer.wrap(payloadBytes);
+    int brokerLen = payload.getInt();
+    byte[] brokerBytes = new byte[brokerLen];
+    payload.get(brokerBytes);
+    return new String(brokerBytes);
+  }
+
+  public static byte[] deserializeGlobalRtDivValueBytes(byte[] payloadBytes) {
+    ByteBuffer payload = ByteBuffer.wrap(payloadBytes);
+    int brokerLen = payload.getInt();
+    payload.position(Integer.BYTES + brokerLen);
+    byte[] valueBytes = new byte[payload.remaining()];
+    payload.get(valueBytes);
+    return valueBytes;
+  }
+
+  private String toGlobalRtDivKey(String topicName, int partitionId, String brokerUrl) {
+    return topicName + "_" + partitionId + "_" + brokerUrl;
   }
 
   private synchronized void updateRemoteStorageMetadataService(IngestionStorageMetadata ingestionStorageMetadata) {
