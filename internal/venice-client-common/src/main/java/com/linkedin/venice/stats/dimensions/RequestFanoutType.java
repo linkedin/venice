@@ -15,19 +15,8 @@ public enum RequestFanoutType implements VeniceDimensionInterface {
    */
   RETRY;
 
-  private final String type;
-
-  RequestFanoutType() {
-    this.type = name().toLowerCase();
-  }
-
   @Override
   public VeniceMetricsDimensions getDimensionName() {
     return VENICE_REQUEST_FANOUT_TYPE;
-  }
-
-  @Override
-  public String getDimensionValue() {
-    return type;
   }
 }

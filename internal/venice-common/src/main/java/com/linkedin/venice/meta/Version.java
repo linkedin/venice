@@ -137,11 +137,6 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     public VeniceMetricsDimensions getDimensionName() {
       return VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE;
     }
-
-    @Override
-    public String getDimensionValue() {
-      return this.name().toLowerCase();
-    }
   }
 
   int getNumber();
