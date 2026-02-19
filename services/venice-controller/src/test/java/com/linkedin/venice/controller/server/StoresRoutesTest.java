@@ -145,6 +145,7 @@ public class StoresRoutesTest {
   @Test
   public void testMigrateStore() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class, RETURNS_DEEP_STUBS);
+    doReturn(true).when(mockAdmin).isParent();
     String DEST_CLUSTER = "dest_cluster";
     when(mockAdmin.discoverCluster(TEST_STORE_NAME)).thenReturn(TEST_CLUSTER);
     Request request = mock(Request.class);
@@ -358,6 +359,7 @@ public class StoresRoutesTest {
   @Test
   public void testAutoMigrateStore() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class, RETURNS_DEEP_STUBS);
+    doReturn(true).when(mockAdmin).isParent();
     String DEST_CLUSTER = "dest_cluster";
     when(mockAdmin.discoverCluster(TEST_STORE_NAME)).thenReturn(TEST_CLUSTER);
     Request request = mock(Request.class);
@@ -677,5 +679,88 @@ public class StoresRoutesTest {
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getStores().length, 1);
     Assert.assertEquals(response.getStores()[0], "user-store");
+  }
+
+  @Test
+  public void testMigrateStoreBlockedOnChildController() throws Exception {
+    Admin mockAdmin = mock(VeniceHelixAdmin.class, RETURNS_DEEP_STUBS);
+    doReturn(false).when(mockAdmin).isParent();
+
+    Request request = mock(Request.class);
+    doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn("dest_cluster").when(request).queryParams(eq(ControllerApiConstants.CLUSTER_DEST));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+
+    Route migrateStoreRoute = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).migrateStore(mockAdmin);
+    StoreMigrationResponse migrationResponse = ObjectMapperFactory.getInstance()
+        .readValue(migrateStoreRoute.handle(request, mock(Response.class)).toString(), StoreMigrationResponse.class);
+    Assert.assertTrue(migrationResponse.isError());
+    Assert.assertEquals(migrationResponse.getErrorType(), ErrorType.BAD_REQUEST);
+    Assert.assertTrue(migrationResponse.getError().contains("parent controller"));
+  }
+
+  @Test
+  public void testCompleteMigrationBlockedOnChildController() throws Exception {
+    Admin mockAdmin = mock(VeniceHelixAdmin.class, RETURNS_DEEP_STUBS);
+    doReturn(false).when(mockAdmin).isParent();
+
+    Request request = mock(Request.class);
+    doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn("dest_cluster").when(request).queryParams(eq(ControllerApiConstants.CLUSTER_DEST));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+
+    Route completeMigrationRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).completeMigration(mockAdmin);
+    StoreMigrationResponse migrationResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            completeMigrationRoute.handle(request, mock(Response.class)).toString(),
+            StoreMigrationResponse.class);
+    Assert.assertTrue(migrationResponse.isError());
+    Assert.assertEquals(migrationResponse.getErrorType(), ErrorType.BAD_REQUEST);
+    Assert.assertTrue(migrationResponse.getError().contains("parent controller"));
+  }
+
+  @Test
+  public void testAbortMigrationBlockedOnChildController() throws Exception {
+    Admin mockAdmin = mock(VeniceHelixAdmin.class, RETURNS_DEEP_STUBS);
+    doReturn(false).when(mockAdmin).isParent();
+
+    Request request = mock(Request.class);
+    doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn("dest_cluster").when(request).queryParams(eq(ControllerApiConstants.CLUSTER_DEST));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+
+    Route abortMigrationRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).abortMigration(mockAdmin);
+    StoreMigrationResponse migrationResponse = ObjectMapperFactory.getInstance()
+        .readValue(abortMigrationRoute.handle(request, mock(Response.class)).toString(), StoreMigrationResponse.class);
+    Assert.assertTrue(migrationResponse.isError());
+    Assert.assertEquals(migrationResponse.getErrorType(), ErrorType.BAD_REQUEST);
+    Assert.assertTrue(migrationResponse.getError().contains("parent controller"));
+  }
+
+  @Test
+  public void testAutoMigrateStoreBlockedOnChildController() throws Exception {
+    Admin mockAdmin = mock(VeniceHelixAdmin.class, RETURNS_DEEP_STUBS);
+    doReturn(false).when(mockAdmin).isParent();
+
+    Request request = mock(Request.class);
+    doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn("dest_cluster").when(request).queryParams(eq(ControllerApiConstants.CLUSTER_DEST));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.STORE_NAME));
+
+    Route autoMigrateStoreRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).autoMigrateStore(mockAdmin);
+    StoreMigrationResponse migrationResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            autoMigrateStoreRoute.handle(request, mock(Response.class)).toString(),
+            StoreMigrationResponse.class);
+    Assert.assertTrue(migrationResponse.isError());
+    Assert.assertEquals(migrationResponse.getErrorType(), ErrorType.BAD_REQUEST);
+    Assert.assertTrue(migrationResponse.getError().contains("parent controller"));
   }
 }
