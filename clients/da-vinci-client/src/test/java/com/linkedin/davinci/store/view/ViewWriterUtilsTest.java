@@ -3,19 +3,21 @@ package com.linkedin.davinci.store.view;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import java.util.Collections;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.mockito.Mockito;
@@ -46,22 +48,25 @@ public class ViewWriterUtilsTest {
     Mockito.when(mockVeniceConfigLoader.getCombinedProperties()).thenReturn(props);
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
+    Map<String, String> viewParams = new MaterializedViewParameters.Builder("test-view").setPartitionCount(12)
+        .setPartitioner(DefaultVenicePartitioner.class.getCanonicalName())
+        .build();
     VeniceView veniceView = ViewUtils.getVeniceView(
-        ChangeCaptureView.class.getCanonicalName(),
+        MaterializedView.class.getCanonicalName(),
         mockVeniceConfigLoader.getCombinedProperties().toProperties(),
         "test-store",
-        Collections.EMPTY_MAP);
+        viewParams);
     VeniceViewWriter viewWriter = ViewWriterUtils.getVeniceViewWriter(
-        ChangeCaptureView.class.getCanonicalName(),
+        MaterializedView.class.getCanonicalName(),
         mockVeniceConfigLoader,
         mockStore,
         1,
         SCHEMA,
-        Collections.EMPTY_MAP,
+        viewParams,
         mockVeniceWriterFactory);
 
-    Assert.assertTrue(viewWriter instanceof ChangeCaptureViewWriter);
-    Assert.assertTrue(veniceView instanceof ChangeCaptureView);
+    Assert.assertTrue(viewWriter instanceof MaterializedViewWriter);
+    Assert.assertTrue(veniceView instanceof MaterializedView);
   }
 
 }

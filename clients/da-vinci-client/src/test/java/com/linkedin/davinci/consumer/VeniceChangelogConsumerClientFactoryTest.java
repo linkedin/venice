@@ -30,7 +30,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.ObjectMapperFactory;
-import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.MaterializedView;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -79,7 +79,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     StoreInfo mockStoreInfo = new StoreInfo();
     mockStoreInfo.setPartitionCount(1);
     mockStoreInfo.setCurrentVersion(1);
-    ViewConfig viewConfig = new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), new HashMap<>());
+    ViewConfig viewConfig = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), new HashMap<>());
     Map<String, ViewConfig> viewConfigMap = new HashMap<>();
     viewConfigMap.put(VIEW_NAME, viewConfig);
     mockStoreInfo.setViewConfigs(viewConfigMap);
@@ -114,7 +114,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
         String storeName,
         String viewName,
         D2ControllerClient d2ControllerClient,
-        int retries) -> ChangeCaptureView.class.getCanonicalName();
+        int retries) -> MaterializedView.class.getCanonicalName();
 
     veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());
@@ -187,7 +187,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     StoreInfo mockStoreInfo = new StoreInfo();
     mockStoreInfo.setPartitionCount(1);
     mockStoreInfo.setCurrentVersion(1);
-    ViewConfig viewConfig = new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), new HashMap<>());
+    ViewConfig viewConfig = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), new HashMap<>());
     Map<String, ViewConfig> viewConfigMap = new HashMap<>();
     viewConfigMap.put(VIEW_NAME, viewConfig);
     mockStoreInfo.setViewConfigs(viewConfigMap);
@@ -256,7 +256,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     StoreInfo mockStoreInfo = new StoreInfo();
     mockStoreInfo.setPartitionCount(1);
     mockStoreInfo.setCurrentVersion(1);
-    ViewConfig viewConfig = new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), new HashMap<>());
+    ViewConfig viewConfig = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), new HashMap<>());
     Map<String, ViewConfig> viewConfigMap = new HashMap<>();
     viewConfigMap.put(VIEW_NAME, viewConfig);
     mockStoreInfo.setViewConfigs(viewConfigMap);
@@ -296,7 +296,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
         String storeName,
         String viewName,
         D2ControllerClient d2ControllerClient,
-        int retries) -> ChangeCaptureView.class.getCanonicalName();
+        int retries) -> MaterializedView.class.getCanonicalName();
 
     veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());

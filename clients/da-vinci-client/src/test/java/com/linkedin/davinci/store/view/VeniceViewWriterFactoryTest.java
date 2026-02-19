@@ -3,19 +3,20 @@ package com.linkedin.davinci.store.view;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
@@ -44,8 +45,12 @@ public class VeniceViewWriterFactoryTest {
     Mockito.when(mockVeniceConfigLoader.getVeniceServerConfig()).thenReturn(mockVeniceServerConfig);
 
     Map<String, ViewConfig> viewConfigMap = new HashMap<>();
-    viewConfigMap.put("view1", new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap()));
-    viewConfigMap.put("view2", new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap()));
+    MaterializedViewParameters.Builder builder1 = new MaterializedViewParameters.Builder("view1").setPartitionCount(12)
+        .setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
+    viewConfigMap.put("view1", new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder1.build()));
+    MaterializedViewParameters.Builder builder2 = new MaterializedViewParameters.Builder("view2").setPartitionCount(12)
+        .setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
+    viewConfigMap.put("view2", new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder2.build()));
 
     Store mockStore = Mockito.mock(Store.class);
     Version version = new VersionImpl(TEST_STORE, 1, "fooid");
@@ -58,8 +63,8 @@ public class VeniceViewWriterFactoryTest {
         new VeniceViewWriterFactory(mockVeniceConfigLoader, mockVeniceWriterFactory);
     Map<String, VeniceViewWriter> viewWriterMap = viewWriterFactory.buildStoreViewWriters(mockStore, 1, SCHEMA);
 
-    Assert.assertTrue(viewWriterMap.get("view1") instanceof ChangeCaptureViewWriter);
-    Assert.assertTrue(viewWriterMap.get("view2") instanceof ChangeCaptureViewWriter);
+    Assert.assertTrue(viewWriterMap.get("view1") instanceof MaterializedViewWriter);
+    Assert.assertTrue(viewWriterMap.get("view2") instanceof MaterializedViewWriter);
     Assert.assertEquals(viewWriterMap.size(), 2);
   }
 }

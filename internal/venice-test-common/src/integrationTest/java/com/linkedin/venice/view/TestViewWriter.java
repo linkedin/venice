@@ -80,7 +80,7 @@ public class TestViewWriter extends VeniceViewWriter {
       return;
     }
 
-    // Only leaders should produce to Change Capture topics
+    // Only leaders should produce to view topics
     if (partitionConsumptionState.getLeaderFollowerState() != LeaderFollowerStateType.LEADER) {
       return;
     }
@@ -88,7 +88,7 @@ public class TestViewWriter extends VeniceViewWriter {
     // Parse VersionSwap
     VersionSwap versionSwapMessage = (VersionSwap) controlMessage.getControlMessageUnion();
 
-    // Only the version we're transiting FROM needs to populate the topic switch message into the change capture topic
+    // Only the version we're transiting FROM needs to populate the topic switch message into the view topic
     if (Version
         .parseVersionFromVersionTopicName(versionSwapMessage.oldServingVersionTopic.toString()) != versionNumber) {
       return;

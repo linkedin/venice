@@ -35,7 +35,7 @@ import org.apache.avro.generic.GenericRecord;
  */
 public abstract class VeniceViewWriter extends VeniceView {
   public enum ViewWriterType {
-    MATERIALIZED_VIEW, CHANGE_CAPTURE_VIEW
+    MATERIALIZED_VIEW
   }
 
   protected final Version version;

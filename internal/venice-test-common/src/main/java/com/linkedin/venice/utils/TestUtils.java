@@ -97,7 +97,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -1013,7 +1013,7 @@ public class TestUtils {
       return PubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
     } else if (pubSubTopicType.equals(PubSubTopicType.VIEW_TOPIC)) {
       return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version)
-          + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+          + MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX;
     } else if (pubSubTopicType.equals(PubSubTopicType.UNKNOWN_TYPE_TOPIC)) {
       return getUniqueString(prefix);
     } else {

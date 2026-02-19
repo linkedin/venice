@@ -103,7 +103,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
-import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.metrics.MetricsRepository;
@@ -2391,13 +2390,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     setupForStoreViewConfigUpdateTest(storeName);
     Map<String, String> viewConfig = new HashMap<>();
     viewConfig.put(
-        "changeCapture",
-        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+        "testView",
+        "{\"viewClassName\" : \"" + MaterializedView.class.getCanonicalName() + "\", \"viewParameters\" : {\""
+            + MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name() + "\":\"10\"}}");
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStoreViews(viewConfig));
 
     AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertTrue(updateStore.getViews().containsKey("changeCapture"));
+    Assert.assertTrue(updateStore.getViews().containsKey("testView"));
   }
 
   @Test
@@ -2445,20 +2445,22 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = setupForStoreViewConfigUpdateTest(storeName);
     store.setViewConfigs(
         Collections.singletonMap("testView", new ViewConfigImpl("testViewClassDummyName", Collections.emptyMap())));
+    Map<String, String> viewClassParams = new HashMap<>();
+    viewClassParams.put(MaterializedViewParameters.MATERIALIZED_VIEW_PARTITION_COUNT.name(), Integer.toString(10));
     parentAdmin.updateStore(
         clusterName,
         storeName,
-        new UpdateStoreQueryParams().setViewName("changeCapture")
-            .setViewClassName(ChangeCaptureView.class.getCanonicalName()));
+        new UpdateStoreQueryParams().setViewName("newView")
+            .setViewClassName(MaterializedView.class.getCanonicalName())
+            .setViewClassParams(viewClassParams));
 
     AdminOperation adminMessage = verifyAndGetSingleAdminOperation();
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     assertEquals(updateStore.getViews().size(), 2);
-    Assert.assertTrue(updateStore.getViews().containsKey("changeCapture"));
+    Assert.assertTrue(updateStore.getViews().containsKey("newView"));
     assertEquals(
-        updateStore.getViews().get("changeCapture").viewClassName.toString(),
-        ChangeCaptureView.class.getCanonicalName());
-    Assert.assertTrue(updateStore.getViews().get("changeCapture").viewParameters.isEmpty());
+        updateStore.getViews().get("newView").viewClassName.toString(),
+        MaterializedView.class.getCanonicalName());
   }
 
   @Test
@@ -2515,15 +2517,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     store.setChunkingEnabled(true);
     store.setViewConfigs(
         Collections.singletonMap(
-            "changeCapture",
-            new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap())));
+            "testView",
+            new ViewConfigImpl(MaterializedView.class.getCanonicalName(), Collections.emptyMap())));
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.updateStore(
         clusterName,
         storeName,
-        new UpdateStoreQueryParams().setViewName("changeCapture").setDisableStoreView());
+        new UpdateStoreQueryParams().setViewName("testView").setDisableStoreView());
 
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);

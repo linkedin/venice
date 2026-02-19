@@ -163,7 +163,6 @@ public class TestVersion {
     verifyTopic("abc_v_sr", false, false, false, false, false, false);
     verifyTopic("abc_v1", true, false, false, true, true, false);
     verifyTopic("abc_v1_sr", false, false, true, true, true, false);
-    verifyTopic("abc_v1_cc", false, false, false, false, true, false);
     verifyTopic("abc_mv", false, false, false, false, true, false);
     verifyTopic("abc_rt_v1", false, true, false, false, false, false);
     verifyTopic("abc_rt_v1_sep", false, true, false, false, false, true);
@@ -294,8 +293,6 @@ public class TestVersion {
     assertEquals(Version.parseStoreFromKafkaTopicName(topic), storeName);
     topic = "abc_v1";
     assertEquals(Version.parseStoreFromKafkaTopicName(topic), storeName);
-    topic = "abc_v1_cc";
-    assertEquals(Version.parseStoreFromKafkaTopicName(topic), storeName);
   }
 
   @Test
@@ -303,8 +300,6 @@ public class TestVersion {
     int version = 1;
     String topic = "abc_v1";
     assertEquals(Version.parseVersionFromVersionTopicName(topic), version);
-    topic = "abc_v1_cc";
-    assertEquals(Version.parseVersionFromKafkaTopicName(topic), version);
   }
 
   @Test
@@ -312,7 +307,7 @@ public class TestVersion {
     int version = 1;
     String topic = "abc_v1-0";
     assertEquals(Version.parseVersionFromVersionTopicPartition(topic), version);
-    topic = "abc_v1-0_cc";
+    topic = "abc_v1-0_testView_mv";
     assertEquals(Version.parseVersionFromVersionTopicPartition(topic), version);
   }
 
