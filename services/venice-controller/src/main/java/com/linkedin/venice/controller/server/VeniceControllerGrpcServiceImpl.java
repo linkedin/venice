@@ -6,6 +6,8 @@ import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcRequest;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc.VeniceControllerGrpcServiceImplBase;
 import io.grpc.stub.StreamObserver;
@@ -51,5 +53,22 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
         responseObserver,
         null,
         grpcRequest.getStoreName());
+  }
+
+  /**
+   * Lists all child clusters for a parent controller in a multi-cluster setup.
+   * No ACL check; any user can list child clusters.
+   */
+  @Override
+  public void listChildClusters(
+      ListChildClustersGrpcRequest grpcRequest,
+      StreamObserver<ListChildClustersGrpcResponse> responseObserver) {
+    LOGGER.debug("Received listChildClusters with args: {}", grpcRequest);
+    handleRequest(
+        VeniceControllerGrpcServiceGrpc.getListChildClustersMethod(),
+        () -> requestHandler.listChildClusters(grpcRequest),
+        responseObserver,
+        grpcRequest.getClusterName(),
+        null);
   }
 }

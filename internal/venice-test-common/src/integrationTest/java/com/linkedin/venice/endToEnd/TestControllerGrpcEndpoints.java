@@ -26,6 +26,8 @@ import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcRequest;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.SchemaGrpcServiceGrpc;
@@ -386,6 +388,25 @@ public class TestControllerGrpcEndpoints {
     StatusRuntimeException exception = Assert
         .expectThrows(StatusRuntimeException.class, () -> schemaBlockingStub.getValueSchema(invalidSchemaRequest));
     assertEquals(exception.getStatus().getCode(), io.grpc.Status.Code.INVALID_ARGUMENT);
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
+  public void testListChildClustersGrpcEndpoint() {
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    VeniceControllerGrpcServiceBlockingStub blockingStub = VeniceControllerGrpcServiceGrpc.newBlockingStub(channel);
+
+    // Test listChildClusters - for a non-parent controller, it should return empty maps
+    ListChildClustersGrpcRequest request =
+        ListChildClustersGrpcRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+
+    ListChildClustersGrpcResponse response = blockingStub.listChildClusters(request);
+    assertNotNull(response, "Response should not be null");
+    assertEquals(response.getClusterName(), veniceCluster.getClusterName(), "Cluster name should match");
+    // Non-parent controllers return empty maps
+    assertEquals(response.getChildDataCenterControllerUrlMapCount(), 0, "URL map should be empty for non-parent");
+    assertEquals(response.getChildDataCenterControllerD2MapCount(), 0, "D2 map should be empty for non-parent");
+    assertFalse(response.hasD2ServiceName(), "D2 service name should not be set for non-parent");
   }
 
   @Test(timeOut = TIMEOUT_MS)
