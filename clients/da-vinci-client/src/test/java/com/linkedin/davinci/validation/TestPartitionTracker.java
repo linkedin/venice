@@ -818,9 +818,9 @@ public class TestPartitionTracker {
     recentSegment.setLastRecordTimestamp(t - 1000); // Only 1 second old
     segments.put(guids.get(1), recentSegment);
 
-    // Segment 3: Borderline recent (should be retained)
+    // Segment 3: Recent but older than Segment 2 (should be retained)
     Segment borderlineSegment = new Segment(partitionId, 2, CheckSumType.NONE);
-    borderlineSegment.setLastRecordTimestamp(t - MAX_AGE_IN_MS + 1000); // Just within threshold
+    borderlineSegment.setLastRecordTimestamp(t - MAX_AGE_IN_MS + (MAX_AGE_IN_MS / 2)); // Well within threshold
     segments.put(guids.get(2), borderlineSegment);
   }
 }

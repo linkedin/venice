@@ -119,6 +119,7 @@ public class Segment {
     this.aggregates = CollectionUtils.substituteEmptyMap(state.getAggregates());
     this.registered = state.isRegistered;
     this.lastRecordProducerTimestamp = state.messageTimestamp;
+    this.lastRecordTimestamp = state.messageTimestamp;
   }
 
   public Segment(Segment segment) {

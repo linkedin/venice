@@ -36,7 +36,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -211,7 +210,7 @@ public class PartitionTracker {
    * Clone the vtSegments and LCVP to the destination PartitionTracker. May be called concurrently.
    */
   public void cloneVtProducerStates(PartitionTracker destProducerTracker, long maxAgeInMs) {
-    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : new Date().getTime() - maxAgeInMs;
+    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
     Iterator<Map.Entry<GUID, Segment>> iterator = vtSegments.entrySet().iterator();
     int removedCount = 0;
     while (iterator.hasNext()) {
@@ -233,9 +232,12 @@ public class PartitionTracker {
    * Clone the rtSegments to the destination PartitionTracker. Filter by brokerUrl. May be called concurrently.
    */
   public void cloneRtProducerStates(PartitionTracker destProducerTracker, String brokerUrl, long maxAgeInMs) {
-    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : new Date().getTime() - maxAgeInMs;
+    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
     int removedCount = 0;
-    for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> broker2Segment: rtSegments.entrySet()) {
+    Iterator<Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>>> brokerIterator =
+        rtSegments.entrySet().iterator();
+    while (brokerIterator.hasNext()) {
+      Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> broker2Segment = brokerIterator.next();
       if (!brokerUrl.equals(broker2Segment.getKey())) {
         continue; // filter by the specified brokerUrl
       }
@@ -253,7 +255,7 @@ public class PartitionTracker {
         }
       }
       if (broker2Segment.getValue().isEmpty()) {
-        rtSegments.remove(broker2Segment.getKey());
+        brokerIterator.remove();
       }
     }
     if (removedCount > 0 && !REDUNDANT_LOGGING_FILTER.isRedundantException(topicName + "-cloneRtProducerStates")) {
