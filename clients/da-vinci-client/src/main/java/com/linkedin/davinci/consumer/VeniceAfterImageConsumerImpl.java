@@ -94,10 +94,10 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             versionSwapException);
       }
 
-      return internalPoll(timeoutInMs, "");
+      return internalPoll(timeoutInMs);
     } catch (UnknownTopicOrPartitionException ex) {
       LOGGER.error("Caught unknown Topic exception, will attempt repair and retry: ", ex);
-      return internalPoll(timeoutInMs, "");
+      return internalPoll(timeoutInMs);
     }
   }
 
@@ -106,7 +106,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     if (timestamps.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
-    return internalSeekToTimestamps(timestamps, "");
+    return internalSeekToTimestamps(timestamps);
   }
 
   @Override
@@ -125,14 +125,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       versionSwapThreadScheduled.set(true);
     }
     return super.subscribe(partitions);
-  }
-
-  @Override
-  public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
-    if (partitions.isEmpty()) {
-      return CompletableFuture.completedFuture(null);
-    }
-    return internalSeekToTail(partitions, "");
   }
 
   protected static void adjustSeekCheckPointsBasedOnHeartbeats(
