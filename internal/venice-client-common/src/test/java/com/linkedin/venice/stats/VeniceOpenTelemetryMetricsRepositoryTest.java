@@ -500,10 +500,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
             "histogramMap", // Child has its own instrument maps
             "counterMap",
             "upDownCounterMap",
-            "gaugeMap",
-            "asyncGaugeMap",
-            "asyncCounterMap",
-            "asyncUpDownCounterMap"));
+            "gaugeMap"));
 
     // Fields that are expected to be null in child
     Set<String> FIELDS_EXPECTED_NULL_IN_CHILD = new HashSet<>(Arrays.asList("sdkMeterProvider"));

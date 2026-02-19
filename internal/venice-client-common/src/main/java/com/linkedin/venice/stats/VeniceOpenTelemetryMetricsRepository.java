@@ -51,13 +51,10 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.LongSupplier;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
@@ -242,12 +239,6 @@ public class VeniceOpenTelemetryMetricsRepository {
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongUpDownCounter> upDownCounterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongGauge> gaugeMap = new VeniceConcurrentHashMap<>();
-  private final VeniceConcurrentHashMap<String, ObservableInstrumentEntry<ObservableLongGauge>> asyncGaugeMap =
-      new VeniceConcurrentHashMap<>();
-  private final VeniceConcurrentHashMap<String, ObservableInstrumentEntry<ObservableLongCounter>> asyncCounterMap =
-      new VeniceConcurrentHashMap<>();
-  private final VeniceConcurrentHashMap<String, ObservableInstrumentEntry<ObservableLongUpDownCounter>> asyncUpDownCounterMap =
-      new VeniceConcurrentHashMap<>();
 
   MetricExporter getOtlpHttpMetricExporter(VeniceMetricsConfig metricsConfig) {
     OtlpHttpMetricExporterBuilder exporterBuilder =
@@ -406,25 +397,20 @@ public class VeniceOpenTelemetryMetricsRepository {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
-    Consumer<ObservableLongMeasurement> reportCallback = measurement -> {
-      long v;
-      try {
-        v = asyncCallback.getAsLong();
-      } catch (Exception e) {
-        recordFailureMetric(metricEntity, e);
-        return;
-      }
-      measurement.record(v, attributes);
-    };
-    return registerObservableInstrument(
-        asyncGaugeMap,
-        metricEntity,
-        reportCallback,
-        wrapperCallback -> meter.gaugeBuilder(getFullMetricName(metricEntity))
-            .setUnit(metricEntity.getUnit().name())
-            .setDescription(getMetricDescription(metricEntity, metricsConfig))
-            .ofLongs()
-            .buildWithCallback(wrapperCallback));
+    return meter.gaugeBuilder(getFullMetricName(metricEntity))
+        .setUnit(metricEntity.getUnit().name())
+        .setDescription(getMetricDescription(metricEntity, metricsConfig))
+        .ofLongs()
+        .buildWithCallback(measurement -> {
+          long v;
+          try {
+            v = asyncCallback.getAsLong();
+          } catch (Exception e) {
+            recordFailureMetric(metricEntity, e);
+            return;
+          }
+          measurement.record(v, attributes);
+        });
   }
 
   public Object createInstrument(MetricEntity metricEntity, LongSupplier asyncCallback, Attributes attributes) {
@@ -489,14 +475,10 @@ public class VeniceOpenTelemetryMetricsRepository {
           "registerObservableLongCounter should only be called for ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics, but got: "
               + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
     }
-    return registerObservableInstrument(
-        asyncCounterMap,
-        metricEntity,
-        reportCallback,
-        wrapperCallback -> meter.counterBuilder(getFullMetricName(metricEntity))
-            .setUnit(metricEntity.getUnit().name())
-            .setDescription(getMetricDescription(metricEntity, metricsConfig))
-            .buildWithCallback(wrapperCallback));
+    return meter.counterBuilder(getFullMetricName(metricEntity))
+        .setUnit(metricEntity.getUnit().name())
+        .setDescription(getMetricDescription(metricEntity, metricsConfig))
+        .buildWithCallback(reportCallback);
   }
 
   /**
@@ -524,34 +506,10 @@ public class VeniceOpenTelemetryMetricsRepository {
           "registerObservableLongUpDownCounter should only be called for ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES metrics, but got: "
               + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
     }
-    return registerObservableInstrument(
-        asyncUpDownCounterMap,
-        metricEntity,
-        reportCallback,
-        wrapperCallback -> meter.upDownCounterBuilder(getFullMetricName(metricEntity))
-            .setUnit(metricEntity.getUnit().name())
-            .setDescription(getMetricDescription(metricEntity, metricsConfig))
-            .buildWithCallback(wrapperCallback));
-  }
-
-  /**
-   * Shared implementation for registering an observable instrument with multi-callback support.
-   * The instrument is created once via {@code computeIfAbsent} with a wrapper callback that
-   * iterates a shared {@link CopyOnWriteArrayList}. Each caller's callback is appended to
-   * that list so all stores' data is reported during collection.
-   */
-  private <T> T registerObservableInstrument(
-      VeniceConcurrentHashMap<String, ObservableInstrumentEntry<T>> map,
-      MetricEntity metricEntity,
-      Consumer<ObservableLongMeasurement> reportCallback,
-      Function<Consumer<ObservableLongMeasurement>, T> instrumentFactory) {
-    ObservableInstrumentEntry<T> entry = map.computeIfAbsent(metricEntity.getMetricName(), key -> {
-      List<Consumer<ObservableLongMeasurement>> callbacks = new CopyOnWriteArrayList<>();
-      T instrument = instrumentFactory.apply(measurement -> callbacks.forEach(cb -> cb.accept(measurement)));
-      return new ObservableInstrumentEntry<>(instrument, callbacks);
-    });
-    entry.callbacks.add(reportCallback);
-    return entry.instrument;
+    return meter.upDownCounterBuilder(getFullMetricName(metricEntity))
+        .setUnit(metricEntity.getUnit().name())
+        .setDescription(getMetricDescription(metricEntity, metricsConfig))
+        .buildWithCallback(reportCallback);
   }
 
   public String getDimensionName(VeniceMetricsDimensions dimension) {
