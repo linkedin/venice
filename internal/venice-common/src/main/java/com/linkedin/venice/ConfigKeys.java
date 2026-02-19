@@ -2439,6 +2439,15 @@ public class ConfigKeys {
       "server.ingestion.checkpoint.during.graceful.shutdown.enabled";
 
   /**
+   * Whether to emit OTel metrics for ingestion stats. When enabled (and the global OTel flag is also enabled),
+   * per-store ingestion OTel metrics are recorded. Enabled by default so that turning on OTel for servers
+   * automatically includes ingestion stats. Can be set to {@code false} to disable ingestion OTel stats
+   * independently — useful because ingestion stats are high-frequency hot-path metrics and may need to be
+   * turned off separately without affecting other server/DaVinci OTel metrics.
+   */
+  public static final String SERVER_INGESTION_OTEL_STATS_ENABLED = "server.ingestion.otel.stats.enabled";
+
+  /**
    * A config to control which status store to use for fetching incremental push job status from the controller. This config
    * should be removed once the migration of push status to push status system store is complete.
    * True: use push system status store
