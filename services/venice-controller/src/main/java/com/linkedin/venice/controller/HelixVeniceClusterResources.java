@@ -269,7 +269,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
       this.logCompactionService = null;
     }
 
-    veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
+    veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-", clusterName);
     this.storagePersonaRepository =
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
     /**

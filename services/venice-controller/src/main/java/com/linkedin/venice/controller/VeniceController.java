@@ -24,6 +24,7 @@ import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controller.stats.SparkServerStats;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
+import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.d2.D2ClientFactory;
@@ -76,7 +77,8 @@ public class VeniceController {
           SparkServerStats.SparkServerOtelMetricEntity.class,
           LogCompactionStats.LogCompactionOtelMetricEntity.class,
           PushJobStatusStats.PushJobOtelMetricEntity.class,
-          TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.class);
+          TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.class,
+          VeniceAdminStats.VeniceAdminOtelMetricEntity.class);
 
   // services
   private final VeniceControllerService controllerService;

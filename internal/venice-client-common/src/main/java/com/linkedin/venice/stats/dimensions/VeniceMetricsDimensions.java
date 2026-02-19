@@ -92,7 +92,7 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceIngestionDestinationComponent} destination component */
   VENICE_INGESTION_DESTINATION_COMPONENT("venice.ingestion.destination.component"),
 
-  /** {@link VenicePushType} */
+  /** Venice push job type (e.g. batch, incremental). See Version.PushType */
   VENICE_PUSH_JOB_TYPE("venice.push_job.type"),
 
   /** {@link VenicePushJobStatus} */

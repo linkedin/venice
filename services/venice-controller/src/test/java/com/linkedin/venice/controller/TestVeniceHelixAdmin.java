@@ -567,7 +567,7 @@ public class TestVeniceHelixAdmin {
     assertTrue(
         topicAbsentException.getMessage().contains("is either absent or being truncated"),
         "Actual message: " + topicAbsentException.getMessage());
-    verify(veniceAdminStats, times(1)).recordUnexpectedTopicAbsenceCount();
+    verify(veniceAdminStats, times(1)).recordUnexpectedTopicAbsenceCount(PushType.BATCH);
 
     // Case 3: Topic exists, all partitions are online, but topic is truncated
     when(topicManager.containsTopicAndAllPartitionsAreOnline(topic, partitionCount)).thenReturn(true);
@@ -579,7 +579,7 @@ public class TestVeniceHelixAdmin {
     assertTrue(
         topicTruncatedException.getMessage().contains("is either absent or being truncated"),
         "Actual message: " + topicTruncatedException.getMessage());
-    verify(veniceAdminStats, times(2)).recordUnexpectedTopicAbsenceCount();
+    verify(veniceAdminStats, times(1)).recordUnexpectedTopicAbsenceCount(INCREMENTAL);
 
     // Case 4: Validate behavior with different PushType (e.g., INCREMENTAL)
     when(topicManager.containsTopicAndAllPartitionsAreOnline(topic, partitionCount)).thenReturn(true);

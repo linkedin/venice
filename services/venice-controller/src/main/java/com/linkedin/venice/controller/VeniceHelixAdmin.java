@@ -4030,7 +4030,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeName,
         clusterName,
         topic);
-    getHelixVeniceClusterResources(clusterName).getVeniceAdminStats().recordUnexpectedTopicAbsenceCount();
+    getHelixVeniceClusterResources(clusterName).getVeniceAdminStats().recordUnexpectedTopicAbsenceCount(pushType);
     throw new VeniceException(
         pushType + " push writes cannot be accepted on store: " + storeName + " in cluster: " + clusterName
             + " because the topic: " + topic + " is either absent or being truncated");
