@@ -368,6 +368,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     mockVeniceViewWriterFactory = mock(VeniceViewWriterFactory.class);
     Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
     MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
+    when(materializedViewWriter.getViewWriterType()).thenReturn(VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW);
     viewWriterMap.put("testView", materializedViewWriter);
     when(mockVeniceViewWriterFactory.buildStoreViewWriters(any(), anyInt(), any())).thenReturn(viewWriterMap);
     CompletableFuture<Void> viewWriterFuture = new CompletableFuture<>();
