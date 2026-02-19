@@ -1272,6 +1272,35 @@ public class VeniceChangelogConsumerImplTest {
     assertTrue(veniceChangelogConsumer.switchToNewTopic(newVersionTopic, 0));
   }
 
+  @Test
+  public void testChangeLogConsumerSequenceId() throws ExecutionException, InterruptedException {
+    prepareVersionTopicRecordsToBePolled(0L, 10L, mockPubSubConsumer, oldVersionTopic, 0, true);
+    long sequenceIdStartingValue = 1000L;
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceChangelogConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        sequenceIdStartingValue,
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    veniceChangelogConsumer.subscribe(Collections.singleton(0)).get();
+    when(mockPubSubConsumer.getAssignment()).thenReturn(
+        new HashSet<>(
+            veniceChangelogConsumer
+                .getPartitionListToSubscribe(Collections.singleton(0), Collections.emptySet(), oldVersionTopic)));
+    List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      pubSubMessages.addAll(veniceChangelogConsumer.poll(pollTimeoutMs));
+      Assert.assertEquals(pubSubMessages.size(), 10);
+    });
+    long expectedSequenceId = sequenceIdStartingValue + 1;
+    for (int i = 0; i < 10; i++) {
+      PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i);
+      Assert.assertEquals(pubSubMessage.getValue().getCurrentValue().toString(), "newValue" + i);
+      Assert.assertEquals(pubSubMessage.getPosition().getConsumerSequenceId(), expectedSequenceId++);
+    }
+  }
+
   private ChangelogClientConfig getChangelogClientConfig() {
     ChangelogClientConfig changelogClientConfig =
         new ChangelogClientConfig<>().setD2ControllerClient(mockD2ControllerClient)
