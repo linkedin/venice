@@ -104,7 +104,10 @@ public class DataIntegrityValidator {
       PartitionTracker.TopicType type,
       int partition,
       Map<CharSequence, ProducerPartitionState> producerPartitionStateMap) {
-    registerPartition(partition).setPartitionState(type, producerPartitionStateMap, this.maxAgeInMs);
+    long earliestAllowableTimestamp = this.maxAgeInMs == DISABLED
+        ? DISABLED
+        : OffsetRecord.calculateLatestMessageTimeInMs(producerPartitionStateMap) - this.maxAgeInMs;
+    registerPartition(partition).setPartitionState(type, producerPartitionStateMap, earliestAllowableTimestamp);
   }
 
   /**

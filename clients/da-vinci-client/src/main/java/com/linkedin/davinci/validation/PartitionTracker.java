@@ -35,10 +35,12 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -212,14 +214,18 @@ public class PartitionTracker {
    */
   public void cloneVtProducerStates(PartitionTracker destProducerTracker, long maxAgeInMs) {
     long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
-    Iterator<Map.Entry<GUID, Segment>> iterator = vtSegments.entrySet().iterator();
-    int removedCount = 0;
-    while (iterator.hasNext()) {
-      Map.Entry<GUID, Segment> entry = iterator.next();
+    List<GUID> staleGuids = new ArrayList<>();
+    for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       if (entry.getValue().getLastRecordTimestamp() >= earliestAllowableTimestamp) {
         destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
       } else {
-        iterator.remove(); // The state is eligible to be cleared.
+        staleGuids.add(entry.getKey()); // Collect stale GUIDs for removal
+      }
+    }
+    // Remove stale entries using map API
+    int removedCount = 0;
+    for (GUID guid: staleGuids) {
+      if (vtSegments.remove(guid) != null) {
         removedCount++;
       }
     }
@@ -235,6 +241,7 @@ public class PartitionTracker {
   public void cloneRtProducerStates(PartitionTracker destProducerTracker, String brokerUrl, long maxAgeInMs) {
     long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
     int removedCount = 0;
+    List<String> brokersToRemove = new ArrayList<>();
     Iterator<Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>>> brokerIterator =
         rtSegments.entrySet().iterator();
     while (brokerIterator.hasNext()) {
@@ -244,20 +251,28 @@ public class PartitionTracker {
       }
 
       final VeniceConcurrentHashMap<GUID, Segment> rtEntries = broker2Segment.getValue();
-      Iterator<Map.Entry<GUID, Segment>> rtIterator = rtEntries.entrySet().iterator();
-      while (rtIterator.hasNext()) {
-        Map.Entry<GUID, Segment> rtEntry = rtIterator.next();
+      List<GUID> guidsToRemove = new ArrayList<>();
+      for (Map.Entry<GUID, Segment> rtEntry: rtEntries.entrySet()) {
         if (rtEntry.getValue().getLastRecordTimestamp() >= earliestAllowableTimestamp) {
           TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, broker2Segment.getKey());
           destProducerTracker.setSegment(realTimeTopicType, rtEntry.getKey(), new Segment(rtEntry.getValue()));
         } else {
-          rtIterator.remove(); // The state is eligible to be cleared.
+          guidsToRemove.add(rtEntry.getKey()); // Collect stale GUIDs for removal
+        }
+      }
+      // Remove stale entries using map API
+      for (GUID guid: guidsToRemove) {
+        if (rtEntries.remove(guid) != null) {
           removedCount++;
         }
       }
       if (broker2Segment.getValue().isEmpty()) {
-        brokerIterator.remove();
+        brokersToRemove.add(broker2Segment.getKey());
       }
+    }
+    // Remove empty broker entries using map API
+    for (String broker: brokersToRemove) {
+      rtSegments.remove(broker);
     }
     if (removedCount > 0 && !REDUNDANT_LOGGING_FILTER.isRedundantException(topicName + "-cloneRtProducerStates")) {
       logger.info("event=globalRtDiv Removed {} stale RT producer state(s) for store {}", removedCount, topicName);

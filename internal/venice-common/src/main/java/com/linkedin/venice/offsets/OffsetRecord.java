@@ -180,11 +180,11 @@ public class OffsetRecord {
    * @return the last messageTimeStamp across all producers tracked by this OffsetRecord
    */
   public long calculateLatestMessageTimeInMs() {
-    return this.partitionState.producerStates.values()
-        .stream()
-        .mapToLong(ProducerPartitionState::getMessageTimestamp)
-        .max()
-        .orElse(-1);
+    return calculateLatestMessageTimeInMs(this.partitionState.producerStates);
+  }
+
+  public static long calculateLatestMessageTimeInMs(Map<CharSequence, ProducerPartitionState> producerStates) {
+    return producerStates.values().stream().mapToLong(ProducerPartitionState::getMessageTimestamp).max().orElse(-1);
   }
 
   public long getLatestProducerProcessingTimeInMs() {

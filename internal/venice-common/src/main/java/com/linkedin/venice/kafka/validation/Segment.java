@@ -443,7 +443,7 @@ public class Segment {
     pps.checksumType = getCheckSumType().getValue();
     pps.segmentNumber = getSegmentNumber();
     pps.messageSequenceNumber = getSequenceNumber();
-    pps.messageTimestamp = getLastRecordProducerTimestamp();
+    pps.messageTimestamp = getLastRecordTimestamp();
     pps.segmentStatus = getStatus().getValue();
     pps.isRegistered = isRegistered();
   }
