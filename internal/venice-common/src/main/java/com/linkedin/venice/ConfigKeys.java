@@ -686,6 +686,13 @@ public class ConfigKeys {
       "controller.parent.system.store.version.refresh.threshold.in.days";
 
   /**
+   * Maximum number of system stores to repair in a single round per cluster. When there are more unhealthy stores
+   * than this limit, the excess stores will be deferred to the next round. Default is -1 (unlimited).
+   */
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_MAX_PER_ROUND =
+      "controller.parent.system.store.repair.max.per.round";
+
+  /**
    * Fully qualified class name of an optional {@code SystemStoreHealthChecker} override. When set, this checker runs
    * to check system store health. Default value is emtpy, will fall back to {@code HeartbeatBasedSystemStoreHealthChecker}.
    */

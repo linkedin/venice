@@ -29,11 +29,12 @@ public class SystemStoreRepairService extends AbstractVeniceService {
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
   private final int heartbeatWaitTimeInSeconds;
   private final int versionRefreshThresholdInDays;
+  private final int maxRepairPerRound;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private ScheduledExecutorService checkServiceExecutor;
   private final Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap =
       new VeniceConcurrentHashMap<>();
-  private SystemStoreHealthChecker healthChecker;
+  private volatile SystemStoreHealthChecker healthChecker;
 
   public SystemStoreRepairService(
       VeniceParentHelixAdmin parentAdmin,
@@ -45,6 +46,7 @@ public class SystemStoreRepairService extends AbstractVeniceService {
         multiClusterConfigs.getCommonConfig().getParentSystemStoreRepairCheckIntervalSeconds();
     this.versionRefreshThresholdInDays =
         multiClusterConfigs.getCommonConfig().getParentSystemStoreVersionRefreshThresholdInDays();
+    this.maxRepairPerRound = multiClusterConfigs.getCommonConfig().getSystemStoreRepairMaxPerRound();
     this.heartbeatWaitTimeInSeconds =
         multiClusterConfigs.getCommonConfig().getParentSystemStoreHeartbeatCheckWaitTimeSeconds();
     for (String clusterName: multiClusterConfigs.getClusters()) {
@@ -67,6 +69,7 @@ public class SystemStoreRepairService extends AbstractVeniceService {
             parentAdmin,
             clusterToSystemStoreHealthCheckStatsMap,
             versionRefreshThresholdInDays,
+            maxRepairPerRound,
             isRunning,
             healthChecker),
         repairTaskIntervalInSeconds,

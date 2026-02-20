@@ -242,6 +242,7 @@ public class SystemStoreRepairTaskTest {
 
     doReturn(1).when(systemStoreRepairTask).getRepairJobCheckIntervalInSeconds();
     doReturn(3).when(systemStoreRepairTask).getRepairJobCheckTimeoutInSeconds();
+    doReturn(-1).when(systemStoreRepairTask).getMaxRepairPerRound();
 
     String systemStore = VeniceSystemStoreUtils.getMetaStoreName("testStore");
     Set<String> unhealthySystemStoreSet = new HashSet<>();
@@ -285,5 +286,43 @@ public class SystemStoreRepairTaskTest {
     systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
     Assert.assertFalse(unhealthySystemStoreSet.isEmpty());
 
+  }
+
+  @Test
+  public void testRepairMaxPerRoundLimit() {
+    String clusterName = "test-cluster";
+    SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
+    doCallRealMethod().when(systemStoreRepairTask).repairBadSystemStore(anyString(), anySet());
+    doCallRealMethod().when(systemStoreRepairTask).pollSystemStorePushStatus(anyString(), anyMap(), anySet(), anyInt());
+    doReturn(true).when(systemStoreRepairTask).shouldContinue(anyString());
+    doCallRealMethod().when(systemStoreRepairTask).periodicCheckTask(anyString(), anyInt(), anyInt(), any());
+
+    VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(parentHelixAdmin).when(systemStoreRepairTask).getParentAdmin();
+
+    doReturn(1).when(systemStoreRepairTask).getRepairJobCheckIntervalInSeconds();
+    doReturn(3).when(systemStoreRepairTask).getRepairJobCheckTimeoutInSeconds();
+    // Set limit to 1
+    doReturn(1).when(systemStoreRepairTask).getMaxRepairPerRound();
+
+    String systemStore1 = VeniceSystemStoreUtils.getMetaStoreName("testStore1");
+    String systemStore2 = VeniceSystemStoreUtils.getMetaStoreName("testStore2");
+    String systemStore3 = VeniceSystemStoreUtils.getMetaStoreName("testStore3");
+    Set<String> unhealthySystemStoreSet = new HashSet<>();
+    unhealthySystemStoreSet.add(systemStore1);
+    unhealthySystemStoreSet.add(systemStore2);
+    unhealthySystemStoreSet.add(systemStore3);
+
+    Version version = mock(Version.class);
+    doReturn(5).when(version).getNumber();
+    doReturn(version).when(systemStoreRepairTask).getNewSystemStoreVersion(anyString(), anyString(), anyString());
+
+    Admin.OfflinePushStatusInfo goodPushStatus = mock(Admin.OfflinePushStatusInfo.class);
+    doReturn(ExecutionStatus.COMPLETED).when(goodPushStatus).getExecutionStatus();
+    when(parentHelixAdmin.getOffLinePushStatus(anyString(), anyString())).thenReturn(goodPushStatus);
+
+    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
+    // Only 1 store should have been repaired (removed from unhealthy set), 2 remain
+    Assert.assertEquals(unhealthySystemStoreSet.size(), 2);
   }
 }

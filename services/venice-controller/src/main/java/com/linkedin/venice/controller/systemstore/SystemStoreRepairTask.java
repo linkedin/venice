@@ -45,6 +45,7 @@ public class SystemStoreRepairTask implements Runnable {
   private static final int DEFAULT_REPAIR_JOB_CHECK_INTERVAL_IN_SECONDS = 30;
 
   private final int versionRefreshThresholdInDays;
+  private final int maxRepairPerRound;
   private final VeniceParentHelixAdmin parentAdmin;
   private final AtomicBoolean isRunning;
   private final Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap;
@@ -54,11 +55,13 @@ public class SystemStoreRepairTask implements Runnable {
       VeniceParentHelixAdmin parentAdmin,
       Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap,
       int versionRefreshThresholdInDays,
+      int maxRepairPerRound,
       AtomicBoolean isRunning,
       SystemStoreHealthChecker healthChecker) {
     this.parentAdmin = parentAdmin;
     this.clusterToSystemStoreHealthCheckStatsMap = clusterToSystemStoreHealthCheckStatsMap;
     this.versionRefreshThresholdInDays = versionRefreshThresholdInDays;
+    this.maxRepairPerRound = maxRepairPerRound;
     this.isRunning = isRunning;
     this.healthChecker = healthChecker;
   }
@@ -81,8 +84,22 @@ public class SystemStoreRepairTask implements Runnable {
   }
 
   void repairBadSystemStore(String clusterName, Set<String> unhealthySystemStoreSet) {
+    int configLimit = getMaxRepairPerRound();
+    boolean unlimited = configLimit < 0;
+    if (!unlimited && unhealthySystemStoreSet.size() > configLimit) {
+      LOGGER.info(
+          "Cluster {} has {} unhealthy system stores but max repair per round is {}. Deferring {} stores to next round.",
+          clusterName,
+          unhealthySystemStoreSet.size(),
+          configLimit,
+          unhealthySystemStoreSet.size() - configLimit);
+    }
     Map<String, Integer> systemStoreToRepairJobVersionMap = new HashMap<>();
+    int repairCount = 0;
     for (String systemStoreName: unhealthySystemStoreSet) {
+      if (!unlimited && repairCount >= configLimit) {
+        break;
+      }
       if (!shouldContinue(clusterName)) {
         return;
       }
@@ -90,6 +107,7 @@ public class SystemStoreRepairTask implements Runnable {
       try {
         Version version = getNewSystemStoreVersion(clusterName, systemStoreName, pushJobId);
         systemStoreToRepairJobVersionMap.put(systemStoreName, version.getNumber());
+        repairCount++;
         LOGGER.info(
             "Kick off an repair empty push job for store: {} in cluster: {} with expected version number: {}",
             systemStoreName,
@@ -383,6 +401,10 @@ public class SystemStoreRepairTask implements Runnable {
 
   int getRepairJobCheckIntervalInSeconds() {
     return DEFAULT_REPAIR_JOB_CHECK_INTERVAL_IN_SECONDS;
+  }
+
+  int getMaxRepairPerRound() {
+    return maxRepairPerRound;
   }
 
   int getVersionRefreshThresholdInDays() {
