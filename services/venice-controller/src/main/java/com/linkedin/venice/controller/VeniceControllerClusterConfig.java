@@ -599,11 +599,11 @@ public class VeniceControllerClusterConfig {
    * router can handle
    */
   private final long maxRouterReadCapacityCu;
-  
+
+  /**
    * Config to enable overriding PubSub bootstrap servers for stream push jobs based on source grid fabric.
    */
   private final boolean enableStreamPushSourceGridFabricOverride;
-
 
   private final int defaultMaxRecordSizeBytes; // default value for VeniceWriter.maxRecordSizeBytes
   private final int replicationMetadataVersion;

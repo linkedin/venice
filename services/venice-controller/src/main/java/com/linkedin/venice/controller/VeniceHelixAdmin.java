@@ -5960,19 +5960,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       if (readQuotaInCU.isPresent()) {
-        HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-
-        ZkRoutersClusterManager routersClusterManager = resources.getRoutersClusterManager();
-        int routerCount = routersClusterManager.getLiveRoutersCount();
-        VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
-        long maxRouterReadCapacityCu = clusterConfig.getMaxRouterReadCapacityCu();
-
-        // Take the max of total cluster capacity based on live routers and per router capacity because parent
-        // admin has 0 live routers and total cluster capacity will always be 0
-        if (Math.max(maxRouterReadCapacityCu * routerCount, maxRouterReadCapacityCu) < readQuotaInCU.get()) {
-          throw new VeniceException(
-              "Cannot update read quota for store " + storeName + " in cluster " + clusterName + ". Read quota "
-                  + readQuotaInCU.get() + " requested is more than the cluster quota.");
+        // Only validate quota on child controllers. The parent controller has no routers and cannot
+        // meaningfully validate quota; the child controllers with actual routers will enforce it.
+        if (!isParent()) {
+          HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+          ZkRoutersClusterManager routersClusterManager = resources.getRoutersClusterManager();
+          int routerCount = routersClusterManager.getLiveRoutersCount();
+          VeniceControllerClusterConfig clusterConfig = resources.getConfig();
+          long totalClusterReadCapacity = clusterConfig.getMaxRouterReadCapacityCu() * routerCount;
+          if (totalClusterReadCapacity < readQuotaInCU.get()) {
+            throw new VeniceException(
+                "Cannot update read quota for store " + storeName + " in cluster " + clusterName + ". Read quota "
+                    + readQuotaInCU.get() + " requested is more than the cluster quota of " + totalClusterReadCapacity
+                    + ".");
+          }
         }
         setStoreReadQuota(clusterName, storeName, readQuotaInCU.get());
       }
