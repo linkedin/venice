@@ -29,6 +29,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -49,7 +50,7 @@ public class SystemStoreRepairTaskTest {
     doReturn(systemStoreHealthCheckStatsMap).when(systemStoreRepairTask).getClusterToSystemStoreHealthCheckStatsMap();
 
     VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
-    java.util.List<String> leaderClusterList = Arrays.asList("venice-1", "venice-3");
+    List<String> leaderClusterList = Arrays.asList("venice-1", "venice-3");
     doReturn(leaderClusterList).when(parentHelixAdmin).getClustersLeaderOf();
     doReturn(LogContext.EMPTY).when(parentHelixAdmin).getLogContext();
     doReturn(parentHelixAdmin).when(systemStoreRepairTask).getParentAdmin();
