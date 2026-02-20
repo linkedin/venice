@@ -694,7 +694,7 @@ public class ConfigKeys {
 
   /**
    * Fully qualified class name of an optional {@code SystemStoreHealthChecker} override. When set, this checker runs
-   * to check system store health. Default value is emtpy, will fall back to {@code HeartbeatBasedSystemStoreHealthChecker}.
+   * to check system store health. Default value is empty, will fall back to {@code HeartbeatBasedSystemStoreHealthChecker}.
    */
   public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_OVERRIDE_CLASS_NAME =
       "controller.system.store.health.check.override.class.name";
