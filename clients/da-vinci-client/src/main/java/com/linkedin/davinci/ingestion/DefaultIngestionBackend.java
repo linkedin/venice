@@ -86,15 +86,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
         Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
     Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
     syncStoreVersionConfig(storeAndVersion.getStore(), storeConfig);
-
-<<<<<<< HEAD
-    if (!isIsolatedIngestion) {
-      ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
-=======
-    String replicaId = Utils.getReplicaId(storeVersion, partition);
-
     ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
->>>>>>> b3e9d661c ([da-vinci] Remove deprecated Ingestion Isolation feature)
 
     if (replicaContext.state == ReplicaIntendedState.RUNNING) {
       LOGGER.info("startConsumption called for replica {} but it is already RUNNING. Ignoring duplicate.", replicaId);
