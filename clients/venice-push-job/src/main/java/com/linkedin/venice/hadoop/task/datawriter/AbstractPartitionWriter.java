@@ -460,25 +460,25 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       return;
     }
 
-    long startTime = System.currentTimeMillis();
+    long startNanos = System.nanoTime();
     while (!recordsThrottler.tryAcquirePermit(1)) {
       try {
-        Thread.sleep(1);
+        Thread.sleep(10);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         break;
       }
     }
-    long throttleTime = System.currentTimeMillis() - startTime;
-    if (throttleTime <= 0) {
+    long throttleTimeMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+    if (throttleTimeMs <= 0) {
       return;
     }
-    totalThrottleTimeMs += throttleTime;
-    dataWriterTaskTracker.trackIncrementalPushThrottledTime(throttleTime);
+    totalThrottleTimeMs += throttleTimeMs;
+    dataWriterTaskTracker.trackIncrementalPushThrottledTime(throttleTimeMs);
     if ((messageSent + 1) % telemetryMessageInterval == 0) {
       LOGGER.info(
-          "Incremental push throttling active: throttled for {} ms this interval, total throttle time: {} ms",
-          throttleTime,
+          "Incremental push throttling active: throttled for {} ms on this message, total throttle time: {} ms",
+          throttleTimeMs,
           totalThrottleTimeMs);
     }
   }
@@ -821,22 +821,27 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     String storeName = Version.parseStoreFromKafkaTopicName(props.getString(TOPIC_PROP));
     String rateLimiterTypeStr = props
         .getString(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, VeniceRateLimiter.RateLimiterType.GUAVA_RATE_LIMITER.name());
-    VeniceRateLimiter.RateLimiterType rateLimiterType = VeniceRateLimiter.RateLimiterType.valueOf(rateLimiterTypeStr);
+    VeniceRateLimiter.RateLimiterType rateLimiterType;
+    try {
+      rateLimiterType = VeniceRateLimiter.RateLimiterType.valueOf(rateLimiterTypeStr);
+    } catch (IllegalArgumentException e) {
+      rateLimiterType = VeniceRateLimiter.RateLimiterType.GUAVA_RATE_LIMITER;
+      LOGGER.warn(
+          "Invalid incremental push rate limiter type '{}' for store {}, falling back to {}",
+          rateLimiterTypeStr,
+          storeName,
+          rateLimiterType);
+    }
 
-    long timeWindowMs = props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, 1000);
     switch (rateLimiterType) {
       case EVENT_THROTTLER_WITH_SILENT_REJECTION:
-        this.recordsThrottler = new EventThrottler(
-            recordsPerSecond,
-            timeWindowMs,
-            storeName + "_incremental_push_records_throttler",
-            false,
-            EventThrottler.REJECT_STRATEGY);
+        this.recordsThrottler = new EventThrottler(recordsPerSecond);
         break;
       case TOKEN_BUCKET_INCREMENTAL_REFILL:
       case TOKEN_BUCKET_GREEDY_REFILL:
-        // capacity = recordsPerSecond * (timeWindowMs / 1000) to allow burst up to one window's worth
-        long capacity = Math.max(1, recordsPerSecond * timeWindowMs / 1000);
+        long timeWindowMs = props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, 1000);
+        // capacity = max(one second's worth, one window's worth) to allow reasonable burst capacity
+        long capacity = Math.max(recordsPerSecond, recordsPerSecond * timeWindowMs / 1000);
         this.recordsThrottler =
             new TokenBucket(capacity, capacity, timeWindowMs, TimeUnit.MILLISECONDS, Clock.systemUTC());
         break;

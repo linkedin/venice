@@ -467,7 +467,8 @@ public final class VenicePushJobConstants {
 
   /**
    * Write quota in records per second for incremental pushes.
-   * -1 means unlimited (no throttling).
+   * Any value {@code <= 0} disables throttling (unlimited writes). The recommended sentinel for
+   * explicitly configuring "unlimited" is {@code -1}.
    * This quota is enforced per partition-writer task. The effective aggregate write rate across the entire
    * job is {@code recordsPerSecond * numberOfTasks}.
    */

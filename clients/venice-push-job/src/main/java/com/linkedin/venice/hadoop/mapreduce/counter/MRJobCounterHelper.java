@@ -240,6 +240,10 @@ public class MRJobCounterHelper {
     return getCountFromCounters(counters, TOTAL_PUT_OR_DELETE_COUNT_GROUP_COUNTER_NAME);
   }
 
+  public static long getIncrementalPushThrottleTimeMs(Reporter reporter) {
+    return getCountWithGroupCounterName(reporter, INCREMENTAL_PUSH_THROTTLE_TIME_GROUP_COUNTER_NAME);
+  }
+
   public static long getIncrementalPushThrottleTimeMs(Counters counters) {
     return getCountFromCounters(counters, INCREMENTAL_PUSH_THROTTLE_TIME_GROUP_COUNTER_NAME);
   }
