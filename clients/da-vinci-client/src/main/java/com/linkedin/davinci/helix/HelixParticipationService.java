@@ -433,9 +433,11 @@ public class HelixParticipationService extends AbstractVeniceService
       StorageService storageService,
       Logger currentLogger) {
     currentLogger.info("Started resetting all instance CV states via bulk delete");
+    long startTimeMs = System.currentTimeMillis();
     try {
       accessor.deleteAllCustomizedStates();
-      currentLogger.info("Finished resetting all instance CV states");
+      currentLogger
+          .info("Finished resetting all instance CV states. Took {} ms", System.currentTimeMillis() - startTimeMs);
     } catch (Exception e) {
       currentLogger.error("Failed to reset all instance CV states", e);
       throw e;
