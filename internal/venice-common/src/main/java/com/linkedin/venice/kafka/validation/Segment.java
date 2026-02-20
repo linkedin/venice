@@ -119,6 +119,7 @@ public class Segment {
     this.aggregates = CollectionUtils.substituteEmptyMap(state.getAggregates());
     this.registered = state.isRegistered;
     this.lastRecordProducerTimestamp = state.messageTimestamp;
+    this.lastRecordTimestamp = state.messageTimestamp;
   }
 
   public Segment(Segment segment) {
@@ -139,6 +140,7 @@ public class Segment {
     this.aggregates = segment.aggregates;
     this.registered = segment.registered;
     this.lastRecordProducerTimestamp = segment.lastRecordProducerTimestamp;
+    this.lastRecordTimestamp = segment.lastRecordTimestamp;
   }
 
   public int getSegmentNumber() {
@@ -441,7 +443,7 @@ public class Segment {
     pps.checksumType = getCheckSumType().getValue();
     pps.segmentNumber = getSegmentNumber();
     pps.messageSequenceNumber = getSequenceNumber();
-    pps.messageTimestamp = getLastRecordProducerTimestamp();
+    pps.messageTimestamp = getLastRecordTimestamp();
     pps.segmentStatus = getStatus().getValue();
     pps.isRegistered = isRegistered();
   }
