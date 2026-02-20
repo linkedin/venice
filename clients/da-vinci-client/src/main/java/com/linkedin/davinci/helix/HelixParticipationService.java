@@ -439,8 +439,6 @@ public class HelixParticipationService extends AbstractVeniceService
       currentLogger
           .info("Finished resetting all instance CV states. Took {} ms", System.currentTimeMillis() - startTimeMs);
     } catch (Exception e) {
-      // Best-effort cleanup: log the failure but do not propagate the exception to avoid
-      // failing Helix pre-connect callbacks or server startup.
       currentLogger.error("Failed to reset all instance CV states", e);
     }
   }
