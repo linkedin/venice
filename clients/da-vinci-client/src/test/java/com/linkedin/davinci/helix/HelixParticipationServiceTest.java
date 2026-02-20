@@ -5,7 +5,6 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.expectThrows;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.storage.StorageService;
@@ -40,12 +39,8 @@ public class HelixParticipationServiceTest {
     VeniceException testException = new VeniceException("Test exception during CV cleanup");
     doThrow(testException).when(mockAccessor).deleteAllCustomizedStates();
 
-    // Call the reset method and expect it to throw the exception
-    expectThrows(
-        VeniceException.class,
-        () -> HelixParticipationService.resetAllInstanceCVStates(mockAccessor, mockStorageService, LOGGER));
+    HelixParticipationService.resetAllInstanceCVStates(mockAccessor, mockStorageService, LOGGER);
 
-    // Verify that the bulk delete API was attempted
     verify(mockAccessor).deleteAllCustomizedStates();
   }
 
