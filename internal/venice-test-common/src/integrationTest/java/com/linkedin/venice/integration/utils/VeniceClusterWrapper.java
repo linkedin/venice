@@ -7,7 +7,7 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
+import static com.linkedin.venice.VeniceConstants.MAX_ROUTER_READ_CAPACITY_CU;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SSL;
@@ -1138,7 +1138,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setCompressionStrategy(CompressionStrategy.NO_OP)
             .setBatchGetLimit(2000)
-            .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)
+            .setReadQuotaInCU(MAX_ROUTER_READ_CAPACITY_CU)
             .setChunkingEnabled(false)
             .setIncrementalPushEnabled(false);
 

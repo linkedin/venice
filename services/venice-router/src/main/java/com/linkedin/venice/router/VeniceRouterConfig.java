@@ -106,6 +106,7 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.VeniceConstants.MAX_ROUTER_READ_CAPACITY_CU;
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST_LOADED_ROUTING;
 import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.LEAST_LOADED;
 
@@ -269,7 +270,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       heartbeatTimeoutMs = props.getDouble(HEARTBEAT_TIMEOUT, TimeUnit.MINUTES.toMillis(1));
       heartbeatCycleMs = props.getLong(HEARTBEAT_CYCLE, TimeUnit.SECONDS.toMillis(5));
       sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false);
-      maxReadCapacityCu = props.getLong(MAX_READ_CAPACITY, 100000);
+      maxReadCapacityCu = props.getLong(MAX_READ_CAPACITY, MAX_ROUTER_READ_CAPACITY_CU);
       longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15);
       longTailRetryForBatchGetThresholdMs = BatchGetConfigUtils.parseRetryThresholdForBatchGet(
           props.getString(
