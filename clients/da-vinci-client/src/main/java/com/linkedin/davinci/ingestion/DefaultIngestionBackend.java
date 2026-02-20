@@ -77,9 +77,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
   public void startConsumption(
       VeniceStoreVersionConfig storeConfig,
       int partition,
-      Optional<PubSubPosition> pubSubPosition) {
+      Optional<PubSubPosition> pubSubPosition,
+      String replicaId) {
     String storeVersion = storeConfig.getStoreVersionName();
-    String replicaId = Utils.getReplicaId(storeVersion, partition);
     LOGGER.info("Retrieving storage engine for replica {}", replicaId);
 
     StoreVersionInfo storeAndVersion =
@@ -99,7 +99,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           replicaId);
       // TODO: Refactor the ingestion service to take in blob ingestion/transfer, pubsub ingestion logic.
       int stopConsumptionTimeout = serverConfig.getStopConsumptionTimeoutInSeconds();
-      stopBlobTransferAndWait(storeConfig, partition, stopConsumptionTimeout);
+      stopBlobTransferAndWait(storeConfig, partition, stopConsumptionTimeout, replicaId);
       getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, stopConsumptionTimeout, false);
     }
 
@@ -141,7 +141,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
           serverConfig.getBlobTransferDisabledOffsetLagThreshold(),
           serverConfig.getBlobTransferDisabledTimeLagThresholdInMinutes(),
           storeConfig,
-          svsSupplier);
+          svsSupplier,
+          replicaId);
 
       // Status: (normal case) TRANSFER_STARTED -> TRANSFER_COMPLETED
       // Status: (cancel in half) TRANSFER_STARTED -> TRANSFER_CANCEL_REQUESTED -> TRANSFER_CANCELLED
@@ -195,10 +196,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
       long blobTransferDisabledOffsetLagThreshold,
       int blobTransferDisabledTimeLagThresholdInMinutes,
       VeniceStoreVersionConfig storeConfig,
-      Supplier<StoreVersionState> svsSupplier) {
+      Supplier<StoreVersionState> svsSupplier,
+      String replicaId) {
     String storeName = store.getName();
     String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
-    String replicaId = Utils.getReplicaId(kafkaTopic, partitionId);
 
     // Open store for lag check and later metadata update for offset/StoreVersionState
     // If the offset lag is below the blobTransferDisabledOffsetLagThreshold, it indicates there is not lagging and
@@ -210,7 +211,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
         partitionId,
         blobTransferDisabledOffsetLagThreshold,
         blobTransferDisabledTimeLagThresholdInMinutes,
-        store.isHybrid())) {
+        store.isHybrid(),
+        replicaId)) {
       LOGGER.info("Replica: {} is not lagged, will consume from PubSub directly", replicaId);
       return CompletableFuture.completedFuture(null);
     } else {
@@ -230,7 +232,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
     // Pre-transfer validation and cleanup
     validateDirectoriesBeforeBlobTransfer(storeName, versionNumber, partitionId);
-    addStoragePartitionWhenBlobTransferStart(partitionId, storeConfig, svsSupplier);
+    addStoragePartitionWhenBlobTransferStart(partitionId, storeConfig, svsSupplier, replicaId);
 
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {
@@ -245,8 +247,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
           }
 
           // Post-transfer validation and cleanup
-          validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partitionId, throwable == null);
-          adjustStoragePartitionWhenBlobTransferComplete(storageService.getStorageEngine(kafkaTopic), partitionId);
+          validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partitionId, throwable == null, replicaId);
+          adjustStoragePartitionWhenBlobTransferComplete(
+              storageService.getStorageEngine(kafkaTopic),
+              partitionId,
+              replicaId);
           return null;
         });
   }
@@ -259,7 +264,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private void addStoragePartitionWhenBlobTransferStart(
       int partitionId,
       VeniceStoreVersionConfig storeConfig,
-      Supplier<StoreVersionState> svsSupplier) {
+      Supplier<StoreVersionState> svsSupplier,
+      String replicaId) {
     // Prepare configs with blob transfer in-progress flag.
     StoragePartitionConfig storagePartitionConfig =
         new StoragePartitionConfig(storeConfig.getStoreVersionName(), partitionId, true);
@@ -272,7 +278,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     LOGGER.info(
         "Storage partition is added with {} for replica {} for blob transfer with config {}",
         StoragePartitionAdjustmentTrigger.BEGIN_BLOB_TRANSFER,
-        Utils.getReplicaId(storeConfig.getStoreVersionName(), partitionId),
+        replicaId,
         storagePartitionConfig);
   }
 
@@ -295,10 +301,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
       String storeName,
       int versionNumber,
       int partitionId,
-      boolean transferSuccessful) {
+      boolean transferSuccessful,
+      String replicaId) {
     String rocksDBPath = serverConfig.getRocksDBPath();
     String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
-    String replicaId = Utils.getReplicaId(kafkaTopic, partitionId);
 
     String tempPartitionDir = RocksDBUtils.composeTempPartitionDir(rocksDBPath, kafkaTopic, partitionId);
     String partitionDir = RocksDBUtils.composePartitionDbDir(rocksDBPath, kafkaTopic, partitionId);
@@ -326,7 +332,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
       } else {
         LOGGER.info(
             "Successfully bootstrapped from blob transfer {} with files: {}",
-            Utils.getReplicaId(kafkaTopic, partitionId),
+            replicaId,
             Arrays.toString(partitionDirFile.list()));
       }
     } else {
@@ -339,7 +345,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * Adjust the storage partition when blob transfer is complete
    * Adjust storage partition will drop the old partition without rocksDB and create a new one with default options and running rocksDB.
    */
-  private void adjustStoragePartitionWhenBlobTransferComplete(StorageEngine storageEngine, int partitionId) {
+  private void adjustStoragePartitionWhenBlobTransferComplete(
+      StorageEngine storageEngine,
+      int partitionId,
+      String replicaId) {
     try {
       // Prepare storage partition with default options, and remove blob transfer in-progress flag.
       StoragePartitionConfig defaultStoragePartitionConfig =
@@ -353,7 +362,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     } catch (Exception e) {
       LOGGER.error(
           "Failed to adjust storage partition for replica {} after blob transfer completed: {}, dropping the partition.",
-          Utils.getReplicaId(storageEngine.getStoreVersionName(), partitionId),
+          replicaId,
           e.getMessage(),
           e);
       storageEngine.dropPartition(partitionId, false);
@@ -391,12 +400,13 @@ public class DefaultIngestionBackend implements IngestionBackend {
       int partition,
       long blobTransferDisabledOffsetLagThreshold,
       int blobTransferDisabledTimeLagThresholdInMinutes,
-      boolean hybridStore) {
+      boolean hybridStore,
+      String replicaId) {
     String topicName = Version.composeKafkaTopic(store, versionNumber);
     OffsetRecord offsetRecord =
         getStorageMetadataService().getLastOffset(topicName, partition, getStoreIngestionService().getPubSubContext());
     if (offsetRecord == null) {
-      LOGGER.warn("Offset record not found for: {}", Utils.getReplicaId(topicName, partition));
+      LOGGER.warn("Offset record not found for: {}", replicaId);
       return true;
     }
     /**
@@ -410,7 +420,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
       if (offsetRecord.isEndOfPushReceived()) {
         LOGGER.info(
             "End of push received for batch store replica {}, might due to restore. Bootstrapping from Kafka.",
-            Utils.getReplicaId(topicName, partition));
+            replicaId);
         return false;
       }
       return true;
@@ -422,7 +432,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     if (blobTransferDisabledTimeLagThresholdInMinutes > 0) {
       LOGGER.info(
           "Checking time lag for hybrid store replica {} with heartbeat timestamp lag {} ms and offset HB timestamp {}.",
-          Utils.getReplicaId(topicName, partition),
+          replicaId,
           LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp()),
           offsetRecord.getHeartbeatTimestamp());
       return LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp()) > TimeUnit.MINUTES
@@ -431,9 +441,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
     if (offsetRecord.getOffsetLag() == 0
         && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
-      LOGGER.info(
-          "Offset lag is 0 and topic offset is EARLIEST for replica {}.",
-          Utils.getReplicaId(topicName, partition));
+      LOGGER.info("Offset lag is 0 and topic offset is EARLIEST for replica {}.", replicaId);
       return true;
     }
 
@@ -441,22 +449,23 @@ public class DefaultIngestionBackend implements IngestionBackend {
       LOGGER.info(
           "Offset lag {} for hybrid store replica {} is within the allowed lag threshold {}. Bootstrapping from Kafka.",
           offsetRecord.getOffsetLag(),
-          Utils.getReplicaId(topicName, partition),
+          replicaId,
           blobTransferDisabledOffsetLagThreshold);
       return false;
     }
 
     LOGGER.info(
         "Lag check before blob transfer: Replica {} offset is {}. Bootstrapping from blob transfer.",
-        Utils.getReplicaId(topicName, partition),
+        replicaId,
         offsetRecord);
     return true;
   }
 
   @Override
-  public CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
-    String storeVersion = storeConfig.getStoreVersionName();
-    String replicaId = Utils.getReplicaId(storeVersion, partition);
+  public CompletableFuture<Void> stopConsumption(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      String replicaId) {
     ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
 
     if (replicaContext.state != ReplicaIntendedState.RUNNING) {
@@ -469,17 +478,19 @@ public class DefaultIngestionBackend implements IngestionBackend {
     replicaContext.state = ReplicaIntendedState.STOPPED;
     LOGGER.info("Replica {} state set to STOPPED.", replicaId);
 
-    cancelBlobTransferIfInProgressInternal(storeConfig, partition);
+    cancelBlobTransferIfInProgressInternal(storeConfig, partition, replicaId);
     return getStoreIngestionService().stopConsumption(storeConfig, partition);
   }
 
-  private void cancelBlobTransferIfInProgressInternal(VeniceStoreVersionConfig storeConfig, int partition) {
+  private void cancelBlobTransferIfInProgressInternal(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      String replicaId) {
     if (blobTransferManager == null) {
       return;
     }
 
     String storeVersion = storeConfig.getStoreVersionName();
-    String replicaId = Utils.getReplicaId(storeVersion, partition);
 
     try {
       StoreVersionInfo storeAndVersion =
@@ -529,9 +540,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
       VeniceStoreVersionConfig storeConfig,
       int partition,
       int timeoutInSeconds,
-      boolean removeEmptyStorageEngine) {
-    String storeVersion = storeConfig.getStoreVersionName();
-    String replicaId = Utils.getReplicaId(storeVersion, partition);
+      boolean removeEmptyStorageEngine,
+      String replicaId) {
     LOGGER.info(
         "dropStoragePartitionGracefully: Replica {} state {} before gracefully dropping",
         replicaId,
@@ -540,7 +550,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     // Stop consumption of the partition.
     final int waitIntervalInSecond = 1;
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
-    stopBlobTransferAndWait(storeConfig, partition, maxRetry);
+    stopBlobTransferAndWait(storeConfig, partition, maxRetry, replicaId);
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, waitIntervalInSecond, maxRetry, true);
 
     try {
@@ -551,13 +561,14 @@ public class DefaultIngestionBackend implements IngestionBackend {
     }
   }
 
-  private void stopBlobTransferAndWait(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds) {
+  private void stopBlobTransferAndWait(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      int timeoutInSeconds,
+      String replicaId) {
     if (blobTransferManager == null) {
       return;
     }
-
-    String storeVersion = storeConfig.getStoreVersionName();
-    String replicaId = Utils.getReplicaId(storeVersion, partition);
 
     if (blobTransferManager.getTransferStatusTrackingManager().isTransferInFinalState(replicaId)) {
       return;

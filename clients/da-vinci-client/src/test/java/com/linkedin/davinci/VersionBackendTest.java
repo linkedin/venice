@@ -213,9 +213,9 @@ public class VersionBackendTest {
     verify(internalRecordTransformerConfig).setStartConsumptionLatchCount(3);
 
     // Verify consumption started for each partition
-    verify(mockIngestionBackend).startConsumption(any(), eq(0), any());
-    verify(mockIngestionBackend).startConsumption(any(), eq(1), any());
-    verify(mockIngestionBackend).startConsumption(any(), eq(2), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(0), any(), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(1), any(), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(2), any(), any());
 
     // Reset mocks for next test case
     clearInvocations(internalRecordTransformerConfig);
@@ -227,16 +227,16 @@ public class VersionBackendTest {
     versionBackend.subscribe(complementSet, null);
 
     // Shouldn't try to start consumption on already subscribed partition (2)
-    verify(mockIngestionBackend, never()).startConsumption(any(), eq(2), any());
+    verify(mockIngestionBackend, never()).startConsumption(any(), eq(2), any(), any());
     // Should start consumption for new partitions (3, 4)
-    verify(mockIngestionBackend).startConsumption(any(), eq(3), any());
-    verify(mockIngestionBackend).startConsumption(any(), eq(4), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(3), any(), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(4), any(), any());
     // Shouldn't set latch count again
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
 
     // Test empty subscription
     versionBackend.subscribe(ComplementSet.emptySet(), null);
-    verify(mockIngestionBackend, never()).startConsumption(any(), eq(0), any());
+    verify(mockIngestionBackend, never()).startConsumption(any(), eq(0), any(), any());
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
   }
 }

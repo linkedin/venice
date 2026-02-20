@@ -407,7 +407,8 @@ public class VersionBackend {
                   partition,
                   checkpointInfo.getTimestampsMap(),
                   checkpointInfo.getPostitionMap());
-      backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition);
+      String replicaId = Utils.getReplicaId(version.kafkaTopicName(), partition);
+      backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition, replicaId);
       tryStartHeartbeat();
     }
 
@@ -464,7 +465,9 @@ public class VersionBackend {
       completePartition(partition);
       backend.getHeartbeatMonitoringService()
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.REMOVE_MONITOR);
-      backend.getIngestionBackend().dropStoragePartitionGracefully(config, partition, stopConsumptionTimeoutInSeconds);
+      String replicaId = Utils.getReplicaId(version.kafkaTopicName(), partition);
+      backend.getIngestionBackend()
+          .dropStoragePartitionGracefully(config, partition, stopConsumptionTimeoutInSeconds, replicaId);
       partitionFutures.remove(partition);
       partitionToPendingReportIncrementalPushList.remove(partition);
       partitionToBatchReportEOIPEnabled.remove(partition);

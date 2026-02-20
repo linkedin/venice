@@ -98,6 +98,7 @@ public class DefaultIngestionBackendTest {
   private static final String STORE_NAME = "testStore";
   private static final String STORE_VERSION = "store_v1";
   private static final String BASE_DIR = "mockBaseDir";
+  private static final String REPLICA_ID = Utils.getReplicaId(STORE_VERSION, PARTITION);
   private static final BlobTransferTableFormat BLOB_TRANSFER_FORMAT = BlobTransferTableFormat.BLOCK_BASED_TABLE;
 
   @BeforeMethod
@@ -150,7 +151,7 @@ public class DefaultIngestionBackendTest {
     when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
     when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
     verifyBlobTransfer(true);
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)
@@ -221,7 +222,7 @@ public class DefaultIngestionBackendTest {
     when(store.getBlobTransferInServerEnabled()).thenReturn(storeSetting);
     when(veniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(serverSetting);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
     verifyBlobTransfer(expectEnabled);
 
     // Reset replica state for next iteration
@@ -252,7 +253,7 @@ public class DefaultIngestionBackendTest {
     when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
     when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)
@@ -275,7 +276,7 @@ public class DefaultIngestionBackendTest {
     doNothing().when(storageEngine)
         .adjustStoragePartition(eq(PARTITION), eq(StoragePartitionAdjustmentTrigger.END_BLOB_TRANSFER), any());
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
 
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
@@ -304,9 +305,19 @@ public class DefaultIngestionBackendTest {
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(errorFuture);
 
-    CompletableFuture<Void> future = ingestionBackend
-        .bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, 100L, 0, storeConfig, null)
-        .toCompletableFuture();
+    CompletableFuture<Void> future =
+        ingestionBackend
+            .bootstrapFromBlobs(
+                store,
+                VERSION_NUMBER,
+                PARTITION,
+                BLOB_TRANSFER_FORMAT,
+                100L,
+                0,
+                storeConfig,
+                null,
+                REPLICA_ID)
+            .toCompletableFuture();
     assertTrue(future.isDone());
     verify(aggVersionedBlobTransferStats, never()).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats, never())
@@ -340,7 +351,8 @@ public class DefaultIngestionBackendTest {
                 laggingThreshold,
                 0,
                 storeConfig,
-                null)
+                null,
+                REPLICA_ID)
             .toCompletableFuture();
     assertTrue(result.isDone());
     verify(blobTransferManager, never())
@@ -376,7 +388,8 @@ public class DefaultIngestionBackendTest {
                 laggingThreshold,
                 0,
                 storeConfig,
-                null)
+                null,
+                REPLICA_ID)
             .toCompletableFuture();
     assertTrue(result.isDone());
     verify(blobTransferManager, never())
@@ -404,7 +417,7 @@ public class DefaultIngestionBackendTest {
     when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
     when(storageService.getStorageEngine(kafkaTopic)).thenReturn(storageEngine);
 
-    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
     verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)
@@ -434,39 +447,51 @@ public class DefaultIngestionBackendTest {
     String store = "foo";
     int version = 123;
     int partition = 456;
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(store, version), partition);
     long offsetLagThreshold = 10000L;
 
     // Test batch-only store.
     doReturn(true).when(offsetRecord).isEndOfPushReceived();
-    Assert.assertTrue(ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, -1, 0, false));
+    Assert.assertTrue(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, -1, 0, false, replicaId));
     Assert.assertFalse(
-        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, false));
+        ingestionBackend
+            .isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, false, replicaId));
     Assert.assertFalse(
-        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 1, false));
+        ingestionBackend
+            .isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 1, false, replicaId));
     doReturn(false).when(offsetRecord).isEndOfPushReceived();
     Assert.assertTrue(
-        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, false));
+        ingestionBackend
+            .isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, false, replicaId));
     Assert.assertTrue(
-        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 1, false));
+        ingestionBackend
+            .isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 1, false, replicaId));
 
     // Test hybrid store
     doReturn(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(2)).when(offsetRecord).getHeartbeatTimestamp();
     doReturn(offsetLagThreshold + 1).when(offsetRecord).getOffsetLag();
     // Refer to Time-lag
     Assert.assertTrue(
-        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 1, true));
+        ingestionBackend
+            .isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 1, true, replicaId));
     Assert.assertFalse(
-        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 3, true));
+        ingestionBackend
+            .isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 3, true, replicaId));
     // Refer to Offset-lag
-    Assert.assertTrue(ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, -1, 0, true));
     Assert.assertTrue(
-        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, true));
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, -1, 0, true, replicaId));
+    Assert.assertTrue(
+        ingestionBackend
+            .isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, true, replicaId));
     doReturn(offsetLagThreshold - 1).when(offsetRecord).getOffsetLag();
     Assert.assertFalse(
-        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, true));
+        ingestionBackend
+            .isReplicaLaggedAndNeedBlobTransfer(store, version, partition, offsetLagThreshold, 0, true, replicaId));
     // Legacy edge case.
     doReturn(PubSubSymbolicPosition.EARLIEST).when(offsetRecord).getCheckpointedLocalVtPosition();
-    Assert.assertTrue(ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, 0, 0, true));
+    Assert.assertTrue(
+        ingestionBackend.isReplicaLaggedAndNeedBlobTransfer(store, version, partition, 0, 0, true, replicaId));
   }
 
   @Test
@@ -480,9 +505,9 @@ public class DefaultIngestionBackendTest {
         veniceServerConfig);
 
     // Start consumption first to set state to RUNNING (takes simple path since blobTransferManager is null)
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
 
-    backend.stopConsumption(storeConfig, PARTITION);
+    backend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
     verify(storeIngestionService).stopConsumption(storeConfig, PARTITION);
   }
 
@@ -504,7 +529,7 @@ public class DefaultIngestionBackendTest {
         veniceServerConfig);
 
     // Start consumption via simple path to set state to RUNNING
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
 
     // Now enable blob transfer for stop operations
     when(store.isBlobTransferEnabled()).thenReturn(true);
@@ -541,7 +566,7 @@ public class DefaultIngestionBackendTest {
     Runnable stopTask = () -> {
       try {
         startLatch.await(); // Wait for signal to start
-        backend.stopConsumption(storeConfig, PARTITION);
+        backend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
         completedCount.incrementAndGet();
       } catch (Exception e) {
         LogManager.getLogger().error("{} error: {}", Thread.currentThread().getName(), e.getMessage());
@@ -637,7 +662,7 @@ public class DefaultIngestionBackendTest {
     // Thread 1: Start consumption
     Thread startThread = new Thread(() -> {
       try {
-        testIngestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+        testIngestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
         completedCount.incrementAndGet();
       } catch (Exception e) {
         LogManager.getLogger().error("Start error: {}", e.getMessage(), e);
@@ -653,7 +678,7 @@ public class DefaultIngestionBackendTest {
           LogManager.getLogger().warn("Latch timed out waiting for transfer initialization");
         }
         Thread.sleep(50); // Small delay to ensure we're mid-transfer
-        testIngestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5);
+        testIngestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, REPLICA_ID);
         completedCount.incrementAndGet();
       } catch (Exception e) {
         LogManager.getLogger().error("Drop error: {}", e.getMessage(), e);
@@ -737,7 +762,7 @@ public class DefaultIngestionBackendTest {
     // Thread 1: Start consumption
     Thread startThread = new Thread(() -> {
       try {
-        testIngestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+        testIngestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
       } catch (Exception e) {
         LogManager.getLogger().error("Start error: {}", e.getMessage(), e);
       }
@@ -751,7 +776,7 @@ public class DefaultIngestionBackendTest {
           LogManager.getLogger().warn("Latch timed out waiting for transfer initialization");
         }
         Thread.sleep(50); // Ensure transfer started
-        testIngestionBackend.stopConsumption(storeConfig, PARTITION);
+        testIngestionBackend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
       } catch (Exception e) {
         LogManager.getLogger().error("Stop error: {}", e.getMessage(), e);
       }
@@ -839,7 +864,7 @@ public class DefaultIngestionBackendTest {
     // Thread 1: Start consumption (transfer will complete when we complete the future)
     Thread startThread = new Thread(() -> {
       try {
-        testIngestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+        testIngestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
         completedCount.incrementAndGet();
       } catch (Exception e) {
         LogManager.getLogger().error("Start error: {}", e.getMessage(), e);
@@ -856,7 +881,7 @@ public class DefaultIngestionBackendTest {
         }
         Thread.sleep(50); // Small delay
         // Drop immediately (race condition with completion)
-        testIngestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5);
+        testIngestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, REPLICA_ID);
         completedCount.incrementAndGet();
       } catch (Exception e) {
         LogManager.getLogger().error("Drop error: {}", e.getMessage(), e);
@@ -888,7 +913,7 @@ public class DefaultIngestionBackendTest {
   public void testStopConsumptionAfterTransferCompletes() throws Exception {
     // Scenario: Transfer completes successfully, then stopConsumption is called
     // Start consumption first to set state to RUNNING (simple path - blob transfer not enabled by default)
-    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
 
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(storeIngestionService.isDaVinciClient()).thenReturn(true);
@@ -901,7 +926,7 @@ public class DefaultIngestionBackendTest {
     when(statusTrackingManager.isTransferInFinalState(eq(replicaId))).thenReturn(true);
 
     // Call stopConsumption after transfer is done
-    ingestionBackend.stopConsumption(storeConfig, PARTITION);
+    ingestionBackend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
 
     // Verify cancellation was attempted (but skipped internally due to final state)
     verify(statusTrackingManager, Mockito.atLeastOnce()).cancelTransfer(eq(replicaId));
@@ -911,7 +936,7 @@ public class DefaultIngestionBackendTest {
   public void testMultipleStopConsumptionCalls() throws Exception {
     // Scenario: Multiple stopConsumption calls (simulates duplicate Helix messages)
     // Start consumption first to set state to RUNNING (simple path - blob transfer not enabled by default)
-    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
 
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(storeIngestionService.isDaVinciClient()).thenReturn(true);
@@ -925,10 +950,10 @@ public class DefaultIngestionBackendTest {
     when(statusTrackingManager.isBlobTransferCancelRequestSentBefore(eq(replicaId))).thenReturn(false).thenReturn(true);
 
     // First stopConsumption call - transitions RUNNING -> STOPPED
-    ingestionBackend.stopConsumption(storeConfig, PARTITION);
+    ingestionBackend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
 
     // Second stopConsumption call - state is STOPPED (not RUNNING), so it's a no-op
-    ingestionBackend.stopConsumption(storeConfig, PARTITION);
+    ingestionBackend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
 
     // Verify cancelTransfer was called exactly once (second call skipped due to state check)
     verify(statusTrackingManager, Mockito.times(1)).cancelTransfer(eq(replicaId));
@@ -954,7 +979,7 @@ public class DefaultIngestionBackendTest {
         DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
 
     // Start consumption (simple path since blobTransferManager is null)
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
 
     // Should be RUNNING
     Assert
@@ -973,12 +998,12 @@ public class DefaultIngestionBackendTest {
 
     String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
 
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
 
     // Second call should be ignored (state already RUNNING)
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
 
@@ -999,11 +1024,11 @@ public class DefaultIngestionBackendTest {
 
     String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
 
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
 
-    backend.stopConsumption(storeConfig, PARTITION);
+    backend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
   }
@@ -1024,7 +1049,7 @@ public class DefaultIngestionBackendTest {
         backend.getReplicaIntendedState(replicaId),
         DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
 
-    backend.stopConsumption(storeConfig, PARTITION);
+    backend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
 
     // State remains NOT_EXIST
     Assert.assertEquals(
@@ -1048,13 +1073,13 @@ public class DefaultIngestionBackendTest {
 
     String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
 
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
-    backend.stopConsumption(storeConfig, PARTITION);
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    backend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
 
     // Second stop call should be no-op (state is STOPPED, not RUNNING)
-    backend.stopConsumption(storeConfig, PARTITION);
+    backend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
 
@@ -1077,11 +1102,11 @@ public class DefaultIngestionBackendTest {
 
     String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
 
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
 
-    backend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, false);
+    backend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, false, REPLICA_ID);
     Assert.assertEquals(
         backend.getReplicaIntendedState(replicaId),
         DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
@@ -1103,12 +1128,12 @@ public class DefaultIngestionBackendTest {
 
     String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
 
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
-    backend.stopConsumption(storeConfig, PARTITION);
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    backend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
 
-    backend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, false);
+    backend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, false, REPLICA_ID);
     Assert.assertEquals(
         backend.getReplicaIntendedState(replicaId),
         DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
@@ -1133,7 +1158,7 @@ public class DefaultIngestionBackendTest {
         backend.getReplicaIntendedState(replicaId),
         DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
 
-    backend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, false);
+    backend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, false, REPLICA_ID);
     Assert.assertEquals(
         backend.getReplicaIntendedState(replicaId),
         DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
@@ -1154,13 +1179,13 @@ public class DefaultIngestionBackendTest {
     String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
 
     // Start, then stop
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
-    backend.stopConsumption(storeConfig, PARTITION);
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    backend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
 
     // Start again while STOPPED - should wait for stop to complete, then set RUNNING
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
 
@@ -1189,23 +1214,23 @@ public class DefaultIngestionBackendTest {
     Assert.assertEquals(
         backend.getReplicaIntendedState(replicaId),
         DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
 
     // 2. RUNNING → STOPPED
-    backend.stopConsumption(storeConfig, PARTITION);
+    backend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
 
     // 3. STOPPED → NOT_EXIST (via drop)
-    backend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, false);
+    backend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, false, REPLICA_ID);
     Assert.assertEquals(
         backend.getReplicaIntendedState(replicaId),
         DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
 
     // 4. NOT_EXIST → RUNNING (start again after drop)
-    backend.startConsumption(storeConfig, PARTITION, Optional.empty());
+    backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
   }
