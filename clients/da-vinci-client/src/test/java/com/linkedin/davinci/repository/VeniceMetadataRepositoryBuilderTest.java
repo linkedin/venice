@@ -75,20 +75,15 @@ public class VeniceMetadataRepositoryBuilderTest {
   }
 
   @Test
-  public void testConstructorWithDaVinciClientAndNoIngestionIsolation() {
+  public void testConstructorWithDaVinciClient() {
     // Setup
     when(mockServerConfig.isDaVinciClient()).thenReturn(true);
     nativeMetadataRepositoryMock.when(() -> NativeMetadataRepository.getInstance(any(), any(), any()))
         .thenReturn(mockNativeMetadataRepository);
 
     // Execute
-    VeniceMetadataRepositoryBuilder builder = new VeniceMetadataRepositoryBuilder(
-        mockConfigLoader,
-        mockClientConfig,
-        mockMetricsRepository,
-        mockIcProvider,
-        false // isIngestionIsolation
-    );
+    VeniceMetadataRepositoryBuilder builder =
+        new VeniceMetadataRepositoryBuilder(mockConfigLoader, mockClientConfig, mockMetricsRepository, mockIcProvider);
 
     // Verify
     verify(mockClientConfig).setMetricsRepository(mockMetricsRepository);
@@ -105,42 +100,7 @@ public class VeniceMetadataRepositoryBuilderTest {
   }
 
   @Test
-  public void testConstructorWithDaVinciClientAndIngestionIsolation() {
-    // Setup
-    when(mockServerConfig.isDaVinciClient()).thenReturn(true);
-    when(mockClusterConfig.getZookeeperAddress()).thenReturn("localhost:2181");
-    when(mockClusterConfig.getClusterName()).thenReturn("test-cluster");
-    when(mockServerConfig.getSystemSchemaClusterName()).thenReturn("system-cluster");
-    when(mockClusterConfig.getRefreshAttemptsForZkReconnect()).thenReturn(3);
-    when(mockClusterConfig.getRefreshIntervalForZkReconnectInMs()).thenReturn(1000L);
-
-    zkClientFactoryMock.when(() -> ZkClientFactory.newZkClient(anyString())).thenReturn(mockZkClient);
-
-    // Execute
-    VeniceMetadataRepositoryBuilder builder = new VeniceMetadataRepositoryBuilder(
-        mockConfigLoader,
-        mockClientConfig,
-        mockMetricsRepository,
-        mockIcProvider,
-        true // isIngestionIsolation
-    );
-
-    // Verify
-    verify(mockClientConfig).setMetricsRepository(mockMetricsRepository);
-    zkClientFactoryMock.verify(() -> ZkClientFactory.newZkClient("localhost:2181"));
-    verify(mockZkClient).subscribeStateChanges(any(ZkClientStatusStats.class));
-
-    Assert.assertTrue(builder.isDaVinciClient());
-    Assert.assertNotNull(builder.getStoreRepo());
-    Assert.assertNotNull(builder.getSchemaRepo());
-    Assert.assertNotNull(builder.getClusterInfoProvider());
-    Assert.assertNotNull(builder.getLiveClusterConfigRepo());
-    Assert.assertNotNull(builder.getZkClient());
-    Assert.assertTrue(builder.getReadOnlyZKSharedSchemaRepository().isPresent());
-  }
-
-  @Test
-  public void testConstructorWithServerAndNoIngestionIsolation() {
+  public void testConstructorWithServer() {
     // Setup
     when(mockServerConfig.isDaVinciClient()).thenReturn(false);
     when(mockClusterConfig.getZookeeperAddress()).thenReturn("localhost:2181");
@@ -152,50 +112,12 @@ public class VeniceMetadataRepositoryBuilderTest {
     zkClientFactoryMock.when(() -> ZkClientFactory.newZkClient(anyString())).thenReturn(mockZkClient);
 
     // Execute
-    VeniceMetadataRepositoryBuilder builder = new VeniceMetadataRepositoryBuilder(
-        mockConfigLoader,
-        mockClientConfig,
-        mockMetricsRepository,
-        mockIcProvider,
-        false // isIngestionIsolation
-    );
+    VeniceMetadataRepositoryBuilder builder =
+        new VeniceMetadataRepositoryBuilder(mockConfigLoader, mockClientConfig, mockMetricsRepository, mockIcProvider);
 
     // Verify
     verify(mockClientConfig).setMetricsRepository(mockMetricsRepository);
     zkClientFactoryMock.verify(() -> ZkClientFactory.newZkClient("localhost:2181"));
-    verify(mockZkClient).subscribeStateChanges(any(ZkClientStatusStats.class));
-
-    Assert.assertFalse(builder.isDaVinciClient());
-    Assert.assertNotNull(builder.getStoreRepo());
-    Assert.assertNotNull(builder.getSchemaRepo());
-    Assert.assertNotNull(builder.getClusterInfoProvider());
-    Assert.assertNotNull(builder.getLiveClusterConfigRepo());
-    Assert.assertNotNull(builder.getZkClient());
-    Assert.assertTrue(builder.getReadOnlyZKSharedSchemaRepository().isPresent());
-  }
-
-  @Test
-  public void testConstructorWithServerAndIngestionIsolation() {
-    // Setup
-    when(mockServerConfig.isDaVinciClient()).thenReturn(false);
-    when(mockClusterConfig.getZookeeperAddress()).thenReturn("localhost:2181");
-    when(mockClusterConfig.getClusterName()).thenReturn("test-cluster");
-    when(mockServerConfig.getSystemSchemaClusterName()).thenReturn("system-cluster");
-    when(mockClusterConfig.getRefreshAttemptsForZkReconnect()).thenReturn(3);
-    when(mockClusterConfig.getRefreshIntervalForZkReconnectInMs()).thenReturn(1000L);
-
-    zkClientFactoryMock.when(() -> ZkClientFactory.newZkClient(anyString())).thenReturn(mockZkClient);
-
-    // Execute
-    VeniceMetadataRepositoryBuilder builder = new VeniceMetadataRepositoryBuilder(
-        mockConfigLoader,
-        mockClientConfig,
-        mockMetricsRepository,
-        mockIcProvider,
-        true // isIngestionIsolation
-    );
-
-    // Verify - should use ingestion-isolation prefix for ZK client stats
     verify(mockZkClient).subscribeStateChanges(any(ZkClientStatusStats.class));
 
     Assert.assertFalse(builder.isDaVinciClient());

@@ -6,7 +6,7 @@ import java.util.Map;
 
 
 /**
- * IngestionReportType is an Enum class for specifying different ingestion reports for ingestion isolation.
+ * IngestionReportType is an Enum class for specifying different ingestion report types.
  */
 public enum IngestionReportType {
   COMPLETED(0), ERROR(1), STARTED(2), RESTARTED(3), PROGRESS(4), END_OF_PUSH_RECEIVED(5), @Deprecated

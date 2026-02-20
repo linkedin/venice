@@ -1077,12 +1077,6 @@ public class ConfigKeys {
   public static final String SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED = "server.leaked.resource.cleanup.enabled";
 
   /**
-   * Ingestion mode in target storage instance.
-   * This will be applied to Da Vinci and Storage Node.
-   */
-  public static final String SERVER_INGESTION_MODE = "server.ingestion.mode";
-
-  /**
    * Unsubscribe from kakfa topic once a batch-store push finishes
    */
   public static final String SERVER_UNSUB_AFTER_BATCHPUSH = "server.unsub.after.batch.push";
@@ -1103,17 +1097,6 @@ public class ConfigKeys {
    * Number of retries allowed for stopConsumptionAndWait() API in StoreIngestionService.
    */
   public static final String SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS = "server.stop.consumption.timeout.in.seconds";
-
-  /**
-   * Service listening port number for main ingestion service.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_SERVICE_PORT = "server.ingestion.isolation.service.port";
-
-  /**
-   * Service listening port number for forked ingestion process.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT =
-      "server.ingestion.isolation.application.port";
 
   public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED =
       "server.db.read.only.for.batch.only.store.enabled";
@@ -1164,43 +1147,9 @@ public class ConfigKeys {
       "server.adaptive.throttler.signal.refresh.interval.in.seconds";
 
   /**
-   * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
-   * separated by comma. This config will help isolated ingestion process to register extra stats needed for monitoring,
-   * for example: JVM GC/Memory stats. All the classes defined here will be extending {@link com.linkedin.venice.stats.AbstractVeniceStats},
-   * and will take {@link io.tehuti.metrics.MetricsRepository} as the only parameter in their constructor.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST =
-      "server.ingestion.isolation.stats.class.list";
-
-  public static final String SERVER_INGESTION_ISOLATION_SSL_ENABLED = "server.ingestion.isolation.ssl.enabled";
-
-  public static final String SERVER_INGESTION_ISOLATION_ACL_ENABLED = "server.ingestion.isolation.acl.enabled";
-
-  public static final String SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME = "server.ingestion.isolation.principal.name";
-
-  /**
    * A list of JVM arguments for forked child process, separated by semicolon.
    */
   public static final String SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST = "server.forked.process.jvm.arg.list";
-
-  /**
-   * Timeout for connection between main process and forked ingestion process. If heartbeat is not refreshed within this
-   * timeout, both processes should act to reconstruct the state in order to restore connection and service.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS =
-      "server.ingestion.isolation.connection.timeout.seconds";
-
-  /**
-   * Timeout for single ingestion command request sent from main process to forked ingestion process.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS =
-      "server.ingestion.isolation.request.timeout.seconds";
-
-  /**
-   * Timeout for single heartbeat request sent from main process to forked ingestion process.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS =
-      "server.ingestion.isolation.heartbeat.request.timeout.seconds";
 
   public static final String SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED =
       "server.batch.report.end.of.incremental.push.status.enabled";
@@ -3238,9 +3187,6 @@ public class ConfigKeys {
    * Default is false (i.e. not a dark cluster).
    */
   public static final String IS_DARK_CLUSTER = "is.dark.cluster";
-
-  public static final String SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED =
-      "server.ingestion.isolation.d2.client.enabled";
 
   /**
    * When dumping topic partition info for each consumer, there will be one line for each partition. This limit will

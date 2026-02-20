@@ -366,10 +366,10 @@ public class TestPushJobWithNativeReplication {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testNativeReplicationWithIngestionIsolationInDaVinci() throws Exception {
+  public void testNativeReplicationWithDaVinci() throws Exception {
     int recordCount = 100;
     motherOfAllTests(
-        "testNativeReplicationWithIngestionIsolationInDaVinci",
+        "testNativeReplicationWithDaVinci",
         updateStoreParams -> updateStoreParams.setPartitionCount(2),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -386,7 +386,7 @@ public class TestPushJobWithNativeReplication {
               storeName,
               childDataCenter.getClusters().get(clusterName).getZk().getAddress(),
               new DaVinciConfig(),
-              TestUtils.getIngestionIsolationPropertyMap())) {
+              new HashMap<>())) {
             daVinciClient.subscribeAll().get();
             for (int i = 1; i <= recordCount; ++i) {
               String expected = "test_name_" + i;
