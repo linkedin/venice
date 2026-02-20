@@ -416,7 +416,6 @@ public class TestIncrementalPush {
   /**
    * Test that incremental push throttling is applied when writing to the regular RT topic
    * and that the push completes successfully with throttling enabled.
-   * Also verifies that throttling is NOT applied when pushing to a separate RT topic.
    */
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testIncrementalPushWithThrottling() throws IOException {
@@ -462,7 +461,18 @@ public class TestIncrementalPush {
 
       String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
       try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
-        IntegrationTestPushUtils.runVPJ(vpjProperties, 1, childControllerClient);
+        String jobName = Utils.getUniqueString("venice-push-job-throttle-rt");
+        try (VenicePushJob vpj = new VenicePushJob(jobName, vpjProperties)) {
+          vpj.run();
+          // Verify throttle counter is accessible and non-negative
+          Assert.assertTrue(
+              vpj.getIncrementalPushThrottledTimeMs() >= 0,
+              "Incremental push throttle time counter should be non-negative");
+        }
+        TestUtils.waitForNonDeterministicCompletion(
+            5,
+            TimeUnit.SECONDS,
+            () -> childControllerClient.getStore(storeName).getStore().getCurrentVersion() == 1);
       }
 
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);

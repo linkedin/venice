@@ -10,6 +10,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_IS_DUPLICAT
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
@@ -52,6 +53,9 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.throttle.GuavaRateLimiter;
+import com.linkedin.venice.throttle.TokenBucket;
+import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -74,6 +78,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.Clock;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
@@ -250,7 +255,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
   // Incremental push write quota throttlers
   private boolean isIncrementalPush = false;
-  private EventThrottler recordsThrottler = null;
+  private VeniceRateLimiter recordsThrottler = null;
   /**
    * Accumulated throttle time across all calls. Only accessed from the single-threaded
    * {@link #processValuesForKey} call path, so no synchronization is needed (class is @NotThreadsafe).
@@ -456,17 +461,25 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
 
     long startTime = System.currentTimeMillis();
-    recordsThrottler.maybeThrottle(1);
-    long throttleTime = System.currentTimeMillis() - startTime;
-    if (throttleTime > 0) {
-      totalThrottleTimeMs += throttleTime;
-      dataWriterTaskTracker.trackIncrementalPushThrottledTime(throttleTime);
-      if ((messageSent + 1) % telemetryMessageInterval == 0) {
-        LOGGER.info(
-            "Incremental push throttling active: throttled for {} ms this interval, total throttle time: {} ms",
-            throttleTime,
-            totalThrottleTimeMs);
+    while (!recordsThrottler.tryAcquirePermit(1)) {
+      try {
+        Thread.sleep(1);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        break;
       }
+    }
+    long throttleTime = System.currentTimeMillis() - startTime;
+    if (throttleTime <= 0) {
+      return;
+    }
+    totalThrottleTimeMs += throttleTime;
+    dataWriterTaskTracker.trackIncrementalPushThrottledTime(throttleTime);
+    if ((messageSent + 1) % telemetryMessageInterval == 0) {
+      LOGGER.info(
+          "Incremental push throttling active: throttled for {} ms this interval, total throttle time: {} ms",
+          throttleTime,
+          totalThrottleTimeMs);
     }
   }
 
@@ -476,7 +489,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   }
 
   @VisibleForTesting
-  EventThrottler getRecordsThrottler() {
+  VeniceRateLimiter getRecordsThrottler() {
     return recordsThrottler;
   }
 
@@ -801,24 +814,42 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
 
     long recordsPerSecond = props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, -1);
-    long timeWindowMs = props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, 1000);
+    if (recordsPerSecond <= 0) {
+      return;
+    }
 
     String storeName = Version.parseStoreFromKafkaTopicName(props.getString(TOPIC_PROP));
+    String rateLimiterTypeStr = props
+        .getString(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, VeniceRateLimiter.RateLimiterType.GUAVA_RATE_LIMITER.name());
+    VeniceRateLimiter.RateLimiterType rateLimiterType = VeniceRateLimiter.RateLimiterType.valueOf(rateLimiterTypeStr);
 
-    // Create records throttler if quota is set (> 0)
-    if (recordsPerSecond > 0) {
-      this.recordsThrottler = new EventThrottler(
-          recordsPerSecond,
-          timeWindowMs,
-          storeName + "_incremental_push_records_throttler",
-          false,
-          EventThrottler.BLOCK_STRATEGY);
-      LOGGER.info(
-          "Initialized incremental push records throttler for store {}: {} records/sec, time window: {} ms",
-          storeName,
-          recordsPerSecond,
-          timeWindowMs);
+    long timeWindowMs = props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, 1000);
+    switch (rateLimiterType) {
+      case EVENT_THROTTLER_WITH_SILENT_REJECTION:
+        this.recordsThrottler = new EventThrottler(
+            recordsPerSecond,
+            timeWindowMs,
+            storeName + "_incremental_push_records_throttler",
+            false,
+            EventThrottler.REJECT_STRATEGY);
+        break;
+      case TOKEN_BUCKET_INCREMENTAL_REFILL:
+      case TOKEN_BUCKET_GREEDY_REFILL:
+        // capacity = recordsPerSecond * (timeWindowMs / 1000) to allow burst up to one window's worth
+        long capacity = Math.max(1, recordsPerSecond * timeWindowMs / 1000);
+        this.recordsThrottler =
+            new TokenBucket(capacity, capacity, timeWindowMs, TimeUnit.MILLISECONDS, Clock.systemUTC());
+        break;
+      case GUAVA_RATE_LIMITER:
+      default:
+        this.recordsThrottler = new GuavaRateLimiter(recordsPerSecond);
+        break;
     }
+    LOGGER.info(
+        "Initialized incremental push records throttler for store {}: {} records/sec, type: {}",
+        storeName,
+        recordsPerSecond,
+        rateLimiterType);
   }
 
   /**

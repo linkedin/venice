@@ -479,4 +479,11 @@ public final class VenicePushJobConstants {
    */
   public static final String INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS =
       "incremental.push.write.quota.time.window.ms";
+
+  /**
+   * Rate limiter implementation for incremental push throttling. Supported values are
+   * defined by {@link com.linkedin.venice.throttle.VeniceRateLimiter.RateLimiterType}.
+   * Defaults to GUAVA_RATE_LIMITER.
+   */
+  public static final String INCREMENTAL_PUSH_RATE_LIMITER_TYPE = "incremental.push.rate.limiter.type";
 }

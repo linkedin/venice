@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
@@ -15,6 +16,8 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.hadoop.engine.EngineTaskConfigProvider;
+import com.linkedin.venice.throttle.GuavaRateLimiter;
+import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import java.util.Properties;
 import org.testng.annotations.BeforeMethod;
@@ -125,6 +128,37 @@ public class AbstractPartitionWriterThrottlingTest {
     assertNull(
         partitionWriter.getRecordsThrottler(),
         "Records throttler should not be initialized when recordsPerSecond is " + recordsPerSecond);
+  }
+
+  @Test
+  public void testDefaultRateLimiterIsGuava() {
+    Properties props = createBaseProperties();
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
+    setupMockConfigProvider(props);
+
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    VeniceRateLimiter throttler = partitionWriter.getRecordsThrottler();
+    assertNotNull(throttler, "Records throttler should be initialized");
+    assertTrue(throttler instanceof GuavaRateLimiter, "Default rate limiter should be GuavaRateLimiter");
+  }
+
+  @Test
+  public void testConfigurableRateLimiterType() {
+    Properties props = createBaseProperties();
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
+    props.setProperty(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, "EVENT_THROTTLER_WITH_SILENT_REJECTION");
+    setupMockConfigProvider(props);
+
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    VeniceRateLimiter throttler = partitionWriter.getRecordsThrottler();
+    assertNotNull(throttler, "Records throttler should be initialized");
+    assertFalse(throttler instanceof GuavaRateLimiter, "Should not be GuavaRateLimiter when configured otherwise");
   }
 
   @Test
