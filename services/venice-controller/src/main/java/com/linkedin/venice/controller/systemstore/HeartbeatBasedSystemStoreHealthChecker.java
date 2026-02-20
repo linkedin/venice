@@ -182,8 +182,4 @@ public class HeartbeatBasedSystemStoreHealthChecker implements SystemStoreHealth
   int getHeartbeatCheckIntervalInSeconds() {
     return DEFAULT_HEARTBEAT_CHECK_INTERVAL_IN_SECONDS;
   }
-
-  VeniceParentHelixAdmin getParentAdmin() {
-    return parentAdmin;
-  }
 }
