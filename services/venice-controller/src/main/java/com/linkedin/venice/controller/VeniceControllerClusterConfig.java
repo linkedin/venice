@@ -83,6 +83,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_REGION_STATE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_MAX_PER_ROUND;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_VERSION_REFRESH_THRESHOLD_IN_DAYS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED;
@@ -477,6 +478,8 @@ public class VeniceControllerClusterConfig {
   private final int parentSystemStoreHeartbeatCheckWaitTimeSeconds;
 
   private final int parentSystemStoreVersionRefreshThresholdInDays;
+
+  private final int systemStoreRepairMaxPerRound;
 
   private final String systemStoreHealthCheckOverrideClassName;
 
@@ -1191,6 +1194,7 @@ public class VeniceControllerClusterConfig {
         props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS, 600);
     this.parentSystemStoreVersionRefreshThresholdInDays =
         props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_VERSION_REFRESH_THRESHOLD_IN_DAYS, 30);
+    this.systemStoreRepairMaxPerRound = props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_MAX_PER_ROUND, -1);
     this.systemStoreHealthCheckOverrideClassName =
         props.getString(CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_OVERRIDE_CLASS_NAME, "");
     this.clusterDiscoveryD2ServiceName =
@@ -2201,6 +2205,10 @@ public class VeniceControllerClusterConfig {
 
   public int getParentSystemStoreVersionRefreshThresholdInDays() {
     return parentSystemStoreVersionRefreshThresholdInDays;
+  }
+
+  public int getSystemStoreRepairMaxPerRound() {
+    return systemStoreRepairMaxPerRound;
   }
 
   public String getSystemStoreHealthCheckOverrideClassName() {
