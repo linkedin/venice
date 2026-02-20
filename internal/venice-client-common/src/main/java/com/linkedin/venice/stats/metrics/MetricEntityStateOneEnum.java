@@ -5,6 +5,7 @@ import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MeasurableStat;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
@@ -25,7 +26,7 @@ import javax.annotation.Nonnull;
  *
  */
 public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterface> extends MetricEntityState {
-  private final EnumMap<E, Attributes> attributesEnumMap;
+  private final EnumMap<E, MetricAttributesData> metricAttributesDataEnumMap;
   private final Class<E> enumTypeClass;
 
   /** should not be called directly, call {@link #create} instead */
@@ -55,7 +56,8 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
         tehutiMetricStats);
     validateRequiredDimensions(metricEntity, null, baseDimensionsMap, enumTypeClass);
     this.enumTypeClass = enumTypeClass;
-    this.attributesEnumMap = createAttributesEnumMap();
+    this.metricAttributesDataEnumMap = createMetricAttributesDataEnumMap();
+    registerObservableCounterIfNeeded();
   }
 
   /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */
@@ -87,9 +89,10 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
   }
 
   /**
-   * Creates an EnumMap of {@link Attributes} which will be used to lazy initialize the Attributes
+   * Creates an EnumMap of {@link MetricAttributesData} which will be used to lazy initialize the
+   * Attributes and optionally a LongAdder for ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics.
    */
-  private EnumMap<E, Attributes> createAttributesEnumMap() {
+  private EnumMap<E, MetricAttributesData> createMetricAttributesDataEnumMap() {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
@@ -97,8 +100,8 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
   }
 
   /**
-   * Manages the EnumMap structure for lazy initialization of Attributes.
-   * This allows efficient retrieval of Attributes based on one enum dimension. <br>
+   * Manages the EnumMap structure for lazy initialization of MetricAttributesData.
+   * This allows efficient retrieval of state based on one enum dimension. <br>
    * <br>
    * Thread Safety Considerations: <br>
    * While {@link EnumMap} itself is not inherently thread-safe, it is practically thread-safe for this
@@ -115,35 +118,44 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
    *    correct. But since we are not using the returned value of put or the size anywhere, and as the input value
    *    is idempotent, we can use EnumMap without any synchronization here.<br>
    */
-  Attributes getAttributes(E dimension) {
+  private MetricAttributesData getMetricAttributesData(E dimension) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
 
-    Attributes attributes = attributesEnumMap.computeIfAbsent(dimension, k -> {
+    return metricAttributesDataEnumMap.computeIfAbsent(dimension, k -> {
       validateInputDimension(k);
-      return createAttributes(k);
+      Attributes attrs = createAttributes(k);
+      return new MetricAttributesData(attrs, isObservableCounter());
     });
-
-    if (attributes == null) {
-      throw new IllegalArgumentException(
-          "No Attributes found for dimension: " + dimension + " for metric Entity: "
-              + getMetricEntity().getMetricName());
-    }
-    return attributes;
   }
 
-  public void record(long value, @Nonnull E dimension) {
-    super.record(value, getAttributes(dimension));
+  /**
+   * Returns the Attributes for the given dimension.
+   */
+  public Attributes getAttributes(E dimension) {
+    MetricAttributesData holder = getMetricAttributesData(dimension);
+    return holder != null ? holder.getAttributes() : null;
   }
 
   public void record(double value, @Nonnull E dimension) {
-    super.record(value, getAttributes(dimension));
+    super.record(value, getMetricAttributesData(dimension));
+  }
+
+  public void record(long value, @Nonnull E dimension) {
+    super.record(value, getMetricAttributesData(dimension));
+  }
+
+  @Override
+  protected Iterable<MetricAttributesData> getAllMetricAttributesData() {
+    if (metricAttributesDataEnumMap == null) {
+      return null;
+    }
+    return new ArrayList<>(metricAttributesDataEnumMap.values());
   }
 
   /** visible for testing */
-  public EnumMap<E, Attributes> getAttributesEnumMap() {
-    return attributesEnumMap;
+  public EnumMap<E, MetricAttributesData> getMetricAttributesDataEnumMap() {
+    return metricAttributesDataEnumMap;
   }
-
 }

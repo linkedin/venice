@@ -226,6 +226,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public VeniceETLStrategy getETLStrategy() {
+      return this.delegate.getETLStrategy();
+    }
+
+    @Override
+    public void setETLStrategy(VeniceETLStrategy etlStrategy) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public ETLStoreConfig clone() {
       return this.delegate.clone();
     }
@@ -529,6 +539,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public String getBlobDbEnabled() {
+      return this.delegate.getBlobDbEnabled();
+    }
+
+    @Override
+    public void setBlobDbEnabled(String blobDbEnabled) {
+      throw new UnsupportedOperationException("BlobDB not supported");
+    }
+
+    @Override
     public boolean isUseVersionLevelIncrementalPushEnabled() {
       return this.delegate.isUseVersionLevelIncrementalPushEnabled();
     }
@@ -680,12 +700,32 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public void setRepushTtlSeconds(int ttlSeconds) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int getRepushTtlSeconds() {
+      return this.delegate.getRepushTtlSeconds();
+    }
+
+    @Override
     public int getRmdVersionId() {
       return this.delegate.getRmdVersionId();
     }
 
     @Override
     public void setRmdVersionId(int replicationMetadataVersionId) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int getPreviousCurrentVersion() {
+      return this.delegate.getPreviousCurrentVersion();
+    }
+
+    @Override
+    public void setPreviousCurrentVersion(int previousCurrentVersion) {
       throw new UnsupportedOperationException();
     }
 
@@ -1017,6 +1057,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setStorageNodeReadQuotaEnabled(isStorageNodeReadQuotaEnabled());
     storeProperties.setBlobTransferEnabled(isBlobTransferEnabled());
     storeProperties.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
+    storeProperties.setBlobDbEnabled(getBlobDbEnabled());
     storeProperties.setNearlineProducerCompressionEnabled(isNearlineProducerCompressionEnabled());
     storeProperties.setNearlineProducerCountPerWriter(getNearlineProducerCountPerWriter());
     storeProperties.setTargetSwapRegion(getTargetSwapRegion());
@@ -1025,6 +1066,9 @@ public class ReadOnlyStore implements Store {
     storeProperties.setStoreLifecycleHooks(convertStoreLifecycleHooks(getStoreLifecycleHooks()));
     storeProperties.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
     storeProperties.setKeyUrnFields(getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
+    storeProperties.setPreviousCurrentVersion(getPreviousCurrentVersion());
+    // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Store interface
+    storeProperties.setBlobDbEnabled("NOT_SPECIFIED");
 
     return storeProperties;
   }
@@ -1081,6 +1125,16 @@ public class ReadOnlyStore implements Store {
             .entrySet()
             .stream()
             .collect(Collectors.toMap(Map.Entry::getKey, e -> new ReadOnlyViewConfig(e.getValue()))));
+  }
+
+  @Override
+  public boolean isFlinkVeniceViewsEnabled() {
+    return this.delegate.isFlinkVeniceViewsEnabled();
+  }
+
+  @Override
+  public void setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    throw new UnsupportedOperationException();
   }
 
   @Override
@@ -1621,6 +1675,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void setBlobDbEnabled(String blobDbEnabled) {
+    throw new UnsupportedOperationException("BlobDB not supported");
+  }
+
+  @Override
+  public String getBlobDbEnabled() {
+    return this.delegate.getBlobDbEnabled();
+  }
+
+  @Override
   public boolean isNearlineProducerCompressionEnabled() {
     return delegate.isNearlineProducerCompressionEnabled();
   }
@@ -1736,6 +1800,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public int getPreviousCurrentVersion() {
+    return this.delegate.getPreviousCurrentVersion();
+  }
+
+  @Override
+  public void setPreviousCurrentVersion(int previousCurrentVersion) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public String toString() {
     return this.delegate.toString();
   }
@@ -1766,6 +1840,7 @@ public class ReadOnlyStore implements Store {
     storeETLConfig.setEtledUserProxyAccount(etlStoreConfig.getEtledUserProxyAccount());
     storeETLConfig.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
     storeETLConfig.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
+    storeETLConfig.setEtlStrategy(etlStoreConfig.getETLStrategy().getValue());
 
     return storeETLConfig;
   }
@@ -1873,6 +1948,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setSeparateRealTimeTopicEnabled(version.isSeparateRealTimeTopicEnabled());
     storeVersion.setBlobTransferEnabled(version.isBlobTransferEnabled());
     storeVersion.setBlobTransferInServerEnabled(version.getBlobTransferInServerEnabled());
+    storeVersion.setBlobDbEnabled(version.getBlobDbEnabled());
     storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
     storeVersion.setHybridConfig(convertHybridStoreConfig(version.getHybridStoreConfig()));
     storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());
@@ -1888,6 +1964,10 @@ public class ReadOnlyStore implements Store {
     storeVersion.setViews(convertViewConfigsStringMap(version.getViewConfigs()));
     storeVersion.setKeyUrnCompressionEnabled(version.isKeyUrnCompressionEnabled());
     storeVersion.setKeyUrnFields(version.getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
+    storeVersion.setRepushTtlSeconds(version.getRepushTtlSeconds());
+    storeVersion.setPreviousCurrentVersion(version.getPreviousCurrentVersion());
+    // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Version interface
+    storeVersion.setBlobDbEnabled("NOT_SPECIFIED");
 
     return storeVersion;
   }

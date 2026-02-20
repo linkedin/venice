@@ -12,6 +12,7 @@ public class HeartbeatStat {
   Map<String, WritePathLatencySensor> readyToServeLeaderSensors = new VeniceConcurrentHashMap<>();
   Map<String, WritePathLatencySensor> readyToServeFollowerSensors = new VeniceConcurrentHashMap<>();
   Map<String, WritePathLatencySensor> catchingUpFollowerSensors = new VeniceConcurrentHashMap<>();
+
   WritePathLatencySensor defaultSensor;
 
   public HeartbeatStat(MetricConfig metricConfig, Set<String> regions) {
@@ -21,6 +22,7 @@ public class HeartbeatStat {
      */
     MetricsRepository localRepository = new MetricsRepository(metricConfig);
     for (String region: regions) {
+      // Heartbeat message sensors
       readyToServeLeaderSensors
           .put(region, new WritePathLatencySensor(localRepository, metricConfig, "leader-" + region));
       readyToServeFollowerSensors
@@ -34,19 +36,37 @@ public class HeartbeatStat {
     defaultSensor = new WritePathLatencySensor(localRepository, metricConfig, "default-");
   }
 
-  public void recordReadyToServeLeaderLag(String region, long startTime) {
-    long endTime = System.currentTimeMillis();
-    readyToServeLeaderSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
+  /**
+   * Records the heartbeat lag for a ready-to-serve leader replica.
+   *
+   * @param region The region name
+   * @param delay The pre-calculated delay in milliseconds
+   * @param endTime The pre-calculated end time
+   */
+  public void recordReadyToServeLeaderLag(String region, long delay, long endTime) {
+    readyToServeLeaderSensors.computeIfAbsent(region, k -> defaultSensor).record(delay, endTime);
   }
 
-  public void recordReadyToServeFollowerLag(String region, long startTime) {
-    long endTime = System.currentTimeMillis();
-    readyToServeFollowerSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
+  /**
+   * Records the heartbeat lag for a ready-to-serve follower replica.
+   *
+   * @param region The region name
+   * @param delay The pre-calculated delay in milliseconds
+   * @param endTime The pre-calculated end time
+   */
+  public void recordReadyToServeFollowerLag(String region, long delay, long endTime) {
+    readyToServeFollowerSensors.computeIfAbsent(region, k -> defaultSensor).record(delay, endTime);
   }
 
-  public void recordCatchingUpFollowerLag(String region, long startTime) {
-    long endTime = System.currentTimeMillis();
-    catchingUpFollowerSensors.computeIfAbsent(region, k -> defaultSensor).record(endTime - startTime, endTime);
+  /**
+   * Records the heartbeat lag for a catching-up follower replica.
+   *
+   * @param region The region name
+   * @param delay The pre-calculated delay in milliseconds (0 for squelching)
+   * @param endTime The pre-calculated end time
+   */
+  public void recordCatchingUpFollowerLag(String region, long delay, long endTime) {
+    catchingUpFollowerSensors.computeIfAbsent(region, k -> defaultSensor).record(delay, endTime);
   }
 
   public WritePathLatencySensor getReadyToServeLeaderLag(String region) {

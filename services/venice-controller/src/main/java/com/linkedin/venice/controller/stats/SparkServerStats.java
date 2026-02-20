@@ -1,5 +1,12 @@
 package com.linkedin.venice.controller.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.utils.Utils.setOf;
+
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
@@ -9,8 +16,12 @@ import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateFourEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -19,11 +30,14 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Total;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 import spark.Request;
 import spark.Response;
 
 
 public class SparkServerStats extends AbstractVeniceStats {
+  public static final String NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME = "cluster_generic";
+
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
@@ -36,14 +50,13 @@ public class SparkServerStats extends AbstractVeniceStats {
   private final MetricEntityStateFourEnums<ControllerRoute, HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> successfulRequestLatencyHistogramMetric;
   private final MetricEntityStateFourEnums<ControllerRoute, HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> failedRequestLatencyHistogramMetric;
 
-  public SparkServerStats(MetricsRepository metricsRepository, String clusterName) {
-    super(metricsRepository, clusterName);
+  public SparkServerStats(MetricsRepository metricsRepository, String statsPrefix, String clusterName) {
+    super(
+        metricsRepository,
+        (clusterName.equals(NON_CLUSTER_SPECIFIC_STAT_CLUSTER_NAME)) ? statsPrefix : clusterName + "." + statsPrefix);
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
-        OpenTelemetryMetricsSetup.builder(metricsRepository)
-            // set all base dimensions for this stats class and build
-            .setClusterName(clusterName)
-            .build();
+        OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(clusterName).build();
 
     this.otelRepository = otelData.getOtelRepository();
     this.baseDimensionsMap = otelData.getBaseDimensionsMap();
@@ -56,7 +69,7 @@ public class SparkServerStats extends AbstractVeniceStats {
         new OccurrenceRate());
 
     inFlightRequestTotalCountMetric = MetricEntityStateOneEnum.create(
-        ControllerMetricEntity.INFLIGHT_CALL_COUNT.getMetricEntity(),
+        SparkServerOtelMetricEntity.INFLIGHT_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.CURRENT_IN_FLIGHT_REQUEST,
@@ -65,7 +78,7 @@ public class SparkServerStats extends AbstractVeniceStats {
         ControllerRoute.class);
 
     successfulRequestCountMetric = MetricEntityStateFourEnums.create(
-        ControllerMetricEntity.CALL_COUNT.getMetricEntity(),
+        SparkServerOtelMetricEntity.CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.SUCCESSFUL_REQUEST,
@@ -77,7 +90,7 @@ public class SparkServerStats extends AbstractVeniceStats {
         VeniceResponseStatusCategory.class);
 
     failedRequestCountMetric = MetricEntityStateFourEnums.create(
-        ControllerMetricEntity.CALL_COUNT.getMetricEntity(),
+        SparkServerOtelMetricEntity.CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.FAILED_REQUEST,
@@ -89,7 +102,7 @@ public class SparkServerStats extends AbstractVeniceStats {
         VeniceResponseStatusCategory.class);
 
     successfulRequestLatencyHistogramMetric = MetricEntityStateFourEnums.create(
-        ControllerMetricEntity.CALL_TIME.getMetricEntity(),
+        SparkServerOtelMetricEntity.CALL_TIME.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.SUCCESSFUL_REQUEST_LATENCY,
@@ -104,7 +117,7 @@ public class SparkServerStats extends AbstractVeniceStats {
         VeniceResponseStatusCategory.class);
 
     failedRequestLatencyHistogramMetric = MetricEntityStateFourEnums.create(
-        ControllerMetricEntity.CALL_TIME.getMetricEntity(),
+        SparkServerOtelMetricEntity.CALL_TIME.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.FAILED_REQUEST_LATENCY,
@@ -174,6 +187,51 @@ public class SparkServerStats extends AbstractVeniceStats {
     @Override
     public String getMetricName() {
       return this.metricName;
+    }
+  }
+
+  public enum SparkServerOtelMetricEntity implements ModuleMetricEntityInterface {
+    /** Count of current in flight messages to AdminSparkServer */
+    INFLIGHT_CALL_COUNT(
+        "inflight_call_count", MetricType.UP_DOWN_COUNTER, MetricUnit.NUMBER,
+        "Count of all current inflight calls to controller spark server",
+        setOf(VENICE_CLUSTER_NAME, VENICE_CONTROLLER_ENDPOINT)
+    ),
+    /** Count of completed calls to AdminSparkServer */
+    CALL_COUNT(
+        "call_count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of all calls to controller spark server",
+        setOf(
+            VENICE_CLUSTER_NAME,
+            VENICE_CONTROLLER_ENDPOINT,
+            HTTP_RESPONSE_STATUS_CODE,
+            HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+            VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+    ),
+    /** Histogram of call latency to AdminSparkServer */
+    CALL_TIME(
+        "call_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+        "Latency histogram of all successful calls to controller spark server",
+        setOf(
+            VENICE_CLUSTER_NAME,
+            VENICE_CONTROLLER_ENDPOINT,
+            HTTP_RESPONSE_STATUS_CODE,
+            HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+            VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+    );
+
+    private final MetricEntity metricEntity;
+
+    SparkServerOtelMetricEntity(
+        String metricName,
+        MetricType metricType,
+        MetricUnit unit,
+        String description,
+        Set<VeniceMetricsDimensions> dimensionsList) {
+      this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
+    }
+
+    public MetricEntity getMetricEntity() {
+      return metricEntity;
     }
   }
 }

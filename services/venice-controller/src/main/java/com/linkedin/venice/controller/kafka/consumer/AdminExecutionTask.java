@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.kafka.consumer;
 
 import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -10,7 +11,6 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
-import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureActiveActiveReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.ConfigureNativeReplicationForCluster;
 import com.linkedin.venice.controller.kafka.protocol.admin.CreateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
@@ -52,7 +52,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.VeniceUserStoreType;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
@@ -62,11 +62,11 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.Logger;
 
@@ -91,6 +91,8 @@ public class AdminExecutionTask implements Callable<Void> {
   private final ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap;
   private final long lastPersistedExecutionId;
 
+  private final ConcurrentHashMap<String, AtomicInteger> inflightThreadsByStore;
+
   AdminExecutionTask(
       Logger LOGGER,
       String clusterName,
@@ -102,7 +104,8 @@ public class AdminExecutionTask implements Callable<Void> {
       ExecutionIdAccessor executionIdAccessor,
       boolean isParentController,
       AdminConsumptionStats stats,
-      String regionName) {
+      String regionName,
+      ConcurrentHashMap<String, AtomicInteger> inflightThreadsByStore) {
     this.LOGGER = LOGGER;
     this.clusterName = clusterName;
     this.storeName = storeName;
@@ -114,10 +117,12 @@ public class AdminExecutionTask implements Callable<Void> {
     this.isParentController = isParentController;
     this.stats = stats;
     this.regionName = regionName;
+    this.inflightThreadsByStore = inflightThreadsByStore;
   }
 
   @Override
   public Void call() {
+    taskOnStart(storeName);
     try {
       while (!internalTopic.isEmpty()) {
         if (!admin.isLeaderControllerFor(clusterName)) {
@@ -145,13 +150,14 @@ public class AdminExecutionTask implements Callable<Void> {
             Math.max(0, completionTimestamp - adminOperationWrapper.getProducerTimestamp()));
         internalTopic.remove();
       }
+
     } catch (Exception e) {
       // Retry of the admin operation is handled automatically by keeping the failed admin operation inside the queue.
       // The queue with the problematic operation will be delegated and retried by the worker thread in the next cycle.
       AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
-      String logMessage =
-          "when processing admin message for store " + storeName + " with offset " + adminOperationWrapper.getPosition()
-              + " and execution id " + adminOperationWrapper.getAdminOperation().executionId;
+      String logMessage = "when processing admin message for store " + storeName + " with position "
+          + adminOperationWrapper.getPosition() + " and execution id "
+          + adminOperationWrapper.getAdminOperation().executionId;
       if (e instanceof VeniceRetriableException) {
         // These retriable exceptions are expected, therefore logging at the info level should be sufficient.
         stats.recordFailedRetriableAdminConsumption();
@@ -161,6 +167,8 @@ public class AdminExecutionTask implements Callable<Void> {
         LOGGER.error("Error {}", logMessage, e);
       }
       throw e;
+    } finally {
+      taskOnFinish(storeName);
     }
     return null;
   }
@@ -168,6 +176,59 @@ public class AdminExecutionTask implements Callable<Void> {
   // Package private for testing only
   String getStoreName() {
     return this.storeName;
+  }
+
+  /**
+   * Record the number of threads processing admin messages for the same store in parallel. If there is more than 1 thread
+   * processing admin messages for the same store in parallel, record a violation.
+   * @param storeName the name of the store being processed
+   */
+  @VisibleForTesting
+  public void taskOnStart(String storeName) {
+    int currentInFlightStartCount =
+        inflightThreadsByStore.computeIfAbsent(storeName, k -> new AtomicInteger(0)).incrementAndGet();
+    if (currentInFlightStartCount > 1) {
+      LOGGER.error(
+          "There are {} in-flight threads processing admin messages for store: {} in the cluster {}. Current thread: {} - {}",
+          currentInFlightStartCount,
+          storeName,
+          clusterName,
+          Thread.currentThread().getId(),
+          Thread.currentThread().getName());
+    }
+    LOGGER.debug(
+        "The thread id={}, name={} is processing admin messages for store: {} in cluster: {}. Current in-flight threads for this store: {}",
+        Thread.currentThread().getId(),
+        Thread.currentThread().getName(),
+        storeName,
+        clusterName,
+        currentInFlightStartCount);
+
+  }
+
+  /**
+   * Decrement the number of threads processing admin messages for the same store in parallel. If the number of threads
+   * processing admin messages for the same store reduce to 1, decrease the violation count.
+   * @param storeName the name of the store being processed
+   */
+  @VisibleForTesting
+  public void taskOnFinish(String storeName) {
+    inflightThreadsByStore.computeIfPresent(storeName, (k, counter) -> {
+      int currentInFlightEndCount = counter.decrementAndGet();
+      LOGGER.debug(
+          "The thread id={}, name={} finished processing admin messages for store: {} in cluster: {}. Current in-flight threads for this store: {}",
+          Thread.currentThread().getId(),
+          Thread.currentThread().getName(),
+          storeName,
+          clusterName,
+          currentInFlightEndCount);
+      if (currentInFlightEndCount == 0) {
+        // remove the entry if there is no in-flight thread for the store
+        return null;
+      }
+      return counter;
+    });
+
   }
 
   private void processMessage(AdminOperation adminOperation) {
@@ -249,9 +310,9 @@ public class AdminExecutionTask implements Callable<Void> {
           handleEnableNativeReplicationForCluster((ConfigureNativeReplicationForCluster) adminOperation.payloadUnion);
           break;
         case CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
-          handleEnableActiveActiveReplicationForCluster(
-              (ConfigureActiveActiveReplicationForCluster) adminOperation.payloadUnion);
-          break;
+          throw new VeniceUnsupportedOperationException(
+              "CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER is no longer supported. "
+                  + "Use the update-store command to configure active-active replication per store instead.");
         case REPLICATION_METADATA_SCHEMA_CREATION:
           handleReplicationMetadataSchemaCreation((MetadataSchemaCreation) adminOperation.payloadUnion);
           break;
@@ -508,15 +569,21 @@ public class AdminExecutionTask implements Callable<Void> {
             message.blobTransferInServerEnabled == null
                 ? ActivationState.NOT_SPECIFIED
                 : ActivationState.valueOf(message.blobTransferInServerEnabled.toString()))
+        .setBlobDbEnabled(
+            message.blobDbEnabled == null
+                ? ActivationState.NOT_SPECIFIED
+                : ActivationState.valueOf(message.blobDbEnabled.toString()))
         .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
         .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)
         .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
         .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported)
         .setGlobalRtDivEnabled(message.globalRtDivEnabled)
+        .setFlinkVeniceViewsEnabled(message.flinkVeniceViewsEnabled)
         .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed)
         .setKeyUrnCompressionEnabled(message.keyUrnCompressionEnabled)
-        .setKeyUrnFields(message.keyUrnFields.stream().map(Object::toString).collect(Collectors.toList()));
+        .setKeyUrnFields(message.keyUrnFields.stream().map(Object::toString).collect(Collectors.toList()))
+        .setPreviousCurrentVersion(message.previousCurrentVersion);
 
     if (message.storeLifecycleHooks.isEmpty()) {
       params.setStoreLifecycleHooks(Collections.emptyList());
@@ -538,7 +605,8 @@ public class AdminExecutionTask implements Callable<Void> {
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
           .setFutureVersionETLEnabled(message.ETLStoreConfig.futureVersionETLEnabled)
-          .setEtledProxyUserAccount(message.ETLStoreConfig.etledUserProxyAccount.toString());
+          .setEtledProxyUserAccount(message.ETLStoreConfig.etledUserProxyAccount.toString())
+          .setETLStrategy(VeniceETLStrategy.getVeniceETLStrategyFromInt(message.ETLStoreConfig.etlStrategy));
     }
 
     if (message.views != null) {
@@ -676,6 +744,7 @@ public class AdminExecutionTask implements Callable<Void> {
         message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString();
     long rewindTimeInSecondsOverride = message.rewindTimeInSecondsOverride;
     int replicationMetadataVersionId = message.timestampMetadataVersionId;
+    int repushTtlSeconds = message.repushTtlSeconds;
     // Log the message
     LOGGER.info(
         "Processing add version message for store: {} in cluster: {} with version number: {}.",
@@ -724,7 +793,8 @@ public class AdminExecutionTask implements Callable<Void> {
             message.versionSwapDeferred,
             targetedRegions,
             repushSourceVersion,
-            currentRTVersionNumber);
+            currentRTVersionNumber,
+            repushTtlSeconds);
       }
     }
   }
@@ -733,20 +803,6 @@ public class AdminExecutionTask implements Callable<Void> {
     LOGGER.info(
         "Received message to configure native replication for cluster: {} but ignoring it as native replication is the only mode",
         message.clusterName);
-  }
-
-  private void handleEnableActiveActiveReplicationForCluster(ConfigureActiveActiveReplicationForCluster message) {
-    String clusterName = message.clusterName.toString();
-    VeniceUserStoreType storeType = VeniceUserStoreType.valueOf(message.storeType.toString().toUpperCase());
-    boolean enableActiveActiveReplication = message.enabled;
-    Optional<String> regionsFilter =
-        (message.regionsFilter == null) ? Optional.empty() : Optional.of(message.regionsFilter.toString());
-    admin.configureActiveActiveReplication(
-        clusterName,
-        storeType,
-        Optional.empty(),
-        enableActiveActiveReplication,
-        regionsFilter);
   }
 
   private boolean checkPreConditionForReplicateAddVersion(String clusterName, String storeName) {

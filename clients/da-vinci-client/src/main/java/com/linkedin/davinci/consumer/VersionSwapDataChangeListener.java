@@ -29,22 +29,29 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
   private final String consumerName;
   private final BasicConsumerStats changeCaptureStats;
   protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final boolean versionSwapByControlMessage;
 
   VersionSwapDataChangeListener(
       VeniceAfterImageConsumerImpl<K, V> consumer,
       NativeMetadataRepositoryViewAdapter storeRepository,
       String storeName,
       String consumerName,
-      BasicConsumerStats changeCaptureStats) {
+      BasicConsumerStats changeCaptureStats,
+      boolean versionSwapByControlMessage) {
     this.consumer = consumer;
     this.storeRepository = storeRepository;
     this.storeName = storeName;
     this.consumerName = consumerName;
     this.changeCaptureStats = changeCaptureStats;
+    this.versionSwapByControlMessage = versionSwapByControlMessage;
   }
 
   @Override
   public void handleStoreChanged(Store store) {
+    if (versionSwapByControlMessage) {
+      // No op, changelog consumer is configured to perform version swap by version swap messages.
+      return;
+    }
     synchronized (this) {
       for (int attempt = 1; attempt <= MAX_VERSION_SWAP_RETRIES; attempt++) {
         // store may be null as this is called by other repair tasks
@@ -58,6 +65,14 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
           // of a deleted version topic, we'll always get the latest version on subsequent retries
           Store currentStore = storeRepository.getStore(storeName);
           int currentVersion = currentStore.getCurrentVersion();
+          Version currentVersionObj = currentStore.getVersion(currentVersion);
+          if (currentVersionObj == null) {
+            LOGGER.warn(
+                "Current version: {} not found for store: {}. It might have been deleted.",
+                currentVersion,
+                storeName);
+            return;
+          }
 
           // Check the current ingested version
           Set<PubSubTopicPartition> subscriptions = this.consumer.getTopicAssignment();
@@ -92,7 +107,7 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
           this.consumer
               .internalSeekToEndOfPush(
                   partitions,
-                  pubSubTopicRepository.getTopic(currentStore.getVersion(currentVersion).kafkaTopicName()),
+                  pubSubTopicRepository.getTopic(currentVersionObj.kafkaTopicName()),
                   true)
               .get();
 

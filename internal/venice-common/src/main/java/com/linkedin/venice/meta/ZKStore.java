@@ -20,6 +20,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import org.apache.avro.util.Utf8;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -52,6 +54,8 @@ import org.apache.avro.util.Utf8;
  * TODO: In the future, we could consider to use avro json serialization directly to make it simpler.
  */
 public class ZKStore extends AbstractStore implements DataModelBackedStructure<StoreProperties> {
+  private static final Logger LOGGER = LogManager.getLogger(ZKStore.class);
+
   /**
    * Internal data model
    */
@@ -235,6 +239,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     setBlobTransferEnabled(store.isBlobTransferEnabled());
     setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
+    setBlobDbEnabled(store.getBlobDbEnabled());
     setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
     setTargetSwapRegion(store.getTargetSwapRegion());
@@ -246,6 +251,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setStoreLifecycleHooks(store.getStoreLifecycleHooks());
     setKeyUrnCompressionEnabled(store.isKeyUrnCompressionEnabled());
     setKeyUrnFields(store.getKeyUrnFields());
+    setFlinkVeniceViewsEnabled(store.isFlinkVeniceViewsEnabled());
+    setPreviousCurrentVersion(store.getPreviousCurrentVersion());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -303,13 +310,35 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   /**
    * Set current serving version number of this store. If store is disabled to write, thrown {@link
    * StoreDisabledException}.
+   *
+   * When a new version is promoted to current, this method also sets the previousCurrentVersion
+   * field on the NEW current version to track which version was current before.
    */
   @Override
   public void setCurrentVersion(int currentVersion) {
     checkDisableStoreWrite("setStoreCurrentVersion", currentVersion);
     // Update the latest version promotion to current timestamp, which is useful for backup version retention.
     setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+
+    // Capture old current version before updating
+    int oldCurrentVersion = getCurrentVersion();
+
     setCurrentVersionWithoutCheck(currentVersion);
+
+    // Set previousCurrentVersion on the NEW current version
+    if (oldCurrentVersion != Store.NON_EXISTING_VERSION && currentVersion != Store.NON_EXISTING_VERSION) {
+      updateVersionPreviousCurrentVersion(currentVersion, oldCurrentVersion);
+    }
+  }
+
+  /** Updates the previousCurrentVersion field on a version. */
+  private void updateVersionPreviousCurrentVersion(int versionNumber, int previousCurrentVersion) {
+    for (StoreVersion storeVersion: storeProperties.versions) {
+      if (storeVersion.number == versionNumber) {
+        storeVersion.previousCurrentVersion = previousCurrentVersion;
+        return;
+      }
+    }
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
@@ -441,9 +470,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setEnableWrites(boolean enableWrites) {
     this.storeProperties.enableWrites = enableWrites;
-    if (enableWrites) {
-      setPushedVersionsOnline();
-    }
   }
 
   @Override
@@ -511,6 +537,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
           .stream()
           .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().dataModel()));
     }
+  }
+
+  @Override
+  public boolean isFlinkVeniceViewsEnabled() {
+    return this.storeProperties.flinkVeniceViewsEnabled;
+  }
+
+  @Override
+  public void setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    this.storeProperties.flinkVeniceViewsEnabled = flinkVeniceViewsEnabled;
   }
 
   @Override
@@ -966,6 +1002,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public void setBlobDbEnabled(String blobDbEnabled) {
+    this.storeProperties.blobDbEnabled = blobDbEnabled;
+  }
+
+  @Override
+  public String getBlobDbEnabled() {
+    return this.storeProperties.blobDbEnabled.toString();
+  }
+
+  @Override
   public boolean isNearlineProducerCompressionEnabled() {
     return this.storeProperties.nearlineProducerCompressionEnabled;
   }
@@ -1094,22 +1140,18 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
-  public boolean isGlobalRtDivEnabled() {
-    return this.storeProperties.globalRtDivEnabled;
+  public int getPreviousCurrentVersion() {
+    return this.storeProperties.previousCurrentVersion;
   }
 
-  /**
-   * Set all of PUSHED version to ONLINE once store is enabled to write.
-   */
-  private void setPushedVersionsOnline() {
-    // TODO, if the PUSHED version is the latest version, after store is enabled to write, shall we put this version as
-    // the current version?
-    for (StoreVersion storeVersion: this.storeProperties.versions) {
-      Version version = new VersionImpl(storeVersion);
-      if (version.getStatus().equals(VersionStatus.PUSHED)) {
-        updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
-      }
-    }
+  @Override
+  public void setPreviousCurrentVersion(int previousCurrentVersion) {
+    this.storeProperties.previousCurrentVersion = previousCurrentVersion;
+  }
+
+  @Override
+  public boolean isGlobalRtDivEnabled() {
+    return this.storeProperties.globalRtDivEnabled;
   }
 
   @Override

@@ -23,8 +23,11 @@ import org.testng.annotations.Test;
 public class TestBatchForRocksDB extends TestBatch {
   @Override
   public VeniceClusterWrapper initializeVeniceCluster() {
-    VeniceClusterCreateOptions options =
-        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(0).numberOfRouters(0).build();
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(2)
+        .build();
     VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(options);
 
     Properties serverProperties = new Properties();

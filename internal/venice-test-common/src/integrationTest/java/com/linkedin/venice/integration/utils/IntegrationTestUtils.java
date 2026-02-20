@@ -10,8 +10,8 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.ChangeEvent;
+import com.linkedin.davinci.consumer.StatefulVeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -96,7 +96,7 @@ public class IntegrationTestUtils {
     TopicManager topicManager = veniceAdmin.getTopicManager();
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
     PubSubTopic participantStoreRt = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(participantStoreName));
-    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Store store = veniceAdmin.getStore(clusterName, participantStoreName);
       assertNotNull(store);
       assertEquals(store.getVersions().size(), 1);
@@ -117,12 +117,12 @@ public class IntegrationTestUtils {
     }
   }
 
-  public static void pollChangeEventsFromSpecificBootstrappingChangeCaptureConsumer(
+  public static void pollChangeEventsFromSpecificStatefulChangeCaptureConsumer(
       Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEvents,
       List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
-      BootstrappingVeniceChangelogConsumer veniceChangelogConsumer) {
+      StatefulVeniceChangelogConsumer veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
-        pollAllMessagesForBootstrappingVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
+        pollAllMessagesForStatefulVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
@@ -158,8 +158,8 @@ public class IntegrationTestUtils {
     return polledMessagesNum;
   }
 
-  public static Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pollAllMessagesForBootstrappingVeniceChangelogConsumer(
-      BootstrappingVeniceChangelogConsumer<Utf8, TestChangelogValue> viewTopicConsumer,
+  public static Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pollAllMessagesForStatefulVeniceChangelogConsumer(
+      StatefulVeniceChangelogConsumer<Utf8, TestChangelogValue> viewTopicConsumer,
       int timeoutMs) {
     Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubAllMessages =
         new ArrayList<>();

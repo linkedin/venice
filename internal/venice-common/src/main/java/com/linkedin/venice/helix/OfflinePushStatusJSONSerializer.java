@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
@@ -14,8 +15,12 @@ import com.linkedin.venice.pushmonitor.StatusSnapshot;
 public class OfflinePushStatusJSONSerializer extends VeniceJsonSerializer<OfflinePushStatus> {
   public OfflinePushStatusJSONSerializer() {
     super(OfflinePushStatus.class);
-    OBJECT_MAPPER.addMixIn(OfflinePushStatus.class, OfflinePushStatusSerializerMixin.class);
-    OBJECT_MAPPER.addMixIn(StatusSnapshot.class, StatusSnapshotSerializerMixin.class);
+  }
+
+  @Override
+  protected void configureObjectMapper(ObjectMapper mapper) {
+    mapper.addMixIn(OfflinePushStatus.class, OfflinePushStatusSerializerMixin.class);
+    mapper.addMixIn(StatusSnapshot.class, StatusSnapshotSerializerMixin.class);
   }
 
   public static class OfflinePushStatusSerializerMixin {

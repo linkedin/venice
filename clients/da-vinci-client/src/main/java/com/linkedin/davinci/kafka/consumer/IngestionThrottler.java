@@ -108,27 +108,6 @@ public class IngestionThrottler implements Closeable {
     }
     this.poolTypeRecordThrottlerMap = new EnumMap<>(ConsumerPoolType.class);
     VeniceAdaptiveIngestionThrottler adaptiveIngestionThrottler = null;
-    if (isAdaptiveThrottlerEnabled) {
-      adaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
-          serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
-          serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
-          serverConfig.getThrottlerFactorsForAAWCLeader(),
-          serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "aa_wc_leader_records_count",
-          adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
-      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
-      adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
-    }
-    this.poolTypeRecordThrottlerMap.put(
-        ConsumerPoolType.AA_WC_LEADER_POOL,
-        isAdaptiveThrottlerEnabled
-            ? adaptiveIngestionThrottler
-            : new EventThrottler(
-                serverConfig.getAaWCLeaderQuotaRecordsPerSecond(),
-                serverConfig.getKafkaFetchQuotaTimeWindow(),
-                "aa_wc_leader_records_count",
-                false,
-                EventThrottler.BLOCK_STRATEGY));
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.SEP_RT_LEADER_POOL,
         new EventThrottler(

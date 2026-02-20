@@ -66,10 +66,10 @@ public class TestTreeNode {
     Assert.assertTrue(list.contains("/venice-parent/storeConfigs"));
     Assert.assertTrue(list.contains("/venice-parent/cluster1"));
     Assert.assertFalse(list.contains("/venice-parent/cluster1/storeConfigs"));
-    Assert.assertTrue(list.contains("/venice-parent/cluster1/adminTopicMetadata"));
-    Assert.assertTrue(list.contains("/venice-parent/cluster1/adminTopicMetadata/file1"));
-    Assert.assertTrue(list.contains("/venice-parent/cluster1/adminTopicMetadata/file2"));
-    Assert.assertTrue(list.contains("/venice-parent/cluster1/adminTopicMetadata/file2/file3"));
+    Assert.assertTrue(list.contains("/venice-parent/cluster1/adminTopicMetadataV2"));
+    Assert.assertTrue(list.contains("/venice-parent/cluster1/adminTopicMetadataV2/file1"));
+    Assert.assertTrue(list.contains("/venice-parent/cluster1/adminTopicMetadataV2/file2"));
+    Assert.assertTrue(list.contains("/venice-parent/cluster1/adminTopicMetadataV2/file2/file3"));
     Assert.assertTrue(list.contains("/venice-parent/cluster1/executionids"));
     Assert.assertTrue(list.contains("/venice-parent/cluster1/ParentOfflinePushes"));
     Assert.assertTrue(list.contains("/venice-parent/cluster1/routers"));
@@ -77,7 +77,7 @@ public class TestTreeNode {
     Assert.assertTrue(list.contains("/venice-parent/cluster1/Stores"));
     Assert.assertTrue(list.contains("/venice-parent/cluster2"));
     Assert.assertFalse(list.contains("/venice-parent/cluster2/storeConfigs"));
-    Assert.assertTrue(list.contains("/venice-parent/cluster2/adminTopicMetadata"));
+    Assert.assertTrue(list.contains("/venice-parent/cluster2/adminTopicMetadataV2"));
     Assert.assertTrue(list.contains("/venice-parent/cluster2/executionids"));
     Assert.assertTrue(list.contains("/venice-parent/cluster2/ParentOfflinePushes"));
     Assert.assertTrue(list.contains("/venice-parent/cluster2/routers"));
@@ -156,16 +156,16 @@ public class TestTreeNode {
     List<String> paths = new ArrayList<>();
     paths.add("/venice-parent/storeConfigs");
     paths.add("/venice-parent/cluster1");
-    paths.add("/venice-parent/cluster1/adminTopicMetadata");
-    paths.add("/venice-parent/cluster1/adminTopicMetadata/file1");
-    paths.add("/venice-parent/cluster1/adminTopicMetadata/file2/file3"); // tests both /file2 and /file2/file3
+    paths.add("/venice-parent/cluster1/adminTopicMetadataV2");
+    paths.add("/venice-parent/cluster1/adminTopicMetadataV2/file1");
+    paths.add("/venice-parent/cluster1/adminTopicMetadataV2/file2/file3"); // tests both /file2 and /file2/file3
     paths.add("/venice-parent/cluster1/executionids");
     paths.add("/venice-parent/cluster1/ParentOfflinePushes");
     paths.add("/venice-parent/cluster1/routers");
     paths.add("/venice-parent/cluster1/StoreGraveyard");
     paths.add("/venice-parent/cluster1/Stores");
     paths.add("/venice-parent/cluster2");
-    paths.add("/venice-parent/cluster2/adminTopicMetadata");
+    paths.add("/venice-parent/cluster2/adminTopicMetadataV2");
     paths.add("/venice-parent/cluster2/executionids");
     paths.add("/venice-parent/cluster2/ParentOfflinePushes");
     paths.add("/venice-parent/cluster2/routers");

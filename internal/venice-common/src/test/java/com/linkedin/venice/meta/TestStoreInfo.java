@@ -100,4 +100,35 @@ public class TestStoreInfo {
     assertEquals(ActivationState.ENABLED.name(), storeInfo.getBlobTransferInServerEnabled());
     assertTrue(storeInfo.isBlobTransferEnabled());
   }
+
+  @Test
+  public void testBlobDbEnabledConfig() {
+    StoreInfo storeInfo = new StoreInfo();
+    // check default value
+    assertNotNull(storeInfo.getBlobDbEnabled());
+    assertEquals(ActivationState.NOT_SPECIFIED.name(), storeInfo.getBlobDbEnabled());
+
+    // setting value to ENABLED
+    storeInfo.setBlobDbEnabled(ActivationState.ENABLED.name());
+    assertEquals(ActivationState.ENABLED.name(), storeInfo.getBlobDbEnabled());
+
+    // setting value to DISABLED
+    storeInfo.setBlobDbEnabled(ActivationState.DISABLED.name());
+    assertEquals(ActivationState.DISABLED.name(), storeInfo.getBlobDbEnabled());
+
+    // setting value back to NOT_SPECIFIED
+    storeInfo.setBlobDbEnabled(ActivationState.NOT_SPECIFIED.name());
+    assertEquals(ActivationState.NOT_SPECIFIED.name(), storeInfo.getBlobDbEnabled());
+  }
+
+  @Test
+  public void testFlinkVeniceViewsEnabled() {
+    StoreInfo storeInfo = new StoreInfo();
+    // check default value
+    assertFalse(storeInfo.isFlinkVeniceViewsEnabled());
+    // setting value
+    storeInfo.setFlinkVeniceViewsEnabled(true);
+    // check updated value
+    assertTrue(storeInfo.isFlinkVeniceViewsEnabled());
+  }
 }

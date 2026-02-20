@@ -451,6 +451,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         helixGroupInfo.put(entry.getKey().toString(), entry.getValue());
       }
 
+      routingStrategy.updateHelixGroupInfo(helixGroupInfo);
+
       latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
       // Wait for dictionary fetch to finish if there is one
       try {
@@ -518,7 +520,6 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         }
       }
 
-      routingStrategy.updateHelixGroupInfo(helixGroupInfo);
       // Update the metadata timestamp only if all updates are successful
       clientStats.updateCacheTimestamp(currentTimeMs);
       LOGGER.debug(

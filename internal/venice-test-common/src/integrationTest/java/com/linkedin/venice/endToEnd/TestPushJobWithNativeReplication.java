@@ -825,7 +825,7 @@ public class TestPushJobWithNativeReplication {
           }
 
           // create repush topic
-          parentControllerClient.requestTopicForWrites(
+          VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
               storeName,
               1000,
               Version.PushType.BATCH,
@@ -841,7 +841,24 @@ public class TestPushJobWithNativeReplication {
               false,
               null,
               1,
-              false);
+              false,
+              -1);
+          Assert.assertFalse(
+              versionCreationResponse.isError(),
+              "Failed to create version 2: " + versionCreationResponse.getError());
+          Assert.assertEquals(versionCreationResponse.getVersion(), 2, "Expected version 2 to be created");
+
+          // Wait for version 2 to be created in all child datacenters before killing
+          // This prevents a race condition where kill command arrives before version creation
+          for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+            ControllerClient childControllerClient =
+                new ControllerClient(clusterName, childDatacenter.getControllerConnectString());
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              StoreResponse store = childControllerClient.getStore(storeName);
+              Optional<Version> version = store.getStore().getVersion(2);
+              assertTrue(version.isPresent(), "Version 2 should be created in child datacenter before killing");
+            });
+          }
 
           // kill repush version
           parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 2));
@@ -852,15 +869,18 @@ public class TestPushJobWithNativeReplication {
             Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.KILLED);
           });
 
-          // verify child version status is marked as killed
+          // verify child version status is marked as killed or removed (cleanup may happen quickly)
           for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
             ControllerClient childControllerClient =
                 new ControllerClient(clusterName, childDatacenter.getControllerConnectString());
             TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
               StoreResponse store = childControllerClient.getStore(storeName);
               Optional<Version> version = store.getStore().getVersion(2);
-              assertNotNull(version);
-              assertEquals(version.get().getStatus(), VersionStatus.KILLED);
+              // Version may be marked as KILLED or may have been removed by cleanup
+              assertTrue(
+                  !version.isPresent() || version.get().getStatus() == VersionStatus.KILLED,
+                  "Version 2 should be killed or removed in child datacenter, but found: "
+                      + (version.isPresent() ? version.get().getStatus() : "not present"));
             });
           }
 

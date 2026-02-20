@@ -19,8 +19,6 @@ public class ImmutablePubSubMessage implements DefaultPubSubMessage {
   private final PubSubPosition pubSubPosition;
   private final long timestamp;
   private final int payloadSize;
-  private final int writerSchemaId;
-  private final java.nio.ByteBuffer replicationMetadataPayload;
 
   private final PubSubMessageHeaders pubSubMessageHeaders;
 
@@ -42,19 +40,6 @@ public class ImmutablePubSubMessage implements DefaultPubSubMessage {
       long timestamp,
       int payloadSize,
       PubSubMessageHeaders pubSubMessageHeaders) {
-    this(key, value, topicPartition, pubSubPosition, timestamp, payloadSize, pubSubMessageHeaders, -1, null);
-  }
-
-  public ImmutablePubSubMessage(
-      KafkaKey key,
-      KafkaMessageEnvelope value,
-      PubSubTopicPartition topicPartition,
-      PubSubPosition pubSubPosition,
-      long timestamp,
-      int payloadSize,
-      PubSubMessageHeaders pubSubMessageHeaders,
-      int writerSchemaId,
-      java.nio.ByteBuffer replicationMetadataPayload) {
     this.key = key;
     this.value = value;
     this.topicPartition = Objects.requireNonNull(topicPartition);
@@ -62,8 +47,6 @@ public class ImmutablePubSubMessage implements DefaultPubSubMessage {
     this.timestamp = timestamp;
     this.payloadSize = payloadSize;
     this.pubSubMessageHeaders = pubSubMessageHeaders;
-    this.writerSchemaId = writerSchemaId;
-    this.replicationMetadataPayload = replicationMetadataPayload;
   }
 
   @Override
@@ -104,16 +87,6 @@ public class ImmutablePubSubMessage implements DefaultPubSubMessage {
   @Override
   public PubSubMessageHeaders getPubSubMessageHeaders() {
     return pubSubMessageHeaders;
-  }
-
-  @Override
-  public int getWriterSchemaId() {
-    return writerSchemaId;
-  }
-
-  @Override
-  public java.nio.ByteBuffer getReplicationMetadataPayload() {
-    return replicationMetadataPayload;
   }
 
   @Override

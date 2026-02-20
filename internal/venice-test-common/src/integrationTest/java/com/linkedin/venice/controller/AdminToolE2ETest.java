@@ -471,12 +471,12 @@ public class AdminToolE2ETest {
     return new Object[][] {
         // 1) execution-id only -> should pass
         { new String[] { "--execution-id", "10" }, false },
-        // 2) offset only -> should pass
-        { new String[] { "--offset", "10" }, false },
+        // 2) position only -> should pass
+        { new String[] { "--position", "0:0twI" }, false },
         // 3) neither provided -> should fail
         { new String[] {}, true },
         // 4) both provided -> should fail
-        { new String[] { "--offset", "10", "--execution-id", "10" }, true } };
+        { new String[] { "--position", "0:0twI", "--execution-id", "10" }, true } };
   }
 
   @DataProvider(name = "dumpAdminMessageOptions")

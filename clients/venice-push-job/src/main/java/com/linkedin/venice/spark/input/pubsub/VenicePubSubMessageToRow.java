@@ -10,6 +10,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
+import org.apache.spark.unsafe.types.UTF8String;
 import org.jetbrains.annotations.NotNull;
 
 
@@ -38,17 +39,18 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
    * @param pubSubMessage The PubSub message to process. Contains key, value, and metadata.
    * @param region The region identifier to include in the row.
    * @param partitionNumber The partition number to include in the row.
+   * @param offset The offset of the message in the Kafka topic partition.
    * @return An InternalRow containing the processed message data.
-   *         The row includes the following fields:
+   *         The row includes the following fields (must match RAW_PUBSUB_INPUT_TABLE_SCHEMA):
    *         1. Region (String)
    *         2. Partition number (int)
-   *         3. Message type (int)
-   *         4. Offset (long)
+   *         3. Offset (long)
+   *         4. Message type (int)
    *         5. Schema ID (int)
    *         6. Key bytes (byte[])
    *         7. Value bytes (byte[])
-   *         8. Replication metadata payload bytes (byte[])
-   *         9. Replication metadata version ID (int)
+   *         8. Replication metadata version ID (int)
+   *         9. Replication metadata payload bytes (byte[])
    *         See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
    */
   @Override
@@ -99,10 +101,11 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
 
     /**
      *  See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
+     *  Field order MUST match: region, partition, offset, message_type, schema_id, key, value, rmd_version_id, rmd_payload
      */
     return new GenericInternalRow(
-        new Object[] { region, partitionNumber, messageType, offset, schemaId, ByteUtils.extractByteArray(key),
-            ByteUtils.extractByteArray(value), ByteUtils.extractByteArray(replicationMetadataPayload),
-            replicationMetadataVersionId });
+        new Object[] { UTF8String.fromString(region), partitionNumber, offset, messageType, schemaId,
+            ByteUtils.extractByteArray(key), ByteUtils.extractByteArray(value), replicationMetadataVersionId,
+            ByteUtils.extractByteArray(replicationMetadataPayload) });
   }
 }

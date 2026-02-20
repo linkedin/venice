@@ -108,7 +108,11 @@ public abstract class AsyncMetricEntityState {
     if (asyncCallback != null && !metricEntity.getMetricType().isAsyncMetric()) {
       throw new IllegalArgumentException(
           "Async callback is provided, but the metric type is not async for metric: " + metricEntity.getMetricName());
-    } else if (asyncCallback == null && metricEntity.getMetricType().isAsyncMetric()) {
+    } else if (metricEntity.getMetricType().isAsyncMetric() && asyncCallback == null
+        && !metricEntity.getMetricType().isObservableCounterType()) {
+      // Observable counter types (ASYNC_COUNTER_FOR_HIGH_PERF_CASES and ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES)
+      // are async but handle callback registration internally via registerObservableLongCounter/UpDownCounter(),
+      // so they don't need a callback passed in here.
       throw new IllegalArgumentException(
           "Async callback is not provided, but the metric type is async for metric: " + metricEntity.getMetricName());
     }
@@ -304,8 +308,7 @@ public abstract class AsyncMetricEntityState {
     return baseDimensionsMap;
   }
 
-  /** used only for testing */
-  Sensor getTehutiSensor() {
+  public Sensor getTehutiSensor() {
     return tehutiSensor;
   }
 

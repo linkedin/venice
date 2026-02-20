@@ -53,6 +53,7 @@ import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
 import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
+import com.linkedin.venice.controllerapi.PubSubPositionJsonWireFormat;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
@@ -87,6 +88,7 @@ import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.payload.StorePropertiesPayloadRecord;
@@ -117,6 +119,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ConfigCommonUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -284,6 +287,9 @@ public class AdminTool {
             printStoreDescription(store);
           }
           break;
+        case DISCOVER_CLUSTER:
+          discoverCluster(cmd);
+          break;
         case JOB_STATUS:
           storeName = getRequiredArgument(cmd, Arg.STORE, Command.JOB_STATUS);
           versionString = getOptionalArgument(cmd, Arg.VERSION, null);
@@ -306,19 +312,20 @@ public class AdminTool {
           printObject(response);
           break;
         case SKIP_ADMIN_MESSAGE:
-          if (!cmd.hasOption(Arg.OFFSET.first()) && !cmd.hasOption(Arg.EXECUTION_ID.first())) {
+          if (!cmd.hasOption(Arg.POSITION.first()) && !cmd.hasOption(Arg.EXECUTION_ID.first())) {
             printErrAndExit(
-                "At least one of " + Arg.OFFSET.getArgName() + " or " + Arg.EXECUTION_ID.getArgName()
+                "At least one of " + Arg.POSITION.getArgName() + " or " + Arg.EXECUTION_ID.getArgName()
                     + " is required.");
           }
-          if (cmd.hasOption(Arg.OFFSET.first()) && cmd.hasOption(Arg.EXECUTION_ID.first())) {
+          if (cmd.hasOption(Arg.POSITION.first()) && cmd.hasOption(Arg.EXECUTION_ID.first())) {
             printErrAndExit(
-                "Only one of " + Arg.OFFSET.getArgName() + " or " + Arg.EXECUTION_ID.getArgName() + " is allowed.");
+                "Only one of " + Arg.POSITION.getArgName() + " or " + Arg.EXECUTION_ID.getArgName() + " is allowed.");
           }
-          String offset = getOptionalArgument(cmd, Arg.OFFSET);
+          String typeIdAndBase64PositionBytes = getOptionalArgument(cmd, Arg.POSITION);
+
           String executionId = getOptionalArgument(cmd, Arg.EXECUTION_ID);
           boolean skipDIV = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.SKIP_DIV, "false"));
-          response = controllerClient.skipAdminMessage(offset, skipDIV, executionId);
+          response = controllerClient.skipAdminMessage(typeIdAndBase64PositionBytes, skipDIV, executionId);
           printObject(response);
           break;
         case NEW_STORE:
@@ -512,12 +519,6 @@ public class AdminTool {
           break;
         case REMOVE_FROM_STORE_ACL:
           removeFromStoreAcl(cmd);
-          break;
-        case ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
-          enableActiveActiveReplicationForCluster(cmd);
-          break;
-        case DISABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER:
-          disableActiveActiveReplicationForCluster(cmd);
           break;
         case GET_DELETABLE_STORE_TOPICS:
           getDeletableStoreTopics(cmd);
@@ -761,6 +762,17 @@ public class AdminTool {
     printObject(keySchema);
     MultiSchemaResponse valueSchemas = controllerClient.getAllValueSchema(store);
     printObject(valueSchemas);
+  }
+
+  private static void discoverCluster(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.DISCOVER_CLUSTER);
+    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
+    D2ServiceDiscoveryResponse response = ControllerClient.discoverCluster(veniceUrl, storeName, sslFactory, 3);
+    if (response.isError()) {
+      printObject(response);
+    } else {
+      System.out.println(response.getCluster());
+    }
   }
 
   private static void executeDataRecovery(CommandLine cmd) {
@@ -1024,7 +1036,7 @@ public class AdminTool {
     }
 
     // Create thread pool and start parallel processing.
-    ExecutorService executorService = Executors.newFixedThreadPool(parallelism);
+    ExecutorService executorService = Executors.newFixedThreadPool(parallelism, new DaemonThreadFactory("AdminTool"));
     List<Future> futureList = new ArrayList<>();
     for (int i = 0; i < parallelism; i++) {
       BatchMaintenanceTaskRunner batchMaintenanceTaskRunner =
@@ -1353,6 +1365,12 @@ public class AdminTool {
     booleanParam(cmd, Arg.REGULAR_VERSION_ETL_ENABLED, p -> params.setRegularVersionETLEnabled(p), argSet);
     booleanParam(cmd, Arg.FUTURE_VERSION_ETL_ENABLED, p -> params.setFutureVersionETLEnabled(p), argSet);
     genericParam(cmd, Arg.ETLED_PROXY_USER_ACCOUNT, s -> s, p -> params.setEtledProxyUserAccount(p), argSet);
+    genericParam(
+        cmd,
+        Arg.VENICE_ETL_STRATEGY,
+        s -> VeniceETLStrategy.valueOf(s),
+        p -> params.setETLStrategy(p),
+        argSet);
     booleanParam(cmd, Arg.NATIVE_REPLICATION_ENABLED, p -> params.setNativeReplicationEnabled(p), argSet);
     genericParam(cmd, Arg.PUSH_STREAM_SOURCE_ADDRESS, s -> s, p -> params.setPushStreamSourceAddress(p), argSet);
     stringMapParam(cmd, Arg.STORE_VIEW_CONFIGS, p -> params.setStoreViews(p), argSet);
@@ -1386,6 +1404,12 @@ public class AdminTool {
         s -> s,
         p -> params.setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.valueOf(p)),
         argSet);
+    genericParam(
+        cmd,
+        Arg.BLOB_DB_ENABLED,
+        s -> s,
+        p -> params.setBlobDbEnabled(ConfigCommonUtils.ActivationState.valueOf(p)),
+        argSet);
     booleanParam(
         cmd,
         Arg.NEARLINE_PRODUCER_COMPRESSION_ENABLED,
@@ -1402,6 +1426,8 @@ public class AdminTool {
     List<LifecycleHooksRecord> lifecycleHooksList =
         Utils.parseStoreLifecycleHooksListFromString(storeLifecycleHooksStr, Arg.STORE_LIFECYCLE_HOOKS_LIST.toString());
     params.setStoreLifecycleHooks(lifecycleHooksList);
+
+    booleanParam(cmd, Arg.FLINK_VENICE_VIEWS_ENABLED, p -> params.setFlinkVeniceViewsEnabled(p), argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
@@ -1812,12 +1838,13 @@ public class AdminTool {
     ConsumerContext context = createConsumerContext(cmd);
     PubSubPosition startingPosition = parsePositionFromArgs(cmd, context.getPositionDeserializer(), true);
     LOGGER.info("Dump admin messages with starting position: {}", startingPosition);
-    List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
-        getConsumer(pubSubClientsFactory, context),
-        getRequiredArgument(cmd, Arg.CLUSTER),
-        startingPosition,
-        Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
-    printObject(adminMessages);
+    try (PubSubConsumerAdapter consumer = getConsumer(pubSubClientsFactory, context)) {
+      DumpAdminMessages.dumpAdminMessages(
+          consumer,
+          getRequiredArgument(cmd, Arg.CLUSTER),
+          startingPosition,
+          Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
+    }
   }
 
   private static void dumpControlMessages(CommandLine cmd, PubSubClientsFactory pubSubClientsFactory) {
@@ -2492,6 +2519,8 @@ public class AdminTool {
     Optional<Boolean> abortOnFailure =
         Optional.ofNullable(getOptionalArgument(cmd, Arg.ABORT_ON_FAILURE)).map(Boolean::parseBoolean);
     Optional<Integer> currStep = Optional.ofNullable(getOptionalArgument(cmd, Arg.INITIAL_STEP)).map(Integer::parseInt);
+    Optional<Integer> pauseAfterStep =
+        Optional.ofNullable(getOptionalArgument(cmd, Arg.PAUSE_AFTER_STEP)).map(Integer::parseInt);
 
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source and destination cluster cannot be the same!");
@@ -2505,7 +2534,7 @@ public class AdminTool {
     assertStoreNotMigrating(srcControllerClient, storeName);
 
     StoreMigrationResponse storeMigrationResponse =
-        srcControllerClient.autoMigrateStore(storeName, destClusterName, currStep, abortOnFailure);
+        srcControllerClient.autoMigrateStore(storeName, destClusterName, currStep, pauseAfterStep, abortOnFailure);
     printObject(storeMigrationResponse);
 
     if (storeMigrationResponse.isError()) {
@@ -2916,28 +2945,6 @@ public class AdminTool {
     }
   }
 
-  private static void enableActiveActiveReplicationForCluster(CommandLine cmd) {
-    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
-    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
-    Optional<String> regionsFilter =
-        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
-
-    ControllerResponse response =
-        controllerClient.configureActiveActiveReplicationForCluster(true, storeType, regionsFilter);
-    printObject(response);
-  }
-
-  private static void disableActiveActiveReplicationForCluster(CommandLine cmd) {
-    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
-    String regionsFilterParam = getOptionalArgument(cmd, Arg.REGIONS_FILTER);
-    Optional<String> regionsFilter =
-        StringUtils.isEmpty(regionsFilterParam) ? Optional.empty() : Optional.of(regionsFilterParam);
-
-    ControllerResponse response =
-        controllerClient.configureActiveActiveReplicationForCluster(false, storeType, regionsFilter);
-    printObject(response);
-  }
-
   private static void getDeletableStoreTopics(CommandLine cmd) {
     MultiStoreTopicsResponse response = controllerClient.getDeletableStoreTopics();
     printObject(response);
@@ -3130,12 +3137,18 @@ public class AdminTool {
         System.out.println(latestStep);
         AdminTopicMetadataResponse response =
             checkControllerResponse(srcFabricChildControllerClient.getAdminTopicMetadata(Optional.empty()));
+        long executionId = response.getExecutionId();
+        PubSubPositionJsonWireFormat position = response.getPosition();
+        PubSubPositionJsonWireFormat upstreamPosition = response.getUpstreamPosition();
+
+        System.out.println(
+            "step4: execution id: " + executionId + " position " + position + " upstream position " + upstreamPosition);
         checkControllerResponse(
             destFabricChildControllerClient.updateAdminTopicMetadata(
-                response.getExecutionId(),
+                executionId,
                 Optional.empty(),
-                Optional.of(response.getOffset()),
-                Optional.of(response.getUpstreamOffset())));
+                Optional.of(position),
+                Optional.of(upstreamPosition)));
       }
 
       latestStep = "step5: copying store metadata and starting data recovery for non-existent stores in dest fabric";
@@ -3849,7 +3862,7 @@ public class AdminTool {
     // Load consumer properties and set bootstrap servers
     Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
-    consumerProps = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProps);
+    PubSubUtil.addPubSubBrokerAddress(consumerProps, pubSubBrokerUrl);
 
     // Create all necessary dependencies
     VeniceProperties veniceProperties = new VeniceProperties(consumerProps);

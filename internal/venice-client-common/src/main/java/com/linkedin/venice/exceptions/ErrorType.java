@@ -16,7 +16,7 @@ public enum ErrorType {
   @JsonEnumDefaultValue
   GENERAL_ERROR(ExceptionType.GENERAL_ERROR), BAD_REQUEST(ExceptionType.BAD_REQUEST),
   CONCURRENT_BATCH_PUSH(ExceptionType.BAD_REQUEST), RESOURCE_STILL_EXISTS(ExceptionType.BAD_REQUEST),
-  PROTOCOL_ERROR(ExceptionType.BAD_REQUEST);
+  PROTOCOL_ERROR(ExceptionType.BAD_REQUEST), ACL_ERROR(ExceptionType.BAD_REQUEST),;
 
   private final ExceptionType exceptionType;
 

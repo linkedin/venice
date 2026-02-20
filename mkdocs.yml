@@ -1,0 +1,159 @@
+site_name: Venice
+site_url: https://venicedb.org
+site_description: Derived Data Platform for Planet-Scale Workloads
+site_author: Venice
+repo_url: https://github.com/linkedin/venice
+repo_name: linkedin/venice
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: en
+  logo: assets/style/HEAD_white_RGB.svg
+  favicon: assets/style/favicon.ico
+
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: white
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: black
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.path
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+extra_css:
+  - assets/style/extra.css
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - mdx_truly_sane_lists
+  - toc:
+      permalink: "#"
+      toc_depth: 3
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search
+  - git-revision-date-localized:
+      enable_creation_date: true
+  - minify:
+      minify_html: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/linkedin/venice
+    - icon: fontawesome/brands/slack
+      link: http://slack.venicedb.org
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/company/venicedb/
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/VeniceDataBase
+    - icon: fontawesome/brands/youtube
+      link: https://youtube.com/@venicedb
+    - icon: fontawesome/solid/rss
+      link: https://blog.venicedb.org
+
+nav:
+  - Home: README.md
+
+  - Getting Started:
+    - getting-started/index.md
+    - Learn Venice:
+      - Architecture Overview: getting-started/learn-venice/architecture-overview.md
+      - Merging Batch & Real-Time Data: getting-started/learn-venice/merging-batch-and-rt-data.md
+    - Deployments:
+      - Single Datacenter: getting-started/deployments/quickstart-single-dc.md
+      - Multi Datacenter: getting-started/deployments/quickstart-multi-dc.md
+
+  - User Guide:
+    - user-guide/index.md
+    - Write APIs:
+      - user-guide/write-apis/index.md
+      - Batch Push: user-guide/write-apis/batch-push.md
+      - Stream Processor: user-guide/write-apis/stream-processor.md
+      - Online Producer: user-guide/write-apis/online-producer.md
+    - Read APIs:
+      - user-guide/read-apis/index.md
+      - Thin Client: user-guide/read-apis/thin-client.md
+      - Fast Client: user-guide/read-apis/fast-client.md
+      - Da Vinci Client: user-guide/read-apis/da-vinci-client.md
+      - Change Data Capture: user-guide/read-apis/cdc.md
+
+  - Operations:
+    - operations/index.md
+    - Data Management:
+      - Repush: operations/data-management/repush.md
+      - TTL: operations/data-management/ttl.md
+      - System Stores: operations/data-management/system-stores.md
+    - Advanced:
+      - P2P Bootstrapping: operations/advanced/p2p-bootstrapping.md
+      - Data Integrity: operations/advanced/data-integrity.md
+
+  - Contributing:
+    - contributing/index.md
+    - Code of Conduct: contributing/code-of-conduct.md
+    - Contributing Guide: contributing/contributing.md
+    - Security: contributing/security.md
+    - Development:
+      - Workspace Setup: contributing/development/workspace-setup.md
+      - Dev Workflow: contributing/development/dev-workflow.md
+      - Testing: contributing/development/testing.md
+      - Style Guide: contributing/development/style-guide.md
+    - Architecture:
+      - Project Navigation: contributing/architecture/navigation.md
+      - Write Path: contributing/architecture/write-path.md
+      - Java Internals: contributing/architecture/java-internals.md
+      - Router API: contributing/architecture/router-api.md
+    - Documentation:
+      - Writing Docs: contributing/documentation/writing-docs.md
+      - Design Docs: contributing/documentation/design-docs.md
+    - Proposals:
+      - contributing/proposals/index.md
+      - VIP Template: contributing/proposals/vip-template.md
+      - VIP-1: contributing/proposals/vip-1.md
+      - VIP-2: contributing/proposals/vip-2.md
+      - VIP-3: contributing/proposals/vip-3.md
+      - VIP-4: contributing/proposals/vip-4.md
+      - VIP-5: contributing/proposals/vip-5.md
+      - VIP-6: contributing/proposals/vip-6.md
+
+  - Resources:
+    - Learn More: resources/learn-more.md

@@ -18,6 +18,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ComplementSet;
 import java.util.Arrays;
 import java.util.Optional;
+import org.apache.logging.log4j.LogManager;
 import org.mockito.MockedStatic;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -42,6 +43,7 @@ public class VersionSpecificAvroGenericDaVinciClientTest {
     avroGenericDaVinciClient.when(AvroGenericDaVinciClient::getBackend).thenReturn(daVinciBackend);
     doCallRealMethod().when(versionSpecificAvroGenericDaVinciClient).subscribe(any(ComplementSet.class));
 
+    when(versionSpecificAvroGenericDaVinciClient.getClientLogger()).thenReturn(LogManager.getLogger(getClass()));
     when(versionSpecificAvroGenericDaVinciClient.getStoreBackend()).thenReturn(storeBackend);
     Integer storeVersion = 1;
     when(versionSpecificAvroGenericDaVinciClient.getStoreVersion()).thenReturn(storeVersion);
@@ -61,7 +63,7 @@ public class VersionSpecificAvroGenericDaVinciClientTest {
     versionSpecificAvroGenericDaVinciClient.subscribe(partitionsSet);
 
     verify(versionSpecificAvroGenericDaVinciClient).addPartitionsToSubscription(partitionsSet);
-    verify(storeBackend).subscribe(partitionsSet, Optional.of(version));
+    verify(storeBackend).subscribe(partitionsSet, Optional.of(version), null);
   }
 
   @Test

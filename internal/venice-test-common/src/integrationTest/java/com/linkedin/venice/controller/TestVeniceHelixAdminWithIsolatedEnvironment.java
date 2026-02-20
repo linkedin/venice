@@ -73,6 +73,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
+        Optional.empty(),
         Optional.empty());
     // Start stand by controller
     newAdmin.initStorageCluster(clusterName);
@@ -155,6 +156,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
+        Optional.empty(),
         Optional.empty());
     newLeaderAdmin.initStorageCluster(clusterName);
     List<VeniceHelixAdmin> admins = new ArrayList<>();
@@ -418,9 +420,10 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         pubSubTopicRepository,
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
+        Optional.empty(),
         Optional.empty());
 
-    Assert.assertTrue(admin.deadStoreStatsMap.get(clusterName) instanceof MockDeadStoreStats);
+    Assert.assertTrue(admin.getDeadStoreStats(clusterName) instanceof MockDeadStoreStats);
   }
 
   public static class MockDeadStoreStats implements DeadStoreStats {

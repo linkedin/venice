@@ -39,6 +39,7 @@ public enum Arg {
   STORAGE_NODE("storage-node", "n", true, "Helix instance ID for a storage node, eg. lva1-app1234_1690"),
   KEY("key", "k", true, "Plain-text key for identifying a record in a store"),
   OFFSET("offset", "of", true, "Kafka offset number"),
+  POSITION("position", "po", true, "<typeId:base64EncodedPositionWfBytes>"),
   EXECUTION_ID("execution-id", "eid", true, "Execution ID of admin operation"),
   EXECUTION("execution", "e", true, "Execution ID of async admin command"),
   PARTITION_COUNT("partition-count", "pn", true, "number of partitions a store has"),
@@ -158,6 +159,10 @@ public enum Arg {
       "etled-proxy-user-account", "epu", true,
       "if enabled ETL, the proxy user account for HDFS file directory where the ETLed snapshots will go."
   ),
+  VENICE_ETL_STRATEGY(
+      "venice-etl-strategy", "ves", true,
+      "ETL strategy for this store. Supported strategies are: EXTERNAL_SERVICE, EXTERNAL_WITH_VENICE_TRIGGER. Default is EXTERNAL_SERVICE."
+  ),
   BACKUP_VERSION_RETENTION_DAY(
       "backup-version-retention-day", "bvrd", true,
       "Backup version retention time in day after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy"
@@ -250,6 +255,7 @@ public enum Arg {
   ), VIEW_NAME("view-name", "vn", true, "Name of a store view"),
   VIEW_CLASS("view-class", "vc", true, "Name of a store view class"),
   VIEW_PARAMS("view-params", "vp", true, "Additional parameter map of a store view class"),
+  FLINK_VENICE_VIEWS_ENABLED("flink-venice-views-enabled", "fvve", true, "Enable flink-based views"),
   REMOVE_VIEW("remove-view", "rv", false, "Optional config to specify to disable certain store view"),
   PARTITION_DETAIL_ENABLED(
       "partition-detail-enabled", "pde", true, "A flag to indicate whether to retrieve partition details"
@@ -301,6 +307,10 @@ public enum Arg {
       "blob-transfer-in-server-enabled", "bts", true,
       "Flag to indicate if the blob transfer is allowed or not in server. Values can be 'NOT_SPECIFIED' as default, 'ENABLED', or 'DISABLED'."
   ),
+  BLOB_DB_ENABLED(
+      "blob-db-enabled", "bdb", true,
+      "Flag to indicate if the RocksDB BlobDB feature is enabled or not. Values can be 'NOT_SPECIFIED' (default, follows cluster level config), 'ENABLED', or 'DISABLED'."
+  ),
   NEARLINE_PRODUCER_COMPRESSION_ENABLED(
       "nearline-producer-compression-enabled", "npce", true,
       "Flag to control whether KafkaProducer will use compression or not for nearline workload"
@@ -330,6 +340,7 @@ public enum Arg {
       "enum-schema-evolution-allowed", "esea", true, "Allow enum schema evolution for a store"
   ), INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
   ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),
+  PAUSE_AFTER_STEP("pause-after-step", "pas", true, "Pause the auto store migration after this step"),
   STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks"),
   KEY_URN_COMPRESSION_EANBLED(
       "key-urn-compression-enabled", "kuce", true, "Enable/Disable key urn compression for a store."

@@ -145,7 +145,7 @@ public class TestOffsetRecord {
         { "invalid_length", bytes((byte) 0xFF), 6000L, 6000L, true },
         { "max_long_offset", NULL_BUF, Long.MAX_VALUE, Long.MAX_VALUE, true },
         { "zero_offset_valid_pos", buf(1000), 0L, 1000L, true }, { "negative_offset", NULL_BUF, -1L, -1L, false },
-        { "EARLIEST_vs_1000", EARLIEST_BUF, 1000L, 1000L, true },
+        { "EARLIEST_vs_1000", EARLIEST_BUF, 1000L, -1L, false },
         { "LATEST_vs_1000", LATEST_BUF, 1000L, Long.MAX_VALUE, false },
         { "LATEST_vs_max-1", LATEST_BUF, Long.MAX_VALUE - 1, Long.MAX_VALUE, false },
         // Consistency checks (same inputs twice)

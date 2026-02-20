@@ -10,7 +10,6 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -21,6 +20,7 @@ import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.VersionBackend;
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -43,10 +43,12 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.SchemaRepoBackedSchemaReader;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
@@ -60,10 +62,13 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -200,13 +205,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       throw new VeniceClientException("Ingestion Isolation is not supported with DaVinciRecordTransformer");
     }
 
-    if (backendConfig.getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)
-        && recordTransformerConfig != null) {
-      throw new VeniceClientException(
-          DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY
-              + " must be set to false when using DaVinciRecordTransformer");
-    }
-
     preValidation.run();
   }
 
@@ -251,10 +249,93 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return subscribe(ComplementSet.wrap(partitions));
   }
 
+  private Optional<Version> getVersion() {
+    throwIfNotReady();
+
+    if (getStoreVersion() == null) {
+      return Optional.empty();
+    }
+
+    return RetryUtils.executeWithMaxAttempt(() -> {
+      Store store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
+      Version version = store.getVersion(getStoreVersion());
+
+      if (version == null) {
+        getClientLogger()
+            .info("Version {} not found for store {}, refreshing repository", getStoreVersion(), getStoreName());
+        getBackend().getStoreRepository().refreshOneStore(getStoreName());
+        store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
+        version = store.getVersion(getStoreVersion());
+
+        if (version == null) {
+          throw new VeniceClientException(
+              "Version: " + getStoreVersion() + " does not exist for store: " + getStoreName());
+        }
+      }
+      return Optional.of(version);
+    }, 3, Duration.ofSeconds(1), Collections.singletonList(VeniceClientException.class));
+  }
+
+  protected CompletableFuture<Void> seekToTail() {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
+    }
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.universalSet());
+    return getStoreBackend().seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, null, null, true), getVersion());
+  }
+
+  protected CompletableFuture<Void> seekToTail(Set<Integer> partitionSet) {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
+    }
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.wrap(partitionSet));
+    return getStoreBackend().seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, null, null, true), getVersion());
+  }
+
+  protected CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToCheckpoint");
+    }
+    throwIfNotReady();
+    Map<Integer, PubSubPosition> positionMap = new HashMap<>();
+    for (VeniceChangeCoordinate changeCoordinate: checkpoints) {
+      if (!Objects.equals(changeCoordinate.getStoreName(), getStoreBackend().getStoreName())) {
+        throw new VeniceClientException(
+            "Store name mismatch: " + changeCoordinate.getStoreName() + " != " + storeBackend.getStoreName());
+      }
+      positionMap.put(changeCoordinate.getPartition(), changeCoordinate.getPosition());
+    }
+    addPartitionsToSubscription(ComplementSet.wrap(positionMap.keySet()));
+    return getStoreBackend()
+        .seekToCheckpoint(new DaVinciSeekCheckpointInfo(positionMap, null, null, false), getVersion());
+  }
+
+  protected CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToTimestamps");
+    }
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.wrap(timestamps.keySet()));
+    return getStoreBackend()
+        .seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, timestamps, null, false), getVersion());
+  }
+
+  protected CompletableFuture<Void> seekToTimestamps(Long timestamp) {
+    if (getBackend().isIsolatedIngestion()) {
+      throw new VeniceClientException("Isolated Ingestion is not supported with seekToTimestamps");
+    }
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.universalSet());
+    return getStoreBackend()
+        .seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, null, timestamp, false), getVersion());
+  }
+
   protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     throwIfNotReady();
     addPartitionsToSubscription(partitions);
-    return storeBackend.subscribe(partitions);
+    return getStoreBackend().subscribe(partitions, getVersion(), null);
   }
 
   @Override
@@ -327,6 +408,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public CompletableFuture<V> get(K key, V reusableValue) {
     throwIfNotReady();
+    throwIfReadsDisabled();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (versionBackend == null) {
@@ -450,12 +532,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
     throwIfNotReady();
+    throwIfReadsDisabled();
     return batchGetImplementation(keys);
   }
 
   // Visible for testing
   CompletableFuture<Map<K, V>> batchGetImplementation(Set<K> keys) {
     throwIfNotReady();
+    throwIfReadsDisabled();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (daVinciConfig.isCacheEnabled()) {
@@ -518,6 +602,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
 
     throwIfNotReady();
+    throwIfReadsDisabled();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (versionBackend == null) {
@@ -578,6 +663,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ComputeRequestWrapper computeRequestWrapper,
       StreamingCallback<GenericRecord, GenericRecord> callback) {
     throwIfNotReady();
+    throwIfReadsDisabled();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (versionBackend == null) {
@@ -671,6 +757,24 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     if (!isReady()) {
       throw new VeniceClientException("Da Vinci client is not ready, storeName=" + getStoreName());
     }
+  }
+
+  void throwIfReadsDisabled() {
+    Store store = getBackend().getStoreRepository().getStore(getStoreName());
+    if (store == null) {
+      throw new VeniceClientException("Store not found in repository: " + getStoreName());
+    }
+    if (!store.isEnableReads()) {
+      throw new StoreDisabledException(getStoreName(), "read");
+    }
+  }
+
+  @VisibleForTesting
+  public DaVinciBackend getDaVinciBackend() {
+    if (daVinciBackend == null) {
+      throw new VeniceClientException("DaVinci backend is not initialized, storeName=" + getStoreName());
+    }
+    return daVinciBackend.get();
   }
 
   protected AbstractAvroChunkingAdapter<V> getAvroChunkingAdapter() {

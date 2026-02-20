@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub;
 
+import com.linkedin.venice.meta.AsyncStoreChangeNotifier;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -13,6 +14,7 @@ public class PubSubAdminAdapterContext {
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final PubSubSecurityProtocol pubSubSecurityProtocol;
   private final MetricsRepository metricsRepository;
+  private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
 
   private PubSubAdminAdapterContext(Builder builder) {
     this.pubSubBrokerAddress = builder.pubSubBrokerAddress;
@@ -22,6 +24,7 @@ public class PubSubAdminAdapterContext {
     this.pubSubSecurityProtocol = builder.pubSubSecurityProtocol;
     this.metricsRepository = builder.metricsRepository;
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
+    this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
   }
 
   public String getPubSubBrokerAddress() {
@@ -52,6 +55,10 @@ public class PubSubAdminAdapterContext {
     return pubSubPositionTypeRegistry;
   }
 
+  public AsyncStoreChangeNotifier getStoreChangeNotifier() {
+    return asyncStoreChangeNotifier;
+  }
+
   public static class Builder {
     private String pubSubBrokerAddress;
     private String adminClientName;
@@ -60,6 +67,7 @@ public class PubSubAdminAdapterContext {
     private PubSubTopicRepository pubSubTopicRepository;
     private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
     private MetricsRepository metricsRepository;
+    private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
 
     public Builder setPubSubBrokerAddress(String pubSubBrokerAddress) {
       this.pubSubBrokerAddress = pubSubBrokerAddress;
@@ -93,6 +101,11 @@ public class PubSubAdminAdapterContext {
 
     public Builder setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
       this.pubSubPositionTypeRegistry = pubSubPositionTypeRegistry;
+      return this;
+    }
+
+    public Builder setStoreChangeNotifier(AsyncStoreChangeNotifier asyncStoreChangeNotifier) {
+      this.asyncStoreChangeNotifier = asyncStoreChangeNotifier;
       return this;
     }
 

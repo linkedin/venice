@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
+import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_PREFIX;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
@@ -13,8 +14,11 @@ import static org.testng.AssertJUnit.fail;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.stats.SparkServerStats;
+import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -22,13 +26,16 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -36,11 +43,19 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -226,6 +241,27 @@ public class TestParentControllerWithMultiDataCenter {
         PubSubTopic finalRtPubSubTopic = pubSubTopicRepository.getTopic(finalRtTopicName);
         Assert.assertFalse(topicManager.containsTopic(finalRtPubSubTopic));
       });
+    }
+
+    // Validate OTel metrics for topic cleanup
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      VeniceControllerWrapper controller = childDatacenters.get(i).getControllers().values().iterator().next();
+      InMemoryMetricReader inMemoryMetricReader =
+          (InMemoryMetricReader) ((VeniceMetricsRepository) controller.getMetricRepository()).getVeniceMetricsConfig()
+              .getOtelAdditionalMetricsReader();
+
+      Attributes expectedSuccessAttrs = Attributes.builder()
+          .put(
+              VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+              VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
+          .build();
+
+      OpenTelemetryDataTestUtils.validateLongPointDataFromCounterAtLeast(
+          inMemoryMetricReader,
+          1,
+          expectedSuccessAttrs,
+          TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+          CONTROLLER_SERVICE_METRIC_PREFIX);
     }
 
     /*
@@ -674,6 +710,68 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertFalse(topicManager.containsTopic(pubSubTopicRepository.getTopic(metaSystemStoreRT)));
         }
       });
+
+      // Validate OTel metrics for topic cleanup
+      // TopicCleanupService runs on each child controller; validate at least 1 successful deletion was recorded
+      for (int i = 0; i < childDatacenters.size(); i++) {
+        VeniceControllerWrapper controller = childDatacenters.get(i).getControllers().values().iterator().next();
+        InMemoryMetricReader inMemoryMetricReader =
+            (InMemoryMetricReader) ((VeniceMetricsRepository) controller.getMetricRepository()).getVeniceMetricsConfig()
+                .getOtelAdditionalMetricsReader();
+
+        Attributes expectedSuccessAttrs = Attributes.builder()
+            .put(
+                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
+            .build();
+
+        OpenTelemetryDataTestUtils.validateLongPointDataFromCounterAtLeast(
+            inMemoryMetricReader,
+            1,
+            expectedSuccessAttrs,
+            TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETED_COUNT.getMetricName(),
+            CONTROLLER_SERVICE_METRIC_PREFIX);
+      }
+
+      // Validate SparkServerStats OTel metrics — every controller HTTP call emits CALL_COUNT and CALL_TIME.
+      // Child controllers received getStore() calls during waitForNonDeterministicAssertion; validate at least 1
+      // successful call was recorded.
+      for (int i = 0; i < childDatacenters.size(); i++) {
+        VeniceControllerWrapper controller = childDatacenters.get(i).getControllers().values().iterator().next();
+        InMemoryMetricReader inMemoryMetricReader =
+            (InMemoryMetricReader) ((VeniceMetricsRepository) controller.getMetricRepository()).getVeniceMetricsConfig()
+                .getOtelAdditionalMetricsReader();
+
+        Attributes expectedCallAttrs = Attributes.builder()
+            .put(VeniceMetricsDimensions.VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
+            .put(
+                VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT.getDimensionNameInDefaultFormat(),
+                ControllerRoute.STORE.getDimensionValue())
+            .put(
+                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(),
+                HttpResponseStatusEnum.OK.getDimensionValue())
+            .put(
+                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                HttpResponseStatusCodeCategory.SUCCESS.getDimensionValue())
+            .put(
+                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+                VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
+            .build();
+
+        OpenTelemetryDataTestUtils.validateLongPointDataFromCounterAtLeast(
+            inMemoryMetricReader,
+            1,
+            expectedCallAttrs,
+            SparkServerStats.SparkServerOtelMetricEntity.CALL_COUNT.getMetricName(),
+            CONTROLLER_SERVICE_METRIC_PREFIX);
+
+        OpenTelemetryDataTestUtils.validateExponentialHistogramPointDataAtLeast(
+            inMemoryMetricReader,
+            1,
+            expectedCallAttrs,
+            SparkServerStats.SparkServerOtelMetricEntity.CALL_TIME.getMetricName(),
+            CONTROLLER_SERVICE_METRIC_PREFIX);
+      }
     }
   }
 
@@ -908,6 +1006,85 @@ public class TestParentControllerWithMultiDataCenter {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testETLStoreConfig() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("test-etl-store-config");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      String etlUserProxyAccount = "etl-user-test";
+      Assert.assertFalse(
+          parentControllerClient
+              .updateStore(
+                  storeName,
+                  new UpdateStoreQueryParams().setRegularVersionETLEnabled(true)
+                      .setEtledProxyUserAccount(etlUserProxyAccount))
+              .isError());
+      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError());
+      ETLStoreConfig etlStoreConfig = storeResponse.getStore().getEtlStoreConfig();
+      verifyETLStoreConfig(etlStoreConfig, true, false, etlUserProxyAccount, VeniceETLStrategy.EXTERNAL_SERVICE);
+      for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+        try (ControllerClient childControllerClient =
+            new ControllerClient(clusterName, veniceMultiClusterWrapper.getControllerConnectString())) {
+          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+            StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
+            Assert.assertFalse(childStoreResponse.isError());
+            verifyETLStoreConfig(
+                childStoreResponse.getStore().getEtlStoreConfig(),
+                true,
+                false,
+                etlUserProxyAccount,
+                VeniceETLStrategy.EXTERNAL_SERVICE);
+          });
+        }
+      }
+      parentControllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER));
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError());
+      verifyETLStoreConfig(
+          storeResponse.getStore().getEtlStoreConfig(),
+          true,
+          false,
+          etlUserProxyAccount,
+          VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER);
+      for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+        try (ControllerClient childControllerClient =
+            new ControllerClient(clusterName, veniceMultiClusterWrapper.getControllerConnectString())) {
+          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+            StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
+            Assert.assertFalse(childStoreResponse.isError());
+            verifyETLStoreConfig(
+                childStoreResponse.getStore().getEtlStoreConfig(),
+                true,
+                false,
+                etlUserProxyAccount,
+                VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER);
+          });
+        }
+      }
+    }
+  }
+
+  private void verifyETLStoreConfig(
+      ETLStoreConfig etlStoreConfig,
+      boolean regularVersionETLEnabled,
+      boolean futureVersionETLEnabled,
+      String etlUserProxyAccount,
+      VeniceETLStrategy veniceETLStrategy) {
+    Assert.assertEquals(etlStoreConfig.isRegularVersionETLEnabled(), regularVersionETLEnabled);
+    Assert.assertEquals(etlStoreConfig.isFutureVersionETLEnabled(), futureVersionETLEnabled);
+    Assert.assertEquals(etlStoreConfig.getEtledUserProxyAccount(), etlUserProxyAccount);
+    Assert.assertEquals(etlStoreConfig.getETLStrategy(), veniceETLStrategy);
+  }
+
   private void getAndAssertTTLRepushEnabledFlag(
       ControllerClient controllerClient,
       String storeName,
@@ -939,7 +1116,8 @@ public class TestParentControllerWithMultiDataCenter {
             false,
             null,
             0,
-            false));
+            false,
+            -1));
   }
 
   private void emptyPushToStore(
@@ -960,6 +1138,111 @@ public class TestParentControllerWithMultiDataCenter {
         StoreInfo storeInfo = storeResponse.getStore();
         assertEquals(storeInfo.getCurrentVersion(), expectedVersion);
       });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUserPushKillsCompliancePush() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("testCompliancePushKill");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      // Create a new store
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+      // Start a compliance push
+      String compliancePushId = Version.generateCompliancePushId("test-compliance-push");
+      VersionCreationResponse compliancePushResponse =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, compliancePushId);
+      Assert.assertFalse(
+          compliancePushResponse.isError(),
+          "Compliance push creation failed: " + compliancePushResponse.getError());
+      int compliancePushVersion = compliancePushResponse.getVersion();
+
+      // Start a user-initiated batch push - this should kill the compliance push
+      String userPushId = "user-initiated-push-" + System.currentTimeMillis();
+      VersionCreationResponse userPushResponse =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, userPushId);
+      Assert.assertFalse(userPushResponse.isError(), "User push creation failed: " + userPushResponse.getError());
+      int userPushVersion = userPushResponse.getVersion();
+
+      // User push should have created a new version (compliance push was killed)
+      Assert.assertEquals(
+          userPushVersion,
+          compliancePushVersion + 1,
+          "User push should create version " + (compliancePushVersion + 1) + " after killing compliance push");
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCompliancePushCannotKillAnotherCompliancePush() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("testCompliancePushNoKill");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      // Create a new store
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+      // Start a compliance push
+      String compliancePushId1 = Version.generateCompliancePushId("test-compliance-push-1");
+      VersionCreationResponse compliancePushResponse1 =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, compliancePushId1);
+      Assert.assertFalse(
+          compliancePushResponse1.isError(),
+          "First compliance push creation failed: " + compliancePushResponse1.getError());
+
+      // Start another compliance push - this should NOT kill the first one (should fail with concurrent push error)
+      String compliancePushId2 = Version.generateCompliancePushId("test-compliance-push-2");
+      VersionCreationResponse compliancePushResponse2 =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, compliancePushId2);
+      Assert.assertTrue(
+          compliancePushResponse2.isError(),
+          "Second compliance push should fail because system pushes cannot kill other system pushes");
+      Assert.assertTrue(
+          compliancePushResponse2.getError().contains("An ongoing push") && compliancePushResponse2.getError()
+              .contains("is found and it must be terminated before another push can be started"),
+          "Error should indicate an ongoing push must be terminated: " + compliancePushResponse2.getError());
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCompliancePushCannotKillUserPush() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("testCompliancePushNoKillUser");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      // Create a new store
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+      // Start a user push (regular push ID without any system prefix)
+      String userPushId = System.currentTimeMillis() + "_https://example.com/user-push-job";
+      VersionCreationResponse userPushResponse =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, userPushId);
+      Assert.assertFalse(userPushResponse.isError(), "User push creation failed: " + userPushResponse.getError());
+
+      // Start a compliance push - this should NOT kill the user push (should fail with concurrent push error)
+      String compliancePushId = Version.generateCompliancePushId("test-compliance-push");
+      VersionCreationResponse compliancePushResponse =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, compliancePushId);
+      Assert.assertTrue(
+          compliancePushResponse.isError(),
+          "Compliance push should fail because system pushes cannot kill user pushes");
+      Assert.assertTrue(
+          compliancePushResponse.getError().contains("An ongoing push") && compliancePushResponse.getError()
+              .contains("is found and it must be terminated before another push can be started"),
+          "Error should indicate an ongoing push must be terminated: " + compliancePushResponse.getError());
     }
   }
 

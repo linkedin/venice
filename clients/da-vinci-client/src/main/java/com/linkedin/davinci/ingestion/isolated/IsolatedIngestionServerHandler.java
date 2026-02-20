@@ -35,6 +35,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -177,7 +178,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
             }
             LOGGER.info("Start ingesting replica: {}", replicaId);
             isolatedIngestionServer.setResourceToBeSubscribed(topicName, partitionId);
-            isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
+            isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId, Optional.empty());
           });
           break;
         case STOP_CONSUMPTION:

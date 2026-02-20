@@ -293,7 +293,7 @@ public class TestProducerBatching {
     }
     SystemProducer veniceProducer = null;
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-    Pair<String, String> additionalConfig = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_INTERVAL_MS, "10");
+    Pair<String, String> additionalConfig = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_INTERVAL_MS, "1000");
     Pair<String, String> additionalConfig2 = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES, "1024000");
     veniceProducer = IntegrationTestPushUtils
         .getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM, additionalConfig, additionalConfig2);

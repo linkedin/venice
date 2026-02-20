@@ -141,9 +141,14 @@ public class TestZKStore {
 
     assertVersionsEquals(store, 1, Arrays.asList(version1, version3), "error version should be deleted");
 
+    // current version is in the middle, delete 1 and 3
+    version3.setStatus(VersionStatus.ONLINE);
+    assertVersionsEquals(store, 1, Arrays.asList(version1, version3), "version 1 and 3 should be deleted");
+
     Version version4 = new VersionImpl(store.getName(), 4);
     store.addVersion(version4);
     version4.setStatus(VersionStatus.ERROR);
+    version3.setStatus(VersionStatus.ERROR);
 
     assertVersionsEquals(store, 2, Arrays.asList(version3, version4), "error versions should be deleted.");
     assertVersionsEquals(
@@ -261,8 +266,8 @@ public class TestZKStore {
     for (Version version: store.getVersions()) {
       Assert.assertEquals(
           version.getStatus(),
-          VersionStatus.ONLINE,
-          "After enabling a store to write, all of PUSHED version should be activated.");
+          VersionStatus.PUSHED,
+          "After enabling a store to write, all of PUSHED will stay as PUSHED. Deferred swap service will mark them as online");
     }
   }
 

@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService.getKeyLevelLockMaxPoolSizeBasedOnServerConfig;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
@@ -166,27 +167,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           aggVersionedIngestionStats,
           getHostLevelIngestionStats());
     });
-  }
-
-  public static int getKeyLevelLockMaxPoolSizeBasedOnServerConfig(VeniceServerConfig serverConfig, int partitionCount) {
-    int consumerPoolSizeForLeaderConsumption = 0;
-    if (serverConfig.isDedicatedConsumerPoolForAAWCLeaderEnabled()) {
-      consumerPoolSizeForLeaderConsumption = serverConfig.getDedicatedConsumerPoolSizeForAAWCLeader()
-          + serverConfig.getDedicatedConsumerPoolSizeForSepRTLeader();
-    } else if (serverConfig.getConsumerPoolStrategyType()
-        .equals(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION)) {
-      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()
-          + serverConfig.getConsumerPoolSizeForCurrentVersionSepRTLeader()
-          + serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader();
-    } else {
-      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizePerKafkaCluster();
-    }
-    int multiplier = 1;
-    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
-      multiplier = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
-    }
-    return Math.min(partitionCount, consumerPoolSizeForLeaderConsumption)
-        * serverConfig.getKafkaClusterIdToUrlMap().size() * multiplier + 1;
   }
 
   @Override
@@ -582,6 +562,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
+      aggVersionedIngestionStats.recordUpdateIgnoredDCR(storeName, versionNumber);
       return new PubSubMessageProcessedResult(
           new MergeConflictResultWrapper(
               mergeConflictResult,
@@ -777,23 +758,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           "Offset vector found to have gone backwards for {}!! New invalid replication metadata result: {}",
           storeVersionName,
           rmdRecord);
-    }
-
-    // TODO: This comparison doesn't work well for write compute+schema evolution (can spike up). VENG-8129
-    // this works fine for now however as we do not fully support A/A write compute operations (as we only do root
-    // timestamp comparisons).
-
-    List<Long> timestampsPostOperation = RmdUtils.extractTimestampFromRmd(rmdRecord);
-    for (int i = 0; i < timestampsPreOperation.size(); i++) {
-      if (timestampsPreOperation.get(i) > timestampsPostOperation.get(i)) {
-        // timestamps went backwards, raise an alert!
-        hostLevelIngestionStats.recordTimestampRegressionDCRError();
-        aggVersionedIngestionStats.recordTimestampRegressionDCRError(storeName, versionNumber);
-        LOGGER.error(
-            "Timestamp found to have gone backwards for {}!! Invalid replication metadata result: {}",
-            storeVersionName,
-            mergeConflictResult.getRmdRecord());
-      }
     }
   }
 
@@ -1008,7 +972,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               pubSubAddress,
               sourceTopicPartition);
           PubSubTopicPartition newSourceTopicPartition =
-              resolveRtTopicPartitionWithPubSubBrokerAddress(newSourceTopic, pcs, pubSubAddress);
+              resolveTopicPartitionWithPubSubBrokerAddress(newSourceTopic, pcs, pubSubAddress);
           try {
             rtStartPosition =
                 getRewindStartPositionForRealTimeTopic(pubSubAddress, newSourceTopicPartition, rewindStartTimestamp);
@@ -1392,7 +1356,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return () -> {
       PubSubTopic pubSubTopic = sourceTopicPartition.getPubSubTopic();
       PubSubTopicPartition resolvedTopicPartition =
-          resolveRtTopicPartitionWithPubSubBrokerAddress(pubSubTopic, pcs, sourceKafkaUrl);
+          resolveTopicPartitionWithPubSubBrokerAddress(pubSubTopic, pcs, sourceKafkaUrl);
       // Calculate upstream offset
       PubSubPosition upstreamOffset =
           getRewindStartPositionForRealTimeTopic(sourceKafkaUrl, resolvedTopicPartition, rewindStartTimestamp);
@@ -1428,7 +1392,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
         // will be recovered after producing the message to Kafka or if the production failing.
         ((ActiveActiveProducerCallback) callback).setOnCompletionFunction(
-            () -> ByteUtils.prependIntHeaderToByteBuffer(
+            unused -> ByteUtils.prependIntHeaderToByteBuffer(
                 updatedValueBytes,
                 ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
                 true));

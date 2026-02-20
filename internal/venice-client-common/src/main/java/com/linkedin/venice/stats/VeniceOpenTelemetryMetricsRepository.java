@@ -26,7 +26,10 @@ import io.opentelemetry.api.metrics.LongUpDownCounter;
 import io.opentelemetry.api.metrics.LongUpDownCounterBuilder;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.MeterProvider;
+import io.opentelemetry.api.metrics.ObservableLongCounter;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
+import io.opentelemetry.api.metrics.ObservableLongMeasurement;
+import io.opentelemetry.api.metrics.ObservableLongUpDownCounter;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporterBuilder;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -51,6 +54,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
@@ -62,8 +66,12 @@ public class VeniceOpenTelemetryMetricsRepository {
   public static final RedundantLogFilter REDUNDANT_LOG_FILTER = RedundantLogFilter.getRedundantLogFilter();
   public static final String DEFAULT_METRIC_PREFIX = "venice.";
   private final VeniceMetricsConfig metricsConfig;
-  private SdkMeterProvider sdkMeterProvider = null;
+
+  /** OpenTelemetry instance: Either created or retrieved from GlobalOpenTelemetry set by the application */
   private final OpenTelemetry openTelemetry;
+  /** SdkMeterProvider that is used to create the OpenTelemetry instance */
+  private SdkMeterProvider sdkMeterProvider = null;
+
   private final boolean emitOpenTelemetryMetrics;
   private final boolean emitTehutiMetrics;
   private final VeniceOpenTelemetryMetricNamingFormat metricFormat;
@@ -81,80 +89,14 @@ public class VeniceOpenTelemetryMetricsRepository {
     emitOpenTelemetryMetrics = metricsConfig.emitOtelMetrics();
     emitTehutiMetrics = metricsConfig.emitTehutiMetrics();
     metricFormat = metricsConfig.getMetricNamingFormat();
+    this.metricPrefix = metricsConfig.getMetricPrefix();
+    validateMetricName(getMetricPrefix());
     if (!emitOpenTelemetryMetrics) {
       LOGGER.info("OpenTelemetry metrics are disabled");
       openTelemetry = null;
       return;
     }
-    this.metricPrefix = metricsConfig.getMetricPrefix();
-    validateMetricName(getMetricPrefix());
-    if (metricsConfig.useOpenTelemetryInitializedByApplication()) {
-      LOGGER.info("Using globally initialized OpenTelemetry for {}", metricsConfig.getServiceName());
-      openTelemetry = GlobalOpenTelemetry.get();
-      if (openTelemetry == null || openTelemetry.getMeterProvider() == null
-          || openTelemetry.getMeterProvider().equals(MeterProvider.noop())) {
-        // Fail fast if no global OpenTelemetry instance is initialized to avoid silent metric loss.
-        // When disabled, each Venice component will initialize its own OpenTelemetry instance,
-        // which can lead to multiple instances in the same application, especially when used as
-        // a library (common for Venice clients) when multiple such libraries initialized.
-        throw new VeniceException(
-            "OpenTelemetry is not initialized globally by the application: disable the configuration or "
-                + "initialize OpenTelemetry in the application before initializing venice");
-      }
-    } else {
-      LOGGER.info(
-          "OpenTelemetry initialization for {} started with config: {}",
-          metricsConfig.getServiceName(),
-          metricsConfig.toString());
-      try {
-        SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
-
-        if (metricsConfig.exportOtelMetricsToEndpoint()) {
-          MetricExporter httpExporter = getOtlpHttpMetricExporter(metricsConfig);
-          builder.registerMetricReader(
-              PeriodicMetricReader.builder(httpExporter)
-                  .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
-                  .build());
-        }
-
-        if (metricsConfig.exportOtelMetricsToLog()) {
-          // internal to test: Disabled by default
-          builder.registerMetricReader(
-              PeriodicMetricReader.builder(new LogBasedMetricExporter(metricsConfig))
-                  .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
-                  .build());
-        }
-
-        if (metricsConfig.getOtelAdditionalMetricsReader() != null) {
-          // additional metrics reader apart from the above. For instance,
-          // an in-memory metric reader can be passed in for testing purposes.
-          builder.registerMetricReader(metricsConfig.getOtelAdditionalMetricsReader());
-        }
-
-        if (metricsConfig.useOtelExponentialHistogram()) {
-          setExponentialHistogramAggregation(builder, metricsConfig);
-        }
-
-        // Set resource to empty to avoid adding any default resource attributes. The receiver
-        // pipeline can choose to add the respective resource attributes if needed.
-        builder.setResource(Resource.empty());
-
-        sdkMeterProvider = builder.build();
-
-        // Register MeterProvider with the OpenTelemetry instance
-        openTelemetry = OpenTelemetrySdk.builder().setMeterProvider(sdkMeterProvider).build();
-        LOGGER.info(
-            "OpenTelemetry initialization for {} completed with config: {}",
-            metricsConfig.getServiceName(),
-            metricsConfig);
-      } catch (Exception e) {
-        String err = "OpenTelemetry initialization for " + metricsConfig.getServiceName() + " failed with config: "
-            + metricsConfig;
-        LOGGER.error(err, e);
-        throw new VeniceException(err, e);
-      }
-    }
-
+    this.openTelemetry = initializeOpenTelemetry(metricsConfig);
     this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
     this.recordFailureMetric = MetricEntityStateBase.create(
         CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(),
@@ -164,15 +106,147 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   /**
-   * To create only one metric per name and type: Venice code will try to initialize the same metric multiple times as
-   * it will get called from per store path, per request type path, etc. This will ensure that we only have one metric
-   * per name and use dimensions to differentiate between them.
+   * Private constructor for creating a child instance that shares the same OpenTelemetry SDK
+   * but uses a different metric prefix. This avoids reinitializing the OpenTelemetry SDK.
+   *
+   * <p>When adding new fields to this class, you MUST update this constructor to properly
+   * initialize the new field. Fields fall into three categories:</p>
+   * <ol>
+   *   <li><b>Shared from parent:</b> Fields that should be copied from parent (e.g., metricsConfig,
+   *       openTelemetry, emitOpenTelemetryMetrics)</li>
+   *   <li><b>Child-specific:</b> Fields that should have new values for child (e.g., metricPrefix,
+   *       meter, instrument maps)</li>
+   *   <li><b>Ownership flags:</b> Fields indicating resource ownership (e.g., sdkMeterProvider
+   *       should be null for child)</li>
+   * </ol>
+   * <p>A unit test {@code testCloneWithNewMetricPrefixCopiesAllRequiredFields} in
+   * {@code VeniceOpenTelemetryMetricsRepositoryTest} uses reflection to verify all fields are
+   * properly initialized.</p>
+   *
+   * @param parent The parent repository to share OpenTelemetry instance from
+   * @param newMetricPrefix The new metric prefix to use for this child instance
+   */
+  private VeniceOpenTelemetryMetricsRepository(VeniceOpenTelemetryMetricsRepository parent, String newMetricPrefix) {
+    this.metricsConfig = parent.metricsConfig;
+    this.emitOpenTelemetryMetrics = parent.emitOpenTelemetryMetrics;
+    this.emitTehutiMetrics = parent.emitTehutiMetrics;
+    this.metricFormat = parent.metricFormat;
+    this.metricPrefix = newMetricPrefix;
+    this.openTelemetry = parent.openTelemetry;
+    this.sdkMeterProvider = null; // Child does not own the provider
+    validateMetricName(getMetricPrefix());
+
+    if (emitOpenTelemetryMetrics && openTelemetry != null) {
+      // Create a new Meter with the new prefix
+      this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
+      this.recordFailureMetric = MetricEntityStateBase.create(
+          CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(),
+          this,
+          Collections.EMPTY_MAP,
+          Attributes.empty());
+    }
+    LOGGER.info("Created child VeniceOpenTelemetryMetricsRepository with metric prefix: {}", newMetricPrefix);
+  }
+
+  /**
+   * Creates a new repository that shares the same OpenTelemetry SDK instance
+   * but uses a different metric prefix. This is useful for emitting metrics with a
+   * different prefix (e.g., "participant_store_client") without reinitializing OpenTelemetry.
+   *
+   * @param newMetricPrefix The metric prefix to use for the child repository
+   * @return A new VeniceOpenTelemetryMetricsRepository instance with the specified prefix
+   */
+  public VeniceOpenTelemetryMetricsRepository cloneWithNewMetricPrefix(String newMetricPrefix) {
+    return new VeniceOpenTelemetryMetricsRepository(this, newMetricPrefix);
+  }
+
+  private OpenTelemetry initializeOpenTelemetry(VeniceMetricsConfig metricsConfig) {
+    OpenTelemetry otel;
+    if (metricsConfig.useOpenTelemetryInitializedByApplication()) {
+      LOGGER.info("Using globally initialized OpenTelemetry for {}", metricsConfig.getServiceName());
+      otel = GlobalOpenTelemetry.get();
+      if (otel == null || otel.getMeterProvider() == null || otel.getMeterProvider().equals(MeterProvider.noop())) {
+        LOGGER.warn(
+            "Global OpenTelemetry is not initialized properly. Falling back to local initialization for {}",
+            metricsConfig.getServiceName());
+      } else {
+        LOGGER.info("Successfully obtained globally initialized OpenTelemetry for {}", metricsConfig.getServiceName());
+        return otel;
+      }
+    }
+
+    LOGGER.info(
+        "OpenTelemetry initialization for {} started with config: {}",
+        metricsConfig.getServiceName(),
+        metricsConfig.toString());
+    try {
+      SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
+
+      if (metricsConfig.exportOtelMetricsToEndpoint()) {
+        MetricExporter httpExporter = getOtlpHttpMetricExporter(metricsConfig);
+        builder.registerMetricReader(
+            PeriodicMetricReader.builder(httpExporter)
+                .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
+                .build());
+      }
+
+      if (metricsConfig.exportOtelMetricsToLog()) {
+        // internal to test: Disabled by default
+        builder.registerMetricReader(
+            PeriodicMetricReader.builder(new LogBasedMetricExporter(metricsConfig))
+                .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
+                .build());
+      }
+
+      if (metricsConfig.getOtelAdditionalMetricsReader() != null) {
+        // additional metrics reader apart from the above. For instance,
+        // an in-memory metric reader can be passed in for testing purposes.
+        builder.registerMetricReader(metricsConfig.getOtelAdditionalMetricsReader());
+      }
+
+      if (metricsConfig.useOtelExponentialHistogram()) {
+        setExponentialHistogramAggregation(builder, metricsConfig);
+      }
+
+      // Set resource to empty to avoid adding any default resource attributes. The receiver
+      // pipeline can choose to add the respective resource attributes if needed.
+      builder.setResource(Resource.empty());
+
+      sdkMeterProvider = builder.build();
+
+      // Register MeterProvider with the OpenTelemetry instance
+      otel = OpenTelemetrySdk.builder().setMeterProvider(sdkMeterProvider).build();
+      LOGGER.info(
+          "OpenTelemetry initialization for {} completed with config: {}",
+          metricsConfig.getServiceName(),
+          metricsConfig);
+    } catch (Exception e) {
+      String err = "OpenTelemetry initialization for " + metricsConfig.getServiceName() + " failed with config: "
+          + metricsConfig;
+      LOGGER.error(err, e);
+      throw new VeniceException(err, e);
+    }
+
+    return otel;
+  }
+
+  /**
+   * Deduplication maps for <b>synchronous</b> instruments only. Venice code initializes the same
+   * metric multiple times (per store, per request type, etc.), so all callers share a single
+   * instrument object and call {@code .record()} / {@code .add()} on it directly. The map lookup
+   * at init time is cheap and avoids creating redundant SDK instrument handles for the same metric.
+   *
+   * <p><b>Async (observable) instruments are intentionally excluded from deduplication.</b>
+   * Each {@code buildWithCallback} call creates a new SDK instrument handle with its own callback.
+   * The OTel SDK natively aggregates data points from multiple instruments sharing the same name
+   * during the export pipeline's collection cycle. This design is simpler and avoids the
+   * multi-callback data-loss bug that deduplication via {@code computeIfAbsent} would cause
+   * for observable instruments (where the callback is bound at construction time).
    */
   private final VeniceConcurrentHashMap<String, DoubleHistogram> histogramMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongUpDownCounter> upDownCounterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongGauge> gaugeMap = new VeniceConcurrentHashMap<>();
-  private final VeniceConcurrentHashMap<String, ObservableLongGauge> asyncGaugeMap = new VeniceConcurrentHashMap<>();
 
   MetricExporter getOtlpHttpMetricExporter(VeniceMetricsConfig metricsConfig) {
     OtlpHttpMetricExporterBuilder exporterBuilder =
@@ -321,8 +395,10 @@ public class VeniceOpenTelemetryMetricsRepository {
   /**
    * Asynchronous gauge that will call the callback during metrics collection.
    * This is useful for metrics that are not updated frequently or require expensive computation.
-   * For now, the attributes are passed in as a parameter while creating the gauge, ie, only
-   * {@link MetricEntityStateBase} is supported for now.
+   *
+   * <p>Each call creates a new SDK instrument handle via {@code buildWithCallback} — there is no
+   * deduplication. Multiple callers (e.g., different stores) can register callbacks for the same
+   * metric name; the OTel SDK natively aggregates all their data points during collection.
    */
   public ObservableLongGauge createAsyncLongGauge(
       MetricEntity metricEntity,
@@ -331,24 +407,20 @@ public class VeniceOpenTelemetryMetricsRepository {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
-    return asyncGaugeMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
-      String fullMetricName = getFullMetricName(metricEntity);
-      LongGaugeBuilder builder = meter.gaugeBuilder(fullMetricName)
-          .setUnit(metricEntity.getUnit().name())
-          .setDescription(getMetricDescription(metricEntity, metricsConfig))
-          .ofLongs();
-
-      return builder.buildWithCallback(measurement -> {
-        long v;
-        try {
-          v = asyncCallback.getAsLong();
-        } catch (Exception e) {
-          recordFailureMetric(metricEntity, e);
-          return;
-        }
-        measurement.record(v, attributes);
-      });
-    });
+    return meter.gaugeBuilder(getFullMetricName(metricEntity))
+        .setUnit(metricEntity.getUnit().name())
+        .setDescription(getMetricDescription(metricEntity, metricsConfig))
+        .ofLongs()
+        .buildWithCallback(measurement -> {
+          long v;
+          try {
+            v = asyncCallback.getAsLong();
+          } catch (Exception e) {
+            recordFailureMetric(metricEntity, e);
+            return;
+          }
+          measurement.record(v, attributes);
+        });
   }
 
   public Object createInstrument(MetricEntity metricEntity, LongSupplier asyncCallback, Attributes attributes) {
@@ -370,6 +442,15 @@ public class VeniceOpenTelemetryMetricsRepository {
       case ASYNC_GAUGE:
         return createAsyncLongGauge(metricEntity, asyncCallback, attributes);
 
+      case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+      case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
+        /**
+         * Observable Counter/UpDownCounter is registered separately after the MetricEntityState is constructed
+         * because the callback needs access to the MetricEntityState's subclass's metricAttributesData map.
+         * See registerObservableLongCounter and registerObservableLongUpDownCounter methods.
+         */
+        return null;
+
       default:
         throw new VeniceException("Unknown metric type: " + metricType);
     }
@@ -378,6 +459,75 @@ public class VeniceOpenTelemetryMetricsRepository {
   @VisibleForTesting
   public Object createInstrument(MetricEntity metricEntity) {
     return createInstrument(metricEntity, null, null);
+  }
+
+  /**
+   * Registers an Observable Long Counter that reads accumulated values from a callback.
+   * This method should be called after the MetricEntityState is fully constructed,
+   * as the callback needs access to the metricAttributesData map.
+   *
+   * <p>For {@link MetricType#ASYNC_COUNTER_FOR_HIGH_PERF_CASES} metrics, the callback is invoked during
+   * OpenTelemetry's metric collection cycle. The callback should iterate over all
+   * accumulated values and report them via the provided {@link ObservableLongMeasurement}.
+   *
+   * <p>Each call creates a new SDK instrument handle via {@code buildWithCallback} — there is no
+   * deduplication. The OTel SDK natively aggregates data points from multiple instruments sharing
+   * the same name during the export pipeline's collection cycle.
+   *
+   * @param metricEntity the metric entity definition
+   * @param reportCallback callback that reports all accumulated values to the measurement
+   * @return the created ObservableLongCounter, or null if OTel metrics are disabled
+   */
+  public ObservableLongCounter registerObservableLongCounter(
+      MetricEntity metricEntity,
+      @Nonnull Consumer<ObservableLongMeasurement> reportCallback) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+    if (metricEntity.getMetricType() != MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES) {
+      throw new IllegalArgumentException(
+          "registerObservableLongCounter should only be called for ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics, but got: "
+              + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
+    }
+    return meter.counterBuilder(getFullMetricName(metricEntity))
+        .setUnit(metricEntity.getUnit().name())
+        .setDescription(getMetricDescription(metricEntity, metricsConfig))
+        .buildWithCallback(reportCallback);
+  }
+
+  /**
+   * Registers an Observable Long UpDownCounter that reads accumulated values from a callback.
+   * This method should be called after the MetricEntityState is fully constructed,
+   * as the callback needs access to the metricAttributesData map.
+   *
+   * <p>For {@link MetricType#ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES} metrics, the callback is invoked during
+   * OpenTelemetry's metric collection cycle. The callback should iterate over all
+   * accumulated values and report them via the provided {@link ObservableLongMeasurement}.
+   * Unlike ASYNC_COUNTER_FOR_HIGH_PERF_CASES, this supports both positive and negative values.
+   *
+   * <p>Each call creates a new SDK instrument handle via {@code buildWithCallback} — there is no
+   * deduplication. The OTel SDK natively aggregates data points from multiple instruments sharing
+   * the same name during the export pipeline's collection cycle.
+   *
+   * @param metricEntity the metric entity definition
+   * @param reportCallback callback that reports all accumulated values to the measurement
+   * @return the created ObservableLongUpDownCounter, or null if OTel metrics are disabled
+   */
+  public ObservableLongUpDownCounter registerObservableLongUpDownCounter(
+      MetricEntity metricEntity,
+      @Nonnull Consumer<ObservableLongMeasurement> reportCallback) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+    if (metricEntity.getMetricType() != MetricType.ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES) {
+      throw new IllegalArgumentException(
+          "registerObservableLongUpDownCounter should only be called for ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES metrics, but got: "
+              + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
+    }
+    return meter.upDownCounterBuilder(getFullMetricName(metricEntity))
+        .setUnit(metricEntity.getUnit().name())
+        .setDescription(getMetricDescription(metricEntity, metricsConfig))
+        .buildWithCallback(reportCallback);
   }
 
   public String getDimensionName(VeniceMetricsDimensions dimension) {
@@ -528,12 +678,8 @@ public class VeniceOpenTelemetryMetricsRepository {
     private final MetricEntity metricEntity;
 
     CommonMetricsEntity(MetricType metricType, MetricUnit unit, String description) {
-      this.metricEntity = MetricEntity.createInternalMetricEntityWithoutDimensions(
-          this.name().toLowerCase(),
-          metricType,
-          unit,
-          description,
-          "internal");
+      this.metricEntity =
+          MetricEntity.createWithNoDimensions(this.name().toLowerCase(), metricType, unit, description, "internal");
     }
 
     public MetricEntity getMetricEntity() {

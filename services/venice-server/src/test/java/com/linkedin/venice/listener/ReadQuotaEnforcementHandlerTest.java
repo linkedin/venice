@@ -29,7 +29,10 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.ReadQuotaEnforcementHandler.QuotaEnforcementResult;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
@@ -64,6 +67,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -90,6 +94,7 @@ public class ReadQuotaEnforcementHandlerTest {
   private RouterRequest routerRequest;
   private VeniceServerGrpcHandler mockNextHandler;
   private VeniceServerConfig serverConfig;
+  private StorageEngineRepository storageEngineRepository;
 
   @BeforeMethod
   public void setUp() {
@@ -110,6 +115,7 @@ public class ReadQuotaEnforcementHandlerTest {
     // Reset the handlers to ensure we don't accidentally use handlers initialized in previous test
     quotaEnforcementHandler = null;
     grpcQuotaEnforcementHandler = null;
+    storageEngineRepository = mock(StorageEngineRepository.class);
   }
 
   private void initializeQuotaEnforcementHandlers() {
@@ -121,6 +127,7 @@ public class ReadQuotaEnforcementHandlerTest {
         serverConfig,
         storeRepository,
         CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
         thisNodeId,
         aggStats,
         clock);
@@ -171,7 +178,6 @@ public class ReadQuotaEnforcementHandlerTest {
   @Test
   public void testEnforceQuotaDuringInitialization() {
     initializeQuotaEnforcementHandlers();
-    quotaEnforcementHandler.setInitialized(false);
     quotaEnforcementHandler.setInitializedVolatile(false);
     assertFalse(quotaEnforcementHandler.isInitialized());
     String storeName = "test_store";
@@ -757,7 +763,7 @@ public class ReadQuotaEnforcementHandlerTest {
   }
 
   @Test
-  public void testFailedToInit() {
+  public void testFailedToInitInStoreRepo() {
     String storeName = Utils.getUniqueString("test-store");
     String storeName2 = Utils.getUniqueString("test-store2");
     String topic = Version.composeKafkaTopic(storeName, 1);
@@ -779,6 +785,7 @@ public class ReadQuotaEnforcementHandlerTest {
         serverConfig,
         mockStoreRepo,
         CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
         thisNodeId,
         stats);
     // Ensure init() is invoked before proceeding with the test
@@ -790,6 +797,136 @@ public class ReadQuotaEnforcementHandlerTest {
     assertEquals(quotaEnforcer.enforceQuota(quotaDisabledRequest), QuotaEnforcementResult.ALLOWED);
     // Only storage node quota enabled requests should record allowed unintentionally when init fails
     verify(stats, times(1)).recordAllowedUnintentionally(storeName, 1);
+  }
+
+  @Test
+  public void testFailedToInitInCVForIndividualResources() {
+    AggServerQuotaUsageStats stats = mock(AggServerQuotaUsageStats.class);
+    String storeName = Utils.getUniqueString("test-store");
+    String storeName2 = Utils.getUniqueString("test-store2");
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    String topic2 = Version.composeKafkaTopic(storeName2, 1);
+    Version version = mock(Version.class);
+    doReturn(topic).when(version).kafkaTopicName();
+    Version version2 = mock(Version.class);
+    doReturn(topic2).when(version2).kafkaTopicName();
+    doReturn(5).when(version2).getPartitionCount();
+    doReturn(VersionStatus.ONLINE).when(version2).getStatus();
+    Store store = setUpStoreMock(storeName, 1, Collections.singletonList(version), 100, true);
+    Store store2 = setUpStoreMock(storeName2, 1, Collections.singletonList(version2), 100, true);
+    doReturn(version2).when(store2).getVersion(1);
+    ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
+    doReturn(store).when(mockStoreRepo).getStore(storeName);
+    doReturn(store2).when(mockStoreRepo).getStore(storeName2);
+    List<Store> storeList = new ArrayList<>();
+    storeList.add(store);
+    storeList.add(store2);
+    doReturn(storeList).when(mockStoreRepo).getAllStores();
+    // An uncaught exception for store2 v1 resource shouldn't fail initialization of other stores
+    doThrow(new VeniceException("Unexpected test exception")).when(customizedViewRepository)
+        .getPartitionAssignments(topic2);
+    Instance thisInstance = mock(Instance.class);
+    doReturn(thisNodeId).when(thisInstance).getNodeId();
+    Partition partition = setUpPartitionMock(topic, thisInstance, true, 0);
+    PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+    doReturn(pa).when(customizedViewRepository).getPartitionAssignments(topic);
+    final ReadQuotaEnforcementHandler quotaEnforcer = new ReadQuotaEnforcementHandler(
+        serverConfig,
+        mockStoreRepo,
+        CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
+        thisNodeId,
+        stats);
+    // Ensure init() is completed before proceeding with the test
+    TestUtils
+        .waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> Assert.assertTrue(quotaEnforcer.isInitialized()));
+    Assert.assertNull(quotaEnforcer.getStoreVersionRateLimiter(topic2));
+    Assert.assertNotNull(quotaEnforcer.getStoreVersionRateLimiter(topic));
+    Assert.assertEquals(quotaEnforcer.getStoreVersionRateLimiter(topic).getQuota(), 100L);
+
+    // If failure is due to CV unavailability the fallback behavior should be based on storage engine partition count
+    doReturn(true).when(serverConfig).isReadQuotaInitializationFallbackEnabled();
+    doThrow(new VeniceNoHelixResourceException(topic2)).when(customizedViewRepository).getPartitionAssignments(topic2);
+    StorageEngine mockStorageEngine = mock(StorageEngine.class);
+    // Only 1 partition, partition 0 is assigned to this node based on storage engine
+    doReturn(Collections.singleton(0)).when(mockStorageEngine).getPartitionIds();
+    doReturn(mockStorageEngine).when(storageEngineRepository).getLocalStorageEngine(topic2);
+    final ReadQuotaEnforcementHandler quotaEnforcerWithFallback = new ReadQuotaEnforcementHandler(
+        serverConfig,
+        mockStoreRepo,
+        CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
+        thisNodeId,
+        stats);
+    // Ensure init() is invoked before proceeding with the test
+    TestUtils.waitForNonDeterministicAssertion(
+        50000,
+        TimeUnit.SECONDS,
+        () -> Assert.assertTrue(quotaEnforcerWithFallback.isInitialized()));
+    Assert.assertNotNull(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic));
+    Assert.assertNotNull(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic2));
+    Assert.assertEquals(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic).getQuota(), 100L);
+    // The node responsibility should be 1/5 because the store has 5 partitions and the instance was assigned only 1
+    // partition based on storage engine. 1/5 * 100 = 20.
+    Assert.assertEquals(quotaEnforcerWithFallback.getStoreVersionRateLimiter(topic2).getQuota(), 20L);
+
+    // If the fallback behavior config is disabled we should fail open.
+    doReturn(false).when(serverConfig).isReadQuotaInitializationFallbackEnabled();
+    AggServerQuotaUsageStats failOpenStats = mock(AggServerQuotaUsageStats.class);
+    final ReadQuotaEnforcementHandler quotaEnforcerWithoutFallback = new ReadQuotaEnforcementHandler(
+        serverConfig,
+        mockStoreRepo,
+        CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
+        thisNodeId,
+        failOpenStats);
+    // Ensure init() is invoked before proceeding with the test
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertTrue(quotaEnforcerWithoutFallback.isInitialized()));
+    Assert.assertNotNull(quotaEnforcerWithoutFallback.getStoreVersionRateLimiter(topic));
+    Assert.assertNull(quotaEnforcerWithoutFallback.getStoreVersionRateLimiter(topic2));
+    Assert.assertEquals(quotaEnforcerWithoutFallback.getStoreVersionRateLimiter(topic).getQuota(), 100L);
+    doReturn(RequestType.SINGLE_GET).when(routerRequest).getRequestType();
+    doReturn(storeName2).when(routerRequest).getStoreName();
+    doReturn(topic2).when(routerRequest).getResourceName();
+    assertEquals(quotaEnforcerWithoutFallback.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
+    verify(failOpenStats, times(1)).recordAllowedUnintentionally(storeName2, 1);
+  }
+
+  @Test
+  public void testStoreQuotaChange() {
+    AggServerQuotaUsageStats stats = mock(AggServerQuotaUsageStats.class);
+    String storeName = Utils.getUniqueString("test-store");
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    Version version = mock(Version.class);
+    doReturn(topic).when(version).kafkaTopicName();
+    Store store = setUpStoreMock(storeName, 1, Collections.singletonList(version), 100, true);
+    ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
+    doReturn(store).when(mockStoreRepo).getStore(storeName);
+    List<Store> storeList = Collections.singletonList(store);
+    doReturn(storeList).when(mockStoreRepo).getAllStores();
+    Instance thisInstance = mock(Instance.class);
+    doReturn(thisNodeId).when(thisInstance).getNodeId();
+    Partition partition = setUpPartitionMock(topic, thisInstance, true, 0);
+    PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+    doReturn(pa).when(customizedViewRepository).getPartitionAssignments(topic);
+    final ReadQuotaEnforcementHandler quotaEnforcer = new ReadQuotaEnforcementHandler(
+        serverConfig,
+        mockStoreRepo,
+        CompletableFuture.completedFuture(customizedViewRepository),
+        storageEngineRepository,
+        thisNodeId,
+        stats);
+    // Ensure init() is completed before proceeding with the test
+    TestUtils
+        .waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> Assert.assertTrue(quotaEnforcer.isInitialized()));
+    Assert.assertNotNull(quotaEnforcer.getStoreVersionRateLimiter(topic));
+    Assert.assertEquals(quotaEnforcer.getStoreVersionRateLimiter(topic).getQuota(), 100L);
+    doReturn(200L).when(store).getReadQuotaInCU();
+    quotaEnforcer.handleStoreChanged(store);
+    Assert.assertEquals(quotaEnforcer.getStoreVersionRateLimiter(topic).getQuota(), 200L);
   }
 
   /**

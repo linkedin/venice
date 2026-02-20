@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
+import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
@@ -20,6 +21,7 @@ import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
@@ -213,7 +215,7 @@ public class VersionBackend {
   protected static void sendOutHeartbeat(DaVinciBackend backend, Version version) {
     if (backend.hasCurrentVersionBootstrapping()) {
       LOGGER.info(
-          "DaVinci still is still bootstrapping, so it will send heart-beat message with a special timestamp"
+          "DaVinci is still bootstrapping, so it will send heart-beat message with a special timestamp"
               + " for store: {} to avoid delaying the new push job",
           version.getStoreName());
       /**
@@ -362,7 +364,9 @@ public class VersionBackend {
     return getPartitions(partitions).stream().allMatch(this::isPartitionReadyToServe);
   }
 
-  synchronized CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
+  synchronized CompletableFuture<Void> subscribe(
+      ComplementSet<Integer> partitions,
+      DaVinciSeekCheckpointInfo checkpointInfo) {
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
     if (partitionList.isEmpty()) {
@@ -404,7 +408,15 @@ public class VersionBackend {
       backend.getHeartbeatMonitoringService()
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
       // AtomicReference of storage engine will be updated internally.
-      backend.getIngestionBackend().startConsumption(config, partition);
+      Optional<PubSubPosition> pubSubPosition = checkpointInfo == null
+          ? Optional.empty()
+          : backend.getIngestionService()
+              .getPubSubPosition(
+                  config,
+                  partition,
+                  checkpointInfo.getTimestampsMap(),
+                  checkpointInfo.getPostitionMap());
+      backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition);
       tryStartHeartbeat();
     }
 
@@ -550,7 +562,7 @@ public class VersionBackend {
     return partitionToPendingReportIncrementalPushList;
   }
 
-  private List<Integer> getPartitions(ComplementSet<Integer> partitions) {
+  public List<Integer> getPartitions(ComplementSet<Integer> partitions) {
     return IntStream.range(0, version.getPartitionCount())
         .filter(partitions::contains)
         .boxed()

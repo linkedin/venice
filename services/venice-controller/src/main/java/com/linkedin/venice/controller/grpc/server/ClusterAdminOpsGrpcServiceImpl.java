@@ -15,6 +15,8 @@ import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.ClusterAdminOpsGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
 import io.grpc.Context;
@@ -98,6 +100,19 @@ public class ClusterAdminOpsGrpcServiceImpl extends ClusterAdminOpsGrpcServiceIm
     ControllerGrpcServerUtils.handleRequest(
         ClusterAdminOpsGrpcServiceGrpc.getUpdateAdminOperationProtocolVersionMethod(),
         () -> requestHandler.updateAdminOperationProtocolVersion(request),
+        responseObserver,
+        request.getClusterName(),
+        null);
+  }
+
+  @Override
+  public void isStoreMigrationAllowed(
+      StoreMigrationCheckGrpcRequest request,
+      StreamObserver<StoreMigrationCheckGrpcResponse> responseObserver) {
+    LOGGER.debug("Received isStoreMigrationAllowed request: {}", request);
+    ControllerGrpcServerUtils.handleRequest(
+        ClusterAdminOpsGrpcServiceGrpc.getIsStoreMigrationAllowedMethod(),
+        () -> requestHandler.isStoreMigrationAllowed(request),
         responseObserver,
         request.getClusterName(),
         null);

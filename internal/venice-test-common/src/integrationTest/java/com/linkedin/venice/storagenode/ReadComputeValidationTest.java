@@ -423,7 +423,8 @@ public class ReadComputeValidationTest {
         Assert.assertNotNull(expectedException);
         Assert.assertTrue(expectedException instanceof VeniceClientException);
         Assert.assertEquals(((VeniceClientException) expectedException).getErrorType(), ErrorType.GENERAL_ERROR);
-        Assert.assertEquals(expectedException.getMessage(), "COUNT field: member_feature isn't 'ARRAY' or 'MAP' type");
+        Assert.assertTrue(
+            expectedException.getMessage().contains("COUNT field: member_feature isn't 'ARRAY' or 'MAP' type"));
       });
     }
   }

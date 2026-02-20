@@ -5,6 +5,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -17,6 +18,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -305,7 +307,7 @@ public class StoreBufferServiceTest {
     String kafkaUrl = "blah";
     DefaultPubSubMessage cr1 = new ImmutablePubSubMessage(key, value, pubSubTopicPartition1, mockPosition, 0, 0);
     DefaultPubSubMessage cr2 = new ImmutablePubSubMessage(key, value, pubSubTopicPartition2, mockPosition, 0, 0);
-    Exception e = new VeniceChecksumException("test_exception");
+    Exception e = new VeniceChecksumException("test_exception", partition1);
     doThrow(e).when(mockTask).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
 
     bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0L);
@@ -374,5 +376,46 @@ public class StoreBufferServiceTest {
     doReturn(true).when(mockTask).isHybridMode();
     bufferService.putConsumerRecord(cr4, mockTask, null, partition1, kafkaUrl, 0);
     verify(unsortedSBS).putConsumerRecord(cr4, mockTask, null, partition1, kafkaUrl, 0);
+  }
+
+  /**
+   * If the previous drainer message's future is completed exceptionally, updateAndSyncOffsetFromSnapshot() isn't called
+   */
+  @Test
+  public void testExecSyncOffsetFromSnapshotAsync() throws Exception {
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, false, mockedStats, null);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    PartitionTracker mockSnapshot = mock(PartitionTracker.class); // VT DIV Snapshot
+
+    int partition = 1;
+    String topic = Utils.getUniqueString("test_topic") + "_v1";
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
+
+    // Mock PartitionConsumptionState with a CompletableFuture
+    CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+    when(mockTask.getPartitionConsumptionState(partition)).thenReturn(null);
+    bufferService.start();
+
+    // Case 1: PCS is null -> updateAndSyncOffsetFromSnapshot() should be called
+    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
+    verify(mockTask, timeout(TIMEOUT_IN_MS).times(1)).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
+
+    // Case 2: Future is null
+    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
+    verify(mockTask, timeout(TIMEOUT_IN_MS).times(2)).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
+
+    // Case 3: Future is completed -> updateAndSyncOffsetFromSnapshot() is safe to be called
+    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, future, mockTask);
+    verify(mockTask, timeout(TIMEOUT_IN_MS).times(3)).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
+
+    // Case 4: Previous message's future is completed exceptionally -> updateAndSyncOffsetFromSnapshot() not be called
+    clearInvocations(mockTask);
+    CompletableFuture<Void> failedFuture = new CompletableFuture<>();
+    failedFuture.completeExceptionally(new RuntimeException("Test exception"));
+    bufferService.execSyncOffsetFromSnapshotAsync(topicPartition, mockSnapshot, failedFuture, mockTask);
+    verify(mockTask, never()).updateAndSyncOffsetFromSnapshot(mockSnapshot, topicPartition);
+
+    bufferService.stop();
   }
 }

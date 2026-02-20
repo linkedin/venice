@@ -16,8 +16,10 @@ import static org.mockito.Mockito.when;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.StuckConsumerRepairStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -28,6 +30,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext.PubSubPropertiesSupplier;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -99,18 +102,25 @@ public class AggKafkaConsumerServiceTest {
     when(metricsRepository.sensor(anyString(), any())).thenReturn(dummySensor);
     PubSubConsumerAdapter adapter = mock(PubSubConsumerAdapter.class);
     when(consumerFactory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(adapter);
+
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    when(mockPubSubClientsFactory.getConsumerAdapterFactory()).thenReturn(consumerFactory);
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    when(mockPubSubContext.getPubSubMessageDeserializer()).thenReturn(pubSubDeserializer);
+    when(mockPubSubContext.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
+
     aggKafkaConsumerService = new AggKafkaConsumerService(
-        consumerFactory,
         pubSubPropertiesSupplier,
         serverConfig,
         ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         staleTopicChecker,
-        pubSubDeserializer,
         killIngestionTaskRunnable,
         t -> false,
-        metadataRepository);
+        metadataRepository,
+        mockPubSubContext);
   }
 
   // test subscribeConsumerFor
@@ -130,14 +140,15 @@ public class AggKafkaConsumerServiceTest {
     PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
         topic,
         topicPartition,
-        PartitionReplicaIngestionContext.VersionRole.CURRENT,
+        VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     StorePartitionDataReceiver dataReceiver =
         (StorePartitionDataReceiver) aggKafkaConsumerServiceSpy.subscribeConsumerFor(
             PUBSUB_URL,
             storeIngestionTask,
             partitionReplicaIngestionContext,
-            PubSubSymbolicPosition.EARLIEST);
+            PubSubSymbolicPosition.EARLIEST,
+            false);
 
     // regular pubsub url uses the default cluster id
     Assert.assertEquals(dataReceiver.getKafkaClusterId(), 0);
@@ -147,7 +158,8 @@ public class AggKafkaConsumerServiceTest {
         PUBSUB_URL_SEP,
         storeIngestionTask,
         partitionReplicaIngestionContext,
-        PubSubSymbolicPosition.EARLIEST);
+        PubSubSymbolicPosition.EARLIEST,
+        false);
     // pubsub url for sep topic uses a different cluster id
     Assert.assertEquals(dataReceiver.getKafkaClusterId(), 1);
 
@@ -268,12 +280,29 @@ public class AggKafkaConsumerServiceTest {
 
     Map<PubSubTopicPartition, Long> staleTopicPartitions = new HashMap<>();
     PubSubTopicPartition mockStaleTopicPartition = mock(PubSubTopicPartition.class);
-    String staleTopicName = "noPollTopicName";
+    PubSubTopic mockPubSubTopic = mock(PubSubTopic.class);
+    String staleTopicName = "noPollTopicName_v1";
+    int partitionNumber = 5;
     when(mockStaleTopicPartition.getTopicName()).thenReturn(staleTopicName);
-    when(mockStaleTopicPartition.getPartitionNumber()).thenReturn(0);
+    when(mockStaleTopicPartition.getPartitionNumber()).thenReturn(partitionNumber);
+    when(mockStaleTopicPartition.getPubSubTopic()).thenReturn(mockPubSubTopic);
+    when(mockPubSubTopic.getName()).thenReturn(staleTopicName);
+    when(mockPubSubTopic.toString()).thenReturn(staleTopicName);
     staleTopicPartitions.put(mockStaleTopicPartition, 0L);
     long expectedStaleTimeMs = 20000L;
     when(goodConsumerService.getStaleTopicPartitions(expectedStaleTimeMs - 10000L)).thenReturn(staleTopicPartitions);
+
+    // Mock consumer and ingestion info for consumer name
+    SharedKafkaConsumer mockConsumer = mock(SharedKafkaConsumer.class);
+    when(goodConsumerService.getConsumerAssignedToVersionTopicPartition(mockPubSubTopic, mockStaleTopicPartition))
+        .thenReturn(mockConsumer);
+    String expectedConsumerName = "test-consumer-0";
+    TopicPartitionIngestionInfo mockIngestionInfo =
+        new TopicPartitionIngestionInfo(1000L, 50L, 10.5, 1024.0, expectedConsumerName, 100L, 200L, staleTopicName);
+    Map<PubSubTopicPartition, TopicPartitionIngestionInfo> mockIngestionInfoMap = new HashMap<>();
+    mockIngestionInfoMap.put(mockStaleTopicPartition, mockIngestionInfo);
+    when(goodConsumerService.getIngestionInfoFor(mockPubSubTopic, mockStaleTopicPartition, true))
+        .thenReturn(mockIngestionInfoMap);
 
     Consumer<String> killIngestionTaskRunnable = mock(Consumer.class);
     Runnable repairRunnable = getDetectAndRepairRunnable(
@@ -293,9 +322,24 @@ public class AggKafkaConsumerServiceTest {
     ArgumentCaptor<String> logStringCaptor = ArgumentCaptor.forClass(String.class);
     verify(logger).warn(logStringCaptor.capture());
     String logMessage = logStringCaptor.getValue();
-    Assert.assertTrue(logMessage.contains("Consumer poll tracker found stale topic partitions"));
-    Assert.assertTrue(logMessage.contains(staleTopicName));
-    Assert.assertTrue(logMessage.contains("stale for: " + expectedStaleTimeMs));
+    Assert.assertTrue(
+        logMessage.contains("Consumer poll tracker found stale topic partitions"),
+        "Log should contain warning message prefix");
+    // Verify replica ID format (topicName-partitionNumber)
+    String expectedReplicaId = staleTopicName + "-" + partitionNumber;
+    Assert.assertTrue(
+        logMessage.contains("replica: " + expectedReplicaId),
+        "Log should contain replica ID: " + expectedReplicaId);
+    // Verify consumer name is present
+    Assert.assertTrue(
+        logMessage.contains("consumer: " + expectedConsumerName),
+        "Log should contain consumer name: " + expectedConsumerName);
+    // Verify stale duration
+    Assert.assertTrue(
+        logMessage.contains("stale for: " + expectedStaleTimeMs + "ms"),
+        "Log should contain stale duration");
+    // Verify comma separator is used
+    Assert.assertTrue(logMessage.contains(", replica:"), "Log should use comma separator");
   }
 
   private Runnable getDetectAndRepairRunnable(
@@ -356,7 +400,7 @@ public class AggKafkaConsumerServiceTest {
         new TopicPartitionIngestionInfo(1000L, 50L, 10.5, 1024.0, "consumer-1", 100L, 200L, topic.getName());
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> mockIngestionInfoMap = new HashMap<>();
     mockIngestionInfoMap.put(topicPartition, mockIngestionInfo);
-    when(mockConsumerService.getIngestionInfoFor(topic, topicPartition)).thenReturn(mockIngestionInfoMap);
+    when(mockConsumerService.getIngestionInfoFor(topic, topicPartition, true)).thenReturn(mockIngestionInfoMap);
 
     String result = serviceSpy.getIngestionInfoFor(topic, topicPartition, regionName);
 
@@ -367,7 +411,7 @@ public class AggKafkaConsumerServiceTest {
     Assert.assertTrue(result.contains("msgRate:10.5"));
     Assert.assertTrue(result.contains("consumer-1"));
 
-    verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition);
+    verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition, true);
   }
 
   @Test
@@ -420,28 +464,34 @@ public class AggKafkaConsumerServiceTest {
     AbstractKafkaConsumerService mockConsumerService = mock(AbstractKafkaConsumerService.class);
     doReturn(mockConsumerService).when(serviceSpy).getKafkaConsumerService(kafkaUrl);
 
-    when(mockConsumerService.getIngestionInfoFor(topic, topicPartition)).thenReturn(new HashMap<>());
+    when(mockConsumerService.getIngestionInfoFor(topic, topicPartition, true)).thenReturn(new HashMap<>());
 
     String result = serviceSpy.getIngestionInfoFor(topic, topicPartition, regionName);
 
     Assert.assertNotNull(result);
     Assert.assertEquals(result, "");
 
-    verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition);
+    verify(mockConsumerService).getIngestionInfoFor(topic, topicPartition, true);
   }
 
   private AggKafkaConsumerService createTestService() {
+    PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    when(mockPubSubClientsFactory.getConsumerAdapterFactory()).thenReturn(consumerFactory);
+
+    PubSubContext mockPubSubContext = mock(PubSubContext.class);
+    when(mockPubSubContext.getPubSubMessageDeserializer()).thenReturn(pubSubDeserializer);
+    when(mockPubSubContext.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
+
     return new AggKafkaConsumerService(
-        consumerFactory,
         pubSubPropertiesSupplier,
         serverConfig,
         ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         staleTopicChecker,
-        pubSubDeserializer,
         killIngestionTaskRunnable,
         t -> false,
-        metadataRepository);
+        metadataRepository,
+        mockPubSubContext);
   }
 }

@@ -34,6 +34,10 @@ public class SSLEngineFactoryImpl implements SSLEngineFactory {
   public static final String[] CIPHER_SUITE_ALLOWLIST = {
       // Preferred ciphersuites:
       "TLS_RSA_WITH_AES_128_CBC_SHA256", "TLS_RSA_WITH_AES_128_GCM_SHA256",
+      // Newly recommended ciphersuites for TLS 1.3:
+      "TLS_AES_256_GCM_SHA384", "TLS_AES_128_GCM_SHA256",
+      // Newly recommended ciphers for TLS 1.2:
+      "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384", "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
       // For java 1.6 support:
       "TLS_RSA_WITH_AES_128_CBC_SHA",
       // the remaining are for backwards compatibility and shouldn't be used by newer clients
@@ -151,7 +155,8 @@ public class SSLEngineFactoryImpl implements SSLEngineFactory {
     String[] allowedCiphersuites = supportedCiphers.toArray(new String[0]);
 
     if (allowedCiphersuites == null || allowedCiphersuites.length == 0) {
-      throw new SSLProtocolException("No Allowlisted SSL Ciphers Available.");
+      throw new SSLProtocolException(
+          String.format("No Allowlisted SSL Ciphers Available. Provided ciphers: %s", Arrays.toString(ciphersuites)));
     }
 
     return allowedCiphersuites;

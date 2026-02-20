@@ -12,6 +12,7 @@ import static com.linkedin.venice.Arg.BACKUP_STRATEGY;
 import static com.linkedin.venice.Arg.BACKUP_VERSION_RETENTION_DAY;
 import static com.linkedin.venice.Arg.BASE_PATH;
 import static com.linkedin.venice.Arg.BATCH_GET_LIMIT;
+import static com.linkedin.venice.Arg.BLOB_DB_ENABLED;
 import static com.linkedin.venice.Arg.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.Arg.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR;
@@ -48,6 +49,7 @@ import static com.linkedin.venice.Arg.EXTRA_COMMAND_ARGS;
 import static com.linkedin.venice.Arg.FABRIC;
 import static com.linkedin.venice.Arg.FABRIC_A;
 import static com.linkedin.venice.Arg.FABRIC_B;
+import static com.linkedin.venice.Arg.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.Arg.FORCE;
 import static com.linkedin.venice.Arg.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.Arg.GLOBAL_RT_DIV_ENABLED;
@@ -99,7 +101,6 @@ import static com.linkedin.venice.Arg.NEARLINE_PRODUCER_COMPRESSION_ENABLED;
 import static com.linkedin.venice.Arg.NEARLINE_PRODUCER_COUNT_PER_WRITER;
 import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
-import static com.linkedin.venice.Arg.OFFSET;
 import static com.linkedin.venice.Arg.OUTFILE;
 import static com.linkedin.venice.Arg.OWNER;
 import static com.linkedin.venice.Arg.PARENT_DIRECTORY;
@@ -108,6 +109,7 @@ import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
 import static com.linkedin.venice.Arg.PARTITIONER_PARAMS;
 import static com.linkedin.venice.Arg.PARTITION_COUNT;
 import static com.linkedin.venice.Arg.PARTITION_DETAIL_ENABLED;
+import static com.linkedin.venice.Arg.POSITION;
 import static com.linkedin.venice.Arg.PRINCIPAL;
 import static com.linkedin.venice.Arg.PROGRESS_INTERVAL;
 import static com.linkedin.venice.Arg.PUSH_ID;
@@ -146,7 +148,6 @@ import static com.linkedin.venice.Arg.STORES_TO_REPLICATE;
 import static com.linkedin.venice.Arg.STORE_FILTER_FILE;
 import static com.linkedin.venice.Arg.STORE_LIFECYCLE_HOOKS_LIST;
 import static com.linkedin.venice.Arg.STORE_SIZE;
-import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
 import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
 import static com.linkedin.venice.Arg.TARGET_SWAP_REGION;
@@ -159,6 +160,7 @@ import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA_ID;
 import static com.linkedin.venice.Arg.VENICE_CLIENT_SSL_CONFIG_FILE;
+import static com.linkedin.venice.Arg.VENICE_ETL_STRATEGY;
 import static com.linkedin.venice.Arg.VENICE_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.VERSION;
 import static com.linkedin.venice.Arg.VIEW_CLASS;
@@ -196,6 +198,7 @@ public enum Command {
       new Arg[] { INCLUDE_SYSTEM_STORES }
   ), DESCRIBE_STORE("describe-store", "Get store details", new Arg[] { URL, STORE }, new Arg[] { CLUSTER }),
   DESCRIBE_STORES("describe-stores", "", new Arg[] { URL, CLUSTER }, new Arg[] { INCLUDE_SYSTEM_STORES }),
+  DISCOVER_CLUSTER("discover-cluster", "Discover which cluster a store belongs to", new Arg[] { URL, STORE }),
   DISABLE_STORE_WRITE(
       "disable-store-write", "Prevent a store from accepting new versions", new Arg[] { URL, STORE },
       new Arg[] { CLUSTER }
@@ -225,7 +228,7 @@ public enum Command {
   ), KILL_JOB("kill-job", "Kill a running push job", new Arg[] { URL, STORE, VERSION }, new Arg[] { CLUSTER }),
   SKIP_ADMIN_MESSAGE(
       "skip-admin-message", "Skip an admin message", new Arg[] { URL, CLUSTER },
-      new Arg[] { SKIP_DIV, OFFSET, EXECUTION_ID }
+      new Arg[] { SKIP_DIV, POSITION, EXECUTION_ID }
   ),
   NEW_STORE(
       "new-store", "", new Arg[] { URL, CLUSTER, STORE, KEY_SCHEMA, VALUE_SCHEMA }, new Arg[] { OWNER, VSON_STORE }
@@ -316,16 +319,17 @@ public enum Command {
           BATCH_GET_LIMIT, NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED, READ_COMPUTATION_ENABLED,
           BACKUP_STRATEGY, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED,
           BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR, HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED,
-          FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
-          BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
-          ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
-          STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, ENABLE_COMPACTION,
-          COMPACTION_THRESHOLD_MILLISECONDS, MIN_COMPACTION_LAG_SECONDS, MAX_COMPACTION_LAG_SECONDS,
-          MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES, UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED,
-          SEPARATE_REALTIME_TOPIC_ENABLED, NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER,
-          TARGET_SWAP_REGION, TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION,
-          GLOBAL_RT_DIV_ENABLED, ENUM_SCHEMA_EVOLUTION_ALLOWED, STORE_LIFECYCLE_HOOKS_LIST,
-          BLOB_TRANSFER_IN_SERVER_ENABLED, KEY_URN_COMPRESSION_EANBLED, KEY_URN_FIELDS }
+          FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, VENICE_ETL_STRATEGY, NATIVE_REPLICATION_ENABLED,
+          PUSH_STREAM_SOURCE_ADDRESS, BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR,
+          NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS, ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER,
+          DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE, STORAGE_PERSONA, STORE_VIEW_CONFIGS,
+          LATEST_SUPERSET_SCHEMA_ID, ENABLE_COMPACTION, COMPACTION_THRESHOLD_MILLISECONDS, MIN_COMPACTION_LAG_SECONDS,
+          MAX_COMPACTION_LAG_SECONDS, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES,
+          UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED, SEPARATE_REALTIME_TOPIC_ENABLED,
+          NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER, TARGET_SWAP_REGION,
+          TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION, GLOBAL_RT_DIV_ENABLED,
+          ENUM_SCHEMA_EVOLUTION_ALLOWED, STORE_LIFECYCLE_HOOKS_LIST, BLOB_TRANSFER_IN_SERVER_ENABLED,
+          KEY_URN_COMPRESSION_EANBLED, KEY_URN_FIELDS, FLINK_VENICE_VIEWS_ENABLED, BLOB_DB_ENABLED }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -463,16 +467,6 @@ public enum Command {
   REMOVE_FROM_STORE_ACL(
       "remove-from-store-acl", "Remove a principal from ACL's for an existing store",
       new Arg[] { URL, STORE, PRINCIPAL }, new Arg[] { CLUSTER, READABILITY, WRITEABILITY }
-  ),
-  ENABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
-      "enable-active-active-replication-for-cluster",
-      "enable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER }
-  ),
-  DISABLE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(
-      "disable-active-active-replication-for-cluster",
-      "disable active active replication for certain stores (batch-only, hybrid-only, incremental-push, hybrid-or-incremental, all) in a cluster",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }, new Arg[] { REGIONS_FILTER }
   ),
   GET_DELETABLE_STORE_TOPICS(
       "get-deletable-store-topics",

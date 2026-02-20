@@ -231,6 +231,7 @@ public class RecoverStoreMetadata {
           updateParams.setEtledProxyUserAccount(deletedStore.getEtlStoreConfig().getEtledUserProxyAccount());
           updateParams.setRegularVersionETLEnabled(deletedStore.getEtlStoreConfig().isRegularVersionETLEnabled());
           updateParams.setFutureVersionETLEnabled(deletedStore.getEtlStoreConfig().isFutureVersionETLEnabled());
+          updateParams.setETLStrategy(deletedStore.getEtlStoreConfig().getETLStrategy());
         }
         updateParams.setCompressionStrategy(deletedStore.getCompressionStrategy())
             .setClientDecompressionEnabled(deletedStore.getClientDecompressionEnabled())
@@ -262,7 +263,8 @@ public class RecoverStoreMetadata {
             .setTargetRegionSwap(deletedStore.getTargetSwapRegion())
             .setTargetRegionSwapWaitTime(deletedStore.getTargetSwapRegionWaitTime())
             .setIsDavinciHeartbeatReported(deletedStore.getIsDavinciHeartbeatReported())
-            .setGlobalRtDivEnabled(deletedStore.isGlobalRtDivEnabled());
+            .setGlobalRtDivEnabled(deletedStore.isGlobalRtDivEnabled())
+            .setFlinkVeniceViewsEnabled(deletedStore.isFlinkVeniceViewsEnabled());
         System.out.println(
             "Updating store: " + storeName + " in cluster: " + recoverCluster + " with params: "
                 + updateParams.toString());

@@ -363,6 +363,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getRepushCandidateFilterClassNames();
   }
 
+  public Set<String> getRepushCandidateTriggerClassNames() {
+    return getCommonConfig().getRepushCandidateTriggerClassNames();
+  }
+
   public VeniceProperties getRepushOrchestratorConfigs() {
     return getCommonConfig().getRepushOrchestratorConfigs();
   }
@@ -397,5 +401,9 @@ public class VeniceControllerMultiClusterConfig {
 
   public PubSubTopicRepository getPubSubTopicRepository() {
     return pubSubTopicRepository;
+  }
+
+  public int getStoreChangeNotifierThreadPoolSize() {
+    return getCommonConfig().getStoreChangeNotifierThreadPoolSize();
   }
 }

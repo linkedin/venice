@@ -35,7 +35,7 @@ import org.apache.logging.log4j.Logger;
  * This class is a synchronized version of {@link PubSubConsumerAdapter}.
  *
  * In addition to the existing API of {@link PubSubConsumerAdapter}, this class also adds specific functions used by
- * {@link KafkaConsumerService}, notably: {@link #subscribe(PubSubTopic, PubSubTopicPartition, PubSubPosition)} which keeps track of the
+ * {@link KafkaConsumerService}, notably: {@link #subscribe(PubSubTopic, PubSubTopicPartition, PubSubPosition, boolean)} which keeps track of the
  * mapping of which TopicPartition is used by which version-topic.
  *
  * It also provides some callbacks used by the {@link KafkaConsumerService} to react to certain changes, in a way that
@@ -43,9 +43,14 @@ import org.apache.logging.log4j.Logger;
  * TODO: move this logic inside consumption task, this class does not need to be sub-class of {@link PubSubConsumerAdapter}
  */
 class SharedKafkaConsumer implements PubSubConsumerAdapter {
-  // StoreIngestionTask#consumerUnSubscribeForStateTransition() uses an increased max wait (30 mins by default) for
-  // safety
   public static final long DEFAULT_MAX_WAIT_MS = TimeUnit.SECONDS.toMillis(10);
+
+  /**
+   * Increase the max wait during state transitions to ensure that it waits for the messages to finish processing. A
+   * poll() indicates that all previous inflight messages under the previous state were processed, so there can't be a
+   * state mismatch. The consumer_records_producing_to_write_buffer_latency metric suggests how long the wait should be.
+   */
+  public static final long STATE_TRANSITION_MAX_WAIT_MS = TimeUnit.MINUTES.toMillis(30);
 
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);
 
@@ -72,6 +77,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
 
   private final Time time;
 
+  private final String toString;
+
   /**
    * Used to keep track of which version-topic is intended to use a given subscription, in order to detect
    * regressions where we would end up using this consumer to subscribe to a given topic-partition on behalf
@@ -95,8 +102,10 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       PubSubConsumerAdapter delegate,
       AggKafkaConsumerServiceStats stats,
       Runnable assignmentChangeListener,
-      UnsubscriptionListener unsubscriptionListener) {
-    this(delegate, stats, assignmentChangeListener, unsubscriptionListener, new SystemTime());
+      UnsubscriptionListener unsubscriptionListener,
+      String regionName,
+      int idx) {
+    this(delegate, stats, assignmentChangeListener, unsubscriptionListener, new SystemTime(), regionName, idx);
   }
 
   SharedKafkaConsumer(
@@ -104,7 +113,9 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       AggKafkaConsumerServiceStats stats,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener,
-      Time time) {
+      Time time,
+      String regionName,
+      int idx) {
     this.delegate = delegate;
     this.stats = stats;
     this.assignmentChangeListener = assignmentChangeListener;
@@ -112,6 +123,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     this.time = time;
     this.currentAssignment = Collections.emptySet();
     this.currentAssignmentSize = new AtomicInteger(0);
+    this.toString = String.format("SharedKafkaConsumer-%s:%s", idx, regionName);
   }
 
   /**
@@ -132,8 +144,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   @UnderDevelopment(value = "This API may not be implemented in all PubSubConsumerAdapter implementations.")
   @Override
   public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition lastReadPubSubPosition) {
-    throw new VeniceException(
-        this.getClass().getSimpleName() + " does not support subscribe without specifying a version-topic.");
+    throw new VeniceException(this + " does not support subscribe without specifying a version-topic.");
   }
 
   @Override
@@ -141,16 +152,16 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       @Nonnull PubSubTopicPartition pubSubTopicPartition,
       @Nonnull PubSubPosition position,
       boolean isInclusive) {
-    throw new VeniceException(
-        this.getClass().getSimpleName() + " does not support subscribe without specifying a version-topic.");
+    throw new VeniceException(this + " does not support subscribe without specifying a version-topic.");
   }
 
   synchronized void subscribe(
       PubSubTopic versionTopic,
       PubSubTopicPartition topicPartitionToSubscribe,
-      PubSubPosition lastReadPosition) {
+      PubSubPosition lastReadPosition,
+      boolean inclusive) {
     long delegateSubscribeStartTime = System.currentTimeMillis();
-    this.delegate.subscribe(topicPartitionToSubscribe, lastReadPosition);
+    this.delegate.subscribe(topicPartitionToSubscribe, lastReadPosition, inclusive);
     PubSubTopic previousVersionTopic =
         subscribedTopicPartitionToVersionTopic.put(topicPartitionToSubscribe, versionTopic);
     if (previousVersionTopic != null && !previousVersionTopic.equals(versionTopic)) {
@@ -209,7 +220,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     long elapsedTime = System.currentTimeMillis() - startTime;
     LOGGER.info(
         "Shared consumer {} unsubscribed {} partition(s): ({}) in {} ms",
-        this.getClass().getSimpleName(),
+        this,
         topicPartitions.size(),
         topicPartitions,
         elapsedTime);
@@ -418,5 +429,10 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       int positionTypeId,
       ByteBuffer buffer) {
     return delegate.decodePosition(partition, positionTypeId, buffer);
+  }
+
+  @Override
+  public String toString() {
+    return toString;
   }
 }

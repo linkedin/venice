@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferStatus;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -11,22 +12,30 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.File;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -44,6 +53,14 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private final Map<String, AtomicReference<StorageEngine>> topicStorageEngineReferenceMap =
       new VeniceConcurrentHashMap<>();
   private final BlobTransferManager blobTransferManager;
+  private final boolean isIsolatedIngestion;
+
+  // Per-replica locks to ensure mutual exclusion between blob transfer triggerred consumption start and cancel
+  // operations
+  private final Map<String, Lock> consumptionLocks = new VeniceConcurrentHashMap<>();
+
+  // Per-replica consumption state tracking for coordinating start/stop/drop lifecycle
+  private final Map<String, ReplicaConsumptionContext> replicaContexts = new VeniceConcurrentHashMap<>();
 
   public DefaultIngestionBackend(
       StorageMetadataService storageMetadataService,
@@ -56,16 +73,44 @@ public class DefaultIngestionBackend implements IngestionBackend {
     this.storageService = storageService;
     this.blobTransferManager = blobTransferManager;
     this.serverConfig = serverConfig;
+    this.isIsolatedIngestion = serverConfig != null && IngestionMode.ISOLATED.equals(serverConfig.getIngestionMode());
   }
 
   @Override
-  public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+  public void startConsumption(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      Optional<PubSubPosition> pubSubPosition) {
     String storeVersion = storeConfig.getStoreVersionName();
-    LOGGER.info("Retrieving storage engine for store {} partition {}", storeVersion, partition);
+    String replicaId = Utils.getReplicaId(storeVersion, partition);
+    LOGGER.info("Retrieving storage engine for replica {}", replicaId);
+
     StoreVersionInfo storeAndVersion =
         Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
     Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
     syncStoreVersionConfig(storeAndVersion.getStore(), storeConfig);
+
+    if (!isIsolatedIngestion) {
+      ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
+
+      if (replicaContext.state == ReplicaIntendedState.RUNNING) {
+        LOGGER.info("startConsumption called for replica {} but it is already RUNNING. Ignoring duplicate.", replicaId);
+        return;
+      }
+
+      if (replicaContext.state == ReplicaIntendedState.STOPPED) {
+        LOGGER.info(
+            "startConsumption: Waiting for blob transfer and PubSub consumption to stop for replica {}.",
+            replicaId);
+        // TODO: Refactor the ingestion service to take in blob ingestion/transfer, pubsub ingestion logic.
+        int stopConsumptionTimeout = serverConfig.getStopConsumptionTimeoutInSeconds();
+        stopBlobTransferAndWait(storeConfig, partition, stopConsumptionTimeout);
+        getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, stopConsumptionTimeout, false);
+      }
+
+      replicaContext.state = ReplicaIntendedState.RUNNING;
+      LOGGER.info("Replica {} state set to RUNNING.", replicaId);
+    }
 
     Runnable runnable = () -> {
       StorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
@@ -75,15 +120,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
         }
         return storageEngineAtomicReference;
       });
-      LOGGER.info(
-          "Retrieved storage engine for store {} partition {}. Starting consumption in ingestion service",
-          storeVersion,
-          partition);
-      getStoreIngestionService().startConsumption(storeConfig, partition);
-      LOGGER.info(
-          "Completed starting consumption in ingestion service for store {} partition {}",
-          storeVersion,
-          partition);
+      LOGGER.info("Retrieved storage engine for replica {}. Starting consumption in ingestion service", replicaId);
+      getStoreIngestionService().startConsumption(storeConfig, partition, pubSubPosition);
+      LOGGER.info("Completed starting consumption in ingestion service for replica {}", replicaId);
     };
 
     boolean blobTransferActiveInReceiver = shouldEnableBlobTransfer(storeAndVersion.getStore());
@@ -91,22 +130,46 @@ public class DefaultIngestionBackend implements IngestionBackend {
     if (!blobTransferActiveInReceiver || blobTransferManager == null) {
       runnable.run();
     } else {
+      // Status: null -> TRANSFER_NOT_STARTED
+      blobTransferManager.getTransferStatusTrackingManager().initialTransfer(replicaId);
+
       BlobTransferTableFormat requestTableFormat =
           serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
               ? BlobTransferTableFormat.PLAIN_TABLE
               : BlobTransferTableFormat.BLOCK_BASED_TABLE;
 
+      // Status: TRANSFER_NOT_STARTED -> TRANSFER_STARTED
       CompletionStage<Void> bootstrapFuture = bootstrapFromBlobs(
           storeAndVersion.getStore(),
           storeAndVersion.getVersion().getNumber(),
           partition,
           requestTableFormat,
           serverConfig.getBlobTransferDisabledOffsetLagThreshold(),
+          serverConfig.getBlobTransferDisabledTimeLagThresholdInMinutes(),
           storeConfig,
           svsSupplier);
 
+      // Status: (normal case) TRANSFER_STARTED -> TRANSFER_COMPLETED
+      // Status: (cancel in half) TRANSFER_STARTED -> TRANSFER_CANCEL_REQUESTED -> TRANSFER_CANCELLED
       bootstrapFuture.whenComplete((result, throwable) -> {
-        runnable.run();
+        Lock consumptionLock = consumptionLocks.computeIfAbsent(replicaId, k -> new ReentrantLock());
+        consumptionLock.lock();
+        try {
+          // Check if cancellation is in progress or completed
+          if (blobTransferManager.getTransferStatusTrackingManager().isBlobTransferCancelRequested(replicaId)) {
+            LOGGER.info(
+                "Blob transfer cancellation was requested for replica {}. Discarding bootstrap result and skipping consumption startup.",
+                replicaId);
+            blobTransferManager.getTransferStatusTrackingManager().markTransferCancelled(replicaId);
+            return;
+          }
+
+          blobTransferManager.getTransferStatusTrackingManager().markTransferCompleted(replicaId);
+          runnable.run();
+        } finally {
+          consumptionLock.unlock();
+          LOGGER.info("Released consumption lock for replica {} after transfer completion check.", replicaId);
+        }
       });
     }
   }
@@ -123,8 +186,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
    * If the blob transfer succeeds:
    * When falling back to Kafka ingestion, it will resume from the last offset instead of starting from the beginning.
    *
-   * Regardless of whether the blob transfer succeeds or fails,
-   * this method always returns a completed future, All exceptions are handled either by cleaning up the folder or dropping the partition.
+   * If the blob transfer is cancelled (e.g., due to partition drop):
+   * VeniceBlobTransferCancelledException is propagated to the caller to signal that consumption should not start.
+   *
+   * Exception handling:
+   * - VeniceBlobTransferCancelledException: Propagated to caller (cancellation)
+   * - All other exceptions: Swallowed and returns completed future with null (falls back to Kafka)
    */
   CompletionStage<Void> bootstrapFromBlobs(
       Store store,
@@ -132,22 +199,28 @@ public class DefaultIngestionBackend implements IngestionBackend {
       int partitionId,
       BlobTransferTableFormat tableFormat,
       long blobTransferDisabledOffsetLagThreshold,
+      int blobTransferDisabledTimeLagThresholdInMinutes,
       VeniceStoreVersionConfig storeConfig,
       Supplier<StoreVersionState> svsSupplier) {
     String storeName = store.getName();
     String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
+    String replicaId = Utils.getReplicaId(kafkaTopic, partitionId);
 
     // Open store for lag check and later metadata update for offset/StoreVersionState
     // If the offset lag is below the blobTransferDisabledOffsetLagThreshold, it indicates there is not lagging and
     // can bootstrap from Kafka.
     storageService.openStore(storeConfig, svsSupplier);
-    if (!isOffsetLagged(
+    if (!isReplicaLaggedAndNeedBlobTransfer(
         store.getName(),
         versionNumber,
         partitionId,
         blobTransferDisabledOffsetLagThreshold,
+        blobTransferDisabledTimeLagThresholdInMinutes,
         store.isHybrid())) {
+      LOGGER.info("Replica: {} is not lagged, will consume from PubSub directly", replicaId);
       return CompletableFuture.completedFuture(null);
+    } else {
+      LOGGER.info("Replica: {} is lagged, will try to bootstrap via blob transfer", replicaId);
     }
 
     // After decide to bootstrap from blobs transfer, close the partition, clean up the offset and partition folder,
@@ -167,18 +240,14 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {
-          updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);
+          updateBlobTransferResponseStats(throwable, storeName, versionNumber);
           if (throwable != null) {
             LOGGER.error(
-                "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}, falling back to kafka ingestion.",
-                partitionId,
-                storeName,
+                "Failed to bootstrap replica {} via blob transfer due to exception {}; will start Kafka ingestion unless cancelled.",
+                replicaId,
                 throwable);
           } else {
-            LOGGER.info(
-                "Successfully bootstrapped partition {} from blobs transfer for store {}",
-                partitionId,
-                storeName);
+            LOGGER.info("Successfully bootstrapped replica {} from blobs transfer.", replicaId);
           }
 
           // Post-transfer validation and cleanup
@@ -298,14 +367,16 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   /**
-   * A helper method to help decide if skip blob transfer and use kafka ingestion directly when there are some files already restore.
-   *
+   * A helper method to help decide if skip blob transfer and use PubSub ingestion directly by comparing ingestion
+   * state and lag threshold.
+   * 1. If `blobTransferDisabledOffsetLagThreshold` is negative, the offset lag check is skipped, and blob transfer
+   * always runs. (This is because retained data may not be cleaned up unless a new host is added, making it difficult
+   * to validate this feature. This is legacy field and will be retired once `blobTransferDisabledTimeLagThresholdInMinutes`
+   * is fully enabled).
    * 1. If the store is a batch store, check if the end of push is received
-   * 2. If the store is a hybrid store, check the offset lag within the allowed threshold.
-   *
-   * Note: If `blobTransferDisabledOffsetLagThreshold` is negative, the offset lag check is skipped, and blob transfer always runs.
-   * This is because retained data may not be cleaned up unless a new host is added, making it difficult to validate this feature.
-   * This 'blobTransferDisabledOffsetLagThreshold' config ensures blob transfer always runs in such cases.
+   * 2. If the store is a hybrid store, check the offset lag within the allowed threshold:
+   *   - (1) If `blobTransferDisabledTimeLagThresholdInMinutes` is positive, check time lag against the persisted timestamp.
+   *   - (2) Otherwise, fall back to check persisted offset lag with `blobTransferDisabledTimeLagThresholdInMinutes`.
    *
    * @param store the store name
    * @param versionNumber the version number
@@ -314,29 +385,33 @@ public class DefaultIngestionBackend implements IngestionBackend {
    *        This value is controlled by config BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, and default is 100000L.
    *        If the offset lag is within this threshold, bootstrapping from Kafka is allowed, even if blob transfer is enabled.
    *        If the lag exceeds this threshold, bootstrapping should happen from blobs transfer firstly.
+   * @param blobTransferDisabledTimeLagThresholdInMinutes the maximum allowed time lag threshold.
    * @param hybridStore whether the store is a hybrid store or not.
    *                    If it is a hybrid store, then check via the offset.
    *                    If it is a batch store, check if the batch push is done or not.
    * @return true if the store is lagged and needs to bootstrap from blob transfer, else false then bootstrap from Kafka.
    */
-  public boolean isOffsetLagged(
+  public boolean isReplicaLaggedAndNeedBlobTransfer(
       String store,
       int versionNumber,
       int partition,
       long blobTransferDisabledOffsetLagThreshold,
+      int blobTransferDisabledTimeLagThresholdInMinutes,
       boolean hybridStore) {
     String topicName = Version.composeKafkaTopic(store, versionNumber);
     OffsetRecord offsetRecord =
-        storageMetadataService.getLastOffset(topicName, partition, storeIngestionService.getPubSubContext());
-
+        getStorageMetadataService().getLastOffset(topicName, partition, getStoreIngestionService().getPubSubContext());
     if (offsetRecord == null) {
+      LOGGER.warn("Offset record not found for: {}", Utils.getReplicaId(topicName, partition));
       return true;
     }
-
+    /**
+     * Legacy way of using offset threshold to determine if a replica is lagged and need blob transfer.
+     * We should remove this once the time-lag based threshold check is fully rolled out.
+     */
     if (blobTransferDisabledOffsetLagThreshold < 0) {
       return true;
     }
-
     if (!hybridStore) {
       if (offsetRecord.isEndOfPushReceived()) {
         LOGGER.info(
@@ -344,23 +419,37 @@ public class DefaultIngestionBackend implements IngestionBackend {
             Utils.getReplicaId(topicName, partition));
         return false;
       }
-    } else {
-      if (offsetRecord.getOffsetLag() == 0
-          && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
-        LOGGER.info(
-            "Offset lag is 0 and topic offset is EARLIEST for replica {}.",
-            Utils.getReplicaId(topicName, partition));
-        return true;
-      }
+      return true;
+    }
+    /**
+     * If the time-lag threshold is active, it will refer to the number to make decision. Otherwise fallback to offset
+     * base lag check.
+     */
+    if (blobTransferDisabledTimeLagThresholdInMinutes > 0) {
+      LOGGER.info(
+          "Checking time lag for hybrid store replica {} with heartbeat timestamp lag {} ms and offset HB timestamp {}.",
+          Utils.getReplicaId(topicName, partition),
+          LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp()),
+          offsetRecord.getHeartbeatTimestamp());
+      return LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp()) > TimeUnit.MINUTES
+          .toMillis(blobTransferDisabledTimeLagThresholdInMinutes);
+    }
 
-      if (offsetRecord.getOffsetLag() < blobTransferDisabledOffsetLagThreshold) {
-        LOGGER.info(
-            "Offset lag {} for hybrid store replica {} is within the allowed lag threshold {}. Bootstrapping from Kafka.",
-            offsetRecord.getOffsetLag(),
-            Utils.getReplicaId(topicName, partition),
-            blobTransferDisabledOffsetLagThreshold);
-        return false;
-      }
+    if (offsetRecord.getOffsetLag() == 0
+        && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
+      LOGGER.info(
+          "Offset lag is 0 and topic offset is EARLIEST for replica {}.",
+          Utils.getReplicaId(topicName, partition));
+      return true;
+    }
+
+    if (offsetRecord.getOffsetLag() < blobTransferDisabledOffsetLagThreshold) {
+      LOGGER.info(
+          "Offset lag {} for hybrid store replica {} is within the allowed lag threshold {}. Bootstrapping from Kafka.",
+          offsetRecord.getOffsetLag(),
+          Utils.getReplicaId(topicName, partition),
+          blobTransferDisabledOffsetLagThreshold);
+      return false;
     }
 
     LOGGER.info(
@@ -372,7 +461,60 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
   @Override
   public CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+    if (!isIsolatedIngestion) {
+      String storeVersion = storeConfig.getStoreVersionName();
+      String replicaId = Utils.getReplicaId(storeVersion, partition);
+      ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
+
+      if (replicaContext.state != ReplicaIntendedState.RUNNING) {
+        LOGGER.info(
+            "stopConsumption called for replica {} but state is {} (not RUNNING). Skipping.",
+            replicaId,
+            replicaContext.state);
+        return CompletableFuture.completedFuture(null);
+      }
+      replicaContext.state = ReplicaIntendedState.STOPPED;
+      LOGGER.info("Replica {} state set to STOPPED.", replicaId);
+    }
+
+    cancelBlobTransferIfInProgressInternal(storeConfig, partition);
     return getStoreIngestionService().stopConsumption(storeConfig, partition);
+  }
+
+  private void cancelBlobTransferIfInProgressInternal(VeniceStoreVersionConfig storeConfig, int partition) {
+    if (blobTransferManager == null) {
+      return;
+    }
+
+    String storeVersion = storeConfig.getStoreVersionName();
+    String replicaId = Utils.getReplicaId(storeVersion, partition);
+
+    try {
+      StoreVersionInfo storeAndVersion =
+          Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
+      Store store = storeAndVersion.getStore();
+
+      boolean blobTransferActiveInReceiver = shouldEnableBlobTransfer(store);
+
+      if (!blobTransferActiveInReceiver) {
+        return;
+      }
+
+      Lock consumptionLock = consumptionLocks.computeIfAbsent(replicaId, k -> new ReentrantLock());
+      consumptionLock.lock();
+
+      try {
+        blobTransferManager.getTransferStatusTrackingManager().cancelTransfer(replicaId);
+      } finally {
+        consumptionLock.unlock();
+        LOGGER.info("Released consumption lock for replica {} after initiating cancellation", replicaId);
+      }
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Exception while canceling blob transfer for replica {} during OFFLINE transition. Proceeding with state transition.",
+          replicaId,
+          e);
+    }
   }
 
   @Override
@@ -396,11 +538,91 @@ public class DefaultIngestionBackend implements IngestionBackend {
       int partition,
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
+    String storeVersion = storeConfig.getStoreVersionName();
+    String replicaId = Utils.getReplicaId(storeVersion, partition);
+    if (!isIsolatedIngestion) {
+      LOGGER.info(
+          "dropStoragePartitionGracefully: Replica {} state {} before gracefully dropping",
+          replicaId,
+          getOrCreateReplicaContext(replicaId));
+    }
+
     // Stop consumption of the partition.
     final int waitIntervalInSecond = 1;
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
+    stopBlobTransferAndWait(storeConfig, partition, maxRetry);
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, waitIntervalInSecond, maxRetry, true);
-    return getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
+
+    try {
+      return getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
+    } finally {
+      if (!isIsolatedIngestion) {
+        replicaContexts.remove(replicaId);
+        LOGGER.info("dropStoragePartitionGracefully: Replica {} context removed.", replicaId);
+      }
+    }
+  }
+
+  private void stopBlobTransferAndWait(VeniceStoreVersionConfig storeConfig, int partition, int timeoutInSeconds) {
+    if (blobTransferManager == null) {
+      return;
+    }
+
+    String storeVersion = storeConfig.getStoreVersionName();
+    String replicaId = Utils.getReplicaId(storeVersion, partition);
+
+    if (blobTransferManager.getTransferStatusTrackingManager().isTransferInFinalState(replicaId)) {
+      return;
+    }
+
+    try {
+      // Wait for blob transfer cancellation to complete by checking status transition
+      // Poll until the blob transfer reaches final state (null or TRANSFER_COMPLETED or TRANSFER_CANCELLED)
+      final int waitIntervalInSecond = 1;
+      final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
+
+      BlobTransferStatus initialStatus =
+          blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId);
+
+      BlobTransferStatus previousStatus = initialStatus;
+      int retries = 0;
+      while (!blobTransferManager.getTransferStatusTrackingManager().isTransferInFinalState(replicaId)
+          && retries < maxRetry) {
+        try {
+          Thread.sleep(waitIntervalInSecond * 1000L);
+          retries++;
+          BlobTransferStatus currentStatus =
+              blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId);
+
+          if (currentStatus != previousStatus) {
+            LOGGER.info(
+                "Blob transfer status changed for replica {} (attempt {}/{}): {} -> {}",
+                replicaId,
+                retries,
+                maxRetry,
+                previousStatus,
+                currentStatus);
+            previousStatus = currentStatus;
+          }
+        } catch (InterruptedException e) {
+          LOGGER.warn("Interrupted while waiting for blob transfer to complete for replica {}", replicaId, e);
+          Thread.currentThread().interrupt();
+          break;
+        }
+      }
+
+      BlobTransferStatus finalStatus =
+          blobTransferManager.getTransferStatusTrackingManager().getTransferStatus(replicaId);
+      LOGGER.info(
+          "Blob transfer wait completed for replica {} after {} attempts. Status transition: {} -> {}, proceeding with partition drop",
+          replicaId,
+          retries,
+          initialStatus,
+          finalStatus);
+    } finally {
+      blobTransferManager.getTransferStatusTrackingManager().clearTransferStatusEnum(replicaId);
+      consumptionLocks.remove(replicaId);
+    }
   }
 
   @Override
@@ -432,6 +654,24 @@ public class DefaultIngestionBackend implements IngestionBackend {
     // Do nothing here, since this is only a wrapper class.
   }
 
+  StorageMetadataService getStorageMetadataService() {
+    return storageMetadataService;
+  }
+
+  private ReplicaConsumptionContext getOrCreateReplicaContext(String replicaId) {
+    return replicaContexts.computeIfAbsent(replicaId, k -> new ReplicaConsumptionContext());
+  }
+
+  // For test assertions
+  ReplicaIntendedState getReplicaIntendedState(String replicaId) {
+    ReplicaConsumptionContext context = replicaContexts.get(replicaId);
+    return context == null ? ReplicaIntendedState.NOT_EXIST : context.state;
+  }
+
+  void removeReplicaConsumptionContext(String replicaId) {
+    replicaContexts.remove(replicaId);
+  }
+
   /**
    * This method is used to sync the store version config with on the store metadata obtained from ZK.
    * VeniceStoreVersionConfig was introduced to allow store-version level configs be configurable via a config file.
@@ -448,9 +688,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
   /**
    * Update the blob transfer response stats based on the blob transfer success.
-   * @param isBlobTransferSuccess true if the blob transfer is successful, false otherwise.
+   * Skip counting if the exception is VenicePeersNotFoundException due to no actual transfer happened.
    */
-  private void updateBlobTransferResponseStats(boolean isBlobTransferSuccess, String storeName, int version) {
+  private void updateBlobTransferResponseStats(Object throwable, String storeName, int version) {
     if (blobTransferManager.getAggVersionedBlobTransferStats() == null) {
       LOGGER.error(
           "Blob transfer stats is not initialized. Skip updating blob transfer response stats for store {} version {}",
@@ -459,12 +699,16 @@ public class DefaultIngestionBackend implements IngestionBackend {
       return;
     }
 
+    if (throwable != null && throwable instanceof VenicePeersNotFoundException) {
+      return;
+    }
+
     try {
       // Record the blob transfer request count.
       blobTransferManager.getAggVersionedBlobTransferStats().recordBlobTransferResponsesCount(storeName, version);
       // Record the blob transfer response based on the blob transfer status.
       blobTransferManager.getAggVersionedBlobTransferStats()
-          .recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, version, isBlobTransferSuccess);
+          .recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, version, throwable == null);
     } catch (Exception e) {
       LOGGER.error("Failed to update blob transfer response stats for store {} version {}", storeName, version, e);
     }
@@ -523,5 +767,18 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
     // case 3: Default case, both are NOT_SPECIFIED or null, feature is disabled
     return false;
+  }
+
+  enum ReplicaIntendedState {
+    /** The replica has never been started on this host, or has been dropped. */
+    NOT_EXIST,
+    /** Consumption is active (blob transfer in progress or Kafka consumer subscribed). */
+    RUNNING,
+    /** A stop has been requested (but not yet dropped). */
+    STOPPED
+  }
+
+  static class ReplicaConsumptionContext {
+    ReplicaIntendedState state = ReplicaIntendedState.NOT_EXIST;
   }
 }

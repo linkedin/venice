@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
@@ -240,85 +242,96 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStop() throws Exception {
-    LOGGER.info("Starting sequential shutdown of VeniceMultiClusterWrapper");
+    LOGGER.info("Starting parallel shutdown of VeniceMultiClusterWrapper");
     long overallStartTime = System.currentTimeMillis();
 
-    // Step 1: Stop controllers in parallel
-    long controllersTime = TimingUtils.timeOperationAndReturnDuration(
-        LOGGER,
-        "Step 1: Shutting down " + controllers.size() + " controllers in parallel",
-        () -> {
-          List<CompletableFuture<Void>> controllerShutdownTasks = new ArrayList<>();
-          int controllerIndex = 0;
-          for (VeniceControllerWrapper controller: controllers.values()) {
-            final int currentIndex = controllerIndex++;
-            CompletableFuture<Void> controllerShutdownTask = CompletableFuture.runAsync(() -> {
-              long controllerStartTime = System.currentTimeMillis();
-              LOGGER.debug("Shutting down controller {}", currentIndex);
-              IOUtils.closeQuietly(controller);
-              long controllerDuration = System.currentTimeMillis() - controllerStartTime;
-              LOGGER.debug("Completed shutdown of controller {} in {} ms", currentIndex, controllerDuration);
-            });
-            controllerShutdownTasks.add(controllerShutdownTask);
-          }
-          CompletableFuture.allOf(controllerShutdownTasks.toArray(new CompletableFuture[0])).join();
-        });
+    // Use a dedicated thread pool to avoid ForkJoinPool starvation from nested parallel shutdowns
+    ExecutorService shutdownExecutor = Executors.newCachedThreadPool();
+    try {
+      // Step 1: Stop controllers and clusters concurrently
+      // Controllers and clusters don't depend on each other during shutdown
+      long controllersAndClustersTime = TimingUtils.timeOperationAndReturnDuration(
+          LOGGER,
+          "Step 1: Shutting down " + controllers.size() + " controllers and " + clusters.size()
+              + " clusters in parallel",
+          () -> {
+            List<CompletableFuture<Void>> shutdownTasks = new ArrayList<>();
+            // Controller shutdown tasks
+            int controllerIndex = 0;
+            for (VeniceControllerWrapper controller: controllers.values()) {
+              final int currentIndex = controllerIndex++;
+              shutdownTasks.add(CompletableFuture.runAsync(() -> {
+                long startTime = System.currentTimeMillis();
+                LOGGER.debug("Shutting down controller {}", currentIndex);
+                IOUtils.closeQuietly(controller);
+                LOGGER.debug(
+                    "Completed shutdown of controller {} in {} ms",
+                    currentIndex,
+                    System.currentTimeMillis() - startTime);
+              }, shutdownExecutor));
+            }
+            // Cluster shutdown tasks
+            int clusterIndex = 0;
+            for (Map.Entry<String, VeniceClusterWrapper> clusterEntry: clusters.entrySet()) {
+              final int currentIndex = clusterIndex++;
+              final String clusterName = clusterEntry.getKey();
+              final VeniceClusterWrapper cluster = clusterEntry.getValue();
+              shutdownTasks.add(CompletableFuture.runAsync(() -> {
+                long startTime = System.currentTimeMillis();
+                LOGGER.debug("Shutting down cluster {} ({})", currentIndex, clusterName);
+                IOUtils.closeQuietly(cluster);
+                LOGGER.debug(
+                    "Completed shutdown of cluster {} ({}) in {} ms",
+                    currentIndex,
+                    clusterName,
+                    System.currentTimeMillis() - startTime);
+              }, shutdownExecutor));
+            }
+            CompletableFuture.allOf(shutdownTasks.toArray(new CompletableFuture[0])).join();
+          });
 
-    // Step 2: Stop clusters in parallel
-    long clustersTime = TimingUtils.timeOperationAndReturnDuration(
-        LOGGER,
-        "Step 2: Shutting down " + clusters.size() + " clusters in parallel",
-        () -> {
-          List<CompletableFuture<Void>> clusterShutdownTasks = new ArrayList<>();
-          int clusterIndex = 0;
-          for (Map.Entry<String, VeniceClusterWrapper> clusterEntry: clusters.entrySet()) {
-            final int currentIndex = clusterIndex++;
-            final String clusterName = clusterEntry.getKey();
-            final VeniceClusterWrapper cluster = clusterEntry.getValue();
-            CompletableFuture<Void> clusterShutdownTask = CompletableFuture.runAsync(() -> {
-              long clusterStartTime = System.currentTimeMillis();
-              LOGGER.debug("Shutting down cluster {} ({})", currentIndex, clusterName);
-              IOUtils.closeQuietly(cluster);
-              long clusterDuration = System.currentTimeMillis() - clusterStartTime;
-              LOGGER
-                  .debug("Completed shutdown of cluster {} ({}) in {} ms", currentIndex, clusterName, clusterDuration);
-            });
-            clusterShutdownTasks.add(clusterShutdownTask);
-          }
-          CompletableFuture.allOf(clusterShutdownTasks.toArray(new CompletableFuture[0])).join();
-        });
+      // Step 2: Stop D2 client and PubSub broker concurrently
+      // PubSub broker depends on ZK during shutdown (Kafka calls ZooKeeperClient.waitUntilConnected),
+      // so ZK must remain alive until PubSub is fully stopped.
+      long d2AndPubSubTime = TimingUtils.timeOperationAndReturnDuration(
+          LOGGER,
+          "Step 2: Shutting down D2 client and PubSub broker in parallel",
+          () -> {
+            List<CompletableFuture<Void>> shutdownTasks = new ArrayList<>();
+            shutdownTasks.add(CompletableFuture.runAsync(() -> {
+              long startTime = System.currentTimeMillis();
+              if (clientConfigD2Client != null) {
+                D2ClientUtils.shutdownClient(clientConfigD2Client);
+              }
+              LOGGER.debug("Completed shutdown of D2 client in {} ms", System.currentTimeMillis() - startTime);
+            }, shutdownExecutor));
+            shutdownTasks.add(CompletableFuture.runAsync(() -> {
+              long startTime = System.currentTimeMillis();
+              IOUtils.closeQuietly(pubSubBrokerWrapper);
+              LOGGER.debug("Completed shutdown of PubSub broker in {} ms", System.currentTimeMillis() - startTime);
+            }, shutdownExecutor));
+            CompletableFuture.allOf(shutdownTasks.toArray(new CompletableFuture[0])).join();
+          });
 
-    // Step 3: Stop D2 client
-    long d2Time = TimingUtils.timeOperationAndReturnDuration(LOGGER, "Step 3: Shutting down D2 client", () -> {
-      if (clientConfigD2Client != null) {
-        D2ClientUtils.shutdownClient(clientConfigD2Client);
-      }
-    });
+      // Step 3: Stop ZooKeeper last (PubSub broker requires ZK during its shutdown)
+      long zkTime = TimingUtils.timeOperationAndReturnDuration(
+          LOGGER,
+          "Step 3: Shutting down ZooKeeper server",
+          () -> IOUtils.closeQuietly(zkServerWrapper));
 
-    // Step 4: Stop PubSub broker
-    long pubSubTime = TimingUtils.timeOperationAndReturnDuration(
-        LOGGER,
-        "Step 4: Shutting down PubSub broker",
-        () -> IOUtils.closeQuietly(pubSubBrokerWrapper));
+      long totalShutdownTime = System.currentTimeMillis() - overallStartTime;
 
-    // Step 5: Stop ZooKeeper last
-    long zkTime = TimingUtils.timeOperationAndReturnDuration(
-        LOGGER,
-        "Step 5: Shutting down ZooKeeper server",
-        () -> IOUtils.closeQuietly(zkServerWrapper));
-
-    long totalShutdownTime = System.currentTimeMillis() - overallStartTime;
-
-    // Log comprehensive timing summary
-    LOGGER.info(
-        "Sequential shutdown timing summary - Total: {} ms, "
-            + "Controllers: {} ms, Clusters: {} ms, D2 client: {} ms, PubSub broker: {} ms, ZooKeeper: {} ms",
-        totalShutdownTime,
-        controllersTime,
-        clustersTime,
-        d2Time,
-        pubSubTime,
-        zkTime);
+      // Log comprehensive timing summary
+      LOGGER.info(
+          "Parallel shutdown timing summary - Total: {} ms, "
+              + "Controllers + Clusters: {} ms, D2 + PubSub: {} ms, ZooKeeper: {} ms",
+          totalShutdownTime,
+          controllersAndClustersTime,
+          d2AndPubSubTime,
+          zkTime);
+    } finally {
+      shutdownExecutor.shutdownNow();
+    }
   }
 
   @Override

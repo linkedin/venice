@@ -103,6 +103,7 @@ import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.utils.ConfigCommonUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -122,7 +123,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -182,7 +182,7 @@ public class AdminConsumptionTaskTest {
     clusterName = Utils.getUniqueString("test-cluster");
     topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
-    executor = Executors.newCachedThreadPool();
+    executor = Executors.newCachedThreadPool(new DaemonThreadFactory("test"));
     inMemoryPubSubBroker = new InMemoryPubSubBroker("local");
     inMemoryPubSubBroker.createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC);
     veniceWriter = getVeniceWriter(inMemoryPubSubBroker);
@@ -551,7 +551,6 @@ public class AdminConsumptionTaskTest {
       Assert.assertEquals(task.getFailingPosition(), InMemoryPubSubPosition.of(1L));
     });
 
-    verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumptionFailedPosition(any());
     verify(mockStats, timeout(100).atLeastOnce()).recordPendingAdminMessagesCount(2D);
     verify(mockStats, timeout(100).atLeastOnce()).recordStoresWithPendingAdminMessagesCount(1D);
     verify(mockStats, timeout(100).atLeastOnce()).recordAdminConsumptionCycleDurationMs(anyDouble());
@@ -578,7 +577,8 @@ public class AdminConsumptionTaskTest {
     executor.submit(task);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       try {
-        task.skipMessageWithOffset(1L); // won't accept skip command until task has failed on this offset.
+        task.skipMessageWithPosition(InMemoryPubSubPosition.of(1L)); // won't accept skip command until task has failed
+                                                                     // on this offset.
       } catch (VeniceException e) {
         return false;
       }
@@ -718,7 +718,7 @@ public class AdminConsumptionTaskTest {
         TIMEOUT,
         TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(task.getFailingPosition(), position3));
-    task.skipMessageWithOffset(3L);
+    task.skipMessageWithPosition(InMemoryPubSubPosition.of(3L));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -955,7 +955,7 @@ public class AdminConsumptionTaskTest {
     doReturn(false).when(admin).hasStore(clusterName, storeName1);
     doReturn(false).when(admin).hasStore(clusterName, storeName2);
     AdminMetadata newMetadata = new AdminMetadata();
-    newMetadata.setOffset(1L);
+    newMetadata.setPubSubPosition(InMemoryPubSubPosition.of(1L));
     newMetadata.setExecutionId(1L);
     adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
 
@@ -1015,9 +1015,8 @@ public class AdminConsumptionTaskTest {
           AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
       final long executionId = i;
       TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName).toLegacyMap();
-        return AdminTopicMetadataAccessor.getOffsets(metaData).getFirst() == executionId
-            && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
+        AdminMetadata metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+        return AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
       });
 
       Assert.assertEquals(
@@ -1055,9 +1054,8 @@ public class AdminConsumptionTaskTest {
           pubSubMessageHeaders);
       final long executionId = i;
       TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName).toLegacyMap();
-        return AdminTopicMetadataAccessor.getOffsets(metaData).getFirst() == executionId
-            && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
+        AdminMetadata metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+        return AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
       });
 
       Assert.assertEquals(
@@ -1106,7 +1104,9 @@ public class AdminConsumptionTaskTest {
     setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
     setStore.storeLifecycleHooks = Collections.emptyList();
     setStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.ENABLED.name();
+    setStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     setStore.keyUrnFields = Collections.emptyList();
+    setStore.blobDbEnabled = "NOT_SPECIFIED";
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;
@@ -1285,7 +1285,7 @@ public class AdminConsumptionTaskTest {
     Assert.assertEquals(getLastExecutionId(clusterName), -1L);
 
     // skip the blocking message
-    task.skipMessageWithOffset(1);
+    task.skipMessageWithPosition(InMemoryPubSubPosition.of(1));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1396,7 +1396,8 @@ public class AdminConsumptionTaskTest {
             false,
             "",
             0,
-            DEFAULT_RT_VERSION_NUMBER);
+            DEFAULT_RT_VERSION_NUMBER,
+            0);
     // isLeaderController() is called once every consumption cycle (1000ms) and for every message processed in
     // AdminExecutionTask.
     // Provide a sufficient number of true -> false -> true to mimic a transfer of leaderShip and resubscribed behavior
@@ -1522,7 +1523,7 @@ public class AdminConsumptionTaskTest {
         TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(task.getFailingPosition(), position));
     // Skip the DIV check, make sure the sequence number is updated and new admin messages can also be processed
-    task.skipMessageDIVWithOffset(((InMemoryPubSubPosition) position).getInternalOffset());
+    task.skipMessageDIVWithPosition(position);
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1615,7 +1616,8 @@ public class AdminConsumptionTaskTest {
             false,
             "",
             0,
-            DEFAULT_RT_VERSION_NUMBER);
+            DEFAULT_RT_VERSION_NUMBER,
+            0);
     Future<PubSubProduceResult> future = veniceWriter.put(
         emptyKeyBytes,
         getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L),
@@ -1776,7 +1778,8 @@ public class AdminConsumptionTaskTest {
           false,
           "dc-0",
           0,
-          DEFAULT_RT_VERSION_NUMBER);
+          DEFAULT_RT_VERSION_NUMBER,
+          0);
     });
 
     task.close();
@@ -1822,7 +1825,8 @@ public class AdminConsumptionTaskTest {
           true,
           "dc-1",
           0,
-          DEFAULT_RT_VERSION_NUMBER);
+          DEFAULT_RT_VERSION_NUMBER,
+          0);
     });
 
     task.close();
@@ -2009,7 +2013,7 @@ public class AdminConsumptionTaskTest {
 
     // Once we skip the failing message , the store should recover
 
-    task.skipMessageWithOffset(1);
+    task.skipMessageWithPosition(InMemoryPubSubPosition.of(1L));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -2070,6 +2074,7 @@ public class AdminConsumptionTaskTest {
         -1,
         1,
         false,
+        0,
         0);
 
     task.close();

@@ -115,7 +115,16 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     String storeName = metadata.getStoreName();
     BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "BatchGet Transport Exception for " + storeName;
     COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "Compute Transport Exception for " + storeName;
-    this.storeDeserializerCache = new AvroStoreDeserializerCache<>(metadata);
+
+    // Use custom value deserializer factory if provided, otherwise use default Avro deserializer
+    Optional<DeserializerFactory<V>> valueDeserializerFactoryOptional = config.getValueDeserializerFactory();
+    if (valueDeserializerFactoryOptional.isPresent()) {
+      DeserializerFactory<V> factory = valueDeserializerFactoryOptional.get();
+      this.storeDeserializerCache =
+          new AvroStoreDeserializerCache<>(metadata::getValueSchema, factory::createDeserializer);
+    } else {
+      this.storeDeserializerCache = new AvroStoreDeserializerCache<>(metadata);
+    }
   }
 
   protected StoreMetadata getStoreMetadata() {
@@ -264,6 +273,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         requestContext.routeRequestMap.put(requestContext.route, routeRequestFuture);
       }
       routeRequestFuture.completeExceptionally(e);
+      valueFuture.completeExceptionally(e);
     }
 
     return valueFuture;
@@ -743,8 +753,14 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     metadata.start();
   }
 
-  protected RecordSerializer getKeySerializer(Schema keySchema) {
-    return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema);
+  protected RecordSerializer<K> getKeySerializer(Schema keySchema) {
+    // Use custom key serializer factory if provided, otherwise use default Avro serializer
+    Optional<SerializerFactory<K>> keySerializerFactoryOptional = config.getKeySerializerFactory();
+    if (keySerializerFactoryOptional.isPresent()) {
+      return keySerializerFactoryOptional.get().createSerializer(keySchema);
+    } else {
+      return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema);
+    }
   }
 
   @Override

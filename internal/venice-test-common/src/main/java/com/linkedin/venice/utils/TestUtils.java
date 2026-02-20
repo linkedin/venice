@@ -166,6 +166,7 @@ public class TestUtils {
       new PubSubContext.Builder().setPubSubTopicRepository(new PubSubTopicRepository())
           .setPubSubPositionDeserializer(PubSubPositionDeserializer.DEFAULT_DESERIALIZER)
           .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
+          .setUseCheckpointedPubSubPositionWithFallback(true)
           .build();
   private static final Logger LOGGER = LogManager.getLogger(TestUtils.class);
 
@@ -812,7 +813,21 @@ public class TestUtils {
       String storeName,
       ControllerClient parentControllerClient,
       List<ControllerClient> controllerClientList) {
-    Assert.assertFalse(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\"").isError());
+    createAndVerifyStoreInAllRegions(
+        storeName,
+        parentControllerClient,
+        controllerClientList,
+        "\"string\"",
+        "\"string\"");
+  }
+
+  public static void createAndVerifyStoreInAllRegions(
+      String storeName,
+      ControllerClient parentControllerClient,
+      List<ControllerClient> controllerClientList,
+      String keySchema,
+      String valueSchema) {
+    Assert.assertFalse(parentControllerClient.createNewStore(storeName, "owner", keySchema, valueSchema).isError());
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       for (ControllerClient client: controllerClientList) {
         Assert.assertFalse(client.getStore(storeName).isError());

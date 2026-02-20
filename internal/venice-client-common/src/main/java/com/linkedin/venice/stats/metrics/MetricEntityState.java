@@ -7,9 +7,12 @@ import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongGauge;
 import io.opentelemetry.api.metrics.LongUpDownCounter;
+import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import io.tehuti.metrics.MeasurableStat;
 import java.util.List;
 import java.util.Map;
+import java.util.function.ObjDoubleConsumer;
+import java.util.function.ObjLongConsumer;
 
 
 /**
@@ -22,6 +25,11 @@ import java.util.Map;
  * classes extending this for more details. <br>
  */
 public abstract class MetricEntityState extends AsyncMetricEntityState {
+  private final boolean isObservableCounter;
+  /** define both long and double consumer to avoid unnecessary conversions **/
+  private final ObjDoubleConsumer<MetricAttributesData> otelDoubleRecordingStrategy;
+  private final ObjLongConsumer<MetricAttributesData> otelLongRecordingStrategy;
+
   public MetricEntityState(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -38,31 +46,123 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
         tehutiMetricStats,
         null,
         null);
+    MetricType metricType = metricEntity.getMetricType();
+    this.isObservableCounter = metricType.isObservableCounterType();
+    this.otelDoubleRecordingStrategy = createOtelDoubleRecordingStrategy(metricType);
+    this.otelLongRecordingStrategy = createOtelLongRecordingStrategy(metricType);
   }
 
   /**
-   * Record otel metrics
+   * Returns an iterable of all MetricAttributesData for observable counter reporting.
+   * Subclasses must implement this to provide iteration over their specific EnumMap structure.
+   * Returns null if metrics are not enabled or no data exists.
    */
-  public void recordOtelMetric(double value, Attributes attributes) {
-    if (otelMetric != null) {
-      MetricType metricType = this.metricEntity.getMetricType();
-      switch (metricType) {
-        case HISTOGRAM:
-        case MIN_MAX_COUNT_SUM_AGGREGATIONS:
-          ((DoubleHistogram) otelMetric).record(value, attributes);
-          break;
-        case COUNTER:
-          ((LongCounter) otelMetric).add((long) value, attributes);
-          break;
-        case UP_DOWN_COUNTER:
-          ((LongUpDownCounter) otelMetric).add((long) value, attributes);
-          break;
-        case GAUGE:
-          ((LongGauge) otelMetric).set((long) value, attributes);
-          break;
-        default:
-          throw new IllegalArgumentException("Unsupported metric type: " + metricType);
+  protected abstract Iterable<MetricAttributesData> getAllMetricAttributesData();
+
+  /**
+   * Registers the Observable Counter with the OTel repository if this metric uses async recording.
+   * Supports both ASYNC_COUNTER_FOR_HIGH_PERF_CASES and ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES.
+   * This must be called by subclasses after their constructor completes and the metricAttributesData map is initialized.
+   */
+  protected final void registerObservableCounterIfNeeded() {
+    if (!isObservableCounter || !emitOpenTelemetryMetrics() || getOtelRepository() == null) {
+      return;
+    }
+    switch (getMetricEntity().getMetricType()) {
+      case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+        setOtelMetric(getOtelRepository().registerObservableLongCounter(getMetricEntity(), this::reportToMeasurement));
+        break;
+      case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
+        setOtelMetric(
+            getOtelRepository().registerObservableLongUpDownCounter(getMetricEntity(), this::reportToMeasurement));
+        break;
+      default:
+        throw new IllegalStateException(
+            "Unexpected metric type for observable counter registration: " + getMetricEntity().getMetricType());
+    }
+  }
+
+  /**
+   * Reports all accumulated values to the OpenTelemetry measurement.
+   * This is the callback invoked by OTel during metric collection.
+   */
+  private void reportToMeasurement(ObservableLongMeasurement measurement) {
+    Iterable<MetricAttributesData> allData = getAllMetricAttributesData();
+    if (allData == null) {
+      return;
+    }
+
+    for (MetricAttributesData holder: allData) {
+      if (holder.hasAdder()) {
+        long value = holder.sumThenReset();
+        // Skip zero values to avoid polluting metrics with stale attribute combinations
+        // (e.g., from deleted stores) rather than trying to clean up all the registered
+        // callbacks which could be complex. For delta-temporality async counters, omitting
+        // a zero report correctly means "no change in this period."
+        if (value != 0) {
+          measurement.record(value, holder.getAttributes());
+        }
       }
+    }
+  }
+
+  /** Returns whether this metric entity state is for an Observable Counter */
+  public final boolean isObservableCounter() {
+    return isObservableCounter;
+  }
+
+  /**
+   * Creates the double recording strategy for histogram types that need double precision.
+   */
+  private ObjDoubleConsumer<MetricAttributesData> createOtelDoubleRecordingStrategy(MetricType metricType) {
+    switch (metricType) {
+      case HISTOGRAM:
+      case MIN_MAX_COUNT_SUM_AGGREGATIONS:
+        return (holder, value) -> ((DoubleHistogram) otelMetric).record(value, holder.getAttributes());
+      default:
+        // For non-histogram types, delegate to long strategy
+        return (holder, value) -> otelLongRecordingStrategy.accept(holder, (long) value);
+    }
+  }
+
+  /**
+   * Creates the long recording strategy for counter/gauge types - avoids unnecessary double conversion.
+   */
+  private ObjLongConsumer<MetricAttributesData> createOtelLongRecordingStrategy(MetricType metricType) {
+    switch (metricType) {
+      case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+      case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
+        return (holder, value) -> holder.add(value);
+      case COUNTER:
+        return (holder, value) -> ((LongCounter) otelMetric).add(value, holder.getAttributes());
+      case UP_DOWN_COUNTER:
+        return (holder, value) -> ((LongUpDownCounter) otelMetric).add(value, holder.getAttributes());
+      case GAUGE:
+        return (holder, value) -> ((LongGauge) otelMetric).set(value, holder.getAttributes());
+      case HISTOGRAM:
+      case MIN_MAX_COUNT_SUM_AGGREGATIONS:
+        // Histograms use double, so convert here (rarely called via long path)
+        return (holder, value) -> ((DoubleHistogram) otelMetric).record((double) value, holder.getAttributes());
+      default:
+        throw new IllegalArgumentException("Unsupported metric type: " + metricType);
+    }
+  }
+
+  /**
+   * Record otel metrics with MetricAttributesData (double version for histograms)
+   */
+  public void recordOtelMetric(double value, MetricAttributesData holder) {
+    if (otelMetric != null) {
+      otelDoubleRecordingStrategy.accept(holder, value);
+    }
+  }
+
+  /**
+   * Record otel metrics with MetricAttributesData (long version)
+   */
+  public void recordOtelMetric(long value, MetricAttributesData holder) {
+    if (otelMetric != null) {
+      otelLongRecordingStrategy.accept(holder, value);
     }
   }
 
@@ -72,12 +172,25 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
     }
   }
 
-  final void record(long value, Attributes attributes) {
-    record(Double.valueOf(value), attributes);
+  final void record(double value, Attributes attributes) {
+    record(value, new MetricAttributesData(attributes));
   }
 
-  final void record(double value, Attributes attributes) {
-    recordOtelMetric(value, attributes);
+  /**
+   * Records a double value using MetricAttributesData.
+   * Use this for histogram metrics that need double precision.
+   */
+  protected final void record(double value, MetricAttributesData holder) {
+    recordOtelMetric(value, holder);
+    recordTehutiMetric(value);
+  }
+
+  /**
+   * Records a long value using MetricAttributesData.
+   * More efficient for counter/gauge metrics - avoids long->double->long conversion.
+   */
+  protected final void record(long value, MetricAttributesData holder) {
+    recordOtelMetric(value, holder);
     recordTehutiMetric(value);
   }
 }

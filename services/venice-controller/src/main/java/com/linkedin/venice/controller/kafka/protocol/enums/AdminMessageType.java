@@ -33,20 +33,33 @@ import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import java.util.HashMap;
 import java.util.Map;
 
 
-public enum AdminMessageType {
+public enum AdminMessageType implements VeniceDimensionInterface {
   STORE_CREATION(0, false), VALUE_SCHEMA_CREATION(1, false), DISABLE_STORE_WRITE(2, false),
   ENABLE_STORE_WRITE(3, false), KILL_OFFLINE_PUSH_JOB(4, false), DISABLE_STORE_READ(5, false),
   ENABLE_STORE_READ(6, false), DELETE_ALL_VERSIONS(7, false), SET_STORE_OWNER(8, false), SET_STORE_PARTITION(9, false),
   SET_STORE_CURRENT_VERSION(10, false), UPDATE_STORE(11, false), DELETE_STORE(12, false), DELETE_OLD_VERSION(13, false),
   MIGRATE_STORE(14, false), ABORT_MIGRATION(15, false), ADD_VERSION(16, false), DERIVED_SCHEMA_CREATION(17, false),
   SUPERSET_SCHEMA_CREATION(18, false), CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER(19, true),
-  REPLICATION_METADATA_SCHEMA_CREATION(20, false), CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(21, true),
+  REPLICATION_METADATA_SCHEMA_CREATION(20, false),
+
   /**
-   * @deprecated We do not support incremental push policy anymore.
+   * Active-active replication is now enabled by default for all new hybrid stores.
+   * Mass configuration of existing stores via admin messages is no longer supported.
+   * @deprecated This admin message type is obsolete. Active-active replication should be configured per-store
+   * during store creation or via individual store update operations.
+   */
+  @Deprecated
+  CONFIGURE_ACTIVE_ACTIVE_REPLICATION_FOR_CLUSTER(21, true),
+
+  /**
+   * Incremental push policy configuration has been removed from Venice.
+   * @deprecated This admin message type is no longer supported and will be ignored if received.
    */
   @Deprecated
   CONFIGURE_INCREMENTAL_PUSH_FOR_CLUSTER(22, true), META_SYSTEM_STORE_AUTO_CREATION_VALIDATION(23, false),
@@ -156,5 +169,10 @@ public enum AdminMessageType {
 
   public boolean isBatchUpdate() {
     return batchUpdate;
+  }
+
+  @Override
+  public VeniceMetricsDimensions getDimensionName() {
+    return VeniceMetricsDimensions.VENICE_ADMIN_MESSAGE_TYPE;
   }
 }

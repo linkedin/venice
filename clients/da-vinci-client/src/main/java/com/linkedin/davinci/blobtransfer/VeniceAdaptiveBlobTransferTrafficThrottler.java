@@ -91,7 +91,7 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
         currentFactor = Math.max(MIN_FACTOR, currentFactor - rateUpdatePercentage);
         updateThrottlerNumber();
         LOGGER.info(
-            "Found limiter signal for {}, adjusting throttler factor to: {} with throttle rate: {}",
+            "Found limiter signal for: {}, adjusting throttler factor to: {} with throttle rate: {}",
             throttlerName,
             currentFactor,
             currentFactor * baseRate / 100);
@@ -112,7 +112,7 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
         currentFactor = Math.min(MAX_FACTOR, currentFactor + rateUpdatePercentage);
         updateThrottlerNumber();
         LOGGER.info(
-            "Found booster signal for {}, adjusting throttler factor to: {} with throttle rate: {}",
+            "Found booster signal for: {}, adjusting throttler factor to: {} with throttle rate: {}",
             throttlerName,
             currentFactor,
             currentFactor * baseRate);
@@ -126,7 +126,8 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
           currentFactor = Math.min(MAX_FACTOR, currentFactor + rateUpdatePercentage);
           updateThrottlerNumber();
           LOGGER.info(
-              "Reach max signal idle count for {}, adjusting throttler factor to: {} with throttle rate: {}",
+              "Reach max signal idle count: {} for: {}, adjusting throttler factor to: {} with throttle rate: {}",
+              signalIdleThreshold,
               throttlerName,
               currentFactor,
               currentFactor * baseRate / 100);

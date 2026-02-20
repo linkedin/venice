@@ -7,6 +7,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_DB_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
@@ -25,6 +26,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
@@ -52,6 +55,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONER_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PREVIOUS_CURRENT_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
@@ -94,6 +98,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
@@ -159,6 +164,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
             .setBlobTransferInServerEnabled(
                 ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobTransferInServerEnabled()))
+            .setBlobDbEnabled(ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobDbEnabled()))
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
@@ -179,7 +185,8 @@ public class UpdateStoreQueryParams extends QueryParams {
                     .stream()
                     .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())))
             .setKeyUrnCompressionEnabled(srcStore.isKeyUrnCompressionEnabled())
-            .setKeyUrnFields(srcStore.getKeyUrnFields());
+            .setKeyUrnFields(srcStore.getKeyUrnFields())
+            .setFlinkVeniceViewsEnabled(srcStore.isFlinkVeniceViewsEnabled());
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
       updateStoreQueryParams.setReplicationMetadataVersionID(srcStore.getReplicationMetadataVersionId());
@@ -197,6 +204,7 @@ public class UpdateStoreQueryParams extends QueryParams {
       updateStoreQueryParams.setEtledProxyUserAccount(etlStoreConfig.getEtledUserProxyAccount());
       updateStoreQueryParams.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
       updateStoreQueryParams.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
+      updateStoreQueryParams.setETLStrategy(etlStoreConfig.getETLStrategy());
     }
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
@@ -539,6 +547,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getStringMap(STORE_VIEW);
   }
 
+  public UpdateStoreQueryParams setFlinkVeniceViewsEnabled(boolean flinkVeniceViewsEnabled) {
+    return putBoolean(FLINK_VENICE_VIEWS_ENABLED, flinkVeniceViewsEnabled);
+  }
+
+  public Optional<Boolean> getFlinkVeniceViewsEnabled() {
+    return getBoolean(FLINK_VENICE_VIEWS_ENABLED);
+  }
+
   public UpdateStoreQueryParams setPushStreamSourceAddress(String pushStreamSourceAddress) {
     return putString(PUSH_STREAM_SOURCE_ADDRESS, pushStreamSourceAddress);
   }
@@ -583,6 +599,15 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<String> getETLedProxyUserAccount() {
     return Optional.ofNullable(params.get(ETLED_PROXY_USER_ACCOUNT));
+  }
+
+  public UpdateStoreQueryParams setETLStrategy(VeniceETLStrategy etlStrategy) {
+    params.put(ETL_STRATEGY, etlStrategy.name());
+    return this;
+  }
+
+  public Optional<VeniceETLStrategy> getETLStrategy() {
+    return Optional.ofNullable(params.get(ETL_STRATEGY)).map(VeniceETLStrategy::valueOf);
   }
 
   public Optional<Boolean> getNativeReplicationEnabled() {
@@ -792,6 +817,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getString(BLOB_TRANSFER_IN_SERVER_ENABLED);
   }
 
+  public UpdateStoreQueryParams setBlobDbEnabled(ConfigCommonUtils.ActivationState blobDbEnabled) {
+    return putString(BLOB_DB_ENABLED, blobDbEnabled.name());
+  }
+
+  public Optional<String> getBlobDbEnabled() {
+    return getString(BLOB_DB_ENABLED);
+  }
+
   public UpdateStoreQueryParams setNearlineProducerCompressionEnabled(boolean compressionEnabled) {
     return putBoolean(NEARLINE_PRODUCER_COMPRESSION_ENABLED, compressionEnabled);
   }
@@ -894,6 +927,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<List<String>> getKeyUrnFields() {
     return getStringList(KEY_URN_FIELDS);
+  }
+
+  public UpdateStoreQueryParams setPreviousCurrentVersion(int previousCurrentVersion) {
+    return putInteger(PREVIOUS_CURRENT_VERSION, previousCurrentVersion);
+  }
+
+  public Optional<Integer> getPreviousCurrentVersion() {
+    return getInteger(PREVIOUS_CURRENT_VERSION);
   }
 
   // ***************** above this line are getters and setters *****************

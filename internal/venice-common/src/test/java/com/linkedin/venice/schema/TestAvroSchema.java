@@ -60,6 +60,7 @@ public class TestAvroSchema {
     ps.endOfPush = false;
     ps.lastUpdate = 0;
     ps.databaseInfo = Collections.emptyMap();
+    ps.trackingIncrementalPushStatus = Collections.emptyMap();
     ps.leaderOffset = 0;
     // Populate a fake map
     Map<String, Long> upstreamOffsetMap = new HashMap<>();

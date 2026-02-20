@@ -10,15 +10,16 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext.PubSubPropertiesSupplier;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SystemTime;
@@ -36,7 +37,9 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -69,9 +72,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
-  private final PubSubMessageDeserializer pubSubDeserializer;
   private final Function<String, String> kafkaClusterUrlResolver;
   private final PubSubPropertiesSupplier pubSubPropertiesSupplier;
+  private final PubSubContext pubSubContext;
 
   private final Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new VeniceConcurrentHashMap<>();
   private ScheduledExecutorService stuckConsumerRepairExecutorService;
@@ -79,6 +82,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final ReadOnlyStoreRepository metadataRepository;
 
   private final StuckConsumerRepairStats stuckConsumerStats;
+  private final ThreadPoolExecutor crossTpProcessingPool;
+  private final ThreadPoolStats crossTpProcessingStats;
 
   private final static String STUCK_CONSUMER_MSG =
       "Didn't find any suspicious ingestion task, and please contact developers to investigate it further";
@@ -90,19 +95,18 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       });
 
   public AggKafkaConsumerService(
-      final PubSubConsumerAdapterFactory consumerFactory,
       final PubSubPropertiesSupplier pubSubPropertiesSupplier,
       final VeniceServerConfig serverConfig,
       final IngestionThrottler ingestionThrottler,
       KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
       StaleTopicChecker staleTopicChecker,
-      final PubSubMessageDeserializer pubSubDeserializer,
       Consumer<String> killIngestionTaskRunnable,
       Function<String, Boolean> isAAOrWCEnabledFunc,
-      ReadOnlyStoreRepository metadataRepository) {
+      ReadOnlyStoreRepository metadataRepository,
+      PubSubContext pubSubContext) {
     this.serverConfig = serverConfig;
-    this.consumerFactory = consumerFactory;
+    this.consumerFactory = pubSubContext.getPubSubClientsFactory().getConsumerAdapterFactory();
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
     this.sharedConsumerNonExistingTopicCleanupDelayMS = serverConfig.getSharedConsumerNonExistingTopicCleanupDelayMS();
     this.ingestionThrottler = ingestionThrottler;
@@ -114,7 +118,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.isKafkaConsumerOffsetCollectionEnabled = serverConfig.isKafkaConsumerOffsetCollectionEnabled();
-    this.pubSubDeserializer = pubSubDeserializer;
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     this.metadataRepository = metadataRepository;
     if (serverConfig.isStuckConsumerRepairEnabled()) {
@@ -144,6 +147,24 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
     this.isAAOrWCEnabledFunc = isAAOrWCEnabledFunc;
     this.pubSubPropertiesSupplier = pubSubPropertiesSupplier;
+    this.pubSubContext = pubSubContext;
+
+    // Create single shared thread pool for cross-TP parallel processing if enabled
+    if (serverConfig.isCrossTpParallelProcessingEnabled()) {
+      int poolSize = serverConfig.getCrossTpParallelProcessingThreadPoolSize();
+      this.crossTpProcessingPool = new ThreadPoolExecutor(
+          poolSize,
+          poolSize,
+          0L,
+          TimeUnit.MILLISECONDS,
+          new LinkedBlockingQueue<>(),
+          new DaemonThreadFactory("cross-tp-parallel-processing", serverConfig.getLogContext()));
+      this.crossTpProcessingStats = new ThreadPoolStats(metricsRepository, crossTpProcessingPool, "CrossTpProcessing");
+      LOGGER.info("Cross-TP parallel processing enabled with shared thread pool size: {}", poolSize);
+    } else {
+      this.crossTpProcessingPool = null;
+      this.crossTpProcessingStats = null;
+    }
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -163,6 +184,19 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
     if (this.stuckConsumerRepairExecutorService != null) {
       this.stuckConsumerRepairExecutorService.shutdownNow();
+    }
+    // Shutdown cross-TP processing pool if it was created
+    if (crossTpProcessingPool != null) {
+      crossTpProcessingPool.shutdown();
+      try {
+        if (!crossTpProcessingPool.awaitTermination(1, TimeUnit.SECONDS)) {
+          crossTpProcessingPool.shutdownNow();
+        }
+        LOGGER.info("crossTpProcessingPool shutdown completed.");
+      } catch (InterruptedException e) {
+        crossTpProcessingPool.shutdownNow();
+        Thread.currentThread().interrupt();
+      }
     }
   }
 
@@ -287,10 +321,26 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         stringBuilder.append(CONSUMER_POLL_WARNING_MESSAGE_PREFIX);
         stringBuilder.append(consumerService.getKey());
         for (Map.Entry<PubSubTopicPartition, Long> staleTopicPartition: staleTopicPartitions.entrySet()) {
-          stringBuilder.append("\n topic: ");
-          stringBuilder.append(staleTopicPartition.getKey().getTopicName());
-          stringBuilder.append(" partition: ");
-          stringBuilder.append(staleTopicPartition.getKey().getPartitionNumber());
+          PubSubTopicPartition topicPartition = staleTopicPartition.getKey();
+          // Get consumer name for this topic partition
+          SharedKafkaConsumer consumer = consumerService.getValue()
+              .getConsumerAssignedToVersionTopicPartition(topicPartition.getPubSubTopic(), topicPartition);
+          String consumerName = "unknown";
+          if (consumer != null) {
+            Map<PubSubTopicPartition, TopicPartitionIngestionInfo> ingestionInfoMap =
+                consumerService.getValue().getIngestionInfoFor(topicPartition.getPubSubTopic(), topicPartition, true);
+            if (!ingestionInfoMap.isEmpty()) {
+              TopicPartitionIngestionInfo info = ingestionInfoMap.get(topicPartition);
+              if (info != null) {
+                consumerName = info.getConsumerIdStr();
+              }
+            }
+          }
+          stringBuilder.append(", replica: ");
+          stringBuilder
+              .append(Utils.getReplicaId(topicPartition.getPubSubTopic(), topicPartition.getPartitionNumber()));
+          stringBuilder.append(" consumer: ");
+          stringBuilder.append(consumerName);
           stringBuilder.append(" stale for: ");
           stringBuilder.append(now - staleTopicPartition.getValue());
           stringBuilder.append("ms");
@@ -332,7 +382,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     String resolvedKafkaUrl = kafkaClusterUrlResolver == null ? kafkaUrl : kafkaClusterUrlResolver.apply(kafkaUrl);
     final AbstractKafkaConsumerService alreadyCreatedConsumerService = getKafkaConsumerService(resolvedKafkaUrl);
     if (alreadyCreatedConsumerService != null) {
-      LOGGER.warn("KafkaConsumerService has already been created for Kafka cluster with URL: {}", resolvedKafkaUrl);
+      LOGGER.info("KafkaConsumerService has already been created for Kafka cluster with URL: {}", resolvedKafkaUrl);
       return alreadyCreatedConsumerService;
     }
 
@@ -342,7 +392,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
             serverConfig,
             (poolSize, poolType) -> sharedConsumerAssignmentStrategy.constructor.construct(
                 poolType,
-                consumerFactory,
                 consumerProperties,
                 readCycleDelayMs,
                 poolSize,
@@ -353,19 +402,41 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 sharedConsumerNonExistingTopicCleanupDelayMS,
                 staleTopicChecker,
                 liveConfigBasedKafkaThrottlingEnabled,
-                pubSubDeserializer,
                 SystemTime.INSTANCE,
                 null,
                 isKafkaConsumerOffsetCollectionEnabled,
                 metadataRepository,
                 serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
-                serverConfig),
+                serverConfig,
+                pubSubContext,
+                getCrossTpProcessingPoolForPoolType(poolType)),
             isAAOrWCEnabledFunc));
 
     if (!consumerService.isRunning()) {
       consumerService.start();
     }
     return consumerService;
+  }
+
+  /**
+   * Returns the cross-TP processing pool for the given pool type based on configuration.
+   * If {@code crossTpParallelProcessingCurrentVersionAAWCLeaderOnly} is true, only
+   * {@code ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL} will receive the pool.
+   * Otherwise, all pool types receive the pool when cross-TP parallel processing is enabled.
+   *
+   * @param poolType the consumer pool type
+   * @return the cross-TP processing pool if applicable, null otherwise
+   */
+  private ThreadPoolExecutor getCrossTpProcessingPoolForPoolType(ConsumerPoolType poolType) {
+    if (crossTpProcessingPool == null) {
+      return null;
+    }
+    if (serverConfig.isCrossTpParallelProcessingCurrentVersionAAWCLeaderOnly()) {
+      // Only enable for CURRENT_VERSION_AA_WC_LEADER_POOL
+      return poolType == ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL ? crossTpProcessingPool : null;
+    }
+    // Enable for all pool types
+    return crossTpProcessingPool;
   }
 
   public boolean hasConsumerAssignedFor(
@@ -432,7 +503,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final String kafkaURL,
       StoreIngestionTask storeIngestionTask,
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
-      PubSubPosition lastOffset) {
+      PubSubPosition lastOffset,
+      boolean inclusive) {
     PubSubTopic versionTopic = storeIngestionTask.getVersionTopic();
     PubSubTopicPartition pubSubTopicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
     AbstractKafkaConsumerService consumerService =
@@ -449,7 +521,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         kafkaClusterUrlToIdMap.getOrDefault(kafkaURL, -1)); // same pubsub url but different id for sep topic
 
     versionTopicStoreIngestionTaskMapping.put(storeIngestionTask.getVersionTopic().getName(), storeIngestionTask);
-    consumerService.startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastOffset, dataReceiver);
+    consumerService
+        .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastOffset, dataReceiver, inclusive);
     TopicManager topicManager = storeIngestionTask.getTopicManager(kafkaURL);
 
     /*
@@ -520,7 +593,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     for (String kafkaUrl: kafkaServerToConsumerServiceMap.keySet()) {
       AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaUrl);
       Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-          consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition);
+          consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition, false);
       for (Map.Entry<PubSubTopicPartition, TopicPartitionIngestionInfo> entry: topicPartitionIngestionInfoMap
           .entrySet()) {
         PubSubTopicPartition topicPartition = entry.getKey();
@@ -545,7 +618,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       return "Kafka consumer service is not found for kafkaUrl: " + kafkaUrl + ", region: " + regionName;
     }
     Map<PubSubTopicPartition, TopicPartitionIngestionInfo> topicPartitionIngestionInfoMap =
-        consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition);
+        consumerService.getIngestionInfoFor(versionTopic, pubSubTopicPartition, true);
     return KafkaConsumerService.convertTopicPartitionIngestionInfoMapToStr(topicPartitionIngestionInfoMap);
   }
 
@@ -556,6 +629,24 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       }
     }
     return null;
+  }
+
+  public static int getKeyLevelLockMaxPoolSizeBasedOnServerConfig(VeniceServerConfig serverConfig, int partitionCount) {
+    int consumerPoolSizeForLeaderConsumption = 0;
+    if (serverConfig.getConsumerPoolStrategyType()
+        .equals(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION)) {
+      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizeForCurrentVersionAAWCLeader()
+          + serverConfig.getConsumerPoolSizeForCurrentVersionSepRTLeader()
+          + serverConfig.getConsumerPoolSizeForNonCurrentVersionAAWCLeader();
+    } else {
+      consumerPoolSizeForLeaderConsumption = serverConfig.getConsumerPoolSizePerKafkaCluster();
+    }
+    int multiplier = 1;
+    if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+      multiplier = serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize();
+    }
+    return Math.min(partitionCount, consumerPoolSizeForLeaderConsumption)
+        * serverConfig.getKafkaClusterIdToUrlMap().size() * multiplier + 1;
   }
 
 }

@@ -7,7 +7,6 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.davinci.validation.PartitionTracker.TopicType.REALTIME_TOPIC_TYPE;
-import static com.linkedin.davinci.validation.PartitionTracker.TopicType.VERSION_TOPIC_TYPE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.UPDATE;
@@ -26,6 +25,7 @@ import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
@@ -43,7 +43,6 @@ import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.davinci.validation.PartitionTracker.TopicType;
 import com.linkedin.venice.annotation.VisibleForTesting;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -81,6 +80,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
@@ -304,7 +304,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
-    if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
+    if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()
+        && !store.isFlinkVeniceViewsEnabled()) {
       viewWriters = builder.getVeniceViewWriterFactory()
           .buildStoreViewWriters(
               store,
@@ -483,6 +484,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               "State transition from STANDBY to LEADER is paused for replica: {} as this store is undergoing migration",
               partitionConsumptionState.getReplicaId());
         } else {
+          // Initialize DoL state and send DoL stamp to local VT
+          initializeAndSendDoLStamp(partitionConsumptionState, checker.getLeadershipTerm());
+
           // Mark this partition in the middle of STANDBY to LEADER transition
           partitionConsumptionState.setLeaderFollowerState(IN_TRANSITION_FROM_STANDBY_TO_LEADER);
           LOGGER.info(
@@ -614,14 +618,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     boolean pushTimeout = false;
     Set<Integer> timeoutPartitions = null;
     long checkStartTimeInNS = System.nanoTime();
-    for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+    for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
       final int partition = partitionConsumptionState.getPartition();
 
       /**
-       * Check whether the push timeout
+       * Check whether the ingestion timeout for bootstrapping replicas.
+       * For future version, it should fail the push job.
+       * For current / backup version re-ingestion, it should report failure to the replica, but should keep other
+       * online replica continue serving and do not close ingestion task.
        */
-      if (!partitionConsumptionState.isComplete() && LatencyUtils.getElapsedTimeFromMsToMs(
-          partitionConsumptionState.getConsumptionStartTimeInMs()) > this.bootstrapTimeoutInMs) {
+      if (!partitionConsumptionState.isComplete() && !partitionConsumptionState.isErrorReported()
+          && LatencyUtils.getElapsedTimeFromMsToMs(
+              partitionConsumptionState.getConsumptionStartTimeInMs()) > getBootstrapTimeoutInMs()) {
         if (!pushTimeout) {
           pushTimeout = true;
           timeoutPartitions = new HashSet<>();
@@ -770,27 +778,41 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           break;
 
         case STANDBY:
-          // no long running task for follower
+          // no long-running task for follower
           break;
       }
     }
-    if (emitMetrics.get()) {
+    if (isMetricsEmissionEnabled()) {
       hostLevelIngestionStats
           .recordCheckLongRunningTasksLatency(LatencyUtils.getElapsedTimeFromNSToMS(checkStartTimeInNS));
     }
 
     if (pushTimeout) {
       // Timeout
-      String errorMsg = "After waiting " + TimeUnit.MILLISECONDS.toHours(this.bootstrapTimeoutInMs)
-          + " hours, resource:" + storeName + " partitions:" + timeoutPartitions + " still can not complete ingestion.";
+      String errorMsg =
+          "After waiting " + TimeUnit.MILLISECONDS.toHours(getBootstrapTimeoutInMs()) + " hours, resource:"
+              + getKafkaVersionTopic() + " partitions:" + timeoutPartitions + " still can not complete ingestion.";
       LOGGER.error(errorMsg);
-      throw new VeniceTimeoutException(errorMsg);
+      VeniceException ex = new VeniceTimeoutException(errorMsg);
+      Store store = getStoreRepository().getStoreOrThrow(getStoreName());
+      int currentVersion = store.getCurrentVersion();
+      if (getVersionNumber() <= currentVersion) {
+        // For current / backup version, a replica's re-bootstrap timeout should not incur whole SIT closure.
+        for (int partition: timeoutPartitions) {
+          reportError(errorMsg, partition, ex);
+        }
+      } else {
+        throw ex;
+      }
     }
 
-    checkWhetherToCloseUnusedVeniceWriter(veniceWriter, veniceWriterForRealTime, partitionConsumptionStateMap, () -> {
-      veniceWriter =
-          Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1));
-    }, getVersionTopic().getName());
+    checkWhetherToCloseUnusedVeniceWriter(
+        getVeniceWriter(),
+        getVeniceWriterForRealTime(),
+        getPartitionConsumptionStateMap(),
+        () -> veniceWriter =
+            Lazy.of(() -> constructVeniceWriter(veniceWriterFactory, getVersionTopic().getName(), version, true, 1)),
+        getVersionTopic().getName());
   }
 
   protected static boolean checkWhetherToCloseUnusedVeniceWriter(
@@ -834,13 +856,192 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   *  TODO: Replace this mechanism with loopback logic.
-   *  The leader replica should append a special message (e.g., Declaration of Leadership with term info)
-   *  at the end of the local version topic (VT), then wait until it consumes the message back from VT.
-   *  Only after this confirmation should it switch to consuming from the real-time (RT) topic.
-   *  This is part of the fast leadership handover project.
+   * Initializes DoL state and sends DoL stamp to local VT during STANDBY to LEADER transition.
+   *
+   * @param partitionConsumptionState the partition consumption state
+   * @param leadershipTerm the leadership term for this transition
    */
+  private void initializeAndSendDoLStamp(PartitionConsumptionState partitionConsumptionState, long leadershipTerm) {
+    if (!shouldUseDolMechanism()) {
+      LOGGER.debug(
+          "Skipping DoL stamp initialization for replica: {} as DoL mechanism is disabled",
+          partitionConsumptionState.getReplicaId());
+      return;
+    }
+
+    // Clear any existing DoL state from a previous transition attempt to ensure a clean slate
+    partitionConsumptionState.clearDolState();
+
+    // Close any existing VeniceWriter partition session
+    try {
+      veniceWriter.get().closePartition(partitionConsumptionState.getPartition());
+    } catch (Exception e) {
+      LOGGER.error(
+          "Error closing VeniceWriter partition session for replica: {} before sending DoL stamp for term: {}",
+          partitionConsumptionState.getReplicaId(),
+          leadershipTerm,
+          e);
+    }
+
+    // Initialize and send DoL stamp - wrap in try-catch to ensure DoL state is cleared on failure
+    DolStamp dolStamp = null;
+    try {
+      dolStamp = new DolStamp(leadershipTerm, veniceWriter.get().getWriterId());
+      partitionConsumptionState.setDolState(dolStamp);
+      LOGGER.info(
+          "Initialized DoL state: {} for replica: {} with term: {} and hostId: {}",
+          dolStamp,
+          partitionConsumptionState.getReplicaId(),
+          leadershipTerm,
+          veniceWriter.get().getWriterId());
+
+      // Send DolStamp to local VT
+      PubSubProducerCallback dolCallback = new DolStampProduceCallback(partitionConsumptionState, leadershipTerm);
+      CompletableFuture<PubSubProduceResult> dolProduceFuture = veniceWriter.get()
+          .sendDoLStamp(
+              partitionConsumptionState.getReplicaTopicPartition(),
+              dolCallback,
+              leadershipTerm,
+              localKafkaClusterId);
+      // Store the produce future in DolStamp
+      dolStamp.setDolProduceFuture(dolProduceFuture);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to initialize or send DoL stamp for replica: {} with term: {}. Clearing DoL state and falling back to legacy mechanism.",
+          partitionConsumptionState.getReplicaId(),
+          leadershipTerm,
+          e);
+      partitionConsumptionState.clearDolState();
+    }
+  }
+
+  /**
+   * Callback to handle DoL message produce completion.
+   * Package-private for testing.
+   */
+  static class DolStampProduceCallback implements PubSubProducerCallback {
+    private final PartitionConsumptionState pcs;
+    private final long leadershipTerm;
+
+    public DolStampProduceCallback(PartitionConsumptionState pcs, long leadershipTerm) {
+      this.pcs = pcs;
+      this.leadershipTerm = leadershipTerm;
+    }
+
+    @Override
+    public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
+      if (exception != null) {
+        LOGGER.error(
+            "Failed to produce DoL message for replica: {} with term: {}. Clearing DoL state and falling back to legacy time-based mechanism.",
+            pcs.getReplicaId(),
+            leadershipTerm,
+            exception);
+        // Clear DoL state on failure - this will cause canSwitchToLeaderTopic() to fall back to legacy mechanism
+        pcs.clearDolState();
+        return;
+      }
+
+      // Mark DoL as produced
+      DolStamp dolStamp = pcs.getDolState();
+      if (dolStamp != null && dolStamp.getLeadershipTerm() == leadershipTerm) {
+        dolStamp.setDolProduced(true);
+        LOGGER.info(
+            "DoL message produce confirmed for replica: {} at position: {} (term: {}) - dolStamp: {}",
+            pcs.getReplicaId(),
+            produceResult != null ? produceResult.getPubSubPosition() : "null",
+            leadershipTerm,
+            dolStamp);
+      } else {
+        LOGGER.warn(
+            "DoL state mismatch or null for replica: {} - expected term: {}, dolStamp: {}",
+            pcs.getReplicaId(),
+            leadershipTerm,
+            dolStamp);
+      }
+    }
+  }
+
+  /**
+   * Determines if the replica can switch to consuming from the leader topic (remote VT or RTs).
+   *
+   * <p>This method uses the Declaration of Leadership (DoL) mechanism when enabled. The leader replica
+   * appends a DoL message to the local version topic (VT) and waits until it consumes the message back,
+   * confirming it has fully caught up before switching topics.
+   *
+   * <p><b>Fallback Behavior:</b> If the DoL mechanism is enabled but the DoL state is null (which can happen
+   * if the DoL produce failed and was cleared in {@link DolStampProduceCallback#onCompletion}), this method
+   * falls through to the legacy time-based mechanism ({@link #canSwitchToLeaderTopicLegacy}).
+   * This ensures that leadership transition can still complete even if the DoL send fails, though it will
+   * take longer due to the time-based waiting period.
+   */
+  // Timeout for DoL loopback completion (10 minutes). If DoL is not complete within this time,
+  // fall back to legacy mechanism to prevent indefinite blocking.
+  private static final long DOL_LOOPBACK_TIMEOUT_MS = 10 * 60 * 1000L;
+
   private boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
+    // Check if DoL mechanism is enabled via config (system stores vs user stores)
+    DolStamp dolStamp = pcs.getDolState();
+    if (shouldUseDolMechanism() && dolStamp != null) {
+      // Check if DoL state is ready (both produced and consumed)
+      if (!dolStamp.isDolComplete()) {
+        // Check for timeout - if DoL has been pending too long, fall back to legacy mechanism
+        long dolLatencyMs = dolStamp.getLatencyMs();
+        if (dolLatencyMs > DOL_LOOPBACK_TIMEOUT_MS) {
+          LOGGER.warn(
+              "DoL loopback timeout for replica: {} after {} ms. Clearing DoL state and falling back to legacy mechanism. DolStamp: {}",
+              pcs.getReplicaId(),
+              dolLatencyMs,
+              dolStamp);
+          pcs.clearDolState();
+          return canSwitchToLeaderTopicLegacy(pcs);
+        }
+        // DoL not ready yet, stay on local VT
+        LOGGER.debug("DoL mechanism not ready for replica: {} - DolStamp: {}", pcs.getReplicaId(), dolStamp);
+        return false;
+      }
+
+      // DoL is ready - for non-system stores, also verify legacy time-based checks as an additional safety layer.
+      // Rationale: DoL is a new mechanism, so we keep the legacy check as a safety net during initial rollout
+      // for user stores (which contain customer data). System stores skip this extra check because they're
+      // critical for cluster operation and we want faster leader transitions there. Once DoL is proven stable
+      // in production, this extra check can be removed to get the full performance benefit.
+      if (!isSystemStore && !canSwitchToLeaderTopicLegacy(pcs)) {
+        LOGGER.debug(
+            "DoL mechanism complete for replica: {} but legacy time-based check not yet satisfied. Waiting for legacy check to pass.",
+            pcs.getReplicaId());
+        return false;
+      }
+
+      // All checks passed - log and clear DoL state
+      long dolLatencyMs = dolStamp.getLatencyMs();
+      LOGGER.info(
+          "DoL mechanism complete for replica: {} - unblocking switch to the leader topic. Total DoL latency: {} ms. DolStamp: {}",
+          pcs.getReplicaId(),
+          dolLatencyMs,
+          dolStamp);
+      pcs.clearDolState();
+      return true;
+    } else {
+      // Use legacy time-based mechanism
+      // If DoL mechanism is enabled but dolStamp is null, this means DoL produce failed and state was cleared.
+      // Log at debug level to avoid log spam - this will be called repeatedly until legacy check passes.
+      if (shouldUseDolMechanism() && dolStamp == null) {
+        LOGGER.debug(
+            "Using legacy leader topic switch mechanism for replica: {} due to missing DoL state (likely DoL produce failure).",
+            pcs.getReplicaId());
+      }
+      return canSwitchToLeaderTopicLegacy(pcs);
+    }
+  }
+
+  /**
+   * Legacy mechanism for determining when a replica can switch to consuming from the leader (RT) topic.
+   * Uses time-based waiting and special handling for user system stores.
+   *
+   * <p>This will be replaced by the DoL (Declaration of Leadership) mechanism when
+   * {@code server.leader.handover.use.dol.mechanism} is enabled.
+   */
+  private boolean canSwitchToLeaderTopicLegacy(PartitionConsumptionState pcs) {
     /**
      * Potential risk: it's possible that Kafka consumer would starve one of the partitions for a long
      * time even though there are new messages in it, so it's possible that the old leader is still producing
@@ -899,20 +1100,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     TopicManager topicManager = getTopicManager(localKafkaServer);
-
-    // Case: No records consumed yet --> check if the partition contains any records
-    if (PubSubSymbolicPosition.EARLIEST.equals(latestProcessedLocalVtPosition)) {
-      // Nothing consumed and nothing available --> treat as fully consumed
-      return topicManager.countRecordsUntil(pcs.getReplicaTopicPartition(), localVtEndPosition) == 0;
+    long diff;
+    try {
+      // Case: No records consumed yet --> check if the partition contains any records
+      if (PubSubSymbolicPosition.EARLIEST.equals(latestProcessedLocalVtPosition)) {
+        // Nothing consumed and nothing available --> treat as fully consumed
+        return topicManager.countRecordsUntil(pcs.getReplicaTopicPartition(), localVtEndPosition) == 0;
+      }
+      // General case: fully consumed if at most one record behind (as end position represents "last + 1")
+      diff =
+          topicManager.diffPosition(pcs.getReplicaTopicPartition(), localVtEndPosition, latestProcessedLocalVtPosition);
+    } catch (PubSubTopicDoesNotExistException e) {
+      return false;
     }
 
-    // General case: fully consumed if at most one record behind (as end position represents "last + 1")
-    long diff =
-        topicManager.diffPosition(pcs.getReplicaTopicPartition(), localVtEndPosition, latestProcessedLocalVtPosition);
-
-    // diff <= 0 means end position was probably stale
+    // diff < 0 means end position was probably stale
     // Log using redundant-exception filter to trace edge conditions
-    if (diff <= 0) {
+    if (diff < 0) {
       String msg =
           "Negative diff between local VT end position: " + localVtEndPosition + " and latest processed VT position: "
               + latestProcessedLocalVtPosition + " for partition: " + pcs.getReplicaTopicPartition();
@@ -1087,7 +1291,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     syncConsumedUpstreamRTOffsetMapIfNeeded(pcs, Collections.singletonMap(pubSubAddress, startPos));
     LOGGER.info(
         "Leader replica: {} started consuming: {} from: {}",
-        pcs.getReplicaId(),
+        pcs,
         Utils.getReplicaId(leaderTopic, pcs.getPartition()),
         startPos);
   }
@@ -1097,14 +1301,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Map<String, PubSubPosition> upstreamStartPositionByPubSubUrl) {
     // Update in-memory consumedUpstreamRTOffsetMap in case no RT record is consumed after the subscription
     final PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    final PubSubTopicPartition leaderTopicPartition = pcs.getSourceTopicPartition(leaderTopic);
     if (leaderTopic != null && leaderTopic.isRealTime()) {
       upstreamStartPositionByPubSubUrl.forEach((kafkaURL, upstreamStartPosition) -> {
         PubSubPosition latestConsumedRtPosition =
             getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, kafkaURL);
         // update latest consumed RT position if incoming upstream start position is greater
         // than the latest consumed RT position
-        if (upstreamStartPosition.getNumericOffset() > latestConsumedRtPosition.getNumericOffset()) {
-          updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartPosition);
+        try {
+          if ((PubSubSymbolicPosition.EARLIEST.equals(latestConsumedRtPosition)
+              && !PubSubSymbolicPosition.EARLIEST.equals(upstreamStartPosition))
+              || getTopicManager(kafkaURL).diffPosition(
+                  Utils.createPubSubTopicPartitionFromLeaderTopicPartition(kafkaURL, leaderTopicPartition),
+                  upstreamStartPosition,
+                  latestConsumedRtPosition) > 0) {
+            updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartPosition);
+          }
+        } catch (PubSubTopicDoesNotExistException e) {
+          // Topic has been deleted, skip position update
         }
       });
     }
@@ -1583,9 +1797,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       final PubSubPosition newUpstreamPosition,
       final PubSubPosition previousUpstreamPosition,
       LeaderFollowerStoreIngestionTask ingestionTask) {
-    if (newUpstreamPosition.getNumericOffset() >= previousUpstreamPosition.getNumericOffset()) {
-      return; // Rewind did not happen
+    try {
+      // Skip rewind check if version is already PUSHED/ONLINE but EOP hasn't been received yet on this partition.
+      // In this state, the replica is still catching up on batch data and the upstream topic may already be deleted,
+      // making the diffPosition call unnecessary and error-prone. This could happen during rebalance.
+      if (PubSubSymbolicPosition.EARLIEST.equals(previousUpstreamPosition)
+          || (!partitionConsumptionState.isEndOfPushReceived() && ingestionTask.versionBootstrapCompleted)) {
+        return;
+      }
+      if (topicManager.diffPosition(pubSubTopicPartition, newUpstreamPosition, previousUpstreamPosition) >= 0) {
+        return; // Rewind did not happen
+      }
+    } catch (PubSubTopicDoesNotExistException e) {
+      return; // Topic has been deleted, rewind check is not applicable
     }
+
     if (!ingestionTask.isHybridMode()) {
       /**
        * The lossy rewind issue will only affect hybrid store since only hybrid store version topics
@@ -1793,7 +2019,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * offset periodically and cache them; with this strategy, it is possible that partition could become 'ONLINE' at
      * most {@link com.linkedin.venice.pubsub.manager.TopicMetadataFetcher#ttlInNs} earlier.
      */
-    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
+    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(getPubSubTopicRepository());
     if (leaderTopic == null || !leaderTopic.isRealTime()) {
       /**
        * 1. Usually there is a batch-push or empty push for the hybrid store before replaying messages from real-time
@@ -1809,24 +2035,32 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return Long.MAX_VALUE;
     }
 
-    // Followers and Davinci clients, use local VT to compute hybrid lag.
-    if (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
-      return measureLagWithCallToPubSub(
-          localKafkaServer,
-          partitionConsumptionState.getReplicaTopicPartition(),
-          partitionConsumptionState.getLatestProcessedVtPosition());
-    }
+    try {
+      // Followers and Davinci clients, use local VT to compute hybrid lag.
+      if (isDaVinciClient() || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
+        return measureLagWithCallToPubSub(
+            getLocalKafkaServer(),
+            partitionConsumptionState.getReplicaTopicPartition(),
+            partitionConsumptionState.getLatestProcessedVtPosition());
+      }
 
-    // leaderTopic is the real-time topic now
-    String sourceRealTimeTopicKafkaURL;
-    Set<String> sourceRealTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
-    if (sourceRealTimeTopicKafkaURLs.isEmpty()) {
-      throw new VeniceException("Expect a real-time source Kafka URL for " + partitionConsumptionState);
-    } else if (sourceRealTimeTopicKafkaURLs.size() == 1) {
-      sourceRealTimeTopicKafkaURL = sourceRealTimeTopicKafkaURLs.iterator().next();
-      return measureRtLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
-    } else {
-      return measureRtLagForMultiRegions(sourceRealTimeTopicKafkaURLs, partitionConsumptionState, shouldLogLag);
+      // leaderTopic is the real-time topic now
+      String sourceRealTimeTopicKafkaURL;
+      Set<String> sourceRealTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
+      if (sourceRealTimeTopicKafkaURLs.isEmpty()) {
+        throw new VeniceException("Expect a real-time source Kafka URL for " + partitionConsumptionState);
+      } else if (sourceRealTimeTopicKafkaURLs.size() == 1) {
+        sourceRealTimeTopicKafkaURL = sourceRealTimeTopicKafkaURLs.iterator().next();
+        return measureRtLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, shouldLogLag);
+      } else {
+        return measureRtLagForMultiRegions(sourceRealTimeTopicKafkaURLs, partitionConsumptionState, shouldLogLag);
+      }
+    } catch (Exception e) {
+      String msg = "Failed to measure Lag for replica: " + partitionConsumptionState.getReplicaId();
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        LOGGER.error(msg, e);
+      }
+      return Long.MAX_VALUE;
     }
   }
 
@@ -1836,11 +2070,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return Long.MAX_VALUE;
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      return getHeartbeatMonitoringService()
-          .getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+      return getHeartbeatMonitoringService().getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, shouldLogLag);
     } else {
-      return getHeartbeatMonitoringService()
-          .getReplicaFollowerHeartbeatLag(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+      return getHeartbeatMonitoringService().getReplicaFollowerHeartbeatLag(partitionConsumptionState, shouldLogLag);
     }
   }
 
@@ -1853,10 +2085,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
       return getHeartbeatMonitoringService()
-          .getReplicaLeaderMinHeartbeatTimestamp(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+          .getReplicaLeaderMinHeartbeatTimestamp(partitionConsumptionState, shouldLogLag);
     } else {
       return getHeartbeatMonitoringService()
-          .getReplicaFollowerHeartbeatTimestamp(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+          .getReplicaFollowerHeartbeatTimestamp(partitionConsumptionState, shouldLogLag);
     }
   }
 
@@ -1988,17 +2220,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
 
         PubSubPosition lastProcessedVtPos = partitionConsumptionState.getLatestProcessedVtPosition();
-        if (lastProcessedVtPos.getNumericOffset() >= record.getPosition().getNumericOffset()) {
-          String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
-              + partitionConsumptionState.getReplicaId() + " had already processed the record";
-          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
-            LOGGER.info(
-                "{}; LastKnownPosition: {}; PositionOfIncomingRecord: {}",
-                message,
-                lastProcessedVtPos,
-                record.getPosition());
+        try {
+          if (!PubSubSymbolicPosition.EARLIEST.equals(lastProcessedVtPos)
+              && topicManagerRepository.getLocalTopicManager()
+                  .diffPosition(record.getTopicPartition(), lastProcessedVtPos, record.getPosition()) >= 0) {
+            String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
+                + partitionConsumptionState.getReplicaId() + " had already processed the record";
+            if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
+              LOGGER.info(
+                  "{}; LastKnownPosition: {}; PositionOfIncomingRecord: {}",
+                  message,
+                  lastProcessedVtPos,
+                  record.getPosition());
+            }
+            return false;
           }
-          return false;
+        } catch (PubSubTopicDoesNotExistException e) {
+          // Topic has been deleted, skip duplicate check and process the record
         }
         break;
     }
@@ -2282,30 +2520,54 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
       String kafkaUrl) {
-    if (getHeartbeatMonitoringService() == null) {
+    HeartbeatMonitoringService hbService = getHeartbeatMonitoringService();
+    if (hbService == null) {
       // Not enabled!
       return;
     }
+    String region;
+    long timestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
+    boolean isComplete = partitionConsumptionState.isComplete();
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      getHeartbeatMonitoringService().recordLeaderHeartbeat(
-          storeName,
-          versionNumber,
-          partitionConsumptionState.getPartition(),
-          serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl),
-          consumerRecord.getValue().producerMetadata.messageTimestamp,
-          partitionConsumptionState.isComplete());
+      region = getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl);
+      HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
+      hbService.recordLeaderHeartbeat(cachedKey, timestamp, isComplete);
     } else {
-      getHeartbeatMonitoringService().recordFollowerHeartbeat(
-          storeName,
-          versionNumber,
-          partitionConsumptionState.getPartition(),
-          isDaVinciClient() ? "" : serverConfig.getKafkaClusterUrlToAliasMap().get(kafkaUrl), // For Da Vinci there is
-                                                                                              // no kafkaUrl mapping
-                                                                                              // configured and the
-                                                                                              // local region is default
-                                                                                              // to empty.
-          consumerRecord.getValue().producerMetadata.messageTimestamp,
-          partitionConsumptionState.isComplete());
+      /**
+       * For Da Vinci there is no kafkaUrl mapping configured, we should refer to local region name setup in the
+       * Venice server config. This is consistent from the heartbeat lag calculation for ready-to-serve check.
+       */
+      region = isDaVinciClient()
+          ? getServerConfig().getRegionName()
+          : getServerConfig().getKafkaClusterUrlToAliasMap().get(kafkaUrl);
+      HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
+      hbService.recordFollowerHeartbeat(cachedKey, timestamp, isComplete);
+    }
+  }
+
+  /**
+   * Record a regular data record timestamp to the heartbeat monitoring service.
+   * Called only when record-level timestamp tracking is enabled (checked by caller).
+   */
+  @Override
+  protected void trackRecordReceived(
+      PartitionConsumptionState partitionConsumptionState,
+      DefaultPubSubMessage consumerRecord,
+      String pubSubUrl) {
+    HeartbeatMonitoringService hbService = getHeartbeatMonitoringService();
+    if (hbService == null) {
+      return;
+    }
+    String region =
+        isDaVinciClient() ? serverConfig.getRegionName() : serverConfig.getKafkaClusterUrlToAliasMap().get(pubSubUrl);
+    long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
+    boolean isComplete = partitionConsumptionState.isComplete();
+    HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
+
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+      hbService.recordLeaderRecordTimestamp(cachedKey, messageTimestamp, isComplete);
+    } else {
+      hbService.recordFollowerRecordTimestamp(cachedKey, messageTimestamp, isComplete);
     }
   }
 
@@ -2337,14 +2599,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Iterator<DefaultPubSubMessage> iter = records.iterator();
     while (iter.hasNext()) {
       DefaultPubSubMessage record = iter.next();
-      boolean isRealTimeTopic = record.getTopicPartition().getPubSubTopic().isRealTime();
       try {
         /**
          * TODO: An improvement can be made to fail all future versions for fatal DIV exceptions after EOP.
          */
-        final TopicType topicType = (isGlobalRtDivEnabled())
-            ? TopicType.of(isRealTimeTopic ? REALTIME_TOPIC_TYPE : VERSION_TOPIC_TYPE, kafkaUrl)
-            : PartitionTracker.VERSION_TOPIC;
+        TopicType topicType = PartitionTracker.VERSION_TOPIC;
+        // shouldProduceToVersionTopic() ensures this is a LEADER that is consuming from RT or remote VT
+        if (isGlobalRtDivEnabled() && shouldProduceToVersionTopic(pcs)) {
+          topicType = TopicType.of(REALTIME_TOPIC_TYPE, kafkaUrl);
+        }
         validateMessage(topicType, consumerDiv, record, pcs, false);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException e) {
@@ -2457,19 +2720,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // Update the latest consumed VT position (LCVP) since we're consuming from the version topic
         if (isGlobalRtDivEnabled()) {
           getConsumerDiv().updateLatestConsumedVtPosition(partition, consumerRecord.getPosition());
-
-          if (shouldSyncOffsetFromSnapshot(consumerRecord, partitionConsumptionState)) {
-            PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(getVersionTopic(), partition);
-            PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
-            storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
-            // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
-            int partitionStateMapSize = vtDiv.getPartitionStates(PartitionTracker.VERSION_TOPIC).size();
-            LOGGER.info(
-                "event=globalRtDiv Syncing LCVP for OffsetRecord topic-partition: {} position: {} size: {}",
-                topicPartition,
-                consumerRecord.getPosition(),
-                partitionStateMapSize);
-          }
+          // Only after the current message is queued to drainer
+          // The Offset Record's LCVP may be synced in syncOffsetFromSnapshotIfNeeded()
         }
 
         /**
@@ -2672,6 +2924,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 beforeProcessingPerRecordTimestampNs);
             break;
           case TOPIC_SWITCH:
+            validateEndOfPushReceivedBeforeTopicSwitch(partitionConsumptionState, consumerRecord.getPosition());
             /**
              * For TOPIC_SWITCH message we should use -1 as consumedOffset. This will ensure that it does not update the
              * checkpointRtPosition in:
@@ -2759,19 +3012,51 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  void syncOffsetFromSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition) {
+    int partition = topicPartition.getPartitionNumber();
+    if (!isGlobalRtDivEnabled() || !shouldSyncOffsetFromSnapshot(record, getPartitionConsumptionState(partition))) {
+      return; // without Global RT DIV enabled, the offset record is synced in the drainer in syncOffset()
+    }
+
+    PartitionConsumptionState pcs = getPartitionConsumptionState(topicPartition.getPartitionNumber());
+    if (pcs == null || pcs.getLastQueuedRecordPersistedFuture() == null) {
+      LOGGER.warn(
+          "event=globalRtDiv No PCS or lastRecordPersistedFuture found for topic-partition: {}. "
+              + "Will not sync OffsetRecord without waiting for any record to be persisted",
+          topicPartition);
+      return;
+    }
+
+    try {
+      PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
+      CompletableFuture<Void> lastFuture = pcs.getLastQueuedRecordPersistedFuture();
+      storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
+
+      // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
+      LOGGER.info(
+          "event=globalRtDiv Syncing LCVP for OffsetRecord topic-partition: {} position: {} size: {}",
+          topicPartition,
+          record.getPosition(),
+          vtDiv.getPartitionStates(PartitionTracker.VERSION_TOPIC).size());
+    } catch (InterruptedException e) {
+      LOGGER.error("event=globalRtDiv Unable to sync Offset Record to update the latest consumed vt position", e);
+    }
+  }
+
   /**
-   * Followers should sync the VT DIV to the OffsetRecord if the consumer sees a Global RT DIV message
-   * (sync only once for a Global RT DIV, which can either be one singular message or multiple chunks + one manifest.
-   * thus, the condition is to check that it's not a chunk) or if it sees a non-segment control message.
+   * Followers should sync the VT DIV to the OffsetRecord if the consumer sees a non-segment control message or a
+   * Global RT DIV message.
+   * Each Global RT DIV sync will create one singular Put or multiple Puts (chunks + one manifest + Deletes). Thus
+   * if we want to sync only once, checking if it's a singular Put or the manifest Put should only trigger once.
    */
   boolean shouldSyncOffsetFromSnapshot(DefaultPubSubMessage consumerRecord, PartitionConsumptionState pcs) {
     if (consumerRecord.getKey().isGlobalRtDiv()) {
-      Put put = (Put) consumerRecord.getValue().getPayloadUnion();
-      if (put.getSchemaId() != CHUNK_SCHEMA_ID) {
-        return true;
+      Object payloadUnion = consumerRecord.getValue().getPayloadUnion();
+      if (payloadUnion instanceof Put && ((Put) payloadUnion).getSchemaId() != CHUNK_SCHEMA_ID) {
+        return true; // Global RT DIV message can be multiple chunks + deletes, only sync on one Put (manifest or value)
       }
     }
-    return shouldSyncOffset(pcs, consumerRecord, null);
+    return isNonSegmentControlMessage(consumerRecord, null);
   }
 
   /**
@@ -3139,7 +3424,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           hostLevelIngestionStats
               .recordWriteComputeUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS));
         } catch (Exception e) {
-          writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code;
+          setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
           throw new RuntimeException(e);
         }
 
@@ -3438,7 +3723,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl);
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
-    // Create GlobalRtDivState (RT DIV + latest RT position) and serialize into a byte array. Try compression.
+    // Create GlobalRtDivState (RT DIV + LCRP) and serialize into a byte array. Try compression.
     final byte[] valueBytes = createGlobalRtDivValueBytes(previousMessage, brokerUrl, rtDivPartitionStates);
 
     // The callback onCompletionFunction sends the VT DIV + LCVP to the drainer after producing to VT successfully
@@ -3460,15 +3745,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     readGlobalRtDivState(keyBytes, schemaId, topicPartition, valueManifestContainer);
 
     // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
-    rtDivPartitionStates.forEach((producer, pps) -> {
-      LOGGER.info(
-          "event=globalRtDiv Sending Global RT DIV message for topic-partition: {} broker: {} producer: {}, valueSize: {} pps: {}",
-          topicPartition,
-          brokerUrl,
-          producer,
-          valueBytes.length,
-          pps);
-    });
+    LOGGER.info(
+        "event=globalRtDiv Sending Global RT DIV message for topic-partition: {} versionTopic: {} LCRP: {} broker: {} producerCount: {}, valueSize: {}",
+        topicPartition,
+        versionTopic,
+        previousMessage.getPosition(),
+        brokerUrl,
+        rtDivPartitionStates.size(),
+        valueBytes.length);
 
     // Produce to local VT for the Global RT DIV + latest RT position (GlobalRtDivState)
     // Internally, VeniceWriter.put() will schedule DELETEs for the old chunks in the old manifest after the new PUTs
@@ -3484,7 +3768,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             null,
             valueManifestContainer.getManifest(),
             null,
-            false);
+            true);
 
     consumedBytesSinceLastSync.put(brokerUrl, 0L); // reset the timer for the next sync, since RT DIV was just synced
   }
@@ -3510,19 +3794,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private LeaderProducerCallback createGlobalRtDivCallback(
-      DefaultPubSubMessage previousMessage,
-      PartitionConsumptionState partitionConsumptionState,
+      DefaultPubSubMessage prevMessage,
+      PartitionConsumptionState pcs,
       int partition,
       String brokerUrl,
       long beforeProcessingRecordTimestampNs,
-      LeaderProducedRecordContext context,
+      LeaderProducedRecordContext prevContext,
       byte[] keyBytes,
       byte[] valueBytes,
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDiv) {
     final int schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
     KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, keyBytes);
-    KafkaMessageEnvelope divEnvelope = getVeniceWriter(partitionConsumptionState).get()
+    KafkaMessageEnvelope divEnvelope = getVeniceWriter(pcs).get()
         .getKafkaMessageEnvelope(
             MessageType.PUT,
             false,
@@ -3539,24 +3823,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         divKey,
         divEnvelope,
         topicPartition,
-        previousMessage.getPosition(),
+        prevMessage.getPosition(),
         System.currentTimeMillis(),
         divKey.getKeyLength() + valueBytes.length);
-    LeaderProducerCallback divCallback = createProducerCallback(
-        divMessage,
-        partitionConsumptionState,
-        LeaderProducedRecordContext
-            .newPutRecord(context.getConsumedKafkaClusterId(), context.getConsumedPosition(), keyBytes, put),
-        partition,
-        brokerUrl,
-        beforeProcessingRecordTimestampNs);
+    LeaderProducedRecordContext context = LeaderProducedRecordContext
+        .newPutRecord(prevContext.getConsumedKafkaClusterId(), prevContext.getConsumedPosition(), keyBytes, put);
+    LeaderProducerCallback divCallback =
+        createProducerCallback(divMessage, pcs, context, partition, brokerUrl, beforeProcessingRecordTimestampNs);
 
-    // After producing RT DIV to local VT, the VT DIV should be sent to the drainer to sync to the OffsetRecord
-    divCallback.setOnCompletionFunction(() -> {
+    // After producing the RT DIV to local VT and LeaderProducerCallback.onCompletion() enqueuing RT DIV in the drainer,
+    // the VT DIV should be sent to the drainer to persist the LCVP onto disk by syncing the OffsetRecord
+    divCallback.setOnCompletionCallback(produceResult -> {
       try {
-        storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, this);
+        CompletableFuture<Void> lastRecordPersistedFuture = context.getPersistedToDBFuture();
+        vtDiv.updateLatestConsumedVtPosition(produceResult.getPubSubPosition()); // LCVP = produced position in local VT
+        storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastRecordPersistedFuture, this);
       } catch (InterruptedException e) {
-        LOGGER.error("Failed to sync VT DIV to OffsetRecord for replica: {}", topicPartition, e);
+        LOGGER.error("event=globalRtDiv Failed to sync VT DIV to OffsetRecord for replica: {}", topicPartition, e);
       }
     });
 
@@ -3592,6 +3875,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           compressor.get(),
           manifestContainer);
     } catch (Exception e) {
+      // TODO: evaluate whether these logs can be set to debug
       LOGGER.error(
           "Unable to retrieve the stored value bytes for key: {}, topic-partition: {}",
           new String(keyBytes),
@@ -3601,6 +3885,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     if (valueBytes == null) {
+      // TODO: evaluate whether these logs can be set to debug
       LOGGER.warn(
           "No value found in the storage engine for key: {}, topic-partition: {}",
           new String(keyBytes),
@@ -3613,6 +3898,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           ByteUtils.extractByteArray(valueBytes),
           AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     } catch (Exception e) {
+      // TODO: evaluate whether these logs can be set to debug
       LOGGER.error(
           "Unable to deserialize stored value bytes for key: {}, topic-partition: {}",
           new String(keyBytes),
@@ -3654,7 +3940,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         hostLevelIngestionStats
             .recordWriteComputeLookUpLatency(LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS));
       } catch (Exception e) {
-        writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+        setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
         throw e;
       }
     } else {
@@ -3669,7 +3955,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               storeDeserializerCache.getDeserializer(transientRecord.getValueSchemaId(), readerValueSchemaID),
               compressor.get());
         } catch (Exception e) {
-          writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+          setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
           throw e;
         }
         if (manifestContainer != null) {
@@ -3730,7 +4016,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // If the GlobalRtDivState is not present, it could be acceptable if this could be the first leader to be elected
       // Object not existing could be problematic if this isn't the first leader (detected via nonzero leaderPosition)
       PubSubPosition leaderPosition = pcs.getLeaderPosition(brokerUrl, false);
-      if (leaderPosition.getNumericOffset() > 0) {
+      if (!PubSubSymbolicPosition.EARLIEST.equals(leaderPosition)) {
         LOGGER.warn(
             "Unable to retrieve Global RT DIV from storage engine for topic-partition: {} brokerUrl: {} leaderPosition: {}",
             topicPartition,
@@ -3785,7 +4071,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private boolean isIngestingSystemStore() {
-    return VeniceSystemStoreUtils.isSystemStore(storeName);
+    return isSystemStore;
   }
 
   /**
@@ -3822,12 +4108,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         getLatestPersistedRtPositionForLagMeasurement(pcs, rtPubSubBrokerAddress);
     TopicManager topicManager = getTopicManager(rtPubSubBrokerAddress);
     long lag;
-    if (PubSubSymbolicPosition.EARLIEST.equals(latestPersistedRtPosition)) {
-      // If the latest persisted position is EARLIEST, it means no message has been processed yet, so the lag is the
-      // count of messages from the beginning of the topic to the end position.
-      lag = topicManager.countRecordsUntil(rtTopicPartition, rtEndPosition);
-    } else {
-      lag = topicManager.diffPosition(rtTopicPartition, rtEndPosition, latestPersistedRtPosition) - 1;
+    try {
+      if (PubSubSymbolicPosition.EARLIEST.equals(latestPersistedRtPosition)) {
+        // If the latest persisted position is EARLIEST, it means no message has been processed yet, so the lag is the
+        // count of messages from the beginning of the topic to the end position.
+        lag = topicManager.countRecordsUntil(rtTopicPartition, rtEndPosition);
+      } else {
+        lag = topicManager.diffPosition(rtTopicPartition, rtEndPosition, latestPersistedRtPosition) - 1;
+      }
+    } catch (PubSubTopicDoesNotExistException e) {
+      return Long.MAX_VALUE;
     }
 
     if (shouldLog) {
@@ -4376,5 +4666,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private String logChange(boolean hasChanged) {
     return hasChanged ? "(changed)" : "(unchanged)";
+  }
+
+  Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
+    return veniceWriter;
+  }
+
+  Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriterForRealTime() {
+    return veniceWriterForRealTime;
   }
 }

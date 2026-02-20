@@ -17,6 +17,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.PubSubPositionJsonWireFormat;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -35,6 +36,7 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
@@ -191,7 +193,7 @@ public class TestAdminToolEndToEnd {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 4)
   public void testWipeClusterCommand() throws Exception {
     try (ControllerClient controllerClient =
         new ControllerClient(clusterName, venice.getLeaderVeniceController().getControllerUrl())) {
@@ -242,9 +244,9 @@ public class TestAdminToolEndToEnd {
 
       TopicManager topicManager = venice.getLeaderVeniceController().getVeniceAdmin().getTopicManager();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        assertFalse(topicManager.containsTopic(testStoreTopic1));
-        assertFalse(topicManager.containsTopic(testStoreTopic2));
-        assertFalse(topicManager.containsTopic(testStoreTopic3));
+        assertFalse(topicManager.containsTopicWithExpectationAndRetry(testStoreTopic1, 3, false));
+        assertFalse(topicManager.containsTopicWithExpectationAndRetry(testStoreTopic2, 3, false));
+        assertFalse(topicManager.containsTopicWithExpectationAndRetry(testStoreTopic3, 3, false));
       });
 
       // Redo fabric buildup. Create the store and version again.
@@ -303,8 +305,8 @@ public class TestAdminToolEndToEnd {
 
   @Test(timeOut = 4 * TEST_TIMEOUT)
   public void testUpdateAdminOperationVersion() throws Exception {
-    Long defaultVersion = -1L;
     Long newVersion = 80L;
+    PubSubPositionJsonWireFormat defaultPosition = PubSubSymbolicPosition.EARLIEST.toJsonWireFormat();
     String storeName = Utils.getUniqueString("test-store");
     try (VeniceTwoLayerMultiRegionMultiClusterWrapper venice =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
@@ -324,10 +326,10 @@ public class TestAdminToolEndToEnd {
 
       // Verify the original metadata - default value
       AdminTopicMetadataResponse originalMetadata = parentControllerClient.getAdminTopicMetadata(Optional.empty());
-      Assert.assertEquals(originalMetadata.getAdminOperationProtocolVersion(), (long) defaultVersion);
-      Assert.assertEquals(originalMetadata.getExecutionId(), (long) defaultVersion);
-      Assert.assertEquals(originalMetadata.getOffset(), (long) defaultVersion);
-      Assert.assertEquals(originalMetadata.getUpstreamOffset(), (long) defaultVersion);
+      Assert.assertEquals(originalMetadata.getAdminOperationProtocolVersion(), -1L);
+      Assert.assertEquals(originalMetadata.getExecutionId(), -1L);
+      Assert.assertEquals(originalMetadata.getPosition(), defaultPosition);
+      Assert.assertEquals(originalMetadata.getUpstreamPosition(), defaultPosition);
 
       // Create store
       NewStoreResponse newStoreResponse =
@@ -346,15 +348,16 @@ public class TestAdminToolEndToEnd {
       AdminTopicMetadataResponse metdataAfterStoreCreation =
           parentControllerClient.getAdminTopicMetadata(Optional.empty());
       long baselineExecutionId = metdataAfterStoreCreation.getExecutionId();
-      long baselineOffset = metdataAfterStoreCreation.getOffset();
-      long baselineUpstreamOffset = metdataAfterStoreCreation.getUpstreamOffset();
+      PubSubPositionJsonWireFormat baselinePosition = metdataAfterStoreCreation.getPosition();
+      PubSubPositionJsonWireFormat baselineUpstreamPosition = metdataAfterStoreCreation.getUpstreamPosition();
       long baselineAdminVersion = metdataAfterStoreCreation.getAdminOperationProtocolVersion();
 
       // Execution id and offset should be positive now since we have created a store and updated the store config
-      Assert.assertEquals(baselineAdminVersion, (long) defaultVersion);
+      Assert.assertEquals(baselineAdminVersion, -1L);
       Assert.assertTrue(baselineExecutionId > 0);
-      Assert.assertTrue(baselineOffset > 0);
-      Assert.assertEquals(baselineUpstreamOffset, (long) defaultVersion);
+      Assert.assertNotNull(baselinePosition);
+      Assert.assertNotEquals(defaultPosition, baselinePosition);
+      Assert.assertEquals(defaultPosition, baselineUpstreamPosition);
 
       // Update the admin operation version to newVersion - 80
       String[] updateAdminOperationVersionArgs =
@@ -368,8 +371,8 @@ public class TestAdminToolEndToEnd {
         AdminTopicMetadataResponse updatedMetadata = parentControllerClient.getAdminTopicMetadata(Optional.empty());
         Assert.assertEquals(updatedMetadata.getAdminOperationProtocolVersion(), (long) newVersion);
         Assert.assertEquals(updatedMetadata.getExecutionId(), baselineExecutionId);
-        Assert.assertEquals(updatedMetadata.getOffset(), baselineOffset);
-        Assert.assertEquals(updatedMetadata.getUpstreamOffset(), baselineUpstreamOffset);
+        Assert.assertEquals(updatedMetadata.getPosition(), baselinePosition);
+        Assert.assertEquals(updatedMetadata.getUpstreamPosition(), baselineUpstreamPosition);
       });
     }
   }

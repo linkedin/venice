@@ -18,6 +18,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
@@ -199,32 +200,43 @@ public class VersionBackendTest {
             recordTransformerConfig,
             mock(AggVersionedDaVinciRecordTransformerStats.class)));
     when(mockDaVinciBackend.getInternalRecordTransformerConfig(storeName)).thenReturn(internalRecordTransformerConfig);
-
+    when(mockDaVinciBackend.getIngestionService()).thenReturn(mock(KafkaStoreIngestionService.class));
     VersionBackend versionBackend = new VersionBackend(mockDaVinciBackend, version, mockStoreBackendStats);
 
     Collection<Integer> partitionList = Arrays.asList(0, 1, 2);
     ComplementSet<Integer> complementSet = ComplementSet.newSet(partitionList);
 
-    versionBackend.subscribe(complementSet);
-    verify(internalRecordTransformerConfig).setStartConsumptionLatchCount(3);
-    verify(mockIngestionBackend).startConsumption(any(), eq(0));
-    verify(mockIngestionBackend).startConsumption(any(), eq(1));
-    verify(mockIngestionBackend).startConsumption(any(), eq(2));
+    // First subscription
+    versionBackend.subscribe(complementSet, null);
 
+    // Verify the latch count is set to 3 (number of partitions)
+    verify(internalRecordTransformerConfig).setStartConsumptionLatchCount(3);
+
+    // Verify consumption started for each partition
+    verify(mockIngestionBackend).startConsumption(any(), eq(0), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(1), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(2), any());
+
+    // Reset mocks for next test case
     clearInvocations(internalRecordTransformerConfig);
     clearInvocations(mockIngestionBackend);
+
+    // Test with overlapping partitions
     partitionList = Arrays.asList(2, 3, 4);
     complementSet = ComplementSet.newSet(partitionList);
-    versionBackend.subscribe(complementSet);
-    // Shouldn't try to start consumption on already subscribed partitions
-    verify(mockIngestionBackend, never()).startConsumption(any(), eq(2));
-    verify(mockIngestionBackend).startConsumption(any(), eq(3));
-    verify(mockIngestionBackend).startConsumption(any(), eq(4));
+    versionBackend.subscribe(complementSet, null);
+
+    // Shouldn't try to start consumption on already subscribed partition (2)
+    verify(mockIngestionBackend, never()).startConsumption(any(), eq(2), any());
+    // Should start consumption for new partitions (3, 4)
+    verify(mockIngestionBackend).startConsumption(any(), eq(3), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(4), any());
+    // Shouldn't set latch count again
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
 
     // Test empty subscription
-    versionBackend.subscribe(ComplementSet.emptySet());
-    verify(mockIngestionBackend, never()).startConsumption(any(), eq(0));
+    versionBackend.subscribe(ComplementSet.emptySet(), null);
+    verify(mockIngestionBackend, never()).startConsumption(any(), eq(0), any());
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
   }
 }

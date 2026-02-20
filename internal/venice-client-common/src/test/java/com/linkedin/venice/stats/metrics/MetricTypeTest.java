@@ -1,10 +1,10 @@
 package com.linkedin.venice.stats.metrics;
 
 import static com.linkedin.venice.stats.metrics.MetricType.HISTOGRAM;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointDataFromCounter;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointDataFromGauge;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromGauge;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -269,7 +269,36 @@ public class MetricTypeTest {
           assertFalse(metricType.isAsyncMetric(), "MetricType " + metricType + " should not be async");
           break;
         case ASYNC_GAUGE:
+        case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+        case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
           assertTrue(metricType.isAsyncMetric(), "MetricType " + metricType + " should be async");
+          break;
+
+        default:
+          fail("Unknown MetricType " + metricType);
+      }
+    }
+  }
+
+  @Test
+  public void testIsObservableCounterType() {
+    for (MetricType metricType: MetricType.values()) {
+      switch (metricType) {
+        case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+        case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
+          assertTrue(
+              metricType.isObservableCounterType(),
+              "MetricType " + metricType + " should be observable counter type");
+          break;
+        case HISTOGRAM:
+        case MIN_MAX_COUNT_SUM_AGGREGATIONS:
+        case COUNTER:
+        case UP_DOWN_COUNTER:
+        case GAUGE:
+        case ASYNC_GAUGE:
+          assertFalse(
+              metricType.isObservableCounterType(),
+              "MetricType " + metricType + " should not be observable counter type");
           break;
 
         default:

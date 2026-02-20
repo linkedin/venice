@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
@@ -25,9 +26,9 @@ import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
-import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -184,6 +185,7 @@ public interface Admin extends AutoCloseable, Closeable {
       String destClusterName,
       String storeName,
       Optional<Integer> currStep,
+      Optional<Integer> pauseAfterStep,
       Optional<Boolean> abortOnFailure);
 
   /**
@@ -211,7 +213,8 @@ public interface Admin extends AutoCloseable, Closeable {
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
-      int repushSourceVersion);
+      int repushSourceVersion,
+      int repushTtlSeconds);
 
   default boolean hasWritePermissionToBatchJobHeartbeatStore(
       X509Certificate requesterCert,
@@ -248,6 +251,7 @@ public interface Admin extends AutoCloseable, Closeable {
         Optional.empty(),
         false,
         null,
+        -1,
         -1);
   }
 
@@ -283,7 +287,8 @@ public interface Admin extends AutoCloseable, Closeable {
         emergencySourceRegion,
         versionSwapDeferred,
         null,
-        repushSourceVersion);
+        repushSourceVersion,
+        -1);
   }
 
   Version incrementVersionIdempotent(
@@ -302,7 +307,8 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
-      int repushSourceVersion);
+      int repushSourceVersion,
+      int repushTtlSeconds);
 
   Version getIncrementalPushVersion(String clusterName, String storeName, String pushJobId);
 
@@ -522,7 +528,7 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   String getRegionName();
 
-  String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric);
+  String getPubSubBootstrapServersForRegion(String sourceFabric);
 
   String getNativeReplicationSourceFabric(
       String clusterName,
@@ -569,6 +575,10 @@ public interface Admin extends AutoCloseable, Closeable {
   default int getDatacenterCount(String clusterName) {
     return 1;
   }
+
+  boolean isDeferredVersionSwapForEmptyPushEnabled(String store);
+
+  String getDeferredVersionSwapRegionRollforwardOrder(String store);
 
   List<Replica> getReplicas(String clusterName, String kafkaTopic);
 
@@ -632,10 +642,10 @@ public interface Admin extends AutoCloseable, Closeable {
    * message that cannot be processed for some reason, we will need to forcibly skip that message in order to unblock
    * the task from consuming subsequent messages.
    * @param clusterName
-   * @param offset
+   * @param typeIdAndBase64PositionBytes
    * @param skipDIV tries to skip only the DIV check for the blocking message.
    */
-  void skipAdminMessage(String clusterName, long offset, boolean skipDIV, long executionId);
+  void skipAdminMessage(String clusterName, String typeIdAndBase64PositionBytes, boolean skipDIV, long executionId);
 
   /**
    * Get the id of the last succeed execution in this controller.
@@ -826,17 +836,6 @@ public interface Admin extends AutoCloseable, Closeable {
   List<String> getClustersLeaderOf();
 
   /**
-   * Enable/disable active active replications for certain stores (batch only, hybrid only, incremental push, hybrid or incremental push,
-   * all) in a cluster. If storeName is not empty, only the specified store might be updated.
-   */
-  void configureActiveActiveReplication(
-      String cluster,
-      VeniceUserStoreType storeType,
-      Optional<String> storeName,
-      boolean enableActiveActiveReplicationForCluster,
-      Optional<String> regionsFilter);
-
-  /**
    * Check whether there are any resource left for the store creation in cluster: {@param clusterName}
    * If there is any, this function should throw Exception.
    */
@@ -994,14 +993,14 @@ public interface Admin extends AutoCloseable, Closeable {
 
   RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailEnabled);
 
-  Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName);
+  AdminMetadata getAdminTopicMetadata(String clusterName, Optional<String> storeName);
 
   void updateAdminTopicMetadata(
       String clusterName,
       long executionId,
       Optional<String> storeName,
-      Optional<Long> offset,
-      Optional<Long> upstreamOffset);
+      Optional<PubSubPositionGrpcWireFormat> position,
+      Optional<PubSubPositionGrpcWireFormat> upstreamPosition);
 
   void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion);
 

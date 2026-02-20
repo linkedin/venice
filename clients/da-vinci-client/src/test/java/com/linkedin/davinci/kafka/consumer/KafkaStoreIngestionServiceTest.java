@@ -60,13 +60,16 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -172,6 +175,13 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaRecordPerSecond();
     doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedBytesPerSecond();
     doReturn(-1L).when(mockVeniceServerConfig).getKafkaFetchQuotaUnorderedRecordPerSecond();
+    doReturn(-1).when(mockVeniceServerConfig).getSepRTLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(mockVeniceServerConfig).getCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(mockVeniceServerConfig).getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(mockVeniceServerConfig).getCurrentVersionSepRTLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(mockVeniceServerConfig).getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(mockVeniceServerConfig).getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond();
+
     doReturn("").when(mockVeniceServerConfig).getDataBasePath();
     doReturn(0.9d).when(mockVeniceServerConfig).getDiskFullThreshold();
     doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
@@ -181,6 +191,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(2).when(mockVeniceServerConfig).getAaWCIngestionStorageLookupThreadPoolSize();
     doReturn(1).when(mockVeniceServerConfig).getStoreWriterNumber();
     doReturn(5).when(mockVeniceServerConfig).getIdleIngestionTaskCleanupIntervalInSeconds();
+    doReturn(1).when(mockVeniceServerConfig).getStoreChangeNotifierThreadPoolSize();
+    doReturn(LogContext.EMPTY).when(mockVeniceServerConfig).getLogContext();
 
     // Consumer related configs for preparing kafka consumer service.
     doReturn(dummyKafkaUrl).when(mockVeniceServerConfig).getKafkaBootstrapServers();
@@ -211,6 +223,53 @@ public abstract class KafkaStoreIngestionServiceTest {
   }
 
   @Test
+  public void testGetPubSubPosition() {
+    // Setup
+    String storeName = "test-store";
+    int partitionId = 0;
+    PubSubPosition expectedPosition = mock(PubSubPosition.class);
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    when(storeConfig.getStoreVersionName()).thenReturn(storeName + "_v1");
+    Map<Integer, PubSubPosition> positionMap = new HashMap<>();
+    positionMap.put(partitionId, expectedPosition);
+
+    // Test with non-null pubSubPosition
+    Optional<PubSubPosition> result = kafkaStoreIngestionService.getPubSubPosition(
+        storeConfig,
+        partitionId,
+        null, // timestamp
+        positionMap);
+
+    // Verify
+    assertTrue(result.isPresent());
+    assertEquals(expectedPosition, result.get());
+    // Test case 2: When positionMap is null
+    result = kafkaStoreIngestionService.getPubSubPosition(storeConfig, partitionId, null, null);
+    assertFalse(result.isPresent());
+
+    // Test case 3: When positionMap doesn't contain the partition
+    result = kafkaStoreIngestionService.getPubSubPosition(
+        storeConfig,
+        partitionId + 1, // different partition
+        null,
+        positionMap);
+    assertFalse(result.isPresent());
+
+    // Test case 4: When positionMap contains null position for the partition
+    positionMap.put(partitionId, null);
+    result = kafkaStoreIngestionService.getPubSubPosition(storeConfig, partitionId, null, positionMap);
+    assertFalse(result.isPresent());
+
+    // Test case 5: When timestamp is provided (should be ignored when positionMap has the position)
+    Map<Integer, Long> tsMap = new HashMap<>();
+    tsMap.put(partitionId, System.currentTimeMillis());
+    positionMap.put(partitionId, expectedPosition);
+    result = kafkaStoreIngestionService.getPubSubPosition(storeConfig, partitionId, tsMap, positionMap);
+    assertTrue(result.isPresent());
+    assertEquals(expectedPosition, result.get());
+  }
+
+  @Test
   public void testDisableMetricsEmission() {
     String mockStoreName = "test";
     String mockSimilarStoreName = "testTest";
@@ -226,7 +285,7 @@ public abstract class KafkaStoreIngestionServiceTest {
 
     for (int i = 1; i <= taskNum; i++) {
       StoreIngestionTask task = mock(StoreIngestionTask.class);
-      topicNameToIngestionTaskMap.put(mockStoreName + "_v" + String.valueOf(i), task);
+      topicNameToIngestionTaskMap.put(mockStoreName + "_v" + i, task);
     }
 
     topicNameToIngestionTaskMap.put(mockSimilarStoreName + "_v1", mock(StoreIngestionTask.class));
@@ -236,7 +295,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(mockStore).when(mockMetadataRepo).getStore(mockStoreName);
 
     VeniceStoreVersionConfig mockStoreConfig = mock(VeniceStoreVersionConfig.class);
-    doReturn(mockStoreName + "_v" + String.valueOf(taskNum)).when(mockStoreConfig).getStoreVersionName();
+    doReturn(mockStoreName + "_v" + taskNum).when(mockStoreConfig).getStoreVersionName();
 
     kafkaStoreIngestionService.updateStatsEmission(topicNameToIngestionTaskMap, mockStoreName, maxVersionNumber);
 
@@ -307,7 +366,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(new StoreVersionInfo(toBeDeletedStore, toBeDeletedStore.getVersion(1))).when(mockMetadataRepo)
         .waitVersion(eq(deletedStoreName), eq(1), any());
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
-    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topic1, veniceProperties), 0);
+    kafkaStoreIngestionService
+        .startConsumption(new VeniceStoreVersionConfig(topic1, veniceProperties), 0, Optional.empty());
     assertEquals(
         kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(),
         1,
@@ -320,8 +380,10 @@ public abstract class KafkaStoreIngestionServiceTest {
     mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id"));
     doReturn(new StoreVersionInfo(mockStore, mockStore.getVersion(2))).when(mockMetadataRepo)
         .waitVersion(eq(storeName), eq(2), any());
-    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topic2, veniceProperties), 0);
-    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(invalidTopic, veniceProperties), 0);
+    kafkaStoreIngestionService
+        .startConsumption(new VeniceStoreVersionConfig(topic2, veniceProperties), 0, Optional.empty());
+    kafkaStoreIngestionService
+        .startConsumption(new VeniceStoreVersionConfig(invalidTopic, veniceProperties), 0, Optional.empty());
     doThrow(new VeniceNoStoreException(deletedStoreName)).when(mockMetadataRepo).getStoreOrThrow(deletedStoreName);
     doReturn(null).when(mockMetadataRepo).getStore(deletedStoreName);
     assertEquals(
@@ -365,7 +427,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(new StoreVersionInfo(mockStore, mockStore.getVersion(1))).when(mockMetadataRepo)
         .waitVersion(eq(storeName), eq(1), any());
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
-    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0);
+    kafkaStoreIngestionService
+        .startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0, Optional.empty());
     StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     kafkaStoreIngestionService.shutdownStoreIngestionTask(topicName);
     StoreIngestionTask closedStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
@@ -374,14 +437,16 @@ public abstract class KafkaStoreIngestionServiceTest {
     StorageEngine storageEngine2 = mock(DelegatingStorageEngine.class);
     doReturn(new ReferenceCounted<>(storageEngine2, se -> {})).when(mockStorageService)
         .getRefCountedStorageEngine(topicName);
-    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0);
+    kafkaStoreIngestionService
+        .startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0, Optional.empty());
     StoreIngestionTask newStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     Assert.assertNotNull(newStoreIngestionTask);
     Assert.assertNotEquals(storeIngestionTask, newStoreIngestionTask);
     assertEquals(newStoreIngestionTask.getStorageEngine(), storageEngine2);
 
     // Mimic a graceful shutdown timeout
-    kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0);
+    kafkaStoreIngestionService
+        .startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0, Optional.empty());
     StoreIngestionTask shutdownTimeoutTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     // Initialize the latch forcefully to mimic task is running
     shutdownTimeoutTask.getGracefulShutdownLatch().get();
@@ -437,7 +502,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         .waitVersion(eq(storeName), eq(1), any());
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(topicName, veniceProperties);
-    kafkaStoreIngestionService.startConsumption(config, 0);
+    kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
     kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1, true);
     StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     if (isIsolatedIngestion) {
@@ -445,7 +510,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     } else {
       assertNull(storeIngestionTask);
     }
-    kafkaStoreIngestionService.startConsumption(config, 0);
+    kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
     storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     storeIngestionTask.setPartitionConsumptionState(1, mock(PartitionConsumptionState.class));
     kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1, true);
@@ -457,7 +522,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     AbstractKafkaConsumerService kafkaConsumerService =
         spy(storeIngestionTask.aggKafkaConsumerService.createKafkaConsumerService(consumerProperties));
     kafkaStoreIngestionService.getTopicPartitionIngestionContext(topicName, topicName, 0);
-    verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFor(pubSubTopic, pubSubTopicPartition);
+    verify(kafkaConsumerService, atMostOnce()).getIngestionInfoFor(pubSubTopic, pubSubTopicPartition, false);
     kafkaStoreIngestionService.close();
   }
 
@@ -589,7 +654,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         .waitVersion(eq(storeName), eq(1), any());
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(topicName, veniceProperties);
-    kafkaStoreIngestionService.startConsumption(config, 0);
+    kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
     // kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1, true);
     final StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     // Unsubscribe from partition 0 to make the store ingestion task idle
@@ -627,7 +692,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         .waitVersion(eq(storeName), eq(1), any());
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(topicName, veniceProperties);
-    kafkaStoreIngestionService.startConsumption(config, 0);
+    kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
     // kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1, true);
     final StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     // Unsubscribe from partition 0 to make the store ingestion task idle
@@ -771,5 +836,137 @@ public abstract class KafkaStoreIngestionServiceTest {
         kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName);
     assertEquals(internalDaVinciRecordTransformerConfig.getRecordTransformerConfig(), recordTransformerConfig);
     assertNotNull(internalDaVinciRecordTransformerConfig.getRecordTransformerStats());
+  }
+
+  @Test
+  public void testAAWCThreadPoolStatsAreRegistered() {
+    // Close the existing service first
+    kafkaStoreIngestionService.close();
+
+    // Create a new MetricsRepository with a reporter to verify metrics
+    MetricsRepository metricsRepository = new MetricsRepository();
+    MockTehutiReporter reporter = new MockTehutiReporter();
+    metricsRepository.addReporter(reporter);
+
+    // Set up mock config with AA/WC parallel processing enabled
+    VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
+    String dummyKafkaUrl = "localhost:16637";
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(-1L).when(serverConfig).getKafkaFetchQuotaBytesPerSecond();
+    doReturn(-1L).when(serverConfig).getKafkaFetchQuotaRecordPerSecond();
+    doReturn(-1L).when(serverConfig).getKafkaFetchQuotaUnorderedBytesPerSecond();
+    doReturn(-1L).when(serverConfig).getKafkaFetchQuotaUnorderedRecordPerSecond();
+    doReturn(-1).when(serverConfig).getSepRTLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getCurrentVersionSepRTLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond();
+    doReturn(-1).when(serverConfig).getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond();
+    doReturn("").when(serverConfig).getDataBasePath();
+    doReturn(0.9d).when(serverConfig).getDiskFullThreshold();
+    doReturn(Int2ObjectMaps.emptyMap()).when(serverConfig).getKafkaClusterIdToAliasMap();
+    doReturn(Object2IntMaps.emptyMap()).when(serverConfig).getKafkaClusterUrlToIdMap();
+    doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT).when(serverConfig)
+        .getConsumerPoolStrategyType();
+    doReturn(1).when(serverConfig).getStoreWriterNumber();
+    doReturn(0).when(serverConfig).getIdleIngestionTaskCleanupIntervalInSeconds();
+    doReturn(1).when(serverConfig).getStoreChangeNotifierThreadPoolSize();
+    doReturn(LogContext.EMPTY).when(serverConfig).getLogContext();
+    doReturn(dummyKafkaUrl).when(serverConfig).getKafkaBootstrapServers();
+    Function<String, String> kafkaClusterUrlResolver = String::toString;
+    doReturn(kafkaClusterUrlResolver).when(serverConfig).getKafkaClusterUrlResolver();
+    doReturn(VeniceProperties.empty()).when(serverConfig).getKafkaConsumerConfigsForLocalConsumption();
+    doReturn(getConsumerAssignmentStrategy()).when(serverConfig).getSharedConsumerAssignmentStrategy();
+    doReturn(1).when(serverConfig).getConsumerPoolSizePerKafkaCluster();
+    doReturn(PubSubSecurityProtocol.PLAINTEXT).when(serverConfig).getPubSubSecurityProtocol(dummyKafkaUrl);
+    doReturn(10).when(serverConfig).getKafkaMaxPollRecords();
+    doReturn(2).when(serverConfig).getTopicManagerMetadataFetcherConsumerPoolSize();
+    doReturn(2).when(serverConfig).getTopicManagerMetadataFetcherThreadPoolSize();
+    doReturn(30L).when(serverConfig).getKafkaFetchQuotaTimeWindow();
+    doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(serverConfig)
+        .getPubSubPositionTypeRegistry();
+    doReturn(IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL).when(serverConfig)
+        .getIngestionTaskReusableObjectsStrategy();
+
+    // Enable AA/WC parallel processing
+    doReturn(true).when(serverConfig).isAAWCWorkloadParallelProcessingEnabled();
+    doReturn(4).when(serverConfig).getAAWCWorkloadParallelProcessingThreadPoolSize();
+    doReturn(2).when(serverConfig).getAaWCIngestionStorageLookupThreadPoolSize();
+
+    VeniceClusterConfig clusterConfig = mock(VeniceClusterConfig.class);
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, dummyKafkaUrl);
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+    doReturn(veniceProperties).when(clusterConfig).getClusterProperties();
+    doReturn(veniceProperties).when(serverConfig).getClusterProperties();
+
+    doReturn(serverConfig).when(configLoader).getVeniceServerConfig();
+    doReturn(clusterConfig).when(configLoader).getVeniceClusterConfig();
+
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    // Create the ingestion service
+    KafkaStoreIngestionService service = new KafkaStoreIngestionService(
+        mockStorageService,
+        configLoader,
+        storageMetadataService,
+        mockClusterInfoProvider,
+        mockMetadataRepo,
+        mockSchemaRepo,
+        mockLiveClusterConfigRepo,
+        metricsRepository,
+        Optional.empty(),
+        Optional.empty(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        Optional.empty(),
+        null,
+        false,
+        compressorFactory,
+        Optional.empty(),
+        false,
+        null,
+        mockPubSubClientsFactory,
+        Optional.empty(),
+        heartbeatMonitoringService,
+        null,
+        null,
+        Optional.empty());
+
+    try {
+      // Verify that AA/WC parallel processing thread pool stats are registered
+      assertNotNull(
+          reporter.query(".aa_wc_parallel_processing_thread_pool--active_thread_number.LambdaStat"),
+          "AA/WC parallel processing thread pool active_thread_number metric should be registered");
+      assertNotNull(
+          reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat"),
+          "AA/WC parallel processing thread pool max_thread_number metric should be registered");
+      assertNotNull(
+          reporter.query(".aa_wc_parallel_processing_thread_pool--queued_task_count_gauge.LambdaStat"),
+          "AA/WC parallel processing thread pool queued_task_count_gauge metric should be registered");
+
+      // Verify that AA/WC ingestion storage lookup thread pool stats are registered
+      assertNotNull(
+          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--active_thread_number.LambdaStat"),
+          "AA/WC ingestion storage lookup thread pool active_thread_number metric should be registered");
+      assertNotNull(
+          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat"),
+          "AA/WC ingestion storage lookup thread pool max_thread_number metric should be registered");
+      assertNotNull(
+          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--queued_task_count_gauge.LambdaStat"),
+          "AA/WC ingestion storage lookup thread pool queued_task_count_gauge metric should be registered");
+
+      // Verify the max thread numbers are set correctly
+      assertEquals(
+          (int) reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat").value(),
+          4,
+          "AA/WC parallel processing thread pool should have 4 threads");
+      assertEquals(
+          (int) reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat").value(),
+          2,
+          "AA/WC ingestion storage lookup thread pool should have 2 threads");
+    } finally {
+      service.close();
+    }
   }
 }

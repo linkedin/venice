@@ -197,18 +197,23 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public Schema getLatestValueSchema() throws VeniceClientException {
-    SchemaEntry latest = maybeFetchLatestValueSchemaEntry();
+    SchemaEntry latest = maybeFetchLatestValueSchemaEntry(false);
     // Defensive coding, in theory, there will be at least one schema, so latest value schema won't be null after
     // refresh.
     return latest == null ? null : SCHEMA_EXTRACTOR.apply(latest);
   }
 
   @Override
-  public Integer getLatestValueSchemaId() throws VeniceClientException {
-    SchemaEntry latest = maybeFetchLatestValueSchemaEntry();
+  public Integer getLatestValueSchemaId(boolean forceRefresh) throws VeniceClientException {
+    SchemaEntry latest = maybeFetchLatestValueSchemaEntry(forceRefresh);
     // Defensive coding, in theory, there will be at least one schema, so latest value schema won't be null after
     // refresh.
     return latest == null ? null : SCHEMA_ID_EXTRACTOR.apply(latest);
+  }
+
+  @Override
+  public Integer getLatestValueSchemaId() {
+    return getLatestValueSchemaId(false);
   }
 
   @Override
@@ -246,7 +251,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public DerivedSchemaEntry getLatestUpdateSchema() {
-    SchemaEntry latestValueSchema = maybeFetchLatestValueSchemaEntry();
+    SchemaEntry latestValueSchema = maybeFetchLatestValueSchemaEntry(false);
     if (latestValueSchema == null) {
       LOGGER.warn("Got null latest value schema from Venice for store: {}.", storeName);
       return null;
@@ -272,7 +277,8 @@ public class RouterBackedSchemaReader implements SchemaReader {
       try {
         refreshSchemaExecutor.awaitTermination(60, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
-        LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
+        Thread.currentThread().interrupt();
+        LOGGER.warn("Caught InterruptedException while closing the schema refresh ExecutorService", e);
       }
     }
     if (!externalClient) {
@@ -433,9 +439,10 @@ public class RouterBackedSchemaReader implements SchemaReader {
     }
   }
 
-  private SchemaEntry maybeFetchLatestValueSchemaEntry() {
+  private SchemaEntry maybeFetchLatestValueSchemaEntry(boolean refresh) {
     SchemaEntry latest = latestValueSchemaEntry.get();
-    if (latest == null || shouldRefreshLatestValueSchemaEntry.get()) {
+
+    if (refresh || latest == null || shouldRefreshLatestValueSchemaEntry.get()) {
       /**
        * Every time it sees latestValueSchemaEntry is null or the flag to update latest schema entry is set to true,
        * it will try to update it once.
@@ -443,7 +450,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
        * one active value schema.
        */
       synchronized (this) {
-        if (latest != null && !shouldRefreshLatestValueSchemaEntry.get() && isValidSchemaEntry(latest)) {
+        if (refresh) {
+          shouldRefreshLatestValueSchemaEntry.set(true);
+        }
+        if (latest != null && (!shouldRefreshLatestValueSchemaEntry.get() && isValidSchemaEntry(latest)
+            || !latest.equals(latestValueSchemaEntry.get()))) {
           return latest;
         }
         updateAllValueSchemaEntriesAndLatestValueSchemaEntry(false);

@@ -2,7 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXECUTION_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SKIP_DIV;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SKIP_ADMIN_MESSAGE;
 
@@ -39,15 +39,16 @@ public class SkipAdminRoute extends AbstractRoute {
         }
         AdminSparkServer.validateParams(request, SKIP_ADMIN_MESSAGE.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
-        long offset = request.queryParams(OFFSET) == null ? -1L : Long.parseLong(request.queryParams(OFFSET));
+        String typeIdAndBase64PositionBytes = request.queryParams(POSITION);
         long executionId =
             request.queryParams(EXECUTION_ID) == null ? -1L : Long.parseLong(request.queryParams(EXECUTION_ID));
         boolean skipDIV = Utils.parseBooleanOrThrow(request.queryParams(SKIP_DIV), SKIP_DIV);
-        if (offset != -1L && executionId != -1L) {
+        if (typeIdAndBase64PositionBytes != null && executionId != -1L) {
           throw new IllegalArgumentException(
-              "Only one of offset or executionId can be specified, offset " + offset + ", execution id " + executionId);
+              "Only one of position or executionId can be specified, position " + typeIdAndBase64PositionBytes
+                  + ", execution id " + executionId);
         }
-        admin.skipAdminMessage(responseObject.getCluster(), offset, skipDIV, executionId);
+        admin.skipAdminMessage(responseObject.getCluster(), typeIdAndBase64PositionBytes, skipDIV, executionId);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);

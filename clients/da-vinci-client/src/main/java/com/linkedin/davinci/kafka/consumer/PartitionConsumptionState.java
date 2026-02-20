@@ -5,11 +5,13 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import com.linkedin.davinci.compression.KeyUrnCompressor;
 import com.linkedin.davinci.compression.UrnDictV1;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
+import com.linkedin.venice.kafka.protocol.state.IncrementalPushReplicaStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Version;
@@ -23,6 +25,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.state.KeyUrnCompressionDict;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderCompleteState;
@@ -35,6 +38,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
@@ -65,6 +69,7 @@ public class PartitionConsumptionState {
   private static final Logger LOGGER = LogManager.getLogger(PartitionConsumptionState.class);
   private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
   private static final long DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS = MINUTES.toMillis(2); // Default is 2 minutes.
+  private static final long MAX_RETENTION_DAYS_IN_MS = TimeUnit.DAYS.toMillis(2);
   private static final CharSequence PREVIOUSLY_READY_TO_SERVE = new Utf8("previouslyReadyToServe");
   private static final String TRUE = "true";
 
@@ -90,7 +95,7 @@ public class PartitionConsumptionState {
    * getting caught up after a push.
    */
   private long lagCaughtUpTimeInMs;
-  private boolean completionReported;
+  private volatile boolean completionReported;
   private boolean isSubscribed;
   private boolean isDataRecoveryCompleted;
   private LeaderFollowerStateType leaderFollowerState;
@@ -121,6 +126,28 @@ public class PartitionConsumptionState {
    * details why we need latch for certain resources.
    */
   private final AtomicReference<LatchStatus> latchStatus = new AtomicReference<>(LatchStatus.NONE);
+
+  /**
+   * Tracks DoL state during STANDBY to LEADER transition. Null when not in transition or DoL not enabled.
+   *
+   * <p>Thread access patterns:
+   * <ul>
+   *   <li>State machine thread: calls setDolState(), getDolState(), clearDolState(), isDolComplete()</li>
+   *   <li>Producer callback thread: calls getDolState(), then setDolProduced() on the DolStamp</li>
+   *   <li>Drainer thread: calls getDolState(), then setDolConsumed() on the DolStamp</li>
+   * </ul>
+   *
+   * <p>Thread safety: The volatile reference ensures proper publication. The DolStamp's internal flags
+   * (dolProduced, dolConsumed) are also volatile. Since flags only transition one-way (false → true),
+   * stale reads are safe - they just delay completion detection until the next check.
+   */
+  private volatile DolStamp dolStamp = null;
+
+  /**
+   * The highest leadership term observed by this replica. Currently used only
+   * for troubleshooting. This will eventually become part of the durable state.
+   */
+  private volatile long highestLeadershipTerm = -1;
 
   /**
    * This future is completed in drainer thread after persisting the associated record and offset to DB.
@@ -269,6 +296,18 @@ public class PartitionConsumptionState {
 
   private final Schema keySchema;
   private KeyUrnCompressor keyUrnCompressor;
+  private Map<String, IncrementalPushReplicaStatus> trackingIncrementalPushStatus;
+  /**
+   * Indicates whether a bootstrapping current version replica has resubscribed after bootstrap completed.
+   * In a replica's lifetime, this will only be flipped at most once.
+   */
+  private boolean hasResubscribedAfterBootstrapAsCurrentVersion;
+
+  /**
+   * Cached HeartbeatKey references keyed by region, populated during lag monitor setup.
+   * Eliminates HeartbeatKey creation and hash computation on the per-record recording path.
+   */
+  private final Map<String, HeartbeatKey> cachedHeartbeatKeys = new VeniceConcurrentHashMap<>(3);
 
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
@@ -310,6 +349,7 @@ public class PartitionConsumptionState {
     latestConsumedRtPositions = new VeniceConcurrentHashMap<>(3);
     divRtCheckpointPositions = new VeniceConcurrentHashMap<>(3);
     latestProcessedRtPositions = new VeniceConcurrentHashMap<>(3);
+    trackingIncrementalPushStatus = new VeniceConcurrentHashMap<>(3);
     if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
       offsetRecord.cloneRtPositionCheckpoints(latestConsumedRtPositions);
       offsetRecord.cloneRtPositionCheckpoints(latestProcessedRtPositions);
@@ -324,7 +364,7 @@ public class PartitionConsumptionState {
     this.leaderCompleteState = LeaderCompleteState.LEADER_NOT_COMPLETED;
     this.lastLeaderCompleteStateUpdateInMs = 0;
     this.pendingReportIncPushVersionList = offsetRecord.getPendingReportIncPushVersionList();
-
+    this.hasResubscribedAfterBootstrapAsCurrentVersion = false;
     KeyUrnCompressionDict keyUrnCompressionDict = offsetRecord.getKeyUrnCompressionDict();
     if (keyUrnCompressionDict != null) {
       if (keyUrnCompressionDict.keyUrnCompressionDictionaryVersion != 1) {
@@ -509,6 +549,26 @@ public class PartitionConsumptionState {
 
   public final LeaderFollowerStateType getLeaderFollowerState() {
     return this.leaderFollowerState;
+  }
+
+  public DolStamp getDolState() {
+    return this.dolStamp;
+  }
+
+  public void setDolState(DolStamp dolStamp) {
+    this.dolStamp = dolStamp;
+  }
+
+  public void clearDolState() {
+    this.dolStamp = null;
+  }
+
+  public long getHighestLeadershipTerm() {
+    return highestLeadershipTerm;
+  }
+
+  public void setHighestLeadershipTerm(long term) {
+    this.highestLeadershipTerm = term;
   }
 
   public void setLastLeaderPersistFuture(Future<Void> future) {
@@ -842,6 +902,7 @@ public class PartitionConsumptionState {
    *
    * @return the current version topic position
    */
+  // TODO: revisit where LCVP needs to be replacing this
   public PubSubPosition getLatestProcessedVtPosition() {
     return this.latestProcessedVtPosition;
   }
@@ -861,6 +922,8 @@ public class PartitionConsumptionState {
    * @return the current upstream version topic position
    */
   public PubSubPosition getLatestProcessedRemoteVtPosition() {
+    // TODO: Ideally, we should get this from offset record to ensure durability
+    // return this.offsetRecord.getCheckpointedRemoteVtPosition();
     return this.latestProcessedRemoteVtPosition;
   }
 
@@ -1081,5 +1144,57 @@ public class PartitionConsumptionState {
 
   public KeyUrnCompressor getKeyDictCompressor() {
     return keyUrnCompressor;
+  }
+
+  public Map<String, IncrementalPushReplicaStatus> getTrackingIncrementalPushStatus() {
+    return trackingIncrementalPushStatus;
+  }
+
+  /**
+   * Update the tracking incremental push status map for a specific push job ID.
+   * @param pushJobId the incremental push job ID
+   * @param status the push status (e.g., START or END)
+   * @param timestamp the timestamp when this status was recorded
+   */
+  public void setTrackingIncrementalPushStatus(String pushJobId, int status, long timestamp) {
+    purgeTrackingIncrementalPushStatus();
+
+    IncrementalPushReplicaStatus replicaStatus = new IncrementalPushReplicaStatus(status, timestamp);
+    this.trackingIncrementalPushStatus.put(pushJobId, replicaStatus);
+  }
+
+  /**
+   * Purge old entries from the tracking incremental push status map based on MAX_RETENTION_DAYS_IN_MS
+   */
+  private void purgeTrackingIncrementalPushStatus() {
+    if (this.trackingIncrementalPushStatus == null || this.trackingIncrementalPushStatus.isEmpty()) {
+      return;
+    }
+
+    // remove entries older than maxDurationDay
+    this.trackingIncrementalPushStatus.entrySet()
+        .removeIf(
+            entry -> LatencyUtils.getElapsedTimeFromMsToMs(entry.getValue().timestamp) > MAX_RETENTION_DAYS_IN_MS);
+  }
+
+  public boolean hasResubscribedAfterBootstrapAsCurrentVersion() {
+    return hasResubscribedAfterBootstrapAsCurrentVersion;
+  }
+
+  public void setHasResubscribedAfterBootstrapAsCurrentVersion(boolean hasResubscribedAfterBootstrapAsCurrentVersion) {
+    this.hasResubscribedAfterBootstrapAsCurrentVersion = hasResubscribedAfterBootstrapAsCurrentVersion;
+  }
+
+  /**
+   * Get or create a cached HeartbeatKey for the given region.
+   * Derives storeName/version from the partition replica topic name.
+   */
+  public HeartbeatKey getOrCreateCachedHeartbeatKey(String region) {
+    return cachedHeartbeatKeys.computeIfAbsent(region, r -> {
+      String topicName = partitionReplica.getTopicName();
+      String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+      int version = Version.parseVersionFromKafkaTopicName(topicName);
+      return new HeartbeatKey(storeName, version, getPartition(), r);
+    });
   }
 }

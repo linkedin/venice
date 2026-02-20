@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.CompletableFuture;
@@ -67,7 +68,8 @@ public class ServerReadQuotaUsageStatsTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     String storeName = "test-store";
     ServerReadQuotaUsageStats stats = new ServerReadQuotaUsageStats(metricsRepository, storeName);
-    ExecutorService service = Executors.newFixedThreadPool(100);
+    ExecutorService service =
+        Executors.newFixedThreadPool(100, new DaemonThreadFactory("ServerReadQuotaUsageStatsTest"));
     CompletableFuture[] completableFutures = new CompletableFuture[100];
     for (int j = 0; j < 100; j++) {
       completableFutures[j] = CompletableFuture.runAsync(() -> {

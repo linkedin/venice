@@ -1,0 +1,62 @@
+#!/bin/sh
+# Wrap non-comment commit message lines to <90 chars nicely, with 2 spaces at end.
+
+COMMIT_MSG_FILE="$1"
+MAX_LEN=78
+
+tmp_file="$(mktemp)"
+in_code_block=0
+
+wrap_line() {
+  local text="$1"
+  local len=$MAX_LEN
+  while [ ${#text} -gt $len ]; do
+    # Try to break at the last space before $len
+    local break_pos=$(echo "$text" | awk -v max=$len '{
+      pos = max
+      while (pos > 0 && substr($0,pos,1) != " ") pos--
+      if (pos == 0) pos = max
+      print pos
+    }')
+
+    printf '%s  \n' "${text:0:$break_pos}" >> "$tmp_file"
+    text="${text:$break_pos}"
+    # Trim leading spaces from the remainder
+    text=$(echo "$text" | sed 's/^ *//')
+  done
+
+  if [ -n "$text" ]; then
+    printf '%s\n' "$text" >> "$tmp_file"
+  fi
+}
+
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in
+    '```'*)
+      # Toggle code block mode
+      if [ $in_code_block -eq 0 ]; then in_code_block=1; else in_code_block=0; fi
+      printf '%s\n' "$line" >> "$tmp_file"
+      continue
+      ;;
+    \#*)
+      # Leave comment lines as-is
+      printf '%s\n' "$line" >> "$tmp_file"
+      continue
+      ;;
+    "")
+      # Preserve blank lines
+      printf '\n' >> "$tmp_file"
+      continue
+      ;;
+  esac
+
+  if [ $in_code_block -eq 1 ]; then
+    printf '%s\n' "$line" >> "$tmp_file"
+  else
+    wrap_line "$line"
+  fi
+done < "$COMMIT_MSG_FILE"
+
+mv "$tmp_file" "$COMMIT_MSG_FILE"
+exit 0
+

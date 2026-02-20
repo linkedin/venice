@@ -4,6 +4,8 @@ import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.misc.ThreadPoolExecutor;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
+import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.listener.VerifySslHandler;
@@ -44,6 +46,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -51,8 +54,10 @@ import org.apache.logging.log4j.Logger;
 public class NettyFileTransferClient {
   private static final Logger LOGGER = LogManager.getLogger(NettyFileTransferClient.class);
   private static final int MAX_METADATA_CONTENT_LENGTH = 1024 * 1024 * 100;
-  private static final int CONNECTION_TIMEOUT_IN_MINUTES = 1;
-  // Maximum time that Netty will wait to establish the initial connection before failing.
+  private static final int ALL_HOSTS_CONNECTION_TIMEOUT_IN_MINUTES = 1;
+  // Total connection timeout (TCP connection and SSL handshake)
+  private static final int PER_HOST_CONNECTION_TIMEOUT_MS = 50 * 1000;
+  // Maximum time that Netty will wait to establish the initial connection before failing. (TCP connection)
   private static final int CONNECTION_ESTABLISHMENT_TIMEOUT_MS = 30 * 1000;
   // The default checksum threadpool size is the number of available processors.
   private static final int DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors();
@@ -73,8 +78,13 @@ public class NettyFileTransferClient {
   // format: host -> timestamp of the last connection attempt
   private final VeniceConcurrentHashMap<String, Long> unconnectableHostsToTimestamp = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, Long> connectedHostsToTimestamp = new VeniceConcurrentHashMap<>();
+  private final Supplier<VeniceNotifier> notifierSupplier;
+  private final AggBlobTransferStats aggBlobTransferStats;
 
   private final VerifySslHandler verifySsl = new VerifySslHandler();
+
+  // Track active channels: <replica_id, active channel with ongoing transfer>
+  private final VeniceConcurrentHashMap<String, Channel> activeChannels = new VeniceConcurrentHashMap<>();
 
   // TODO: consider either increasing worker threads or have a dedicated thread pool to handle requests.
   public NettyFileTransferClient(
@@ -85,13 +95,17 @@ public class NettyFileTransferClient {
       int blobReceiveTimeoutInMin,
       int blobReceiveReaderIdleTimeInSeconds,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
-      Optional<SSLFactory> sslFactory) {
+      AggBlobTransferStats aggBlobTransferStats,
+      Optional<SSLFactory> sslFactory,
+      Supplier<VeniceNotifier> notifierSupplier) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
+    this.notifierSupplier = notifierSupplier;
     this.peersConnectivityFreshnessInSeconds = peersConnectivityFreshnessInSeconds;
     this.blobReceiveTimeoutInMin = blobReceiveTimeoutInMin;
     this.blobReceiveReaderIdleTimeInSeconds = blobReceiveReaderIdleTimeInSeconds;
+    this.aggBlobTransferStats = aggBlobTransferStats;
 
     clientBootstrap = new Bootstrap();
     workerGroup = new NioEventLoopGroup();
@@ -99,12 +113,11 @@ public class NettyFileTransferClient {
     clientBootstrap.channel(NioSocketChannel.class);
     clientBootstrap.option(ChannelOption.SO_KEEPALIVE, true);
     clientBootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, CONNECTION_ESTABLISHMENT_TIMEOUT_MS);
-    // Increase the receiver buffer size to 4MB.
-    clientBootstrap.option(ChannelOption.SO_RCVBUF, 4 << 20);
+    // Increase the receiver buffer size to 1MB.
+    clientBootstrap.option(ChannelOption.SO_RCVBUF, 1 << 20);
     // Use adaptive receiver buffer allocator to dynamically adjust the receiver buffer size.
-    clientBootstrap.option(
-        ChannelOption.RCVBUF_ALLOCATOR,
-        new AdaptiveRecvByteBufAllocator(64 * 1024, 1024 * 1024, 4 * 1024 * 1024));
+    clientBootstrap
+        .option(ChannelOption.RCVBUF_ALLOCATOR, new AdaptiveRecvByteBufAllocator(64 * 1024, 512 * 1024, 1 << 20));
     clientBootstrap.handler(new ChannelInitializer<SocketChannel>() {
       @Override
       public void initChannel(SocketChannel ch) {
@@ -224,7 +237,7 @@ public class NettyFileTransferClient {
         }
         allConnections.complete(null);
       }
-    }, CONNECTION_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
+    }, ALL_HOSTS_CONNECTION_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
 
     allConnections.join();
 
@@ -267,24 +280,41 @@ public class NettyFileTransferClient {
       int version,
       int partition,
       BlobTransferTableFormat requestedTableFormat) {
-    CompletionStage<InputStream> inputStream = new CompletableFuture<>();
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
+    CompletionStage<InputStream> perHostTransferFuture = new CompletableFuture<>();
     try {
       // Connects to the remote host
       // Must open a new connection for each request (per store per version per partition level),
       // Otherwise response will be mixed up
       Channel ch = connectToHost(host, storeName, version, partition);
 
+      // Track the active channel
+      activeChannels.put(replicaId, ch);
+
+      // Remove from tracking when transfer completes
+      perHostTransferFuture.toCompletableFuture().whenComplete((result, throwable) -> {
+        activeChannels.remove(replicaId);
+        if (throwable != null) {
+          LOGGER.info(
+              "Removed active channel tracking for replica {} after transfer failure: {}",
+              replicaId,
+              throwable.getMessage());
+        } else {
+          LOGGER.info("Removed active channel tracking for replica {} after successful transfer", replicaId);
+        }
+      });
+
       // Check if the channel already has a P2PFileTransferClientHandler/P2PMetadataTransferHandler
       if (ch.pipeline().get(P2PFileTransferClientHandler.class) != null
           || ch.pipeline().get(P2PMetadataTransferHandler.class) != null) {
-        inputStream.toCompletableFuture()
+        perHostTransferFuture.toCompletableFuture()
             .completeExceptionally(
                 new VenicePeersConnectionException(
                     "The host " + host
                         + " channel already have P2PFileTransferClientHandler/P2PMetadataTransferHandler for "
                         + storeName + " version " + version + " partition " + partition + " table format "
                         + requestedTableFormat));
-        return inputStream;
+        return perHostTransferFuture;
       }
 
       // Request to get the blob file and metadata
@@ -296,11 +326,12 @@ public class NettyFileTransferClient {
           .addLast(
               new P2PFileTransferClientHandler(
                   baseDir,
-                  inputStream,
+                  perHostTransferFuture,
                   storeName,
                   version,
                   partition,
                   requestedTableFormat,
+                  aggBlobTransferStats,
                   checksumValidationExecutorService))
           .addLast(
               new P2PMetadataTransferHandler(
@@ -309,12 +340,12 @@ public class NettyFileTransferClient {
                   storeName,
                   version,
                   partition,
-                  requestedTableFormat));
+                  requestedTableFormat,
+                  notifierSupplier));
       // Send a GET request
       ChannelFuture requestFuture =
           ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));
 
-      String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
       requestFuture.addListener(f -> {
         if (f.isSuccess()) {
           LOGGER.info("Request successfully sent to the server for replica {} to remote host {}", replicaId, host);
@@ -325,7 +356,7 @@ public class NettyFileTransferClient {
 
       // Set a timeout, otherwise if the host is not responding, the future will never complete
       connectTimeoutScheduler.schedule(() -> {
-        if (!inputStream.toCompletableFuture().isDone()) {
+        if (!perHostTransferFuture.toCompletableFuture().isDone()) {
           String errorMsg = String.format(
               "Request timed out for store %s version %d partition %d table format %s from host %s after %d minutes",
               storeName,
@@ -339,11 +370,20 @@ public class NettyFileTransferClient {
         }
       }, blobReceiveTimeoutInMin, TimeUnit.MINUTES);
     } catch (Exception e) {
-      if (!inputStream.toCompletableFuture().isCompletedExceptionally()) {
-        inputStream.toCompletableFuture().completeExceptionally(e);
+      if (!perHostTransferFuture.toCompletableFuture().isCompletedExceptionally()) {
+        perHostTransferFuture.toCompletableFuture().completeExceptionally(e);
       }
     }
-    return inputStream;
+    return perHostTransferFuture;
+  }
+
+  /**
+   * Get the active channel for a given transfer, if any.
+   * @param replicaId the replica ID (format: storeName_vVersion-partition)
+   * @return the active Channel, or null if no active transfer
+   */
+  public Channel getActiveChannel(String replicaId) {
+    return activeChannels.get(replicaId);
   }
 
   public void close() {
@@ -353,6 +393,7 @@ public class NettyFileTransferClient {
     checksumValidationExecutorService.shutdown();
     unconnectableHostsToTimestamp.clear();
     connectedHostsToTimestamp.clear();
+    activeChannels.clear();
   }
 
   private FullHttpRequest prepareRequest(
@@ -367,18 +408,41 @@ public class NettyFileTransferClient {
   }
 
   /**
-   * Connects to the host
+   * Connects to the host with a timeout
    */
   private Channel connectToHost(String host, String storeName, int version, int partition) {
+    ChannelFuture connectFuture = null;
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
     try {
-      return clientBootstrap.connect(host, serverPort).sync().channel();
+      connectFuture = clientBootstrap.connect(host, serverPort);
+
+      // Wait at most PER_HOST_CONNECTION_TIMEOUT_MS for the connect to finish
+      boolean completed = connectFuture.awaitUninterruptibly(PER_HOST_CONNECTION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+
+      if (!completed) {
+        if (!connectFuture.isDone()) {
+          connectFuture.cancel(true);
+        }
+        String errorMsg = String.format(
+            "Timed out after %d ms waiting to connect to host: %s for blob transfer for replica %s",
+            PER_HOST_CONNECTION_TIMEOUT_MS,
+            host,
+            replicaId);
+        LOGGER.error(errorMsg);
+        throw new VenicePeersConnectionException(errorMsg);
+      }
+
+      if (!connectFuture.isSuccess()) {
+        Throwable cause = connectFuture.cause();
+        String errorMsg =
+            String.format("Failed to connect to the host: %s for blob transfer for replica %s", host, replicaId);
+        LOGGER.error(errorMsg, cause);
+        throw new VenicePeersConnectionException(errorMsg, cause);
+      }
+      return connectFuture.channel();
     } catch (Exception e) {
-      String errorMsg = String.format(
-          "Failed to connect to the host: %s for blob transfer for store: %s, version: %d, partition: %d",
-          host,
-          storeName,
-          version,
-          partition);
+      String errorMsg =
+          String.format("Exception while connecting to host: %s for blob transfer for replica %s", host, replicaId);
       LOGGER.error(errorMsg, e);
       throw new VenicePeersConnectionException(errorMsg, e);
     }

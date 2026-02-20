@@ -491,6 +491,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           SingleGetChunkingAdapter.get(storageEngine, request.getPartition(), key, isChunked, response.getStats());
       response.setValueRecord(valueRecord);
 
+      if (valueRecord == null) {
+        response.getStats().incrementKeyNotFoundCount();
+      }
+
       response.getStats().addKeySize(key.length);
       response.getStats().setStorageExecutionSubmissionWaitTime(submissionWaitTime);
       response.getStats().setStorageExecutionQueueLen(queueLen);
@@ -587,6 +591,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           requestContext.isChunked,
           response.getStats());
       if (record == null) {
+        response.getStats().incrementKeyNotFoundCount();
         if (requestContext.isStreaming) {
           // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
           // non-existing keys in the response if the response is partial.
@@ -783,13 +788,16 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
         response.addRecord(record);
         hits++;
-      } else if (requestContext.isStreaming) {
-        // For streaming, we need to send back non-existing keys
-        record = new ComputeResponseRecordV1();
-        // Negative key index to indicate non-existing key
-        record.keyIndex = Math.negateExact(key.getKeyIndex());
-        record.value = StreamingUtils.EMPTY_BYTE_BUFFER;
-        response.addRecord(record);
+      } else {
+        response.getStats().incrementKeyNotFoundCount();
+        if (requestContext.isStreaming) {
+          // For streaming, we need to send back non-existing keys
+          record = new ComputeResponseRecordV1();
+          // Negative key index to indicate non-existing key
+          record.keyIndex = Math.negateExact(key.getKeyIndex());
+          record.value = StreamingUtils.EMPTY_BYTE_BUFFER;
+          response.addRecord(record);
+        }
       }
     }
 

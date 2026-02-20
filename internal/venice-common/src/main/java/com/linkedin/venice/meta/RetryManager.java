@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.RetryManagerStats;
 import com.linkedin.venice.throttle.TokenBucket;
 import io.tehuti.metrics.MetricsRepository;
@@ -35,6 +36,8 @@ public class RetryManager {
   public RetryManager(
       MetricsRepository metricsRepository,
       String metricNamePrefix,
+      String storeName,
+      RequestType requestType,
       long enforcementWindowInMs,
       double retryBudgetInPercentDecimal,
       Clock clock,
@@ -45,7 +48,7 @@ public class RetryManager {
     } else {
       retryBudgetEnabled.set(true);
       lastUpdateTimestamp = clock.millis();
-      retryManagerStats = new RetryManagerStats(metricsRepository, metricNamePrefix, this);
+      retryManagerStats = new RetryManagerStats(metricsRepository, metricNamePrefix, storeName, requestType, this);
       this.scheduler.schedule(this::updateRetryTokenBucket, enforcementWindowInMs, TimeUnit.MILLISECONDS);
     }
     this.enforcementWindowInMs = enforcementWindowInMs;
@@ -58,10 +61,14 @@ public class RetryManager {
       String metricNamePrefix,
       long enforcementWindowInMs,
       double retryBudgetInPercentDecimal,
-      ScheduledExecutorService scheduler) {
+      ScheduledExecutorService scheduler,
+      String storeName,
+      RequestType requestType) {
     this(
         metricsRepository,
         metricNamePrefix,
+        storeName,
+        requestType,
         enforcementWindowInMs,
         retryBudgetInPercentDecimal,
         Clock.systemUTC(),

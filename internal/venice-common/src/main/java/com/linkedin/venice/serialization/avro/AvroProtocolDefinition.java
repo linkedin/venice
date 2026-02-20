@@ -50,13 +50,13 @@ public enum AvroProtocolDefinition {
   /**
    * Used for the Kafka topics, including the main data topics as well as the admin topic.
    */
-  KAFKA_MESSAGE_ENVELOPE(23, 12, KafkaMessageEnvelope.class),
+  KAFKA_MESSAGE_ENVELOPE(23, 13, KafkaMessageEnvelope.class),
 
   /**
    * Used to persist the state of a partition in Storage Nodes, including offset,
    * Data Ingest Validation state, etc.
    */
-  PARTITION_STATE(24, 19, PartitionState.class),
+  PARTITION_STATE(24, 20, PartitionState.class),
 
   /**
    * Used to persist state related to a store-version, including Start of Buffer Replay
@@ -77,7 +77,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(91, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
+  ADMIN_OPERATION(95, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
@@ -148,7 +148,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(36, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(40, StoreMetaValue.class),
 
   /*
     Value Schema for Parent Controller Metadata system store
@@ -303,7 +303,7 @@ public enum AvroProtocolDefinition {
     if (magicByte.isPresent() || protocolVersionStoredInHeader) {
       return new InternalAvroSpecificSerializer<>(this);
     }
-    return new InternalAvroSpecificSerializer<>(this, 0);
+    return new InternalAvroSpecificSerializer<>(this, 0, this.getCurrentProtocolVersionSchema());
   }
 
   public int getCurrentProtocolVersion() {

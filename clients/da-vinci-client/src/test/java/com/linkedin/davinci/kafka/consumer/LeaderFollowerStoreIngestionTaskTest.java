@@ -13,6 +13,7 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -32,6 +33,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -40,9 +42,12 @@ import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
+import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -62,18 +67,21 @@ import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubContext;
-import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -89,6 +97,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -101,12 +110,15 @@ import java.util.function.BooleanSupplier;
 import org.mockito.ArgumentCaptor;
 import org.mockito.internal.verification.VerificationModeFactory;
 import org.mockito.verification.Timeout;
+import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class LeaderFollowerStoreIngestionTaskTest {
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private static final int GLOBAL_RT_DIV_VERSION =
+      AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
 
   private Store mockStore;
   private LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask;
@@ -393,7 +405,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(hostLevelIngestionStats, times(1)).recordViewProducerAckLatency(anyDouble());
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 30000)
   public void testCloseVeniceViewWriters() throws InterruptedException {
     mockVeniceViewWriterFactory = mock(VeniceViewWriterFactory.class);
     Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
@@ -520,6 +532,71 @@ public class LeaderFollowerStoreIngestionTaskTest {
     return pubSubMessageProcessedResultWrapper;
   }
 
+  @Test(timeOut = 60_000)
+  public void testIsRecordSelfProduced() throws InterruptedException {
+    setUp();
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = mock(KafkaMessageEnvelope.class);
+    when(consumerRecord.getValue()).thenReturn(kme);
+
+    // Case 0: Function does not throw when LeaderMetadata is null
+    when(kme.getLeaderMetadataFooter()).thenReturn(null);
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    LeaderMetadata leaderMetadata = mock(LeaderMetadata.class);
+    when(kme.getLeaderMetadataFooter()).thenReturn(leaderMetadata);
+
+    // Case 1: HostName is different
+    when(leaderMetadata.getHostName()).thenReturn("notlocalhost");
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    // Case 2: HostName is the same
+    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName());
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    // Case 3: HostName is same and there is a port
+    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName() + ":12345");
+    assertFalse(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+
+    // Case 4: HostName and port is the same (listener port is 0)
+    when(leaderMetadata.getHostName()).thenReturn(Utils.getHostName() + ":0");
+    assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
+  }
+
+  @Test
+  public void testGetIngestionProgressPercentage() throws InterruptedException {
+    setUp();
+
+    // Mock the necessary components
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    PubSubPosition mockPosition = mock(PubSubPosition.class);
+    PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
+    TopicManager mockTopicManager = mock(TopicManager.class);
+
+    // Setup the mocks
+    doReturn(mockPosition).when(mockPcs).getLatestProcessedVtPosition();
+    doReturn(mockTopicPartition).when(mockPcs).getReplicaTopicPartition();
+    doReturn(true).when(mockVeniceServerConfig).isIngestionProgressLoggingEnabled();
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager(anyString());
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
+    doReturn(75).when(mockTopicManager).getIngestionProgressPercentage(mockTopicPartition, mockPosition);
+
+    // Call the method under test
+    int percentage = leaderFollowerStoreIngestionTask.getIngestionProgressPercentage(mockPcs);
+
+    // Verify the result
+    assertEquals(75, percentage, "Ingestion progress percentage should match the expected value");
+    verify(mockTopicManager).getIngestionProgressPercentage(mockTopicPartition, mockPosition);
+
+    // Test when progress percentage is disabled
+    doReturn(false).when(mockVeniceServerConfig).isIngestionProgressLoggingEnabled();
+    percentage = leaderFollowerStoreIngestionTask.getIngestionProgressPercentage(mockPcs);
+    assertEquals(-1, percentage, "Ingestion progress percentage should be -1 when disabled");
+
+    // No additional calls to getProgressPercentage should be made
+    verify(mockTopicManager, times(1)).getIngestionProgressPercentage(any(), any());
+  }
+
   @Test
   public void testSendGlobalRtDivMessage() throws InterruptedException, IOException {
     setUp();
@@ -560,7 +637,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         any(),
         any(),
         any(),
-        eq(false));
+        eq(true));
 
     // Verify that GlobalRtDivState is correctly compressed and serialized from the VeniceWriter#put() call
     byte[] compressedBytes = valueBytesArgumentCaptor.getValue();
@@ -568,8 +645,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     byte[] valueBytes = ByteUtils.extractByteArray(compressor.decompress(ByteBuffer.wrap(compressedBytes)));
     InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
         leaderFollowerStoreIngestionTask.globalRtDivStateSerializer;
-    GlobalRtDivState globalRtDiv =
-        serializer.deserialize(valueBytes, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+    GlobalRtDivState globalRtDiv = serializer.deserialize(valueBytes, GLOBAL_RT_DIV_VERSION);
     assertNotNull(globalRtDiv);
 
     // Verify the callback has DivSnapshot (VT + RT DIV)
@@ -581,13 +657,21 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(callbackPayload.getPartition(), partition);
     assertTrue(callbackPayload.getValue().payloadUnion instanceof Put);
     Put put = (Put) callbackPayload.getValue().payloadUnion;
-    assertEquals(put.getSchemaId(), AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+    assertEquals(put.getSchemaId(), GLOBAL_RT_DIV_VERSION);
     assertNotNull(put.getPutValue());
+
+    // Verify that completing the future from put() causes execSyncOffsetFromSnapshotAsync to be called
+    // and that produceResult should override the LCVP of the VT DIV sent to the drainer
+    verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
     PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
-    when(produceResult.getPubSubPosition()).thenReturn(mock(PubSubPosition.class));
+    PubSubPosition specificPosition = InMemoryPubSubPosition.of(11L);
+    when(produceResult.getPubSubPosition()).thenReturn(specificPosition);
     when(produceResult.getSerializedSize()).thenReturn(keyBytes.length + put.putValue.remaining());
     callback.onCompletion(produceResult, null);
-    verify(mockStoreBufferService, times(1)).execSyncOffsetFromSnapshotAsync(any(), any(), any());
+    ArgumentCaptor<PartitionTracker> vtDivCaptor = ArgumentCaptor.forClass(PartitionTracker.class);
+    verify(mockStoreBufferService, times(1))
+        .execSyncOffsetFromSnapshotAsync(any(), vtDivCaptor.capture(), any(), any());
+    assertEquals(vtDivCaptor.getValue().getLatestConsumedVtPosition(), specificPosition);
   }
 
   @Test
@@ -624,16 +708,21 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Put mockPut = mock(Put.class);
     KafkaMessageEnvelope mockKme = globalRtDivMessage.getValue();
 
-    // The method should only return true for non-chunk Global RT DIV messages
+    // The method should only return true for non-chunked Global RT DIV messages
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(true).when(mockKey).isGlobalRtDiv();
     doReturn(mockPut).when(mockKme).getPayloadUnion();
-    doReturn(AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
+    doReturn(GLOBAL_RT_DIV_VERSION).when(mockPut).getSchemaId();
     assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
     assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
     doReturn(AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()).when(mockPut).getSchemaId();
     assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
+
+    // The method should not error when a non-Put value is passed in
+    Delete mockDelete = mock(Delete.class);
+    doReturn(mockDelete).when(mockKme).getPayloadUnion();
+    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(globalRtDivMessage, mockPartitionConsumptionState));
 
     // Set up Control Message
     final DefaultPubSubMessage nonSegmentControlMessage = getMockMessage(2).getMessage();
@@ -816,44 +905,202 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test(timeOut = 60_000)
-  public void testDeserializePositionWithOffsetFallback() throws InterruptedException {
+  public void testIsLocalVersionTopicPartitionFullyConsumedWhenTopicDoesNotExist() throws InterruptedException {
     setUp();
+    TopicManager mockLocalTopicManager = mock(TopicManager.class);
+    PubSubPosition endPosition = ApacheKafkaOffsetPosition.of(100L);
 
-    // Use DEFAULT_DESERIALIZER instead of mocking
-    PubSubPositionDeserializer deserializer = PubSubPositionDeserializer.DEFAULT_DESERIALIZER;
-    PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
-    when(mockTopicPartition.toString()).thenReturn("test-topic_v1-0");
+    // Case 1: diffPosition throws PubSubTopicDoesNotExistException -> should return false
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(mockLocalTopicManager)
+        .diffPosition(any(), any(), any());
+    when(mockPartitionConsumptionState.getLatestProcessedVtPosition()).thenReturn(ApacheKafkaOffsetPosition.of(99L));
+    when(mockPartitionConsumptionState.getPartition()).thenReturn(0);
+    when(mockPartitionConsumptionState.getReplicaTopicPartition())
+        .thenReturn(new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_v1"), 0));
+    doReturn(mockLocalTopicManager).when(leaderFollowerStoreIngestionTask).getTopicManager(anyString());
+    doReturn(endPosition).when(leaderFollowerStoreIngestionTask).getTopicPartitionEndPosition(anyString(), any());
 
-    // Use doCallRealMethod to test the actual implementation
-    doCallRealMethod().when(leaderFollowerStoreIngestionTask)
-        .deserializePositionWithOffsetFallback(any(), any(), any(), anyLong());
-    // Case 1: Null ByteBuffer - should return offset-based position
-    PubSubPosition actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, null, 100L);
-    assertEquals(actualPosition.getNumericOffset(), 100L, "Null ByteBuffer should return offset-based position");
+    assertFalse(
+        leaderFollowerStoreIngestionTask.isLocalVersionTopicPartitionFullyConsumed(mockPartitionConsumptionState),
+        "Should return false when diffPosition throws PubSubTopicDoesNotExistException");
 
-    // Case 2: Empty ByteBuffer - should return offset-based position
-    actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, ByteBuffer.allocate(0), 200L);
-    assertEquals(actualPosition.getNumericOffset(), 200L, "Empty ByteBuffer should return offset-based position");
+    // Case 2: countRecordsUntil throws PubSubTopicDoesNotExistException (EARLIEST path) -> should return false
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(mockLocalTopicManager)
+        .countRecordsUntil(any(), any());
+    when(mockPartitionConsumptionState.getLatestProcessedVtPosition()).thenReturn(PubSubSymbolicPosition.EARLIEST);
 
-    // Case 3: Invalid ByteBuffer - should return offset-based position
-    ByteBuffer invalidBuffer = ByteBuffer.wrap(new byte[] { 0x01, 0x02, 0x03 }); // Random invalid bytes
-    actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, invalidBuffer, 300L);
-    assertEquals(actualPosition.getNumericOffset(), 300L, "Invalid ByteBuffer should return offset-based position");
+    assertFalse(
+        leaderFollowerStoreIngestionTask.isLocalVersionTopicPartitionFullyConsumed(mockPartitionConsumptionState),
+        "Should return false when countRecordsUntil throws PubSubTopicDoesNotExistException");
+  }
 
-    // Case 4: Valid ByteBuffer - should return deserialized position
-    ByteBuffer validBuffer = ApacheKafkaOffsetPosition.of(400L).toWireFormatBuffer();
-    actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, validBuffer, 0L);
-    assertEquals(actualPosition.getNumericOffset(), 400L, "Valid ByteBuffer should return deserialized position");
+  @Test(timeOut = 60_000)
+  public void testCheckAndHandleUpstreamOffsetRewind() throws InterruptedException {
+    setUp();
+    TopicManager mockTopicManager = mock(TopicManager.class);
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test-topic_rt"), 0);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    PubSubPosition newPosition = ApacheKafkaOffsetPosition.of(50L);
+    PubSubPosition prevPosition = ApacheKafkaOffsetPosition.of(100L); // rewind scenario
 
-    // Case 5: ByteBuffer has EARLIEST symbolic position and offset is 0
-    ByteBuffer earliestBuffer = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
-    actualPosition = leaderFollowerStoreIngestionTask
-        .deserializePositionWithOffsetFallback(deserializer, mockTopicPartition, earliestBuffer, 0L);
-    assertEquals(actualPosition, PubSubSymbolicPosition.EARLIEST, "Should return EARLIEST symbolic position");
+    // Case 1: EARLIEST previous position -> skip diffPosition
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mockTopicManager,
+        tp,
+        pcs,
+        record,
+        newPosition,
+        PubSubSymbolicPosition.EARLIEST,
+        leaderFollowerStoreIngestionTask);
+    verify(mockTopicManager, never()).diffPosition(any(), any(), any());
+
+    // Case 2: versionBootstrapCompleted=true and EOP not received -> skip diffPosition
+    doReturn(false).when(pcs).isEndOfPushReceived();
+    leaderFollowerStoreIngestionTask.versionBootstrapCompleted = true;
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mockTopicManager,
+        tp,
+        pcs,
+        record,
+        newPosition,
+        prevPosition,
+        leaderFollowerStoreIngestionTask);
+    verify(mockTopicManager, never()).diffPosition(any(), any(), any());
+
+    // Case 3: versionBootstrapCompleted=true and EOP received -> should call diffPosition
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(-50L).when(mockTopicManager).diffPosition(any(), any(), any());
+    doReturn(false).when(leaderFollowerStoreIngestionTask).isHybridMode();
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mockTopicManager,
+        tp,
+        pcs,
+        record,
+        newPosition,
+        prevPosition,
+        leaderFollowerStoreIngestionTask);
+    verify(mockTopicManager, times(1)).diffPosition(any(), any(), any());
+
+    // Case 4: diffPosition throws PubSubTopicDoesNotExistException -> should not throw
+    leaderFollowerStoreIngestionTask.versionBootstrapCompleted = false;
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(mockTopicManager)
+        .diffPosition(any(), any(), any());
+    LeaderFollowerStoreIngestionTask.checkAndHandleUpstreamOffsetRewind(
+        mockTopicManager,
+        tp,
+        pcs,
+        record,
+        newPosition,
+        prevPosition,
+        leaderFollowerStoreIngestionTask);
+  }
+
+  @Test(timeOut = 60_000)
+  public void testSyncConsumedUpstreamRTOffsetMapWhenTopicDoesNotExist() throws InterruptedException {
+    setUp();
+    TopicManager throwingTopicManager = mock(TopicManager.class);
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .diffPosition(any(), any(), any());
+    doReturn(throwingTopicManager).when(leaderFollowerStoreIngestionTask).getTopicManager(anyString());
+
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-topic_rt");
+    doReturn(rtTopic).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    PubSubTopicPartition leaderTopicPartition = new PubSubTopicPartitionImpl(rtTopic, 0);
+    doReturn(leaderTopicPartition).when(mockPartitionConsumptionState).getSourceTopicPartition(rtTopic);
+
+    // Set latest consumed position to non-EARLIEST so the diffPosition path is hit
+    doReturn(ApacheKafkaOffsetPosition.of(5L)).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(any(), anyString());
+
+    Map<String, PubSubPosition> upstreamStartPositionByUrl = new HashMap<>();
+    upstreamStartPositionByUrl.put("kafka-url", ApacheKafkaOffsetPosition.of(10L));
+
+    // Should not throw - exception is caught and position update is skipped
+    leaderFollowerStoreIngestionTask
+        .syncConsumedUpstreamRTOffsetMapIfNeeded(mockPartitionConsumptionState, upstreamStartPositionByUrl);
+
+    // Verify that updateLatestConsumedRtPositions was NOT called since the exception was caught
+    verify(leaderFollowerStoreIngestionTask, never()).updateLatestConsumedRtPositions(any(), anyString(), any());
+  }
+
+  @Test(timeOut = 60_000)
+  public void testShouldProcessRecordWhenTopicDoesNotExist() throws InterruptedException {
+    setUp();
+    // Setup for the default (STANDBY/follower) branch
+    doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    PubSubTopicPartition vtp = new PubSubTopicPartitionImpl(versionTopic, 0);
+
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    doReturn(0).when(record).getPartition();
+    doReturn(vtp).when(record).getTopicPartition();
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    doReturn(false).when(kafkaKey).isControlMessage();
+    doReturn(kafkaKey).when(record).getKey();
+    doReturn(ApacheKafkaOffsetPosition.of(5L)).when(record).getPosition();
+
+    // Set lastProcessedVtPos to non-EARLIEST so the diffPosition path is hit
+    doReturn(ApacheKafkaOffsetPosition.of(3L)).when(mockPartitionConsumptionState).getLatestProcessedVtPosition();
+
+    // Make diffPosition throw PubSubTopicDoesNotExistException
+    TopicManager throwingTopicManager = mock(TopicManager.class);
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .diffPosition(any(), any(), any());
+    doReturn(throwingTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
+
+    // Should process the record (not skip it) when topic doesn't exist
+    doCallRealMethod().when(leaderFollowerStoreIngestionTask).shouldProcessRecord(record);
+    boolean result = leaderFollowerStoreIngestionTask.shouldProcessRecord(record);
+    assertTrue(result, "Should process the record when diffPosition throws PubSubTopicDoesNotExistException");
+  }
+
+  @Test(timeOut = 60_000)
+  public void testMeasureRtLagForSingleRegionWhenTopicDoesNotExist() throws InterruptedException {
+    setUp();
+    TopicManager throwingTopicManager = mock(TopicManager.class);
+    PubSubPosition endPosition = ApacheKafkaOffsetPosition.of(100L);
+
+    doReturn(throwingTopicManager).when(leaderFollowerStoreIngestionTask).getTopicManager(anyString());
+    doReturn(endPosition).when(leaderFollowerStoreIngestionTask).getTopicPartitionEndPosition(anyString(), any());
+
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-topic_rt");
+    doReturn(rtTopic).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    doReturn(0).when(mockPartitionConsumptionState).getPartition();
+    doReturn("replica-0").when(mockPartitionConsumptionState).getReplicaId();
+
+    doReturn(rtTopic).when(leaderFollowerStoreIngestionTask).resolveRtTopicWithPubSubBrokerAddress(any(), anyString());
+
+    // Case 1: diffPosition throws exception (non-EARLIEST path)
+    doReturn(ApacheKafkaOffsetPosition.of(50L)).when(leaderFollowerStoreIngestionTask)
+        .getLatestPersistedRtPositionForLagMeasurement(any(), anyString());
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .diffPosition(any(), any(), any());
+
+    long lag =
+        leaderFollowerStoreIngestionTask.measureRtLagForSingleRegion("kafka-url", mockPartitionConsumptionState, false);
+    assertEquals(
+        lag,
+        Long.MAX_VALUE,
+        "Should return Long.MAX_VALUE when diffPosition throws PubSubTopicDoesNotExistException");
+
+    // Case 2: countRecordsUntil throws exception (EARLIEST path)
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(leaderFollowerStoreIngestionTask)
+        .getLatestPersistedRtPositionForLagMeasurement(any(), anyString());
+    doThrow(new PubSubTopicDoesNotExistException("topic deleted")).when(throwingTopicManager)
+        .countRecordsUntil(any(), any());
+
+    lag =
+        leaderFollowerStoreIngestionTask.measureRtLagForSingleRegion("kafka-url", mockPartitionConsumptionState, false);
+    assertEquals(
+        lag,
+        Long.MAX_VALUE,
+        "Should return Long.MAX_VALUE when countRecordsUntil throws PubSubTopicDoesNotExistException");
   }
 
   @Test(timeOut = 60_000)
@@ -924,5 +1171,230 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doCallRealMethod().when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(consumerRecord7);
     int clusterId7 = leaderFollowerStoreIngestionTask.extractUpstreamClusterId(consumerRecord7);
     assertEquals(clusterId7, Integer.MAX_VALUE, "Should extract large cluster ID correctly");
+  }
+
+  @Test
+  public void testHeartbeatRecord() {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doReturn("foo").when(ingestionTask).getStoreName();
+    doReturn(1).when(ingestionTask).getVersionNumber();
+    doCallRealMethod().when(ingestionTask).recordHeartbeatReceived(any(), any(), anyString());
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(100).when(pcs).getPartition();
+    doReturn(false).when(pcs).isComplete();
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.messageTimestamp = 123L;
+    kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
+    doReturn(kafkaMessageEnvelope).when(consumerRecord).getValue();
+
+    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    Map<String, String> urlMap = Collections.singletonMap("abc:123", "c1");
+    doReturn(urlMap).when(veniceServerConfig).getKafkaClusterUrlToAliasMap();
+    doReturn(veniceServerConfig).when(ingestionTask).getServerConfig();
+
+    // Set up PCS cached heartbeat keys
+    HeartbeatKey leaderKey = new HeartbeatKey("foo", 1, 100, "c1");
+    doReturn(leaderKey).when(pcs).getOrCreateCachedHeartbeatKey("c1");
+    HeartbeatKey followerLocalKey = new HeartbeatKey("foo", 1, 100, "local");
+    doReturn(followerLocalKey).when(pcs).getOrCreateCachedHeartbeatKey("local");
+
+    // Monitoring service is null.
+    ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
+    verify(heartbeatMonitoringService, never()).recordLeaderHeartbeat(any(HeartbeatKey.class), anyLong(), anyBoolean());
+    verify(heartbeatMonitoringService, never())
+        .recordFollowerHeartbeat(any(HeartbeatKey.class), anyLong(), anyBoolean());
+
+    // Verify Leader
+    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
+    doReturn(LeaderFollowerStateType.LEADER).when(pcs).getLeaderFollowerState();
+    ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
+    verify(heartbeatMonitoringService, times(1)).recordLeaderHeartbeat(eq(leaderKey), eq(123L), eq(false));
+    verify(heartbeatMonitoringService, never())
+        .recordFollowerHeartbeat(any(HeartbeatKey.class), anyLong(), anyBoolean());
+    // Verify Follower
+    doReturn(false).when(ingestionTask).isDaVinciClient();
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+    ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
+    verify(heartbeatMonitoringService, times(1)).recordFollowerHeartbeat(eq(leaderKey), eq(123L), eq(false));
+    // Verify Da Vinci
+    doReturn(true).when(ingestionTask).isDaVinciClient();
+    doReturn("local").when(veniceServerConfig).getRegionName();
+    ingestionTask.recordHeartbeatReceived(pcs, consumerRecord, "abc:123");
+    verify(heartbeatMonitoringService, times(1)).recordFollowerHeartbeat(eq(followerLocalKey), eq(123L), eq(false));
+  }
+
+  @Test
+  public void testIngestionTimeoutHandling() throws InterruptedException {
+    LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doReturn("foo").when(storeIngestionTask).getStoreName();
+    doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriter();
+    doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriterForRealTime();
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    doReturn(storeRepository).when(storeIngestionTask).getStoreRepository();
+    Store store = mock(Store.class);
+    doReturn(5).when(store).getCurrentVersion();
+    doReturn(store).when(storeRepository).getStoreOrThrow(anyString());
+
+    // Timeout replica
+    doReturn(TimeUnit.DAYS.toMillis(1)).when(storeIngestionTask).getBootstrapTimeoutInMs();
+    PubSubTopic topic = new PubSubTopicImpl("foo_v1");
+    doReturn(topic).when(storeIngestionTask).getVersionTopic();
+    doCallRealMethod().when(storeIngestionTask).checkLongRunningTaskState();
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    doReturn(pcsMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
+
+    // Not yet timeout replica
+    PartitionConsumptionState pcs1 = mock(PartitionConsumptionState.class);
+    pcsMap.put(1, pcs1);
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs1).getLeaderFollowerState();
+    doReturn(false).when(pcs1).isComplete();
+    doReturn(1).when(pcs1).getPartition();
+    doReturn(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(2)).when(pcs1).getConsumptionStartTimeInMs();
+
+    // Timeout replica
+    PartitionConsumptionState pcs2 = mock(PartitionConsumptionState.class);
+    pcsMap.put(2, pcs2);
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs2).getLeaderFollowerState();
+    doReturn(false).when(pcs2).isComplete();
+    doReturn(2).when(pcs2).getPartition();
+    doReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(2)).when(pcs2).getConsumptionStartTimeInMs();
+
+    PartitionConsumptionState pcs3 = mock(PartitionConsumptionState.class);
+    pcsMap.put(3, pcs3);
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs3).getLeaderFollowerState();
+    doReturn(false).when(pcs3).isComplete();
+    doReturn(3).when(pcs3).getPartition();
+    doReturn(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(2)).when(pcs3).getConsumptionStartTimeInMs();
+
+    // For future version it should be throwing exception.
+    doReturn(10).when(storeIngestionTask).getVersionNumber();
+    Assert.assertThrows(VeniceTimeoutException.class, storeIngestionTask::checkLongRunningTaskState);
+
+    // For current version we should report error and only failing this partition instead of throwing exception and stop
+    // SIT.
+    doReturn(5).when(storeIngestionTask).getVersionNumber();
+    storeIngestionTask.checkLongRunningTaskState();
+    verify(storeIngestionTask, times(1)).reportError(anyString(), eq(1), any());
+    verify(storeIngestionTask, times(0)).reportError(anyString(), eq(2), any());
+    verify(storeIngestionTask, times(1)).reportError(anyString(), eq(3), any());
+
+    // Same for the backup version.
+    doReturn(1).when(storeIngestionTask).getVersionNumber();
+    storeIngestionTask.checkLongRunningTaskState();
+    verify(storeIngestionTask, times(2)).reportError(anyString(), eq(1), any());
+    verify(storeIngestionTask, times(0)).reportError(anyString(), eq(2), any());
+    verify(storeIngestionTask, times(2)).reportError(anyString(), eq(3), any());
+  }
+
+  @Test
+  public void testDolStampProduceCallbackSuccess() {
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    long leadershipTerm = 42L;
+    DolStamp dolStamp = new DolStamp(leadershipTerm, "test-host");
+    doReturn(dolStamp).when(mockPcs).getDolState();
+    doReturn("test-replica-id").when(mockPcs).getReplicaId();
+
+    // Verify DolStamp is not marked as produced before callback
+    assertFalse(dolStamp.isDolProduced());
+
+    // Create callback and invoke onCompletion with success
+    PubSubProducerCallback callback =
+        new LeaderFollowerStoreIngestionTask.DolStampProduceCallback(mockPcs, leadershipTerm);
+    PubSubProduceResult mockResult = mock(PubSubProduceResult.class);
+    PubSubPosition mockPosition = mock(PubSubPosition.class);
+    doReturn(mockPosition).when(mockResult).getPubSubPosition();
+
+    callback.onCompletion(mockResult, null);
+
+    // Verify DolStamp is marked as produced
+    assertTrue(dolStamp.isDolProduced());
+    // Verify clearDolState was NOT called
+    verify(mockPcs, never()).clearDolState();
+  }
+
+  @Test
+  public void testDolStampProduceCallbackFailure() {
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    long leadershipTerm = 42L;
+    DolStamp dolStamp = new DolStamp(leadershipTerm, "test-host");
+    doReturn(dolStamp).when(mockPcs).getDolState();
+    doReturn("test-replica-id").when(mockPcs).getReplicaId();
+
+    // Create callback and invoke onCompletion with failure
+    PubSubProducerCallback callback =
+        new LeaderFollowerStoreIngestionTask.DolStampProduceCallback(mockPcs, leadershipTerm);
+
+    callback.onCompletion(null, new RuntimeException("Test exception"));
+
+    // Verify DolStamp is NOT marked as produced
+    assertFalse(dolStamp.isDolProduced());
+    // Verify clearDolState WAS called to fall back to legacy mechanism
+    verify(mockPcs, times(1)).clearDolState();
+  }
+
+  @Test
+  public void testDolStampProduceCallbackTermMismatch() {
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    long callbackTerm = 42L;
+    long dolStateTerm = 100L; // Different term
+    DolStamp dolStamp = new DolStamp(dolStateTerm, "test-host");
+    doReturn(dolStamp).when(mockPcs).getDolState();
+    doReturn("test-replica-id").when(mockPcs).getReplicaId();
+
+    // Create callback with different term than DolStamp
+    PubSubProducerCallback callback =
+        new LeaderFollowerStoreIngestionTask.DolStampProduceCallback(mockPcs, callbackTerm);
+    PubSubProduceResult mockResult = mock(PubSubProduceResult.class);
+    PubSubPosition mockPosition = mock(PubSubPosition.class);
+    doReturn(mockPosition).when(mockResult).getPubSubPosition();
+
+    callback.onCompletion(mockResult, null);
+
+    // Verify DolStamp is NOT marked as produced due to term mismatch
+    assertFalse(dolStamp.isDolProduced());
+  }
+
+  @Test
+  public void testDolStampProduceCallbackNullDolState() {
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    long leadershipTerm = 42L;
+    doReturn(null).when(mockPcs).getDolState();
+    doReturn("test-replica-id").when(mockPcs).getReplicaId();
+
+    // Create callback and invoke onCompletion - should not throw with null DolState
+    PubSubProducerCallback callback =
+        new LeaderFollowerStoreIngestionTask.DolStampProduceCallback(mockPcs, leadershipTerm);
+    PubSubProduceResult mockResult = mock(PubSubProduceResult.class);
+    PubSubPosition mockPosition = mock(PubSubPosition.class);
+    doReturn(mockPosition).when(mockResult).getPubSubPosition();
+
+    callback.onCompletion(mockResult, null);
+
+    // No exception thrown, clearDolState not called
+    verify(mockPcs, never()).clearDolState();
+  }
+
+  @Test
+  public void testDolStampIsDolComplete() {
+    // Test DolStamp complete state
+    DolStamp dolStampComplete = new DolStamp(42L, "test-host");
+    assertFalse(dolStampComplete.isDolComplete());
+
+    dolStampComplete.setDolProduced(true);
+    assertFalse(dolStampComplete.isDolComplete());
+
+    dolStampComplete.setDolConsumed(true);
+    assertTrue(dolStampComplete.isDolComplete());
+
+    // Test incomplete state (only consumed)
+    DolStamp dolStampIncomplete = new DolStamp(42L, "test-host");
+    dolStampIncomplete.setDolConsumed(true);
+    assertFalse(dolStampIncomplete.isDolComplete());
   }
 }

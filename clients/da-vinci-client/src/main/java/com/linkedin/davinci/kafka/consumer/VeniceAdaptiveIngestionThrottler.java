@@ -14,6 +14,7 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements VeniceAdaptiveThrottler {
   private static final Logger LOGGER = LogManager.getLogger(VeniceAdaptiveIngestionThrottler.class);
+  private static final long DEFAULT_UNLIMITED_QUOTA_VALUE = -1L;
   private final List<BooleanSupplier> limiterSuppliers = new ArrayList<>();
   private final List<BooleanSupplier> boosterSuppliers = new ArrayList<>();
 
@@ -32,6 +33,10 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
       long timeWindow,
       String throttlerName,
       AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats) {
+    if (quotaPerSecond == 0) {
+      throw new IllegalArgumentException("Can not create throttler with 0 quotaPerSecond");
+    }
+
     this.signalIdleThreshold = signalIdleThreshold;
     this.throttlerName = throttlerName;
     DecimalFormat decimalFormat = new DecimalFormat("0.0");
@@ -47,8 +52,13 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
     }
 
     for (Double factor: factors) {
+      long maxQuota = (long) (quotaPerSecond * factor);
+      if (quotaPerSecond == DEFAULT_UNLIMITED_QUOTA_VALUE) {
+        maxQuota = DEFAULT_UNLIMITED_QUOTA_VALUE;
+        LOGGER.warn("Quota per second is not set (-1), setting max quota per throttler to -1");
+      }
       EventThrottler eventThrottler = new EventThrottler(
-          (long) (quotaPerSecond * factor),
+          maxQuota,
           timeWindow,
           throttlerName + decimalFormat.format(factor),
           false,
@@ -96,7 +106,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
         // for uninitialized throttlers (rate = 0) do not print logs
         if (maxRate > 0) {
           LOGGER.info(
-              "Found limiter signal for {}, adjusting throttler index to: {} with throttle rate: {}",
+              "Found limiter signal for: {}, adjusting throttler index to: {} with throttle rate: {}",
               throttlerName,
               currentThrottlerIndex,
               maxRate);
@@ -119,7 +129,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
         // for uninitialized throttlers (rate = 0) do not print logs
         if (maxRate > 0) {
           LOGGER.info(
-              "Found booster signal for {}, adjusting throttler index to: {} with throttle rate: {}",
+              "Found booster signal for: {}, adjusting throttler index to: {} with throttle rate: {}",
               throttlerName,
               currentThrottlerIndex,
               maxRate);
@@ -133,7 +143,9 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
           currentThrottlerIndex.incrementAndGet();
         }
         LOGGER.info(
-            "Reach max signal idle count, adjusting throttler index to: {} with throttle rate: {}",
+            "Reach max signal idle count: {} for: {}, adjusting throttler index to: {} with throttle rate: {}",
+            signalIdleThreshold,
+            throttlerName,
             currentThrottlerIndex,
             eventThrottlers.get(currentThrottlerIndex.get()).getMaxRatePerSecond());
         signalIdleCount = 0;

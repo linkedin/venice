@@ -89,13 +89,16 @@ public class VeniceSparkEmbeddedJettyServer implements EmbeddedServer {
 
     // Create instance of jetty server with either default or supplied queued thread pool
     if (this.threadPool == null) {
+      QueuedThreadPool qtp;
       if (maxThreads > 0) {
         int min = minThreads > 0 ? minThreads : 8;
         int idleTimeout = threadIdleTimeoutMillis > 0 ? threadIdleTimeoutMillis : '\uea60';
-        server = new Server(new QueuedThreadPool(maxThreads, min, idleTimeout));
+        qtp = new QueuedThreadPool(maxThreads, min, idleTimeout);
       } else {
-        server = new Server();
+        qtp = new QueuedThreadPool();
       }
+      qtp.setName("SparkJettyServer");
+      server = new Server(qtp);
     } else {
       this.server = new Server(threadPool);
     }

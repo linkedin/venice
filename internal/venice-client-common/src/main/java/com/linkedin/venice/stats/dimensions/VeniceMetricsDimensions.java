@@ -7,6 +7,7 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.tr
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 
 
@@ -56,7 +57,55 @@ public enum VeniceMetricsDimensions {
   STORE_REPUSH_TRIGGER_SOURCE("store.repush.trigger.source"),
 
   /** Instance error type for blocked, unhealthy, and overloaded instances */
-  VENICE_INSTANCE_ERROR_TYPE("venice.instance.error_type");
+  VENICE_INSTANCE_ERROR_TYPE("venice.instance.error_type"),
+
+  /** Helix group id number */
+  VENICE_HELIX_GROUP_ID("venice.helix_group.id"),
+
+  /** Region/datacenter name */
+  VENICE_REGION_NAME("venice.region.name"),
+
+  /** {@link VersionRole} */
+  VENICE_VERSION_ROLE("venice.version.role"),
+
+  /** {@link ReplicaType} */
+  VENICE_REPLICA_TYPE("venice.replica.type"),
+
+  /** {@link ReplicaState} */
+  VENICE_REPLICA_STATE("venice.replica.state"),
+
+  /** {@link VeniceDCREvent} */
+  VENICE_DCR_EVENT("venice.dcr.event"),
+
+  /** {@link VeniceRegionLocality} */
+  VENICE_REGION_LOCALITY("venice.region.locality"),
+
+  /** Source region for hybrid region consumption */
+  VENICE_SOURCE_REGION("venice.source.region"),
+
+  /** Destination region for hybrid region consumption */
+  VENICE_DESTINATION_REGION("venice.destination.region"),
+
+  /** {@link VeniceIngestionSourceComponent} source component */
+  VENICE_INGESTION_SOURCE_COMPONENT("venice.ingestion.source.component"),
+
+  /** {@link VeniceIngestionDestinationComponent} destination component */
+  VENICE_INGESTION_DESTINATION_COMPONENT("venice.ingestion.destination.component"),
+
+  /** Venice push job type (e.g. batch, incremental). See Version.PushType */
+  VENICE_PUSH_JOB_TYPE("venice.push_job.type"),
+
+  /** {@link VenicePushJobStatus} */
+  VENICE_PUSH_JOB_STATUS("venice.push_job.status"),
+
+  /** {@link VeniceSystemStoreType} */
+  VENICE_SYSTEM_STORE_TYPE("venice.system_store.type"),
+
+  /** {@link AdminMessageProcessingPhase} */
+  VENICE_ADMIN_MESSAGE_PROCESSING_PHASE("venice.admin_message.processing_phase"),
+
+  /** AdminMessageType */
+  VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

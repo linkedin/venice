@@ -14,6 +14,7 @@ import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCount
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPLIANCE_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_METRIC_COLLECTION_ENABLED;
@@ -69,6 +70,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAG
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_KIF_REPUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SUPPRESS_END_OF_PUSH_MESSAGE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
@@ -106,6 +108,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
+import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
+import com.linkedin.venice.hadoop.exceptions.VeniceSchemaMismatchException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
@@ -295,7 +299,12 @@ public class VenicePushJob implements AutoCloseable {
     jobTmpDir = new Path(pushJobSetting.jobTmpDir);
     String pushId =
         pushJobSetting.jobStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
-    if (pushJobSetting.isSourceKafka) {
+
+    if (pushJobSetting.isCompliancePush) {
+      // Compliance push check comes first because it can use any data source (Kafka, HDFS, etc.).
+      // The compliance push prefix determines whether user-initiated pushes can kill this push.
+      pushId = Version.generateCompliancePushId(pushId);
+    } else if (pushJobSetting.isSourceKafka) {
       pushId = pushJobSetting.repushTTLEnabled ? Version.generateTTLRePushId(pushId) : Version.generateRePushId(pushId);
     } else if (pushJobSetting.allowRegularPushWithTTLRepush) {
       pushId = Version.generateRegularPushWithTTLRePushId(pushId);
@@ -381,11 +390,20 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
+    pushJobSettingToReturn.isCompliancePush = props.getBoolean(COMPLIANCE_PUSH, false);
+    pushJobSettingToReturn.allowRegularPushWithTTLRepush = props.getBoolean(ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH, false);
     pushJobSettingToReturn.enableUncompressedRecordSizeLimit =
         props.getBoolean(VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT, false);
 
     if (pushJobSettingToReturn.repushTTLEnabled && !pushJobSettingToReturn.isSourceKafka) {
       throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
+    }
+
+    // Compliance push and TTL repush settings are mutually exclusive because the controller uses push ID prefix
+    // to manage TTL settings. See VeniceHelixAdmin#updateStoreTTLRepushFlag for details.
+    if (pushJobSettingToReturn.isCompliancePush
+        && (pushJobSettingToReturn.repushTTLEnabled || pushJobSettingToReturn.allowRegularPushWithTTLRepush)) {
+      throw new VeniceException("Compliance push cannot be combined with TTL repush settings");
     }
 
     pushJobSettingToReturn.repushTTLStartTimeMs = -1;
@@ -519,26 +537,32 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.extendedSchemaValidityCheckEnabled =
         props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED);
 
-    if (pushJobSettingToReturn.isSourceKafka) {
-      // KIF uses a different code-path to build a dictionary, and we also don't need schema validations for KIF
-      pushJobSettingToReturn.compressionMetricCollectionEnabled = false;
-    } else {
-      pushJobSettingToReturn.compressionMetricCollectionEnabled =
-          props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
-    }
+    pushJobSettingToReturn.compressionMetricCollectionEnabled =
+        props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
 
     // Compute-engine abstraction related configs
     String dataWriterComputeJobClass = props.getString(DATA_WRITER_COMPUTE_JOB_CLASS, (String) null);
 
-    // Currently, only MR mode supports KIF. This is temporary.
-    if (dataWriterComputeJobClass == null || pushJobSettingToReturn.isSourceKafka) {
+    if (dataWriterComputeJobClass == null) {
       pushJobSettingToReturn.dataWriterComputeJobClass = DataWriterMRJob.class;
     } else {
       Class objectClass = ReflectUtils.loadClass(dataWriterComputeJobClass);
       Validate.isAssignableFrom(DataWriterComputeJob.class, objectClass);
-      pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
+
+      // For KIF repush jobs, only use the configured Spark compute job class
+      // if the spark.kif.repush.enabled flag is explicitly set to true. This allows gradual rollout
+      // of Spark for KIF repush without affecting all jobs at once.
+      if (pushJobSettingToReturn.isSourceKafka && !props.getBoolean(SPARK_KIF_REPUSH_ENABLED, false)) {
+        LOGGER.info(
+            "KIF repush detected but {} is not enabled. Falling back to MapReduce. "
+                + "Set {}=true to use Spark for KIF repush.",
+            SPARK_KIF_REPUSH_ENABLED,
+            SPARK_KIF_REPUSH_ENABLED);
+        pushJobSettingToReturn.dataWriterComputeJobClass = DataWriterMRJob.class;
+      } else {
+        pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
+      }
     }
-    pushJobSettingToReturn.allowRegularPushWithTTLRepush = props.getBoolean(ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH, false);
     return pushJobSettingToReturn;
   }
 
@@ -757,7 +781,25 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
+      if (optionalCompressionDictionary.isPresent()) {
+        pushJobSetting.topicDictionary = ByteUtils.extractByteArray(optionalCompressionDictionary.get());
+      }
+
       if (pushJobSetting.isSourceKafka) {
+        if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+          LOGGER.info("Source version uses ZSTD_WITH_DICT. Fetching source dictionary.");
+          Properties kafkaConsumerProperties = new Properties();
+          if (pushJobSetting.enableSSL) {
+            kafkaConsumerProperties.putAll(this.sslProperties.get());
+          }
+          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaInputBrokerUrl);
+          ByteBuffer sourceDict = DictionaryUtils
+              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
+          if (sourceDict != null) {
+            pushJobSetting.sourceDictionary = ByteUtils.extractByteArray(sourceDict);
+          }
+        }
+
         if (pushJobSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null
             && pushJobSetting.rewindTimeInSecondsOverride == NOT_SET) {
           pushJobSetting.rewindTimeInSecondsOverride = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
@@ -855,7 +897,7 @@ public class VenicePushJob implements AutoCloseable {
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
       // Do not mark completed yet as for target region push it will be marked inside postValidationConsumption
-      if (!pushJobSetting.isTargetedRegionPushEnabled && !pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
+      if (!pushJobSetting.isTargetedRegionPushEnabled) {
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
       }
       pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
@@ -888,6 +930,8 @@ public class VenicePushJob implements AutoCloseable {
            * data path contains no data as well in the avro flow.
            */
           updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
+        } else if (e instanceof VeniceSchemaFieldNotFoundException || e instanceof VeniceSchemaMismatchException) {
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         }
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
@@ -1115,11 +1159,12 @@ public class VenicePushJob implements AutoCloseable {
           c -> c.getStore(pushJobSetting.storeName));
       Map<String, ViewConfig> viewConfigMap =
           storeResponse.getStore().getVersion(pushJobSetting.version).get().getViewConfigs();
+      boolean isFlinkVeniceViewsEnabled = storeResponse.getStore().isFlinkVeniceViewsEnabled();
       viewConfigMap = viewConfigMap.entrySet()
           .stream()
           .filter(vc -> Objects.equals(vc.getValue().getViewClassName(), MaterializedView.class.getCanonicalName()))
           .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-      if (!viewConfigMap.isEmpty()) {
+      if (!viewConfigMap.isEmpty() && !isFlinkVeniceViewsEnabled) {
         pushJobSetting.materializedViewConfigFlatMap = ViewUtils.flatViewConfigMapString(viewConfigMap);
       }
     } catch (Exception e) {
@@ -1934,7 +1979,7 @@ public class VenicePushJob implements AutoCloseable {
           + "\n\t\tSchema defined in Venice: \t%s";
       String errorMessage =
           String.format(errorMessageFormat, setting.storeName, pushJobSetting.keySchemaString, serverSchema.toString());
-      throw new VeniceException(errorMessage);
+      throw new VeniceSchemaMismatchException(errorMessage);
     }
   }
 
@@ -2034,7 +2079,7 @@ public class VenicePushJob implements AutoCloseable {
           throw new VeniceException("Superset schema not found for store: " + setting.storeName);
         }
         if (!validateSubsetValueSchema(pushJobSetting.valueSchema, supersetSchema.getSchemaStr())) {
-          throw new VeniceException(
+          throw new VeniceSchemaMismatchException(
               "Input value schema is not subset of superset schema. Input value schema: " + pushJobSetting.valueSchema
                   + " , superset schema: " + supersetSchema.getSchemaStr());
         }
@@ -2376,12 +2421,10 @@ public class VenicePushJob implements AutoCloseable {
             setting.deferVersionSwap,
             setting.targetedRegions,
             pushJobSetting.repushSourceVersion,
-            setting.pushToSeparateRealtimeTopicEnabled));
+            setting.pushToSeparateRealtimeTopicEnabled,
+            props.getInt(REPUSH_TTL_SECONDS, -1)));
     if (versionCreationResponse.isError()) {
-      if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
-        LOGGER.error("Unable to run this job since another batch push is running. See the error message for details.");
-        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.CONCURRENT_BATCH_PUSH);
-      }
+      handleVersionCreationError(versionCreationResponse);
       throw new VeniceException(
           "Failed to create new store version with urls: " + setting.veniceControllerUrl + ", error: "
               + versionCreationResponse.getError());
@@ -2444,6 +2487,24 @@ public class VenicePushJob implements AutoCloseable {
                 + " is using RMD ID: " + sourceVersion.getRmdVersionId() + ", new version: " + newVersion.getNumber()
                 + " is using RMD ID: " + newVersion.getRmdVersionId());
       }
+    }
+  }
+
+  /**
+   * We handle errors during creation flow prior to propagating the exception to make sure the errors are
+   * categorized. The checkpoints as part of categorization is used to differentiate between user errors and platform
+   * errors.
+   */
+  @VisibleForTesting
+  void handleVersionCreationError(VersionCreationResponse versionCreationResponse) {
+    if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
+      LOGGER.error("Unable to run this job since another batch push is running. See the error message for details.");
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.CONCURRENT_BATCH_PUSH);
+    } else if (ErrorType.ACL_ERROR.equals(versionCreationResponse.getErrorType())) {
+      // Reusing WRITE_ACL_FAILED checkpoint for all types of ACL errors. Ideally rename this to READ_WRITE_ACL_FAILED
+      // or more generic one
+      LOGGER.error("Push job failed due to : {}", versionCreationResponse.getError());
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.WRITE_ACL_FAILED);
     }
   }
 
@@ -2634,12 +2695,12 @@ public class VenicePushJob implements AutoCloseable {
           if (versionSwapStartTimeMs == 0) {
             LOGGER.info("Starting to monitor version swap status for {}", pushJobSetting.topic);
             versionSwapStartTimeMs = System.currentTimeMillis();
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VERSION_SWAP);
           }
           StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
 
           StoreInfo parentStoreInfo = parentStoreResponse.getStore();
-          int latestUsedVersionNumber = parentStoreInfo.getLargestUsedVersionNumber();
-          Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(latestUsedVersionNumber);
+          Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(pushJobSetting.version);
           if (!parentVersionFromStore.isPresent()) {
             LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
             fetchParentVersionRetryCount++;
@@ -2673,6 +2734,8 @@ public class VenicePushJob implements AutoCloseable {
                 "Successfully pushed {} and it is being served in all regions. The version status is {}.",
                 pushJobSetting.topic,
                 parentVersionStatus);
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.COMPLETE_VERSION_SWAP);
+            sendPushJobDetailsToController();
             return;
           }
 
@@ -2686,7 +2749,10 @@ public class VenicePushJob implements AutoCloseable {
                     + " minutes, version swap is still not complete.");
           }
 
-          LOGGER.info("Version status is {} and version swap is not complete yet", parentVersion.getStatus());
+          LOGGER.info(
+              "Version status is {} for {} and version swap is not complete yet",
+              parentVersion.getStatus(),
+              pushJobSetting.version);
         } else if (isTargetedRegionPush) {
           LOGGER.info("Successfully pushed {} to targeted region {}", pushJobSetting.topic, targetedRegions);
           return;

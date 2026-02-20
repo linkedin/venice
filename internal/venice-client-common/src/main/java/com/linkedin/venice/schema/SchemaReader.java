@@ -30,6 +30,10 @@ public interface SchemaReader extends Closeable {
    */
   Integer getLatestValueSchemaId();
 
+  default Integer getLatestValueSchemaId(boolean forceRefresh) {
+    return getLatestValueSchemaId();
+  }
+
   Schema getUpdateSchema(int valueSchemaId);
 
   DerivedSchemaEntry getLatestUpdateSchema();

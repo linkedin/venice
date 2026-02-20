@@ -17,6 +17,7 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -30,6 +31,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -59,6 +62,7 @@ public class TestDeferredVersionSwapService {
   private static Map<String, String> childDatacenterToUrl = new HashMap<>();
   private ReadWriteStoreRepository repository;
   private static final int controllerTimeout = 1 * Time.MS_PER_SECOND;
+  private MetricsRepository metricsRepository;
 
   @BeforeMethod
   public void setUp() {
@@ -78,11 +82,18 @@ public class TestDeferredVersionSwapService {
     VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
     doReturn("").when(clusterConfig).getDeferredVersionSwapRegionRollforwardOrder();
     doReturn(clusterConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
+    doReturn(1).when(clusterConfig).getDeferredVersionSwapThreadPoolSize();
+    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(clusterConfig)
+        .getConcurrentPushDetectionStrategy();
 
     childDatacenterToUrl.put(region1, "test");
     childDatacenterToUrl.put(region2, "test");
     childDatacenterToUrl.put(region3, "test");
     doReturn(childDatacenterToUrl).when(admin).getChildDataCenterControllerUrlMap(anyString());
+
+    metricsRepository = mock(MetricsRepository.class);
+    Sensor sensor = mock(Sensor.class);
+    doReturn(sensor).when(metricsRepository).sensor(any(), any());
   }
 
   private Store mockStore(
@@ -232,8 +243,11 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
     doReturn(store).when(repository).getStore(storeName);
 
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, mock(DeferredVersionSwapStats.class));
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        metricsRepository);
 
     List<LifecycleHooksRecord> lifecycleHooks = new ArrayList<>();
     Map<String, String> params = new HashMap<>();
@@ -253,6 +267,7 @@ public class TestDeferredVersionSwapService {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(admin, atLeast(1)).rollForwardToFutureVersion(clusterName, storeName, region2 + "," + region3);
       verify(store, atLeast(1)).updateVersionStatus(versionTwo, VersionStatus.ONLINE);
+      verify(admin, never()).truncateKafkaTopic(anyString());
     });
   }
 
@@ -322,8 +337,11 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithOneOngoingPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName1);
     doReturn(true).when(admin).isLeaderControllerFor(clusterName);
 
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, mock(DeferredVersionSwapStats.class));
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        metricsRepository);
 
     deferredVersionSwapService.startInner();
 
@@ -382,8 +400,11 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
     DeferredVersionSwapStats mockDeferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, mockDeferredVersionSwapStats);
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mockDeferredVersionSwapStats,
+        metricsRepository);
 
     deferredVersionSwapService.startInner();
 
@@ -437,8 +458,11 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
     DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, deferredVersionSwapStats);
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        metricsRepository);
 
     deferredVersionSwapService.startInner();
 
@@ -494,8 +518,11 @@ public class TestDeferredVersionSwapService {
     String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, mock(DeferredVersionSwapStats.class));
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        mock(DeferredVersionSwapStats.class),
+        metricsRepository);
 
     VeniceException exception = new VeniceException();
     doThrow(exception).when(admin).rollForwardToFutureVersion(any(), any(), any());
@@ -504,6 +531,7 @@ public class TestDeferredVersionSwapService {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(admin, atLeast(1)).rollForwardToFutureVersion(clusterName, storeName, region2 + "," + region3);
       verify(store, atLeast(1)).updateVersionStatus(versionTwo, VersionStatus.PARTIALLY_ONLINE);
+      verify(admin, never()).truncateKafkaTopic(anyString());
     });
   }
 
@@ -551,8 +579,11 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
     DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, deferredVersionSwapStats);
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        metricsRepository);
 
     deferredVersionSwapService.startInner();
 
@@ -609,13 +640,191 @@ public class TestDeferredVersionSwapService {
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
     DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
-    DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, deferredVersionSwapStats);
+    DeferredVersionSwapService deferredVersionSwapService = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        metricsRepository);
 
     deferredVersionSwapService.startInner();
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(store, atLeast(1)).updateVersionStatus(2, VersionStatus.ONLINE);
+      verify(admin, never()).truncateKafkaTopic(anyString());
     });
+  }
+
+  @Test
+  public void testParallelRolloutWithMultipleStores() throws Exception {
+    String storeName1 = "testStore1";
+    String storeName2 = "testStore2";
+    String storeName3 = "testStore3";
+
+    // Create multiple stores for parallel processing
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(versionOne, VersionStatus.ONLINE);
+    versions.put(versionTwo, VersionStatus.PUSHED);
+
+    Store store1 = mockStore(versionOne, 60, region1, versions, storeName1);
+    Store store2 = mockStore(versionOne, 60, region1, versions, storeName2);
+    Store store3 = mockStore(versionOne, 60, region1, versions, storeName3);
+
+    doReturn(versionTwo).when(store1).getLargestUsedVersionNumber();
+    doReturn(versionTwo).when(store2).getLargestUsedVersionNumber();
+    doReturn(versionTwo).when(store3).getLargestUsedVersionNumber();
+
+    List<Store> storeList = Arrays.asList(store1, store2, store3);
+    doReturn(storeList).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    // Setup thread pool configuration
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(3).when(clusterConfig).getDeferredVersionSwapThreadPoolSize(); // 3 threads for 3 stores
+    doReturn("").when(clusterConfig).getDeferredVersionSwapRegionRollforwardOrder(); // Parallel rollout
+    doReturn(clusterConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
+
+    // Mock controller clients and offline push status
+    List<Version> versionList = new ArrayList<>();
+    Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
+    mockVeniceHelixAdmin(controllerClientMap);
+
+    // Mock the actual processing methods to track concurrency
+    doReturn(
+        getOfflinePushStatusInfo(
+            ExecutionStatus.COMPLETED.toString(),
+            ExecutionStatus.COMPLETED.toString(),
+            System.currentTimeMillis() / 1000 - 3600,
+            System.currentTimeMillis() / 1000 - 3600)).when(admin).getOffLinePushStatus(anyString(), anyString());
+
+    DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        metricsRepository);
+
+    service.startInner();
+
+    // Wait for processing to complete
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      verify(admin, atLeast(3)).getOffLinePushStatus(anyString(), anyString());
+    });
+
+    service.stopInner();
+  }
+
+  @Test
+  public void testSequentialRolloutWithMultipleStores() throws Exception {
+    String storeName1 = "testStore1";
+    String storeName2 = "testStore2";
+
+    // Create stores for sequential processing
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(versionOne, VersionStatus.ONLINE);
+    versions.put(versionTwo, VersionStatus.PUSHED);
+
+    Store store1 = mockStore(versionOne, 60, region1, versions, storeName1);
+    Store store2 = mockStore(versionOne, 60, region1, versions, storeName2);
+
+    doReturn(versionTwo).when(store1).getLargestUsedVersionNumber();
+    doReturn(versionTwo).when(store2).getLargestUsedVersionNumber();
+
+    List<Store> storeList = Arrays.asList(store1, store2);
+    doReturn(storeList).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    // Setup thread pool configuration for sequential rollout
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(2).when(clusterConfig).getDeferredVersionSwapThreadPoolSize(); // 2 threads
+    doReturn(region1 + "," + region2).when(clusterConfig).getDeferredVersionSwapRegionRollforwardOrder(); // Sequential
+                                                                                                          // rollout
+    doReturn(clusterConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
+
+    // Mock controller clients
+    List<Version> versionList = new ArrayList<>();
+    Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
+    mockVeniceHelixAdmin(controllerClientMap);
+
+    // Mock version information for sequential processing
+    doReturn(
+        getOfflinePushStatusInfo(
+            ExecutionStatus.COMPLETED.toString(),
+            ExecutionStatus.COMPLETED.toString(),
+            System.currentTimeMillis() / 1000 - 3600,
+            System.currentTimeMillis() / 1000 - 3600)).when(admin).getOffLinePushStatus(anyString(), anyString());
+
+    DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        metricsRepository);
+
+    service.startInner();
+
+    // Wait for processing to complete
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      verify(admin, atLeast(2)).getOffLinePushStatus(anyString(), anyString());
+    });
+
+    service.stopInner();
+  }
+
+  @Test
+  public void testConcurrentStoreProcessingWithinCluster() throws Exception {
+    // Test that multiple stores within same cluster can be processed concurrently
+    String storeName1 = "concurrentStore1";
+    String storeName2 = "concurrentStore2";
+    String storeName3 = "concurrentStore3";
+
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(versionOne, VersionStatus.ONLINE);
+    versions.put(versionTwo, VersionStatus.PUSHED);
+
+    Store store1 = mockStore(versionOne, 60, region1, versions, storeName1);
+    Store store2 = mockStore(versionOne, 60, region1, versions, storeName2);
+    Store store3 = mockStore(versionOne, 60, region1, versions, storeName3);
+
+    doReturn(versionTwo).when(store1).getLargestUsedVersionNumber();
+    doReturn(versionTwo).when(store2).getLargestUsedVersionNumber();
+    doReturn(versionTwo).when(store3).getLargestUsedVersionNumber();
+
+    List<Store> storeList = Arrays.asList(store1, store2, store3);
+    doReturn(storeList).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    // Setup configuration with sufficient threads
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(3).when(clusterConfig).getDeferredVersionSwapThreadPoolSize(); // 3 threads for concurrent processing
+    doReturn("").when(clusterConfig).getDeferredVersionSwapRegionRollforwardOrder(); // Parallel rollout
+    doReturn(clusterConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
+
+    List<Version> versionList = new ArrayList<>();
+    Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
+    mockVeniceHelixAdmin(controllerClientMap);
+
+    // Mock successful processing
+    doReturn(
+        getOfflinePushStatusInfo(
+            ExecutionStatus.COMPLETED.toString(),
+            ExecutionStatus.COMPLETED.toString(),
+            System.currentTimeMillis() / 1000 - 3600,
+            System.currentTimeMillis() / 1000 - 3600)).when(admin).getOffLinePushStatus(anyString(), anyString());
+
+    DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        metricsRepository);
+
+    service.startInner();
+
+    // Wait for processing and verify thread pool was used
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      verify(admin, atLeast(3)).getOffLinePushStatus(anyString(), anyString());
+    });
+
+    service.stopInner();
   }
 }

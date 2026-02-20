@@ -48,7 +48,24 @@ public class MetricEntityStateGeneric extends MetricEntityState {
         registerTehutiSensorFn,
         tehutiMetricNameEnum,
         tehutiMetricStats);
+    validateMetricType(metricEntity);
     validateRequiredDimensions(metricEntity, baseDimensionsMap);
+  }
+
+  /**
+   * MetricEntityStateGeneric does not support async counter types because it doesn't cache
+   * MetricAttributesData and cannot provide the getAllMetricAttributesData() iteration required for
+   * observable counter reporting. Use one of the enum-based MetricEntityState subclasses for
+   * ASYNC_COUNTER_FOR_HIGH_PERF_CASES or ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES metrics.
+   */
+  private void validateMetricType(MetricEntity metricEntity) {
+    MetricType metricType = metricEntity.getMetricType();
+    if (metricType.isObservableCounterType()) {
+      throw new IllegalArgumentException(
+          "MetricEntityStateGeneric does not support " + metricType + " metric type. "
+              + "Use MetricEntityStateOneEnum, MetricEntityStateTwoEnums, etc. for metric: "
+              + metricEntity.getMetricName());
+    }
   }
 
   /** Factory method to keep the API consistent with other subclasses like {@link MetricEntityStateOneEnum} */
@@ -83,8 +100,13 @@ public class MetricEntityStateGeneric extends MetricEntityState {
   private void validateRequiredDimensions(
       MetricEntity metricEntity,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap) {
+    Set<VeniceMetricsDimensions> requiredDimensionsList = metricEntity.getDimensionsList();
+    if (requiredDimensionsList.isEmpty()) {
+      throw new IllegalArgumentException(
+          "MetricEntity without dimensions should only be used with MetricEntityStateBase, not MetricEntityStateGeneric"
+              + " for metric: " + metricEntity.getMetricName());
+    }
     if (baseDimensionsMap != null) {
-      Set<VeniceMetricsDimensions> requiredDimensionsList = metricEntity.getDimensionsList();
       // check if all required dimensions are present in baseDimensionsMap itself
       if (baseDimensionsMap.keySet().size() >= requiredDimensionsList.size()) {
         // if the baseDimensionsMap has all dimensions, MetricEntityStateBase should be used instead
@@ -152,5 +174,16 @@ public class MetricEntityStateGeneric extends MetricEntityState {
     } catch (IllegalArgumentException e) {
       getOtelRepository().recordFailureMetric(getMetricEntity(), e);
     }
+  }
+
+  @Override
+  /**
+   * MetricEntityStateGeneric does not support ASYNC_COUNTER_FOR_HIGH_PERF_CASES because it doesn't cache
+   * MetricAttributesData and cannot provide the getAllMetricAttributesData() iteration required for
+   * observable counter reporting. Use one of the enum-based MetricEntityState subclasses for
+   * ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics.
+   */
+  protected Iterable<MetricAttributesData> getAllMetricAttributesData() {
+    return null;
   }
 }

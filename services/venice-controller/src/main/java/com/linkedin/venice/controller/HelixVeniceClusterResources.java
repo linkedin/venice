@@ -78,11 +78,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final Optional<DynamicAccessController> accessController;
   private final ExecutorService errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
   private final StoragePersonaRepository storagePersonaRepository;
-
   private ErrorPartitionResetTask errorPartitionResetTask = null;
-
-  final ExecutorService deadStoreStatsPreFetchService = Executors.newSingleThreadExecutor();
-  DeadStoreStatsPreFetchTask deadStoreStatsPreFetchTask = null;
+  private final ExecutorService deadStoreStatsPreFetchService = Executors.newSingleThreadExecutor();
+  private DeadStoreStatsPreFetchTask deadStoreStatsPreFetchTask = null;
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final VeniceAdminStats veniceAdminStats;
   private final VeniceHelixAdmin admin;
@@ -118,10 +116,13 @@ public class HelixVeniceClusterResources implements VeniceResource {
      *  MultiTaskSchedulerService is only initialized parent cluster.
      */
     if (config.isParent() && config.isMultiTaskSchedulerServiceEnabled()) {
+
       this.multiTaskSchedulerService = Optional.of(
           new MultiTaskSchedulerService(
               config.getStoreMigrationThreadPoolSize(),
-              config.getStoreMigrationMaxRetryAttempts()));
+              config.getStoreMigrationMaxRetryAttempts(),
+              config.getStoreMigrationTaskIntervalInSeconds(),
+              config.getStoreMigrationFabricList()));
     } else {
       this.multiTaskSchedulerService = Optional.empty();
     }
@@ -268,9 +269,17 @@ public class HelixVeniceClusterResources implements VeniceResource {
       this.logCompactionService = null;
     }
 
-    veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
+    veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-", clusterName);
     this.storagePersonaRepository =
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
+    /**
+     * Register the shared AsyncStoreChangeNotifier with this cluster's metadata repository.
+     * The VeniceController maintains a single AsyncStoreChangeNotifier instance that listens to store metadata
+     * changes across all clusters. Each cluster's metadata repository registers this shared notifier to
+     * propagate store lifecycle events (creation, deletion, version changes) to registered PubSub adapters,
+     * which allows event-driven cache invalidation and resource cleanup.
+     */
+    this.storeMetadataRepository.registerStoreDataChangedListener(admin.getStoreChangeNotifier());
   }
 
   /**
@@ -308,7 +317,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
     // Make sure that metadataRepo is initialized first since schemaRepo and pushMonitor depend on it.
     storeMetadataRepository.refresh();
     repairStoreReplicationFactor(storeMetadataRepository);
-
+    if (admin.getStoreChangeNotifier() != null) {
+      // Re-register the shared AsyncStoreChangeNotifier after refresh to continue receiving store lifecycle events.
+      storeMetadataRepository.registerStoreDataChangedListener(admin.getStoreChangeNotifier());
+    }
     // Initialize the dynamic access client and also register the acl creation/deletion listener.
     if (accessController.isPresent()) {
       DynamicAccessController accessClient = accessController.get();
@@ -326,6 +338,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
   @Override
   public void clear() {
+    /**
+     * Unregister the shared AsyncStoreChangeNotifier from this cluster's metadata repository.
+     */
+    storeMetadataRepository.unregisterStoreDataChangedListener(admin.getStoreChangeNotifier());
     /**
      * Also stop monitoring all the pushes; otherwise, the standby controller host will still listen to
      * push status changes and act on the changes which should have been done by leader controller only,

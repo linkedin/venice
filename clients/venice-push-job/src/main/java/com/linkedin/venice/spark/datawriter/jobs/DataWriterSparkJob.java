@@ -1,5 +1,7 @@
 package com.linkedin.venice.spark.datawriter.jobs;
 
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
@@ -7,20 +9,31 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.GLOB_FILTER_PATTERN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VSON_PUSH;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.hadoop.PushJobSetting;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils;
 import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.spark.input.hdfs.VeniceHdfsSource;
+import com.linkedin.venice.spark.input.pubsub.raw.VeniceRawPubsubSource;
 import com.linkedin.venice.spark.utils.RowToAvroConverter;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.avro.Schema;
@@ -142,5 +155,52 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
           return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, null }, DEFAULT_SCHEMA);
         });
     return sparkSession.createDataFrame(rdd, DEFAULT_SCHEMA);
+  }
+
+  @Override
+  protected Dataset<Row> getKafkaInputDataFrame() {
+    SparkSession sparkSession = getSparkSession();
+    PushJobSetting pushJobSetting = getPushJobSetting();
+
+    DataFrameReader dataFrameReader = sparkSession.read();
+    dataFrameReader.format(VeniceRawPubsubSource.class.getCanonicalName());
+
+    // Configure Kafka input connection
+    setInputConf(sparkSession, dataFrameReader, KAFKA_INPUT_TOPIC, pushJobSetting.kafkaInputTopic);
+    setInputConf(sparkSession, dataFrameReader, KAFKA_INPUT_BROKER_URL, pushJobSetting.kafkaInputBrokerUrl);
+    setInputConf(sparkSession, dataFrameReader, PUBSUB_BROKER_ADDRESS, pushJobSetting.kafkaInputBrokerUrl);
+    setInputConf(
+        sparkSession,
+        dataFrameReader,
+        KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP,
+        AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema));
+
+    // Add KME (Kafka Message Envelope) schemas to support different message envelope versions
+    KafkaInputUtils.putSchemaMapIntoProperties(pushJobSetting.newKmeSchemasFromController)
+        .forEach((key, value) -> setInputConf(sparkSession, dataFrameReader, key, value));
+
+    // Pass SSL configuration if enabled
+    if (pushJobSetting.enableSSL) {
+      passSSLConfigToDataFrameReader(sparkSession, dataFrameReader);
+    }
+
+    return dataFrameReader.load();
+  }
+
+  /**
+   * Passes SSL metadata properties to the DataFrameReader so they are available to
+   * {@link com.linkedin.venice.spark.input.pubsub.SparkPubSubInputFormat} (driver) and
+   * {@link com.linkedin.venice.spark.input.pubsub.SparkPubSubPartitionReaderFactory} (executors).
+   */
+  private void passSSLConfigToDataFrameReader(SparkSession sparkSession, DataFrameReader dataFrameReader) {
+    VeniceProperties jobProps = getJobProperties();
+    String[] sslMetadataKeys = { SSL_CONFIGURATOR_CLASS_CONFIG, SSL_KEY_STORE_PROPERTY_NAME,
+        SSL_TRUST_STORE_PROPERTY_NAME, SSL_KEY_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PASSWORD_PROPERTY_NAME };
+    for (String key: sslMetadataKeys) {
+      if (jobProps.containsKey(key)) {
+        setInputConf(sparkSession, dataFrameReader, key, jobProps.getString(key));
+      }
+    }
+    setInputConf(sparkSession, dataFrameReader, PUBSUB_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
   }
 }

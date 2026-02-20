@@ -2,8 +2,13 @@ package com.linkedin.venice.spark.datawriter.jobs;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.meta.Store.UNLIMITED_STORAGE_QUOTA;
+import static com.linkedin.venice.spark.SparkConstants.CHUNKED_KEY_SUFFIX_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.OFFSET_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.RMD_VERSION_ID_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.SCHEMA_ID_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_APP_NAME_CONFIG;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_DATA_WRITER_CONF_PREFIX;
 import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX;
@@ -11,6 +16,8 @@ import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static org.apache.spark.sql.types.DataTypes.BinaryType;
+import static org.apache.spark.sql.types.DataTypes.IntegerType;
+import static org.apache.spark.sql.types.DataTypes.LongType;
 import static org.apache.spark.sql.types.DataTypes.StringType;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -130,6 +137,70 @@ public class AbstractDataWriterSparkJobTest {
   }
 
   @Test
+  public void testValidateDataFrameWithChunkedKifColumns() {
+    PushJobSetting kafkaSetting = new PushJobSetting();
+    kafkaSetting.isSourceKafka = true;
+
+    AbstractDataWriterSparkJob dataWriterSparkJob = spy(AbstractDataWriterSparkJob.class);
+    when(dataWriterSparkJob.getPushJobSetting()).thenReturn(kafkaSetting);
+
+    // Schema matching chunked KIF repush input: key, value, rmd + internal columns for chunk assembly
+    StructType chunkedKifSchema = new StructType(
+        new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
+            new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+            new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+            new StructField(SCHEMA_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
+            new StructField(RMD_VERSION_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
+            new StructField(OFFSET_COLUMN_NAME, LongType, false, Metadata.empty()),
+            new StructField(MESSAGE_TYPE_COLUMN_NAME, IntegerType, false, Metadata.empty()),
+            new StructField(CHUNKED_KEY_SUFFIX_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
+
+    Dataset<Row> mockDataset = mock(Dataset.class);
+    when(mockDataset.schema()).thenReturn(chunkedKifSchema);
+    dataWriterSparkJob.validateDataFrame(mockDataset);
+  }
+
+  @Test(expectedExceptions = VeniceInvalidInputException.class, expectedExceptionsMessageRegExp = ".*must not have fields that start with an underscore.*__schema_id__.*")
+  public void testValidateDataFrameRejectsInternalColumnsForNonKifJob() {
+    PushJobSetting hdfsSetting = new PushJobSetting();
+    hdfsSetting.isSourceKafka = false;
+
+    AbstractDataWriterSparkJob dataWriterSparkJob = spy(AbstractDataWriterSparkJob.class);
+    when(dataWriterSparkJob.getPushJobSetting()).thenReturn(hdfsSetting);
+
+    // Same chunked KIF schema but on a non-KIF job — should be rejected
+    StructType chunkedKifSchema = new StructType(
+        new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
+            new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+            new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+            new StructField(SCHEMA_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()) });
+
+    Dataset<Row> mockDataset = mock(Dataset.class);
+    when(mockDataset.schema()).thenReturn(chunkedKifSchema);
+    dataWriterSparkJob.validateDataFrame(mockDataset);
+  }
+
+  @Test(expectedExceptions = VeniceInvalidInputException.class, expectedExceptionsMessageRegExp = ".*must not have fields that start with an underscore.*_unknown_internal.*")
+  public void testValidateDataFrameRejectsUnknownUnderscoreColumnsForKifJob() {
+    PushJobSetting kafkaSetting = new PushJobSetting();
+    kafkaSetting.isSourceKafka = true;
+
+    AbstractDataWriterSparkJob dataWriterSparkJob = spy(AbstractDataWriterSparkJob.class);
+    when(dataWriterSparkJob.getPushJobSetting()).thenReturn(kafkaSetting);
+
+    // KIF job but with an unknown underscore column — should still be rejected
+    StructType schemaWithUnknownInternalCol = new StructType(
+        new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
+            new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+            new StructField(RMD_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+            new StructField("_unknown_internal", StringType, true, Metadata.empty()) });
+
+    Dataset<Row> mockDataset = mock(Dataset.class);
+    when(mockDataset.schema()).thenReturn(schemaWithUnknownInternalCol);
+    dataWriterSparkJob.validateDataFrame(mockDataset);
+  }
+
+  @Test
   public void testValidateDataFrameSchema() throws IOException {
     File inputDir = TestWriteUtils.getTempDataDirectory();
     Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
@@ -238,6 +309,11 @@ public class AbstractDataWriterSparkJobTest {
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
     }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
+    }
   }
 
   private static class InvalidValueSchemaDataWriterSparkJob extends AbstractDataWriterSparkJob {
@@ -257,6 +333,11 @@ public class AbstractDataWriterSparkJobTest {
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
     }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
+    }
   }
 
   private static class IncompleteFieldDataWriterSparkJob extends AbstractDataWriterSparkJob {
@@ -274,6 +355,11 @@ public class AbstractDataWriterSparkJobTest {
           .rdd();
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
+    }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
     }
   }
 
@@ -294,6 +380,11 @@ public class AbstractDataWriterSparkJobTest {
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
     }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
+    }
   }
 
   private static class MissingValueFieldDataWriterSparkJob extends AbstractDataWriterSparkJob {
@@ -312,6 +403,11 @@ public class AbstractDataWriterSparkJobTest {
           .rdd();
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
+    }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
     }
   }
 
@@ -332,6 +428,11 @@ public class AbstractDataWriterSparkJobTest {
           .rdd();
 
       return spark.createDataFrame(rowRDD, INVALID_SCHEMA);
+    }
+
+    @Override
+    protected Dataset<Row> getKafkaInputDataFrame() {
+      return getSparkSession().emptyDataFrame();
     }
   }
 }

@@ -98,30 +98,41 @@ public class ParticipantStoreTest {
       assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
     });
     String metricPrefix = "." + clusterName + "-participant_store_consumption_task";
-    double killedPushJobCount = veniceLocalCluster.getVeniceServers()
+    // Capture initial metric value (may be > 0 if other tests ran before)
+    double initialKilledPushJobCount = veniceLocalCluster.getVeniceServers()
         .iterator()
         .next()
         .getMetricsRepository()
         .metrics()
         .get(metricPrefix + "--killed_push_jobs.Count")
         .value();
-    assertEquals(killedPushJobCount, 0.0);
     ControllerResponse response = parentControllerClient.killOfflinePushJob(topicName);
     assertFalse(response.isError());
     verifyKillMessageInParticipantStore(topicName, true);
     String requestMetricExample =
         VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName) + "--success_request_key_count.Avg";
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
       // Poll job status to verify the job is indeed killed
       assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.ERROR.toString());
 
       // Verify participant store consumption stats
       // (not sure why these are flaky, but they are, so we're putting them in the non-deterministic assertion loop...)
-      Map<String, ? extends Metric> metrics =
-          veniceLocalCluster.getVeniceServers().iterator().next().getMetricsRepository().metrics();
-      assertEquals(getMetric(metrics, metricPrefix + "--killed_push_jobs.Count").value(), 1.0);
-      assertTrue(getMetric(metrics, metricPrefix + "--kill_push_job_latency.Avg").value() > 0);
-      assertTrue(getMetric(metrics, ".venice-client_" + requestMetricExample).value() > 0);
+      VeniceServerWrapper serverWrapper = veniceLocalCluster.getVeniceServers().iterator().next();
+      Map<String, ? extends Metric> serverMetrics = serverWrapper.getMetricsRepository().metrics();
+      // Verify the metric increased by exactly 1.0 (delta-based checking for test isolation)
+      assertEquals(
+          getMetric(serverMetrics, metricPrefix + "--killed_push_jobs.Count").value(),
+          initialKilledPushJobCount + 1.0);
+      assertTrue(getMetric(serverMetrics, metricPrefix + "--kill_push_job_latency.Avg").value() > 0);
+
+      // Client metrics are in a separate metrics repository (cloned for participant store client)
+      Map<String, ? extends Metric> clientMetrics = serverWrapper.getVeniceServer()
+          .getKafkaStoreIngestionService()
+          .getParticipantStoreConsumptionTask()
+          .getClientConfig()
+          .getMetricsRepository()
+          .metrics();
+      assertTrue(getMetric(clientMetrics, ".venice-client_" + requestMetricExample).value() > 0);
     });
   }
 

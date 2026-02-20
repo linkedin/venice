@@ -22,10 +22,12 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -54,7 +56,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   private final MainIngestionRequestClient mainIngestionRequestClient;
   private final MainIngestionMonitorService mainIngestionMonitorService;
   private final VeniceConfigLoader configLoader;
-  private final ExecutorService completionReportHandlingExecutor = Executors.newFixedThreadPool(10);
+  private final ExecutorService completionReportHandlingExecutor =
+      Executors.newFixedThreadPool(10, new DaemonThreadFactory("IsolatedIngestionBackend"));
   private final Function<String, Integer> currentVersionSupplier;
   private Process isolatedIngestionServiceProcess;
 
@@ -98,14 +101,17 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   @Override
-  public void startConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+  public void startConsumption(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      Optional<PubSubPosition> pubSubPosition) {
     String topicName = storeConfig.getStoreVersionName();
     executeCommandWithRetry(
         topicName,
         partition,
         START_CONSUMPTION,
         () -> mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition),
-        () -> super.startConsumption(storeConfig, partition));
+        () -> super.startConsumption(storeConfig, partition, pubSubPosition));
   }
 
   @Override
@@ -275,7 +281,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend implements
   }
 
   void startConsumptionLocally(VeniceStoreVersionConfig storeVersionConfig, int partition) {
-    super.startConsumption(storeVersionConfig, partition);
+    super.startConsumption(storeVersionConfig, partition, Optional.empty());
   }
 
   VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {

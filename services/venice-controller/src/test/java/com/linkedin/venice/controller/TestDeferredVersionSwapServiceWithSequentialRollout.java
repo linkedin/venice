@@ -10,6 +10,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
@@ -18,6 +19,7 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -30,6 +32,8 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -40,7 +44,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -61,6 +67,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
   private VeniceHelixAdmin veniceHelixAdmin;
   private Map<String, ControllerClient> controllerClientMap;
   private static final int controllerTimeout = 1 * Time.MS_PER_SECOND;
+  private MetricsRepository metricsRepository;
 
   @BeforeMethod
   public void setUp() {
@@ -75,6 +82,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     String rolloutOrder = region1 + "," + region2 + "," + region3;
     doReturn(rolloutOrder).when(clusterConfig).getDeferredVersionSwapRegionRollforwardOrder();
     doReturn(clusterConfig).when(veniceControllerMultiClusterConfig).getControllerConfig(clusterName);
+    doReturn(1).when(clusterConfig).getDeferredVersionSwapThreadPoolSize();
 
     // Mock the deferred version swap sleep time to avoid IllegalArgumentException in ScheduledThreadPoolExecutor
     doReturn(1000L).when(veniceControllerMultiClusterConfig).getDeferredVersionSwapSleepMs();
@@ -99,6 +107,11 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     childDatacenterToUrl.put(region2, "test-url-2");
     childDatacenterToUrl.put(region3, "test-url-3");
     doReturn(childDatacenterToUrl).when(admin).getChildDataCenterControllerUrlMap(clusterName);
+
+    // mock metrics repository
+    metricsRepository = mock(MetricsRepository.class);
+    Sensor sensor = mock(Sensor.class);
+    doReturn(sensor).when(metricsRepository).sensor(any(), any());
 
     // Setup mock Venice Helix Admin
     mockVeniceHelixAdmin();
@@ -346,7 +359,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
 
     // Create service
     DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats);
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
 
     // Start the service
     deferredVersionSwapService.startInner();
@@ -406,10 +419,11 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
 
     // Simulate failure on region2 rollout by making rollForwardToFutureVersion throw an exception when region2 appears
     doThrow(new VeniceException()).when(admin).rollForwardToFutureVersion(clusterName, storeName, region2);
-
+    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(clusterConfig)
+        .getConcurrentPushDetectionStrategy();
     // Create service
     DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats);
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
 
     // Start the service
     deferredVersionSwapService.startInner();
@@ -419,6 +433,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
       // Verify error recording was called due to the failure
       verify(store, atLeastOnce()).updateVersionStatus(2, VersionStatus.PARTIALLY_ONLINE);
       verify(admin, never()).rollForwardToFutureVersion(clusterName, storeName, region3);
+      verify(admin, never()).truncateKafkaTopic(anyString());
     });
   }
 
@@ -477,7 +492,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
 
     // Create service
     DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats);
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
 
     // Start the service
     deferredVersionSwapService.startInner();
@@ -584,9 +599,11 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
     doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
 
+    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(clusterConfig).getConcurrentPushDetectionStrategy();
+
     // Create service
     DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats);
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
 
     // Start the service
     deferredVersionSwapService.startInner();
@@ -594,6 +611,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       // Verify that updateStore was called to mark parent version as ONLINE
       verify(store, atLeastOnce()).updateVersionStatus(versionTwo, VersionStatus.ONLINE);
+      verify(admin, times(1)).truncateKafkaTopic(anyString());
     });
 
     // Verify error recording was not called
@@ -685,7 +703,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
 
     // Create service
     DeferredVersionSwapService deferredVersionSwapService =
-        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats);
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
 
     // Start the service
     deferredVersionSwapService.startInner();
@@ -695,5 +713,178 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
       // Verify stalled swap metric was emitted - this happens when condition at L523 is true
       verify(stats, atLeastOnce()).recordDeferredVersionSwapStalledVersionSwapSensor(anyDouble());
     });
+  }
+
+  @Test
+  public void testPerClusterThreadPoolCreationWithSequentialRollout() throws Exception {
+    // Test that thread pools are created per cluster with correct configuration for sequential rollout
+    String cluster1 = "sequentialCluster1";
+    String cluster2 = "sequentialCluster2";
+    int threadPoolSize1 = 8;
+    int threadPoolSize2 = 12;
+
+    // Setup mock configurations for multiple clusters with sequential rollout
+    VeniceControllerClusterConfig clusterConfig1 = mock(VeniceControllerClusterConfig.class);
+    VeniceControllerClusterConfig clusterConfig2 = mock(VeniceControllerClusterConfig.class);
+    doReturn(threadPoolSize1).when(clusterConfig1).getDeferredVersionSwapThreadPoolSize();
+    doReturn(threadPoolSize2).when(clusterConfig2).getDeferredVersionSwapThreadPoolSize();
+
+    // Sequential rollout configuration
+    doReturn(region1 + "," + region2 + "," + region3).when(clusterConfig1)
+        .getDeferredVersionSwapRegionRollforwardOrder();
+    doReturn(region1 + "," + region2).when(clusterConfig2).getDeferredVersionSwapRegionRollforwardOrder();
+
+    doReturn(clusterConfig1).when(veniceControllerMultiClusterConfig).getControllerConfig(cluster1);
+    doReturn(clusterConfig2).when(veniceControllerMultiClusterConfig).getControllerConfig(cluster2);
+
+    DeferredVersionSwapStats deferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
+    DeferredVersionSwapService service = new DeferredVersionSwapService(
+        admin,
+        veniceControllerMultiClusterConfig,
+        deferredVersionSwapStats,
+        metricsRepository);
+
+    // Use reflection to access the private getOrCreateExecutorForCluster method
+    java.lang.reflect.Method getExecutorMethod =
+        DeferredVersionSwapService.class.getDeclaredMethod("getOrCreateExecutorForCluster", String.class);
+    getExecutorMethod.setAccessible(true);
+
+    // Create executors for both clusters
+    ExecutorService executor1 = (ExecutorService) getExecutorMethod.invoke(service, cluster1);
+    ExecutorService executor2 = (ExecutorService) getExecutorMethod.invoke(service, cluster2);
+
+    // Verify executors are created and different for each cluster
+    Assert.assertNotNull(executor1, "Executor for cluster1 should be created");
+    Assert.assertNotNull(executor2, "Executor for cluster2 should be created");
+    Assert.assertNotEquals(executor1, executor2, "Each cluster should have its own executor");
+
+    // Clean up
+    service.stopInner();
+  }
+
+  @Test
+  public void testSequentialRolloutWithMultipleStoresUsingThreadPools() throws Exception {
+    String storeName1 = "sequentialStore1";
+    String storeName2 = "sequentialStore2";
+    String storeName3 = "sequentialStore3";
+
+    // Create multiple stores for sequential rollout processing
+    Store store1 = mockStore(versionOne, versionTwo, storeName1);
+    Store store2 = mockStore(versionOne, versionTwo, storeName2);
+    Store store3 = mockStore(versionOne, versionTwo, storeName3);
+
+    List<Store> storeList = Arrays.asList(store1, store2, store3);
+    doReturn(storeList).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    // Setup thread pool configuration for sequential rollout
+    doReturn(3).when(clusterConfig).getDeferredVersionSwapThreadPoolSize(); // 3 threads for concurrent store processing
+    // Keep existing sequential rollout order from setUp()
+
+    // Mock controller clients
+    List<Version> versionList = new ArrayList<>();
+    Map<String, ControllerClient> controllerClientMapWithStores = mockControllerClients(versionList);
+    doReturn(controllerClientMapWithStores).when(veniceHelixAdmin).getControllerClientMap(clusterName);
+
+    // Mock successful processing for all stores
+    for (String storeName: Arrays.asList(storeName1, storeName2, storeName3)) {
+      String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
+      Admin.OfflinePushStatusInfo pushStatusInfo = getOfflinePushStatusInfo(
+          ExecutionStatus.COMPLETED.toString(),
+          ExecutionStatus.COMPLETED.toString(),
+          ExecutionStatus.COMPLETED.toString(),
+          System.currentTimeMillis() / 1000 - 3600,
+          System.currentTimeMillis() / 1000 - 3600,
+          System.currentTimeMillis() / 1000 - 3600);
+      doReturn(pushStatusInfo).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
+    }
+
+    DeferredVersionSwapService service =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    service.startInner();
+
+    // Wait for processing to complete
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      verify(admin, atLeastOnce()).getOffLinePushStatus(anyString(), anyString());
+    });
+
+    service.stopInner();
+  }
+
+  @Test
+  public void testConcurrentStoreProcessingWithSequentialRolloutConfiguration() throws Exception {
+    // Test that multiple stores can be processed concurrently even with sequential rollout configuration
+    String storeName1 = "seqConcurrentStore1";
+    String storeName2 = "seqConcurrentStore2";
+    String storeName3 = "seqConcurrentStore3";
+    String storeName4 = "seqConcurrentStore4";
+
+    Store store1 = mockStore(versionOne, versionTwo, storeName1);
+    Store store2 = mockStore(versionOne, versionTwo, storeName2);
+    Store store3 = mockStore(versionOne, versionTwo, storeName3);
+    Store store4 = mockStore(versionOne, versionTwo, storeName4);
+
+    List<Store> storeList = Arrays.asList(store1, store2, store3, store4);
+    doReturn(storeList).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    // Setup configuration with sufficient threads for concurrent processing
+    doReturn(4).when(clusterConfig).getDeferredVersionSwapThreadPoolSize(); // 4 threads for 4 stores
+    // Keep existing sequential rollout order (region1,region2,region3)
+
+    List<Version> versionList = new ArrayList<>();
+    Map<String, ControllerClient> concurrentControllerClientMap = mockControllerClients(versionList);
+    doReturn(concurrentControllerClientMap).when(veniceHelixAdmin).getControllerClientMap(clusterName);
+
+    // Mock successful processing for all stores
+    for (String storeName: Arrays.asList(storeName1, storeName2, storeName3, storeName4)) {
+      String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
+      Admin.OfflinePushStatusInfo pushStatusInfo = getOfflinePushStatusInfo(
+          ExecutionStatus.COMPLETED.toString(),
+          ExecutionStatus.COMPLETED.toString(),
+          ExecutionStatus.COMPLETED.toString(),
+          System.currentTimeMillis() / 1000 - 3600,
+          System.currentTimeMillis() / 1000 - 3600,
+          System.currentTimeMillis() / 1000 - 3600);
+      doReturn(pushStatusInfo).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
+    }
+
+    DeferredVersionSwapService service =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, stats, metricsRepository);
+    service.startInner();
+
+    // Wait for processing and verify thread pool was used for concurrent processing
+    TestUtils.waitForNonDeterministicAssertion(12, TimeUnit.SECONDS, () -> {
+      verify(admin, atLeastOnce()).getOffLinePushStatus(anyString(), anyString());
+    });
+
+    service.stopInner();
+  }
+
+  // Helper method to create offline push status info for sequential rollout tests
+  private Admin.OfflinePushStatusInfo getOfflinePushStatusInfo(
+      String region1Status,
+      String region2Status,
+      String region3Status,
+      Long region1Timestamp,
+      Long region2Timestamp,
+      Long region3Timestamp) {
+    Map<String, String> extraInfo = new HashMap<>();
+    extraInfo.put(region1, region1Status);
+    extraInfo.put(region2, region2Status);
+    extraInfo.put(region3, region3Status);
+
+    Map<String, Long> extraInfoUpdateTimestamp = new HashMap<>();
+    extraInfoUpdateTimestamp.put(region1, region1Timestamp);
+    extraInfoUpdateTimestamp.put(region2, region2Timestamp);
+    extraInfoUpdateTimestamp.put(region3, region3Timestamp);
+
+    return new Admin.OfflinePushStatusInfo(
+        ExecutionStatus.COMPLETED,
+        123L,
+        extraInfo,
+        null,
+        null,
+        extraInfoUpdateTimestamp);
   }
 }

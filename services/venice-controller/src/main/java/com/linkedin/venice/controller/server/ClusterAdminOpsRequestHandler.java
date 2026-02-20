@@ -1,10 +1,13 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.pubsub.PubSubUtil.getPubSubPositionGrpcWireFormat;
+
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.AdminCommandExecutionStatusGrpcRequest;
@@ -14,8 +17,12 @@ import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcRequest;
 import com.linkedin.venice.protocols.controller.AdminTopicMetadataGrpcResponse;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcRequest;
 import com.linkedin.venice.protocols.controller.LastSuccessfulAdminCommandExecutionGrpcResponse;
+import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
+import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.UpdateAdminOperationProtocolVersionGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAdminTopicMetadataGrpcRequest;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.Pair;
 import java.util.Map;
 import java.util.Optional;
@@ -96,12 +103,16 @@ public class ClusterAdminOpsRequestHandler {
 
     AdminTopicGrpcMetadata.Builder adminMetadataBuilder =
         AdminTopicGrpcMetadata.newBuilder().setClusterName(clusterName);
-    Map<String, Long> metadata = admin.getAdminTopicMetadata(clusterName, Optional.ofNullable(storeName));
+    AdminMetadata metadata = admin.getAdminTopicMetadata(clusterName, Optional.ofNullable(storeName));
     adminMetadataBuilder.setExecutionId(AdminTopicMetadataAccessor.getExecutionId(metadata));
     if (storeName == null) {
-      Pair<Long, Long> offsets = AdminTopicMetadataAccessor.getOffsets(metadata);
-      adminMetadataBuilder.setOffset(offsets.getFirst());
-      adminMetadataBuilder.setUpstreamOffset(offsets.getSecond());
+      Pair<PubSubPosition, PubSubPosition> positions = AdminTopicMetadataAccessor.getPositions(metadata);
+      PubSubPositionGrpcWireFormat positionGrpcWireFormat = getPubSubPositionGrpcWireFormat(positions.getFirst());
+      PubSubPositionGrpcWireFormat upstreamPositionGrpcWireFormat =
+          getPubSubPositionGrpcWireFormat(positions.getSecond());
+
+      adminMetadataBuilder.setPosition(positionGrpcWireFormat);
+      adminMetadataBuilder.setUpstreamPosition(upstreamPositionGrpcWireFormat);
       adminMetadataBuilder
           .setAdminOperationProtocolVersion(AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata));
     } else {
@@ -116,34 +127,35 @@ public class ClusterAdminOpsRequestHandler {
     long executionId = metadata.getExecutionId();
     ControllerRequestParamValidator.validateAdminCommandExecutionRequest(clusterName, executionId);
     String storeName = metadata.hasStoreName() ? metadata.getStoreName() : null;
-    Long offset = metadata.hasOffset() ? metadata.getOffset() : null;
-    Long upstreamOffset = metadata.hasUpstreamOffset() ? metadata.getUpstreamOffset() : null;
+    PubSubPositionGrpcWireFormat position = metadata.hasPosition() ? metadata.getPosition() : null;
+    PubSubPositionGrpcWireFormat upstreamPosition =
+        metadata.hasUpstreamPosition() ? metadata.getUpstreamPosition() : null;
     LOGGER.info(
         "Updating admin topic metadata for cluster: {}{} with execution id: {}",
         clusterName,
         storeName != null ? " and store: " + storeName : "",
         executionId);
-    if (storeName != null && (offset != null || upstreamOffset != null)) {
-      throw new VeniceException("Updating offsets is not allowed for store-level admin topic metadata");
-    } else if (storeName == null && (offset == null || upstreamOffset == null)) {
-      throw new VeniceException("Offsets must be provided to update cluster-level admin topic metadata");
+    if (storeName != null && (position != null || upstreamPosition != null)) {
+      throw new VeniceException("Updating positions is not allowed for store-level admin topic metadata");
+    } else if (storeName == null && (position == null || upstreamPosition == null)) {
+      throw new VeniceException("Positions must be provided to update cluster-level admin topic metadata");
     }
     admin.updateAdminTopicMetadata(
         clusterName,
         executionId,
         Optional.ofNullable(storeName),
-        Optional.ofNullable(offset),
-        Optional.ofNullable(upstreamOffset));
+        Optional.ofNullable(position),
+        Optional.ofNullable(upstreamPosition));
 
     AdminTopicGrpcMetadata.Builder adminTopicGrpcMetadataBuilder =
         AdminTopicGrpcMetadata.newBuilder().setClusterName(clusterName).setExecutionId(executionId);
 
     if (storeName != null)
       adminTopicGrpcMetadataBuilder.setStoreName(storeName);
-    if (offset != null)
-      adminTopicGrpcMetadataBuilder.setOffset(offset);
-    if (upstreamOffset != null)
-      adminTopicGrpcMetadataBuilder.setUpstreamOffset(upstreamOffset);
+    if (position != null)
+      adminTopicGrpcMetadataBuilder.setPosition(position);
+    if (upstreamPosition != null)
+      adminTopicGrpcMetadataBuilder.setUpstreamPosition(upstreamPosition);
 
     AdminTopicMetadataGrpcResponse.Builder responseBuilder =
         AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminTopicGrpcMetadataBuilder.build());
@@ -168,5 +180,18 @@ public class ClusterAdminOpsRequestHandler {
         .setClusterName(clusterName)
         .setAdminOperationProtocolVersion(adminOperationProtocolVersion);
     return AdminTopicMetadataGrpcResponse.newBuilder().setMetadata(adminMetadataBuilder.build()).build();
+  }
+
+  public StoreMigrationCheckGrpcResponse isStoreMigrationAllowed(StoreMigrationCheckGrpcRequest request) {
+    String clusterName = request.getClusterName();
+    if (StringUtils.isBlank(clusterName)) {
+      throw new IllegalArgumentException("Cluster name is required for checking if store migration is allowed");
+    }
+    LOGGER.info("Checking if store migration is allowed for cluster: {}", clusterName);
+    boolean isAllowed = admin.isStoreMigrationAllowed(clusterName);
+    return StoreMigrationCheckGrpcResponse.newBuilder()
+        .setClusterName(clusterName)
+        .setStoreMigrationAllowed(isAllowed)
+        .build();
   }
 }

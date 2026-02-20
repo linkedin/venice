@@ -7,6 +7,8 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT
 import static com.linkedin.venice.meta.StoreStatus.FULLLY_REPLICATED;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.venice.ConfigKeys;
@@ -18,6 +20,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
@@ -32,10 +35,12 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import org.apache.avro.Schema;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -444,6 +449,22 @@ public class BlobP2PTransferAmongServersTest {
       }
     });
 
+    // get the store info
+    StoreInfo storeInfo = controllerClient.getClusterStores(cluster.getClusterName())
+        .getStoreInfoList()
+        .stream()
+        .filter(store -> store.getName().equals(storeName))
+        .findFirst()
+        .get();
+
+    Version latestVersion =
+        storeInfo.getVersions().stream().max(Comparator.comparingInt(Version::getNumber)).orElse(null);
+
+    Assert.assertEquals(
+        latestVersion.getBlobTransferInServerEnabled(),
+        ConfigCommonUtils.ActivationState.ENABLED.toString(),
+        "Latest version " + latestVersion.getNumber() + " should have blob transfer enabled");
+
     // cleanup and stop server 1
     cluster.stopVeniceServer(server1Port);
     // verify that the server 1 is stopped but the files are retained.
@@ -519,5 +540,208 @@ public class BlobP2PTransferAmongServersTest {
             offsetServer2.getCheckpointedLocalVtPosition());
       }
     });
+  }
+
+  /**
+   * Test blob P2P transfer when incremental push is done before the blob transfer starts.
+   * @throws Exception
+   */
+  @Test(singleThreaded = true, timeOut = 240000)
+  public void testBlobP2PTransferWithIncrementalPushDoneBeforeBlobTransfer() throws Exception {
+    cluster = initializeVeniceCluster();
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = "test-store-incremental-push";
+
+    try (ControllerClient controllerClient =
+        new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
+      controllerClient
+          .createNewStore(storeName, "owner", keySchemaStr, TestWriteUtils.NAME_RECORD_V1_SCHEMA.toString());
+      cluster.createMetaSystemStore(storeName);
+      cluster.createPushStatusSystemStore(storeName);
+
+      controllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setUnusedSchemaDeletionEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L)
+              .setIncrementalPushEnabled(true)
+              .setIsDavinciHeartbeatReported(true)
+              .setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.ENABLED));
+
+      // Create initial version V1
+      Properties props = defaultVPJProps(cluster, inputDirPath, storeName);
+      IntegrationTestPushUtils.runVPJ(props);
+
+      VeniceServerWrapper server1 = cluster.getVeniceServerByPort(server1Port);
+      VeniceServerWrapper server2 = cluster.getVeniceServerByPort(server2Port);
+
+      // Incremental Push
+      TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir, 5);
+      Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
+      vpjProperties.put(INCREMENTAL_PUSH, true);
+      IntegrationTestPushUtils.runVPJ(vpjProperties);
+      cluster.waitVersion(storeName, 1);
+
+      // Stop server 1
+      cluster.stopVeniceServer(server1Port);
+
+      // Verify partition files still exist on server 1
+      for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+        File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
+        Assert.assertTrue(Files.exists(file.toPath()));
+      }
+
+      // Restart server 1
+      cluster.restartVeniceServer(server1.getPort());
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Assert.assertTrue(server1.isRunning());
+      });
+
+      // Wait for server 1 to be fully replicated
+      cluster.getVeniceControllers().forEach(controller -> {
+        TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+          Assert.assertEquals(
+              controller.getController()
+                  .getVeniceControllerService()
+                  .getVeniceHelixAdmin()
+                  .getAllStoreStatuses(cluster.getClusterName())
+                  .get(storeName),
+              FULLLY_REPLICATED.toString());
+        });
+      });
+
+      // Verify blob transfer completed and snapshots are created appropriately
+      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+        for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+          // Server 1 partition files should exist
+          File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
+          Assert.assertTrue(Files.exists(file.toPath()));
+
+          // Server 1 snapshot should not be generated (receiving end)
+          File snapshotFile =
+              new File(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
+          Assert.assertFalse(Files.exists(snapshotFile.toPath()));
+
+          // Server 2 snapshot should be created (sending end)
+          String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
+          Assert.assertTrue(Files.exists(Paths.get(snapshotPath2)));
+        }
+      });
+
+      // Verify offset records for incremental push status are the same
+      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+        for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+          OffsetRecord offsetServer1 = server1.getVeniceServer()
+              .getStorageMetadataService()
+              .getLastOffset(
+                  storeName + "_v1",
+                  partitionId,
+                  server1.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+          OffsetRecord offsetServer2 = server2.getVeniceServer()
+              .getStorageMetadataService()
+              .getLastOffset(
+                  storeName + "_v1",
+                  partitionId,
+                  server2.getVeniceServer().getKafkaStoreIngestionService().getPubSubContext());
+
+          Assert.assertEquals(
+              offsetServer1.getTrackingIncrementalPushStatus(),
+              offsetServer2.getTrackingIncrementalPushStatus());
+        }
+      });
+    }
+  }
+
+  /**
+   * Test blob P2P transfer when incremental push is still in progress during the blob transfer.
+   * @throws Exception
+   */
+  @Test(singleThreaded = true, timeOut = 240000)
+  public void testBlobP2PTransferWithIncrementalPushInProgressDuringBlobTransfer() throws Exception {
+    cluster = initializeVeniceCluster();
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = "test-store-incremental-push";
+
+    try (ControllerClient controllerClient =
+        new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
+      controllerClient
+          .createNewStore(storeName, "owner", keySchemaStr, TestWriteUtils.NAME_RECORD_V1_SCHEMA.toString());
+      cluster.createMetaSystemStore(storeName);
+      cluster.createPushStatusSystemStore(storeName);
+
+      controllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setUnusedSchemaDeletionEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L)
+              .setIncrementalPushEnabled(true)
+              .setIsDavinciHeartbeatReported(true)
+              .setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.ENABLED));
+
+      // Create initial version V1
+      Properties props = defaultVPJProps(cluster, inputDirPath, storeName);
+      IntegrationTestPushUtils.runVPJ(props);
+
+      VeniceServerWrapper server1 = cluster.getVeniceServerByPort(server1Port);
+      cluster.getVeniceServerByPort(server2Port);
+
+      // Stop server 1
+      cluster.stopVeniceServer(server1Port);
+      // Restart server 1
+      cluster.restartVeniceServer(server1.getPort());
+
+      // Incremental Push, make the push take longer,
+      // make sure that the blob transfer happens when incremental push is still in progress
+      TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir, 100000);
+      Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
+      vpjProperties.put(INCREMENTAL_PUSH, true);
+      IntegrationTestPushUtils.runVPJ(vpjProperties);
+
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Assert.assertTrue(server1.isRunning());
+      });
+
+      // Wait for server 1 to be fully replicated
+      cluster.getVeniceControllers().forEach(controller -> {
+        TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+          Assert.assertEquals(
+              controller.getController()
+                  .getVeniceControllerService()
+                  .getVeniceHelixAdmin()
+                  .getAllStoreStatuses(cluster.getClusterName())
+                  .get(storeName),
+              FULLLY_REPLICATED.toString());
+        });
+      });
+
+      // Verify blob transfer completed and snapshots are created appropriately
+      // Please noted that we don't need to compare the offset records,
+      // because the blob transfer completed before incremental push is done, resulting that their offset record
+      // incremental push status may not be the same.
+      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+        for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+          // Server 1 partition files should exist
+          File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
+          Assert.assertTrue(Files.exists(file.toPath()));
+
+          // Server 1 snapshot should not be generated (receiving end)
+          File snapshotFile =
+              new File(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
+          Assert.assertFalse(Files.exists(snapshotFile.toPath()));
+
+          // Server 2 snapshot should be created (sending end)
+          String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
+          Assert.assertTrue(Files.exists(Paths.get(snapshotPath2)));
+        }
+      });
+    }
   }
 }

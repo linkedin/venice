@@ -415,7 +415,8 @@
           "fields": [
             {
               "name": "clusterName",
-              "type": "string"
+              "type": "string",
+              "doc": "The cluster where the store resides"
             },
             {
               "name": "storeName",
