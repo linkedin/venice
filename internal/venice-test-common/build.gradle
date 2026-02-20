@@ -403,7 +403,8 @@ def integrationTestBuckets = [
         "com.linkedin.venice.fastclient.FastClientIndividualFeatureConfigurationTest",
         "com.linkedin.venice.fastclient.FastClientDaVinciClientCompatTest",
         "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest",
-        "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest"
+        "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest",
+        "com.linkedin.venice.endToEnd.DaVinciClientP2PBlobTransferTest2"
     ],
     "23": [
         "com.linkedin.venice.router.TestReadPathChaos"

@@ -68,7 +68,6 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -568,7 +567,7 @@ public class TestVeniceHelixAdmin {
     assertTrue(
         topicAbsentException.getMessage().contains("is either absent or being truncated"),
         "Actual message: " + topicAbsentException.getMessage());
-    verify(veniceAdminStats, times(1)).recordUnexpectedTopicAbsenceCount();
+    verify(veniceAdminStats, times(1)).recordUnexpectedTopicAbsenceCount(PushType.BATCH);
 
     // Case 3: Topic exists, all partitions are online, but topic is truncated
     when(topicManager.containsTopicAndAllPartitionsAreOnline(topic, partitionCount)).thenReturn(true);
@@ -580,7 +579,7 @@ public class TestVeniceHelixAdmin {
     assertTrue(
         topicTruncatedException.getMessage().contains("is either absent or being truncated"),
         "Actual message: " + topicTruncatedException.getMessage());
-    verify(veniceAdminStats, times(2)).recordUnexpectedTopicAbsenceCount();
+    verify(veniceAdminStats, times(1)).recordUnexpectedTopicAbsenceCount(INCREMENTAL);
 
     // Case 4: Validate behavior with different PushType (e.g., INCREMENTAL)
     when(topicManager.containsTopicAndAllPartitionsAreOnline(topic, partitionCount)).thenReturn(true);
@@ -982,7 +981,7 @@ public class TestVeniceHelixAdmin {
 
     // Case 1: Not store name provided
     AdminMetadata remoteMetadata = new AdminMetadata();
-    remoteMetadata.setPubSubPosition(ApacheKafkaOffsetPosition.of(10L));
+    remoteMetadata.setPubSubPosition(InMemoryPubSubPosition.of(10L));
     remoteMetadata.setExecutionId(1L);
     remoteMetadata.setAdminOperationProtocolVersion(1L);
     AdminConsumerService adminConsumerService = mock(AdminConsumerService.class);

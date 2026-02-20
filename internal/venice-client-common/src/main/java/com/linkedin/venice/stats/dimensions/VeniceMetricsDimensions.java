@@ -90,7 +90,22 @@ public enum VeniceMetricsDimensions {
   VENICE_INGESTION_SOURCE_COMPONENT("venice.ingestion.source.component"),
 
   /** {@link VeniceIngestionDestinationComponent} destination component */
-  VENICE_INGESTION_DESTINATION_COMPONENT("venice.ingestion.destination.component");
+  VENICE_INGESTION_DESTINATION_COMPONENT("venice.ingestion.destination.component"),
+
+  /** Venice push job type (e.g. batch, incremental). See Version.PushType */
+  VENICE_PUSH_JOB_TYPE("venice.push_job.type"),
+
+  /** {@link VenicePushJobStatus} */
+  VENICE_PUSH_JOB_STATUS("venice.push_job.status"),
+
+  /** {@link VeniceSystemStoreType} */
+  VENICE_SYSTEM_STORE_TYPE("venice.system_store.type"),
+
+  /** {@link AdminMessageProcessingPhase} */
+  VENICE_ADMIN_MESSAGE_PROCESSING_PHASE("venice.admin_message.processing_phase"),
+
+  /** AdminMessageType */
+  VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

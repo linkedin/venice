@@ -1483,11 +1483,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private void resetConsumptionOffset(VeniceStoreVersionConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreVersionName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if (consumerTask != null && consumerTask.isRunning()) {
-      consumerTask.resetPartitionConsumptionOffset(
-          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+    try {
+      if (consumerTask != null && consumerTask.isRunning()) {
+        consumerTask.resetPartitionConsumptionOffset(
+            new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+      }
+      LOGGER.info("Offset reset to beginning - Replica: {}.", Utils.getReplicaId(topic, partitionId));
+    } catch (Exception e) {
+      LOGGER.warn("Error resetting replica offset for replica: {}.", Utils.getReplicaId(topic, partitionId));
     }
-    LOGGER.info("Offset reset to beginning - Replica: {}.", Utils.getReplicaId(topic, partitionId));
   }
 
   @VisibleForTesting

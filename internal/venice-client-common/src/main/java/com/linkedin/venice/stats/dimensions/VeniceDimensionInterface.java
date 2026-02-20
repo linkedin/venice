@@ -19,6 +19,11 @@ public interface VeniceDimensionInterface {
 
   /**
    * Dimension value: Returns the dimension value for each enum instance.
+   * Default implementation returns {@code name().toLowerCase()}, which is the convention
+   * for most dimension enums. Override only when the dimension value differs from the
+   * lowercase enum constant name (e.g., HTTP status codes, custom string mappings).
    */
-  String getDimensionValue();
+  default String getDimensionValue() {
+    return ((Enum<?>) this).name().toLowerCase();
+  }
 }

@@ -239,6 +239,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     setBlobTransferEnabled(store.isBlobTransferEnabled());
     setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
+    setBlobDbEnabled(store.getBlobDbEnabled());
     setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
     setTargetSwapRegion(store.getTargetSwapRegion());
@@ -251,6 +252,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setKeyUrnCompressionEnabled(store.isKeyUrnCompressionEnabled());
     setKeyUrnFields(store.getKeyUrnFields());
     setFlinkVeniceViewsEnabled(store.isFlinkVeniceViewsEnabled());
+    setPreviousCurrentVersion(store.getPreviousCurrentVersion());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -308,13 +310,35 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   /**
    * Set current serving version number of this store. If store is disabled to write, thrown {@link
    * StoreDisabledException}.
+   *
+   * When a new version is promoted to current, this method also sets the previousCurrentVersion
+   * field on the NEW current version to track which version was current before.
    */
   @Override
   public void setCurrentVersion(int currentVersion) {
     checkDisableStoreWrite("setStoreCurrentVersion", currentVersion);
     // Update the latest version promotion to current timestamp, which is useful for backup version retention.
     setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+
+    // Capture old current version before updating
+    int oldCurrentVersion = getCurrentVersion();
+
     setCurrentVersionWithoutCheck(currentVersion);
+
+    // Set previousCurrentVersion on the NEW current version
+    if (oldCurrentVersion != Store.NON_EXISTING_VERSION && currentVersion != Store.NON_EXISTING_VERSION) {
+      updateVersionPreviousCurrentVersion(currentVersion, oldCurrentVersion);
+    }
+  }
+
+  /** Updates the previousCurrentVersion field on a version. */
+  private void updateVersionPreviousCurrentVersion(int versionNumber, int previousCurrentVersion) {
+    for (StoreVersion storeVersion: storeProperties.versions) {
+      if (storeVersion.number == versionNumber) {
+        storeVersion.previousCurrentVersion = previousCurrentVersion;
+        return;
+      }
+    }
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to ZooKeeper
@@ -978,6 +1002,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public void setBlobDbEnabled(String blobDbEnabled) {
+    this.storeProperties.blobDbEnabled = blobDbEnabled;
+  }
+
+  @Override
+  public String getBlobDbEnabled() {
+    return this.storeProperties.blobDbEnabled.toString();
+  }
+
+  @Override
   public boolean isNearlineProducerCompressionEnabled() {
     return this.storeProperties.nearlineProducerCompressionEnabled;
   }
@@ -1103,6 +1137,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
       return Collections.emptyList();
     }
     return this.storeProperties.keyUrnFields.stream().map(Objects::toString).collect(Collectors.toList());
+  }
+
+  @Override
+  public int getPreviousCurrentVersion() {
+    return this.storeProperties.previousCurrentVersion;
+  }
+
+  @Override
+  public void setPreviousCurrentVersion(int previousCurrentVersion) {
+    this.storeProperties.previousCurrentVersion = previousCurrentVersion;
   }
 
   @Override

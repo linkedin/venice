@@ -95,6 +95,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -107,6 +108,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -123,6 +125,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.DiskUsage;
@@ -166,6 +169,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -275,7 +279,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Keeps track of producer states inside version topic that drainer threads have processed so far.
    * Producers states in this validator will be flushed to the metadata partition of the storage engine regularly in
-   * {@link #syncOffset(String, PartitionConsumptionState)}
+   * {@link #syncOffset(PartitionConsumptionState)}
    * NOTE: consumerDiv will be used in place of this when {@link #isGlobalRtDivEnabled()} is true.
    */
   private final DataIntegrityValidator drainerDiv;
@@ -332,6 +336,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AggKafkaConsumerService aggKafkaConsumerService;
 
   protected int writeComputeFailureCode = 0;
+
+  void setWriteComputeFailureCode(int code) {
+    this.writeComputeFailureCode = code;
+  }
 
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
@@ -404,8 +412,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
   protected final AtomicBoolean recordLevelMetricEnabled;
+  protected final boolean recordLevelTimestampEnabled;
   protected final boolean isGlobalRtDivEnabled;
   protected volatile VersionRole versionRole;
+  protected volatile boolean versionBootstrapCompleted;
   protected volatile PartitionReplicaIngestionContext.WorkloadType workloadType;
   protected final boolean batchReportIncPushStatusEnabled;
 
@@ -660,6 +670,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
     this.versionRole =
         PartitionReplicaIngestionContext.determineStoreVersionRole(versionNumber, store.getCurrentVersion());
+    this.versionBootstrapCompleted = VersionStatus.isBootstrapCompleted(version.getStatus());
     this.workloadType = PartitionReplicaIngestionContext
         .determineWorkloadType(isActiveActiveReplicationEnabled, isWriteComputationEnabled);
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
@@ -681,6 +692,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.recordLevelMetricEnabled = new AtomicBoolean(
         serverConfig.isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled()
             || !this.isCurrentVersion.getAsBoolean());
+    this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
     this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
@@ -1117,6 +1129,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     }
+
+    // Set blob-db config from version level config
+    Store store = storeRepository.getStore(storeName);
+    if (store != null) {
+      Version version = store.getVersion(versionNumber);
+      if (version != null) {
+        String blobDbEnabledStr = version.getBlobDbEnabled();
+        if (blobDbEnabledStr != null) {
+          try {
+            storagePartitionConfig.setBlobDbEnabled(ActivationState.valueOf(blobDbEnabledStr));
+          } catch (IllegalArgumentException e) {
+            // Invalid value, fall back to NOT_SPECIFIED which uses cluster-level config
+            storagePartitionConfig.setBlobDbEnabled(ActivationState.NOT_SPECIFIED);
+          }
+        }
+      }
+    }
+    // If store or version not found, or blobDbEnabled is invalid, leave default NOT_SPECIFIED which falls back to
+    // cluster-level config
 
     return storagePartitionConfig;
   }
@@ -1700,6 +1731,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
+    if (!versionBootstrapCompleted) {
+      Version ver = store.getVersion(versionNumber);
+      versionBootstrapCompleted = ver != null && VersionStatus.isBootstrapCompleted(ver.getStatus());
+    }
+
     boolean isWriteComputeEnabled = store.isWriteComputationEnabled();
     VersionRole newVersionRole =
         PartitionReplicaIngestionContext.determineStoreVersionRole(versionNumber, currentVersionNumber);
@@ -1805,38 +1841,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Thread.sleep(this.readCycleDelayMs);
       }
 
-      List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
-
-      /**
-       * Speed shutdown by closing partitions concurrently. For Server it is controlled by server config, for DaVinci
-       * client it is always enabled.
-       */
-      boolean enableParallelShutdown = serverConfig.isParallelResourceShutdownEnabled() || isDaVinciClient;
-      ExecutorService shutdownExecutor =
-          enableParallelShutdown ? Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2) : null;
-
-      for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
-        /**
-         * Now, there are two threads, which could potentially trigger {@link #syncOffset(String, PartitionConsumptionState)}:
-         * 1. {@link #processConsumerRecord} that will sync offset based on the consumed byte size.
-         * 2. The main thread of ingestion task here, which will checkpoint when gracefully shutting down;
-         *
-         * We would like to make sure the syncOffset invocation is sequential with the message processing, so here
-         * will try to drain all the messages before checkpointing.
-         * Here is the detail::
-         * If the checkpointing happens in different threads concurrently, there is no guarantee the atomicity of
-         * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
-         * hasn't been applied yet, when checkpointing happens in current thread.
-         */
-        executeShutdownRunnable(entry.getValue(), shutdownFutures, shutdownExecutor);
-      }
-      if (enableParallelShutdown) {
-        /**
-         * Shutdown shouldn't take that long because of high concurrency, and it is fine to specify a high timeout here
-         * to avoid infinite wait in case there is some regression.
-         */
-        CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
-      }
+      shutdownPartitionConsumptionStates();
       // Release the latch after all the shutdown completes in DVC/Server.
       shutdownLatch.countDown();
     } catch (VeniceIngestionTaskKilledException e) {
@@ -1885,6 +1890,54 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       handleIngestionThrowable(t);
     } finally {
       internalClose(doFlush);
+    }
+  }
+
+  /**
+   * Shuts down all partition consumption states, optionally in parallel. Creates a thread pool if parallel shutdown is
+   * enabled and ensures it is always terminated via a finally block.
+   */
+  void shutdownPartitionConsumptionStates() throws InterruptedException, ExecutionException, TimeoutException {
+    List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(getPartitionConsumptionStateMap().size());
+
+    /**
+     * Speed shutdown by closing partitions concurrently. For Server it is controlled by server config, for DaVinci
+     * client it is always enabled.
+     */
+    boolean enableParallelShutdown = getServerConfig().isParallelResourceShutdownEnabled() || isDaVinciClient();
+    ExecutorService shutdownExecutor = enableParallelShutdown
+        ? Executors.newFixedThreadPool(
+            getServerConfig().getParallelShutdownThreadPoolSize(),
+            new DaemonThreadFactory("StoreIngestionTask-shutdown"))
+        : null;
+
+    try {
+      for (Map.Entry<Integer, PartitionConsumptionState> entry: getPartitionConsumptionStateMap().entrySet()) {
+        /**
+         * Now, there are two threads, which could potentially trigger {@link #syncOffset(String, PartitionConsumptionState)}:
+         * 1. {@link #processConsumerRecord} that will sync offset based on the consumed byte size.
+         * 2. The main thread of ingestion task here, which will checkpoint when gracefully shutting down;
+         *
+         * We would like to make sure the syncOffset invocation is sequential with the message processing, so here
+         * will try to drain all the messages before checkpointing.
+         * Here is the detail::
+         * If the checkpointing happens in different threads concurrently, there is no guarantee the atomicity of
+         * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
+         * hasn't been applied yet, when checkpointing happens in current thread.
+         */
+        executeShutdownRunnable(entry.getValue(), shutdownFutures, shutdownExecutor);
+      }
+      if (enableParallelShutdown) {
+        /**
+         * Shutdown shouldn't take that long because of high concurrency, and it is fine to specify a high timeout here
+         * to avoid infinite wait in case there is some regression.
+         */
+        CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
+      }
+    } finally {
+      if (shutdownExecutor != null) {
+        shutdownExecutor.shutdownNow();
+      }
     }
   }
 
@@ -2581,6 +2634,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return partitionConsumptionStateMap.get(partitionId);
   }
 
+  public Collection<PartitionConsumptionState> getPartitionConsumptionStates() {
+    return partitionConsumptionStateMap.values();
+  }
+
   public boolean hasAnyPartitionConsumptionState(Predicate<PartitionConsumptionState> pcsPredicate) {
     for (Map.Entry<Integer, PartitionConsumptionState> partitionToConsumptionState: partitionConsumptionStateMap
         .entrySet()) {
@@ -2828,6 +2885,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
+  /**
+   * Hook for recording regular data record timestamps. Override in subclasses that support
+   * record-level timestamp tracking.
+   */
+  protected void trackRecordReceived(
+      PartitionConsumptionState partitionConsumptionState,
+      DefaultPubSubMessage consumerRecord,
+      String pubSubUrl) {
+    // No Op
+  }
+
   boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String brokerUrl) {
     if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage()) {
       return false;
@@ -3046,15 +3114,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return Long.MAX_VALUE;
     }
 
-    if (PubSubSymbolicPosition.EARLIEST.equals(currentPosition)) {
-      /**
-       * If the consumer is at EARLIEST, it means it has not yet started consuming, and therefore the lag is equal to
-       * the number of messages in the topic.
-       */
-      return topicManager.countRecordsUntil(pubSubTopicPartition, endPosition);
+    long diff;
+    try {
+      if (PubSubSymbolicPosition.EARLIEST.equals(currentPosition)) {
+        /**
+         * If the consumer is at EARLIEST, it means it has not yet started consuming, and therefore the lag is equal to
+         * the number of messages in the topic.
+         */
+        return topicManager.countRecordsUntil(pubSubTopicPartition, endPosition);
+      }
+      diff = topicManager.diffPosition(pubSubTopicPartition, endPosition, currentPosition);
+    } catch (PubSubTopicDoesNotExistException e) {
+      return Long.MAX_VALUE;
     }
-
-    long diff = topicManager.diffPosition(pubSubTopicPartition, endPosition, currentPosition);
     if (diff == 0) {
       /**
        * Topics which were never produced to have an end position of zero. Such topics are empty and therefore, by
@@ -3527,13 +3599,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerRecord.getPubSubMessageTime(),
             partitionConsumptionState);
         try {
-          if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
-              && Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
-            recordHeartbeatReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
-            if (recordTransformer != null) {
-              recordTransformer.onHeartbeat(
-                  consumerRecord.getTopicPartition().getPartitionNumber(),
-                  consumerRecord.getPubSubMessageTime());
+          if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()) {
+            if (Arrays.equals(consumerRecord.getKey().getKey(), KafkaKey.HEART_BEAT.getKey())) {
+              recordHeartbeatReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
+              if (recordTransformer != null) {
+                recordTransformer.onHeartbeat(
+                    consumerRecord.getTopicPartition().getPartitionNumber(),
+                    consumerRecord.getPubSubMessageTime());
+              }
+            } else {
+              // Check and handle DoL message for non-heartbeat messages
+              checkAndHandleDoLMessage(partitionConsumptionState, consumerRecord);
             }
           }
         } catch (Exception e) {
@@ -3558,6 +3634,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             versionNumber,
             LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingRecordTimestampNs),
             currentTimeMs);
+        if (recordLevelTimestampEnabled) {
+          try {
+            trackRecordReceived(partitionConsumptionState, consumerRecord, kafkaUrl);
+          } catch (Exception e) {
+            String msg =
+                "Failed to record regular record timestamp for replica " + partitionConsumptionState.getReplicaId();
+            if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+              LOGGER.error(msg, e);
+            }
+          }
+        }
       }
     } catch (DuplicateDataException e) {
       divErrorMetricCallback.accept(e);
@@ -3708,8 +3795,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       boolean tolerateMissingMessagesForRealTimeTopic) {
     KafkaKey key = consumerRecord.getKey();
-    if (key.isControlMessage() && Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())) {
-      return; // Skip validation for ingestion heartbeat records.
+    if (key.isControlMessage() && (Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())
+        || Arrays.equals(KafkaKey.DOL_STAMP.getKey(), key.getKey()))) {
+      return; // Skip validation for ingestion heartbeat and DoL stamp records.
     } else if (isGlobalRtDivEnabled() && isRecordSelfProduced(consumerRecord)) {
       // Skip validation for self-produced records. If there were any issues, the followers would've reported it already
       // e.g. Leader->Follower, resubscribe to local VT, consume messages produced by itself (when it was leader)
@@ -3954,7 +4042,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubPosition startOffset,
       String kafkaURL) {
     PubSubTopicPartition resolvedTopicPartition =
-        resolveRtTopicPartitionWithPubSubBrokerAddress(pubSubTopic, partitionConsumptionState, kafkaURL);
+        resolveTopicPartitionWithPubSubBrokerAddress(pubSubTopic, partitionConsumptionState, kafkaURL);
     consumerSubscribe(resolvedTopicPartition, startOffset, kafkaURL);
   }
 
@@ -4968,7 +5056,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * For RT input topic with separate-RT kafka URL, this method will return topic-partition with separated-RT topic.
    * For other case, it will return topic-partition with input topic.
    */
-  PubSubTopicPartition resolveRtTopicPartitionWithPubSubBrokerAddress(
+  PubSubTopicPartition resolveTopicPartitionWithPubSubBrokerAddress(
       PubSubTopic topic,
       PartitionConsumptionState partitionConsumptionState,
       String pubSubBrokerAddress) {
@@ -5252,6 +5340,125 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.error("Caught exception when resubscribing for replica: {}", pcs.getReplicaId(), e);
       }
     }
+  }
+
+  /**
+  * Checks if the consumed message is a DoL (Declaration of Leadership) stamp and marks it as consumed
+  * if it matches the current DolStamp. This method is called during message consumption to detect when
+  * the leader replica has successfully consumed back its own DoL stamp, indicating it's fully caught up
+  * with the version topic and ready to switch to consuming from remote VT or RT.
+  *
+  * @param pcs the partition consumption state tracking DoL status
+  * @param dolPubSubMessage the consumed DoL PubSub message with leadership metadata
+  *
+  * Package-private for testing.
+  */
+  void checkAndHandleDoLMessage(PartitionConsumptionState pcs, DefaultPubSubMessage dolPubSubMessage) {
+    // Early exit if DoL mechanism is disabled via config or message key is not DoL stamp
+    if (!shouldUseDolMechanism() || !Arrays.equals(dolPubSubMessage.getKey().getKey(), KafkaKey.DOL_STAMP.getKey())) {
+      return;
+    }
+
+    // Extract leadership metadata from the message
+    KafkaMessageEnvelope value = dolPubSubMessage.getValue();
+    LeaderMetadata leaderMetadata = value.getLeaderMetadataFooter();
+    if (leaderMetadata == null) {
+      // Message doesn't have leadership metadata, skip processing
+      return;
+    }
+    // Only check cluster ID if we have a valid local cluster ID configured
+    if (localKafkaClusterId != Integer.MIN_VALUE && leaderMetadata.getUpstreamKafkaClusterId() != localKafkaClusterId) {
+      // Message is not from our own local region, skip processing
+      return;
+    }
+
+    CharSequence hostNameCharSeq = leaderMetadata.getHostName();
+    String consumedHostId = hostNameCharSeq != null ? hostNameCharSeq.toString() : null;
+    // Extract term information from the consumed message
+    long consumedTermId = leaderMetadata.getTermId();
+    long messageTimestamp =
+        value.getProducerMetadata() != null ? value.getProducerMetadata().getMessageTimestamp() : -1;
+    String replicaId = pcs.getReplicaId();
+
+    // Update highest observed leadership term for monitoring
+    long previousHighestTerm = pcs.getHighestLeadershipTerm();
+    if (consumedTermId > previousHighestTerm) {
+      pcs.setHighestLeadershipTerm(consumedTermId);
+      LOGGER.info(
+          "Replica: {} observed new highest leadership term: {} (previous: {}) from host: {} at timestamp: {}",
+          replicaId,
+          consumedTermId,
+          previousHighestTerm,
+          consumedHostId,
+          messageTimestamp);
+    }
+    DolStamp currentDolStamp = pcs.getDolState();
+    // Get current DoL state - may be null if not in STANDBY->LEADER transition
+    if (currentDolStamp == null) {
+      // Not currently waiting for a DoL, just log for observability
+      LOGGER.debug(
+          "Replica: {} consumed DoL stamp for term: {} from host: {} (timestamp: {}), but not currently waiting for DoL",
+          replicaId,
+          consumedTermId,
+          consumedHostId,
+          messageTimestamp);
+      return;
+    }
+
+    // Validate DoL matches expected term and host
+    long expectedTermId = currentDolStamp.getLeadershipTerm();
+    String expectedHostId = currentDolStamp.getHostId();
+
+    // Ignore DoL from different host (use Objects.equals for null-safety)
+    if (!Objects.equals(expectedHostId, consumedHostId)) {
+      LOGGER.debug(
+          "Replica: {} ignoring DoL from different host. Expected: {}, received: {}",
+          replicaId,
+          expectedHostId,
+          consumedHostId);
+      return;
+    }
+
+    // Ignore stale DoL from older term
+    if (consumedTermId < expectedTermId) {
+      LOGGER.debug(
+          "Replica: {} ignoring stale DoL from older term. Expected: {}, received: {}",
+          replicaId,
+          expectedTermId,
+          consumedTermId);
+      return;
+    }
+
+    // Handle DoL from future term - indicates race or concurrent leadership change
+    if (consumedTermId > expectedTermId) {
+      LOGGER.warn(
+          "Replica: {} consumed DoL from future term. Expected: {}, received: {}. DolStamp: {}",
+          replicaId,
+          expectedTermId,
+          consumedTermId,
+          currentDolStamp);
+      return;
+    }
+
+    // DoL loopback complete - term and host match
+    currentDolStamp.setDolConsumed(true);
+    long loopbackLatencyMs = currentDolStamp.getLatencyMs();
+    LOGGER.info(
+        "Replica {}: DoL loopback complete - successfully produced to and consumed back from local VT, "
+            + "confirming replica is fully caught up and ready to switch to leader source topic. "
+            + "Loopback latency: {} ms. [term={}, host={}, timestamp={}]. DolStamp={}",
+        replicaId,
+        loopbackLatencyMs,
+        consumedTermId,
+        consumedHostId,
+        messageTimestamp,
+        currentDolStamp);
+  }
+
+  protected boolean shouldUseDolMechanism() {
+    return isSystemStore
+        ? serverConfig.isLeaderHandoverUseDoLMechanismEnabledForSystemStores()
+        : serverConfig.isLeaderHandoverUseDoLMechanismEnabledForUserStores();
   }
 
   AbstractStoreBufferService getStoreBufferService() {

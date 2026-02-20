@@ -44,6 +44,7 @@ import org.apache.logging.log4j.Logger;
 public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   private static final Logger LOGGER = LogManager.getLogger(ServerReadMetadataRepository.class);
   private final String serverCluster;
+  private final boolean sslEnabled;
   private final ServerMetadataServiceStats serverMetadataServiceStats;
   private final ReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -59,7 +60,28 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
       Optional<CompletableFuture<HelixCustomizedViewOfflinePushRepository>> customizedViewFuture,
       Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture) {
+    this(
+        serverCluster,
+        metricsRepository,
+        storeRepository,
+        schemaRepository,
+        storeConfigRepository,
+        customizedViewFuture,
+        helixInstanceFuture,
+        true);
+  }
+
+  public ServerReadMetadataRepository(
+      String serverCluster,
+      MetricsRepository metricsRepository,
+      ReadOnlyStoreRepository storeRepository,
+      ReadOnlySchemaRepository schemaRepository,
+      HelixReadOnlyStoreConfigRepository storeConfigRepository,
+      Optional<CompletableFuture<HelixCustomizedViewOfflinePushRepository>> customizedViewFuture,
+      Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture,
+      boolean sslEnabled) {
     this.serverCluster = serverCluster;
+    this.sslEnabled = sslEnabled;
     this.serverMetadataServiceStats = new ServerMetadataServiceStats(metricsRepository);
     this.storeRepository = storeRepository;
     this.schemaRepository = schemaRepository;
@@ -122,7 +144,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       // Helix metadata
       Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
       for (Map.Entry<String, Integer> entry: helixInstanceConfigRepository.getInstanceGroupIdMapping().entrySet()) {
-        helixGroupInfo.put(HelixUtils.instanceIdToUrl(entry.getKey()), entry.getValue());
+        helixGroupInfo.put(HelixUtils.instanceIdToUrl(entry.getKey(), sslEnabled), entry.getValue());
       }
 
       response.setVersionMetadata(versionProperties);
@@ -203,7 +225,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       // Helix metadata
       Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
       for (Map.Entry<String, Integer> entry: helixInstanceConfigRepository.getInstanceGroupIdMapping().entrySet()) {
-        helixGroupInfo.put(HelixUtils.instanceIdToUrl(entry.getKey()), entry.getValue());
+        helixGroupInfo.put(HelixUtils.instanceIdToUrl(entry.getKey(), sslEnabled), entry.getValue());
       }
 
       // Routing metadata
@@ -310,7 +332,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
         .getAllPartitions()) {
       List<CharSequence> instances = new ArrayList<>();
       for (Instance instance: partition.getReadyToServeInstances()) {
-        instances.add(instance.getUrl(true));
+        instances.add(instance.getUrl(sslEnabled));
       }
       routingInfo.put(String.valueOf(partition.getId()), instances);
     }

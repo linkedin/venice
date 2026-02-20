@@ -1068,7 +1068,7 @@ public class TestHybrid {
         IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
   }
 
-  @Test
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testHybridStoreLogCompaction() throws Exception {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams()
         // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
@@ -1076,7 +1076,7 @@ public class TestHybrid {
         .setHybridOffsetLagThreshold(0)
         .setPartitionCount(2)
         .setActiveActiveReplicationEnabled(true);
-    String storeName = Utils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store-for-lc");
     sharedVenice.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
       client.updateStore(storeName, params);

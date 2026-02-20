@@ -2,23 +2,19 @@ package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_HEARTBEAT_DELAY;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
-import static com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface.getUniqueMetricEntities;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
-import com.linkedin.davinci.stats.ServerMetricEntity;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -28,8 +24,6 @@ import java.util.Map;
  * Note: Tehuti metrics are managed separately in {@link HeartbeatStatReporter}.
  */
 public class HeartbeatOtelStats {
-  public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =
-      getUniqueMetricEntities(ServerMetricEntity.class);
   private final boolean emitOtelMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
@@ -120,5 +114,14 @@ public class HeartbeatOtelStats {
   @VisibleForTesting
   public VersionInfo getVersionInfo() {
     return versionInfo;
+  }
+
+  /**
+   * Clears the per-region metric state map, releasing references to MetricEntityState objects.
+   * Does not deregister OTel instruments from the metrics repository — they will be
+   * cleaned up when the Meter/MeterProvider is closed or the SDK shuts down.
+   */
+  public void close() {
+    metricsByRegion.clear();
   }
 }

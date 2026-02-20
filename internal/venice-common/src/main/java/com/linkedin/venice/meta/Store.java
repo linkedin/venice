@@ -340,6 +340,10 @@ public interface Store {
 
   String getBlobTransferInServerEnabled();
 
+  void setBlobDbEnabled(String blobDbEnabled);
+
+  String getBlobDbEnabled();
+
   boolean isNearlineProducerCompressionEnabled();
 
   void setNearlineProducerCompressionEnabled(boolean compressionEnabled);
@@ -385,4 +389,8 @@ public interface Store {
   void setKeyUrnFields(List<String> keyUrnFields);
 
   List<String> getKeyUrnFields();
+
+  int getPreviousCurrentVersion();
+
+  void setPreviousCurrentVersion(int previousCurrentVersion);
 }

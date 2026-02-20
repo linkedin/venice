@@ -56,8 +56,8 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
 
   public synchronized void loadAllStats() {
     metadataRepository.getAllStores().forEach(store -> {
-      addStore(store.getName());
-      updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
+      addStore(store);
+      updateTotalStats(store.getName());
     });
   }
 
@@ -82,22 +82,29 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   private VeniceVersionedStats<STATS, STATS_REPORTER> getVersionedStats(String storeName) {
     VeniceVersionedStats<STATS, STATS_REPORTER> stats = aggStats.get(storeName);
     if (stats == null) {
-      stats = addStore(storeName);
       Store store = metadataRepository.getStoreOrThrow(storeName);
-      updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
+      stats = addStore(store);
+      updateTotalStats(storeName);
     }
     return stats;
   }
 
-  protected VeniceVersionedStats<STATS, STATS_REPORTER> addStore(String storeName) {
-    return aggStats.computeIfAbsent(
-        storeName,
-        s -> new VeniceVersionedStats<>(metricsRepository, storeName, statsInitiator, reporterSupplier));
-  }
-
-  protected void updateStatsVersionInfo(String storeName, List<Version> existingVersions, int newCurrentVersion) {
-    VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats = getVersionedStats(storeName);
-
+  /**
+   * Applies version info to a VeniceVersionedStats object. This is the core logic shared by both
+   * {@link #addStore(Store)} (initialization) and {@link #updateStatsVersionInfo(String, List, int)}
+   * (updates).
+   *
+   * <p>Guards both setCurrentVersion and setFutureVersion with equality checks. This is critical
+   * because both methods have side effects: they call {@link VeniceVersionedStats#getStats(int)}
+   * which creates a new stats entry if absent, then wire that entry to the reporter via
+   * setCurrentStats/setFutureStats. Calling either with NON_EXISTING_VERSION would create a
+   * stats entry with version 0.
+   */
+  private void applyVersionInfo(
+      VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats,
+      String storeName,
+      List<Version> existingVersions,
+      int newCurrentVersion) {
     if (newCurrentVersion != versionedStats.getCurrentVersion()) {
       versionedStats.setCurrentVersion(newCurrentVersion);
     }
@@ -111,27 +118,18 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     versionedStats.getAllVersionNumbers()
         .stream()
         .filter(versionNum -> !existingVersionNumbers.contains(versionNum) && versionNum != NON_EXISTING_VERSION)
-        .forEach(versionedStats::removeVersion);
+        .forEach(versionNum -> {
+          versionedStats.removeVersion(versionNum);
+          cleanupVersionResources(storeName, versionNum);
+        });
 
     int futureVersion = NON_EXISTING_VERSION;
     for (Version version: existingVersions) {
-      int versionNum = version.getNumber();
-
-      // add this version to stats if it is absent
-      versionedStats.addVersion(versionNum);
+      versionedStats.addVersion(version.getNumber());
 
       VersionStatus status = version.getStatus();
       if (status == VersionStatus.STARTED || status == VersionStatus.PUSHED) {
-        if (futureVersion != NON_EXISTING_VERSION) {
-          LOGGER.warn(
-              "Multiple versions have been marked as STARTED PUSHING. There might be a parallel push. Store: {}",
-              storeName);
-        }
-
-        // in case there is a parallel push, record the largest version as future version
-        if (futureVersion < versionNum) {
-          futureVersion = versionNum;
-        }
+        futureVersion = Math.max(futureVersion, version.getNumber());
       }
     }
 
@@ -139,18 +137,31 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
       versionedStats.setFutureVersion(futureVersion);
     }
 
-    // Notify subclasses that version info has changed
     onVersionInfoUpdated(storeName, versionedStats.getCurrentVersion(), versionedStats.getFutureVersion());
+  }
 
-    /**
-     * Since versions are changed, update the total stats accordingly.
-     */
+  /**
+   * Adds a store and initializes its version info. Uses computeIfAbsent for thread-safety,
+   * ensuring version info is always initialized exactly once when the store is first added.
+   */
+  protected VeniceVersionedStats<STATS, STATS_REPORTER> addStore(Store store) {
+    return aggStats.computeIfAbsent(store.getName(), s -> {
+      VeniceVersionedStats<STATS, STATS_REPORTER> newStats =
+          new VeniceVersionedStats<>(metricsRepository, s, statsInitiator, reporterSupplier);
+      applyVersionInfo(newStats, store.getName(), store.getVersions(), store.getCurrentVersion());
+      return newStats;
+    });
+  }
+
+  protected void updateStatsVersionInfo(String storeName, List<Version> existingVersions, int newCurrentVersion) {
+    VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats = getVersionedStats(storeName);
+    applyVersionInfo(versionedStats, storeName, existingVersions, newCurrentVersion);
     updateTotalStats(storeName);
   }
 
   @Override
   public void handleStoreCreated(Store store) {
-    addStore(store.getName());
+    addStore(store);
   }
 
   @Override
@@ -183,10 +194,6 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   }
 
   /**
-   * return {@link Store#NON_EXISTING_VERSION} if backup version doesn't exist.
-   */
-
-  /**
    * Some versioned stats might always increasing; in this case, the value in the total stats should be updated with
    * the aggregated values across the new version list.
    */
@@ -198,11 +205,33 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
    * Hook method called when version info is updated for a store.
    * Subclasses can override this to react to version changes.
    *
+   * <p><b>WARNING:</b> This method may be called from within a {@code ConcurrentHashMap.computeIfAbsent}
+   * lambda in {@link #addStore(Store)}. Implementations MUST NOT access {@code aggStats} (e.g., via
+   * {@link #getVersionedStats}, {@link #getCurrentVersion}, {@link #getFutureVersion}) as this would
+   * re-enter the ConcurrentHashMap and cause a deadlock (JDK 8) or IllegalStateException (JDK 9+).
+   *
    * @param storeName The store whose version info changed
    * @param currentVersion The new current version
    * @param futureVersion The new future version
    */
   protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
+    // no-op by default
+  }
+
+  /**
+   * Hook method for subclasses to clean up their own version-specific resources
+   * (e.g., OTel stats) when a version is removed. This is called after the internal
+   * versioned stats have been removed via {@link VeniceVersionedStats#removeVersion}.
+   *
+   * <p><b>WARNING:</b> This method may be called from within a {@code ConcurrentHashMap.computeIfAbsent}
+   * lambda in {@link #addStore(Store)}. Implementations MUST NOT access {@code aggStats} (e.g., via
+   * {@link #getVersionedStats}, {@link #getCurrentVersion}, {@link #getFutureVersion}) as this would
+   * re-enter the ConcurrentHashMap and cause a deadlock (JDK 8) or IllegalStateException (JDK 9+).
+   *
+   * @param storeName The store whose version was removed
+   * @param version The version number that was removed
+   */
+  protected void cleanupVersionResources(String storeName, int version) {
     // no-op by default
   }
 }
