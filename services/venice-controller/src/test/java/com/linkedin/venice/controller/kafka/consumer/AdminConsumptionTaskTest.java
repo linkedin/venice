@@ -516,7 +516,8 @@ public class AdminConsumptionTaskTest {
                 AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
             .get()).getPubSubPosition();
     AdminConsumptionStats mockStats = mock(AdminConsumptionStats.class);
-    doThrow(StringIndexOutOfBoundsException.class).when(mockStats).recordAdminMessageDelegateLatency(anyDouble());
+    doThrow(StringIndexOutOfBoundsException.class).when(mockStats)
+        .recordAdminMessageDelegateLatency(anyDouble(), any(AdminMessageType.class));
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, mockStats, 10000);
     executor.submit(task);
 

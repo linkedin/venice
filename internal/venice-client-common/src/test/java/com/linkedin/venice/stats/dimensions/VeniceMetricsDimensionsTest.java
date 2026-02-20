@@ -103,8 +103,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_SYSTEM_STORE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.system_store.type");
           break;
-        case VENICE_ADMIN_MESSAGE_PROCESSING_PHASE:
-          assertEquals(dimension.getDimensionName(format), "venice.admin_message.processing_phase");
+        case VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.admin_message.processing.component");
           break;
         case VENICE_ADMIN_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.admin_message.type");
@@ -210,8 +210,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_SYSTEM_STORE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.systemStore.type");
           break;
-        case VENICE_ADMIN_MESSAGE_PROCESSING_PHASE:
-          assertEquals(dimension.getDimensionName(format), "venice.adminMessage.processingPhase");
+        case VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.adminMessage.processing.component");
           break;
         case VENICE_ADMIN_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.adminMessage.type");
@@ -317,8 +317,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_SYSTEM_STORE_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.SystemStore.Type");
           break;
-        case VENICE_ADMIN_MESSAGE_PROCESSING_PHASE:
-          assertEquals(dimension.getDimensionName(format), "Venice.AdminMessage.ProcessingPhase");
+        case VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "Venice.AdminMessage.Processing.Component");
           break;
         case VENICE_ADMIN_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.AdminMessage.Type");
