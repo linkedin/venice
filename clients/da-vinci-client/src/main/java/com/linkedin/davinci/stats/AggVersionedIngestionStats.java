@@ -78,13 +78,24 @@ public class AggVersionedIngestionStats
     }
   }
 
+  /**
+   * Gets or creates OTel stats for a store. Calls getCurrentVersion/getFutureVersion outside the
+   * computeIfAbsent lambda to avoid recursive ConcurrentHashMap updates: getCurrentVersion can
+   * trigger store registration -> onVersionInfoUpdated -> computeIfPresent on the same map/key.
+   */
   private IngestionOtelStats getIngestionOtelStats(String storeName) {
     if (!emitOtelIngestionStats) {
       return NoOpIngestionOtelStats.INSTANCE;
     }
+    IngestionOtelStats existing = otelStatsMap.get(storeName);
+    if (existing != null) {
+      return existing;
+    }
+    int currentVersion = getCurrentVersion(storeName);
+    int futureVersion = getFutureVersion(storeName);
     return otelStatsMap.computeIfAbsent(storeName, k -> {
       IngestionOtelStats stats = new IngestionOtelStats(getMetricsRepository(), k, clusterName);
-      stats.updateVersionInfo(getCurrentVersion(k), getFutureVersion(k));
+      stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
   }

@@ -1,8 +1,8 @@
 package com.linkedin.venice.restart;
 
-import static com.linkedin.davinci.stats.ServerMetricEntity.DISK_QUOTA_USED;
-import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_BYTES_CONSUMED;
-import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_RECORDS_CONSUMED;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelStats.IngestionOtelMetricEntity.DISK_QUOTA_USED;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelStats.IngestionOtelMetricEntity.INGESTION_BYTES_CONSUMED;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelStats.IngestionOtelMetricEntity.INGESTION_RECORDS_CONSUMED;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVICE_METRIC_PREFIX;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateAnyGaugeDataPointAtLeast;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateAnySumDataPointAtLeast;
