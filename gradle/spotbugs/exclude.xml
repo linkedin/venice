@@ -211,9 +211,6 @@
         <Field name="currentProtocolVersion"/>
         <Field name="magicByte"/>
       </Class>
-      <Class name="com.linkedin.venice.controller.stats.AddVersionLatencyStats$AddVersionLatencyOtelMetricEntity">
-        <Field name="metricEntity"/>
-      </Class>
     </Or>
   </Match>
   <Match>

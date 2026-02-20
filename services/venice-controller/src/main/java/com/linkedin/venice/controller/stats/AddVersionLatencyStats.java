@@ -256,7 +256,7 @@ public class AddVersionLatencyStats extends AbstractVeniceStats {
         setOf(VENICE_CLUSTER_NAME, VENICE_ADMIN_MESSAGE_TYPE, VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT)
     );
 
-    private final MetricEntity metricEntity;
+    private final transient MetricEntity metricEntity;
 
     AddVersionLatencyOtelMetricEntity(
         String metricName,
