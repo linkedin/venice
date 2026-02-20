@@ -23,19 +23,8 @@ public enum VeniceIngestionSourceComponent implements VeniceDimensionInterface {
   /** The follower replica consumer that replicates from leader */
   FOLLOWER_CONSUMER;
 
-  private final String component;
-
-  VeniceIngestionSourceComponent() {
-    this.component = name().toLowerCase();
-  }
-
   @Override
   public VeniceMetricsDimensions getDimensionName() {
     return VENICE_INGESTION_SOURCE_COMPONENT;
-  }
-
-  @Override
-  public String getDimensionValue() {
-    return component;
   }
 }

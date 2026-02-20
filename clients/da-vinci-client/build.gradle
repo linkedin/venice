@@ -45,6 +45,7 @@ dependencies {
   testImplementation project(':internal:venice-test-common')
   testImplementation project(':internal:venice-client-common').sourceSets.test.output
   testImplementation libraries.kafkaClientsTest
+  testImplementation libraries.classgraph
   testImplementation libraries.openTelemetryTestSdk
 }
 

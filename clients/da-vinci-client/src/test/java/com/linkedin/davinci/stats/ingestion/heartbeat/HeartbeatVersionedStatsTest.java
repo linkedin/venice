@@ -1,8 +1,8 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
-import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_HEARTBEAT_DELAY;
-import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_RECORD_DELAY;
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
+import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelStats.HeartbeatOtelMetricEntity.INGESTION_HEARTBEAT_DELAY;
+import static com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOtelStats.RecordLevelDelayOtelMetricEntity.INGESTION_RECORD_DELAY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;

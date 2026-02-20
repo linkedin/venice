@@ -1,7 +1,7 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
-import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_RECORD_DELAY;
-import static com.linkedin.davinci.stats.ingestion.heartbeat.RecordOtelStats.SERVER_METRIC_ENTITIES;
+import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
+import static com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOtelStats.RecordLevelDelayOtelMetricEntity.INGESTION_RECORD_DELAY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_STATE;
@@ -9,21 +9,30 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.utils.Utils.setOf;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOtelStats.RecordLevelDelayOtelMetricEntity;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Set;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class RecordOtelStatsTest {
+public class RecordLevelDelayOtelStatsTest {
   private static final String STORE_NAME = "test_store";
   private static final String CLUSTER_NAME = "test_cluster";
   private static final String REGION_US_WEST = "us-west";
@@ -32,7 +41,7 @@ public class RecordOtelStatsTest {
   private static final String TEST_PREFIX = "test_prefix";
 
   private InMemoryMetricReader inMemoryMetricReader;
-  private RecordOtelStats recordOtelStats;
+  private RecordLevelDelayOtelStats recordLevelDelayOtelStats;
 
   @BeforeMethod
   public void setUp() {
@@ -43,13 +52,13 @@ public class RecordOtelStatsTest {
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build());
-    recordOtelStats = new RecordOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME);
+    recordLevelDelayOtelStats = new RecordLevelDelayOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME);
   }
 
   @Test
   public void testConstructorWithOtelEnabled() {
     // Verify OTel metrics are enabled
-    assertTrue(recordOtelStats.emitOtelMetrics(), "OTel metrics should be enabled");
+    assertTrue(recordLevelDelayOtelStats.emitOtelMetrics(), "OTel metrics should be enabled");
   }
 
   @Test
@@ -61,7 +70,8 @@ public class RecordOtelStatsTest {
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build());
 
-    RecordOtelStats stats = new RecordOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
+    RecordLevelDelayOtelStats stats =
+        new RecordLevelDelayOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
 
     // Verify OTel metrics are disabled
     assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled");
@@ -71,7 +81,7 @@ public class RecordOtelStatsTest {
   public void testConstructorWithNonVeniceMetricsRepository() {
     // Create with regular MetricsRepository (not VeniceOpenTelemetryMetricsRepository)
     MetricsRepository regularRepository = new MetricsRepository();
-    RecordOtelStats stats = new RecordOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME);
+    RecordLevelDelayOtelStats stats = new RecordLevelDelayOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME);
 
     // Verify OTel metrics are disabled (default for non-Venice repository)
     assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled for non-Venice repository");
@@ -80,10 +90,10 @@ public class RecordOtelStatsTest {
   @Test
   public void testUpdateVersionInfo() {
     // Update version info
-    recordOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     // Record metrics - should work with updated version info
-    recordOtelStats.recordRecordDelayOtelMetrics(
+    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -102,10 +112,10 @@ public class RecordOtelStatsTest {
 
   @Test
   public void testRecordRecordDelayOtelMetricsForCurrentVersion() {
-    recordOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     long delay = 150L;
-    recordOtelStats.recordRecordDelayOtelMetrics(
+    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -123,10 +133,10 @@ public class RecordOtelStatsTest {
 
   @Test
   public void testRecordRecordDelayOtelMetricsForFutureVersion() {
-    recordOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     long delay = 200L;
-    recordOtelStats.recordRecordDelayOtelMetrics(
+    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
         FUTURE_VERSION,
         REGION_US_WEST,
         ReplicaType.FOLLOWER,
@@ -144,22 +154,22 @@ public class RecordOtelStatsTest {
 
   @Test
   public void testRecordRecordDelayOtelMetricsMultipleRecords() {
-    recordOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    recordLevelDelayOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     // Record three delays: 100ms, 200ms, 150ms
-    recordOtelStats.recordRecordDelayOtelMetrics(
+    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         100L);
-    recordOtelStats.recordRecordDelayOtelMetrics(
+    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
         ReplicaState.READY_TO_SERVE,
         200L);
-    recordOtelStats.recordRecordDelayOtelMetrics(
+    recordLevelDelayOtelStats.recordRecordDelayOtelMetrics(
         CURRENT_VERSION,
         REGION_US_WEST,
         ReplicaType.LEADER,
@@ -183,7 +193,8 @@ public class RecordOtelStatsTest {
     // Create stats with OTel disabled
     VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES).setEmitOtelMetrics(false).build());
-    RecordOtelStats stats = new RecordOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
+    RecordLevelDelayOtelStats stats =
+        new RecordLevelDelayOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
     stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
     // Record metrics - should be no-op
@@ -248,5 +259,24 @@ public class RecordOtelStatsTest {
         expectedAttributes,
         INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
         TEST_PREFIX);
+  }
+
+  @Test
+  public void testMetricEntityDefinitions() {
+    MetricEntity entity = INGESTION_RECORD_DELAY.getMetricEntity();
+    assertEquals(entity.getMetricName(), "ingestion.replication.record.delay");
+    assertEquals(entity.getMetricType(), MetricType.HISTOGRAM);
+    assertEquals(entity.getUnit(), MetricUnit.MILLISECOND);
+    assertEquals(entity.getDescription(), "Nearline ingestion record-level replication lag");
+    Set<VeniceMetricsDimensions> expectedDimensions = setOf(
+        VENICE_STORE_NAME,
+        VENICE_CLUSTER_NAME,
+        VENICE_REGION_NAME,
+        VENICE_VERSION_ROLE,
+        VENICE_REPLICA_TYPE,
+        VENICE_REPLICA_STATE);
+    assertEquals(entity.getDimensionsList(), expectedDimensions);
+
+    assertEquals(RecordLevelDelayOtelMetricEntity.values().length, 1, "Expected 1 metric entity");
   }
 }
