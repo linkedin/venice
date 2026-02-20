@@ -9,16 +9,25 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.utils.Utils.setOf;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOtelStats.RecordLevelDelayOtelMetricEntity;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Set;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -250,5 +259,24 @@ public class RecordLevelDelayOtelStatsTest {
         expectedAttributes,
         INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
         TEST_PREFIX);
+  }
+
+  @Test
+  public void testMetricEntityDefinitions() {
+    MetricEntity entity = INGESTION_RECORD_DELAY.getMetricEntity();
+    assertEquals(entity.getMetricName(), "ingestion.replication.record.delay");
+    assertEquals(entity.getMetricType(), MetricType.HISTOGRAM);
+    assertEquals(entity.getUnit(), MetricUnit.MILLISECOND);
+    assertEquals(entity.getDescription(), "Nearline ingestion record-level replication lag");
+    Set<VeniceMetricsDimensions> expectedDimensions = setOf(
+        VENICE_STORE_NAME,
+        VENICE_CLUSTER_NAME,
+        VENICE_REGION_NAME,
+        VENICE_VERSION_ROLE,
+        VENICE_REPLICA_TYPE,
+        VENICE_REPLICA_STATE);
+    assertEquals(entity.getDimensionsList(), expectedDimensions);
+
+    assertEquals(RecordLevelDelayOtelMetricEntity.values().length, 1, "Expected 1 metric entity");
   }
 }
