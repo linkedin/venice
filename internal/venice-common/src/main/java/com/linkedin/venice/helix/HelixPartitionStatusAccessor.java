@@ -146,6 +146,6 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
   }
 
   private int getPartitionIdFromName(String partitionName) {
-    return Integer.parseInt(partitionName.substring(partitionName.indexOf(PARTITION_DELIMITER) + 1));
+    return Integer.parseInt(partitionName.substring(partitionName.lastIndexOf(PARTITION_DELIMITER) + 1));
   }
 }
