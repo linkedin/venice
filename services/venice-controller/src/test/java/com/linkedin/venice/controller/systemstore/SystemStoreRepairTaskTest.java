@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -188,8 +189,8 @@ public class SystemStoreRepairTaskTest {
     doReturn(checker).when(task).getHealthChecker();
 
     SystemStoreHealthCheckStats stats = mock(SystemStoreHealthCheckStats.class);
-    when(stats.getBadMetaSystemStoreCounter()).thenReturn(new java.util.concurrent.atomic.AtomicLong(0));
-    when(stats.getBadPushStatusSystemStoreCounter()).thenReturn(new java.util.concurrent.atomic.AtomicLong(0));
+    when(stats.getBadMetaSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    when(stats.getBadPushStatusSystemStoreCounter()).thenReturn(new AtomicLong(0));
     doReturn(stats).when(task).getClusterSystemStoreHealthCheckStats(cluster);
 
     Set<String> unhealthySet = new HashSet<>();
@@ -218,8 +219,8 @@ public class SystemStoreRepairTaskTest {
     doReturn(checker).when(task).getHealthChecker();
 
     SystemStoreHealthCheckStats stats = mock(SystemStoreHealthCheckStats.class);
-    when(stats.getBadMetaSystemStoreCounter()).thenReturn(new java.util.concurrent.atomic.AtomicLong(0));
-    when(stats.getBadPushStatusSystemStoreCounter()).thenReturn(new java.util.concurrent.atomic.AtomicLong(0));
+    when(stats.getBadMetaSystemStoreCounter()).thenReturn(new AtomicLong(0));
+    when(stats.getBadPushStatusSystemStoreCounter()).thenReturn(new AtomicLong(0));
     doReturn(stats).when(task).getClusterSystemStoreHealthCheckStats(cluster);
 
     Set<String> unhealthySet = new HashSet<>();
