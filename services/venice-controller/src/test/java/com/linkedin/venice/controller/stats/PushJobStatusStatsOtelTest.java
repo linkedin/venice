@@ -9,11 +9,11 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VenicePushJobStatus;
-import com.linkedin.venice.stats.dimensions.VenicePushType;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
@@ -57,7 +57,7 @@ public class PushJobStatusStatsOtelTest {
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), VenicePushType.BATCH.getDimensionValue())
+            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.BATCH.getDimensionValue())
             .put(
                 VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
                 VenicePushJobStatus.SUCCESS.getDimensionValue())
@@ -73,7 +73,7 @@ public class PushJobStatusStatsOtelTest {
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), VenicePushType.BATCH.getDimensionValue())
+            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.BATCH.getDimensionValue())
             .put(
                 VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
                 VenicePushJobStatus.USER_ERROR.getDimensionValue())
@@ -89,7 +89,7 @@ public class PushJobStatusStatsOtelTest {
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), VenicePushType.BATCH.getDimensionValue())
+            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.BATCH.getDimensionValue())
             .put(
                 VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
                 VenicePushJobStatus.SYSTEM_ERROR.getDimensionValue())
@@ -105,7 +105,7 @@ public class PushJobStatusStatsOtelTest {
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), VenicePushType.INCREMENTAL.getDimensionValue())
+            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.INCREMENTAL.getDimensionValue())
             .put(
                 VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
                 VenicePushJobStatus.SUCCESS.getDimensionValue())
@@ -121,7 +121,7 @@ public class PushJobStatusStatsOtelTest {
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), VenicePushType.INCREMENTAL.getDimensionValue())
+            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.INCREMENTAL.getDimensionValue())
             .put(
                 VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
                 VenicePushJobStatus.USER_ERROR.getDimensionValue())
@@ -137,7 +137,7 @@ public class PushJobStatusStatsOtelTest {
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), VenicePushType.INCREMENTAL.getDimensionValue())
+            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.INCREMENTAL.getDimensionValue())
             .put(
                 VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
                 VenicePushJobStatus.SYSTEM_ERROR.getDimensionValue())
@@ -155,7 +155,7 @@ public class PushJobStatusStatsOtelTest {
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "store-a")
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), VenicePushType.BATCH.getDimensionValue())
+            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.BATCH.getDimensionValue())
             .put(
                 VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
                 VenicePushJobStatus.SUCCESS.getDimensionValue())
@@ -167,7 +167,7 @@ public class PushJobStatusStatsOtelTest {
         Attributes.builder()
             .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
             .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "store-b")
-            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), VenicePushType.BATCH.getDimensionValue())
+            .put(VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(), PushType.BATCH.getDimensionValue())
             .put(
                 VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
                 VenicePushJobStatus.SUCCESS.getDimensionValue())

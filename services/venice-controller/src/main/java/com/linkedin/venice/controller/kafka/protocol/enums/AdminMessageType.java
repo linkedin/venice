@@ -175,9 +175,4 @@ public enum AdminMessageType implements VeniceDimensionInterface {
   public VeniceMetricsDimensions getDimensionName() {
     return VeniceMetricsDimensions.VENICE_ADMIN_MESSAGE_TYPE;
   }
-
-  @Override
-  public String getDimensionValue() {
-    return name().toLowerCase();
-  }
 }

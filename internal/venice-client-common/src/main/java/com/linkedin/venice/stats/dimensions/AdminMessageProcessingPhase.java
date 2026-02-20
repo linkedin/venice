@@ -15,39 +15,28 @@ package com.linkedin.venice.stats.dimensions;
  */
 public enum AdminMessageProcessingPhase implements VeniceDimensionInterface {
   /** Time spent retiring outdated store versions before creating a new one. */
-  RETIRE_OLD_VERSIONS("retire_old_versions"),
+  RETIRE_OLD_VERSIONS,
 
   /** Time spent waiting for Helix to assign storage node resources for the new version. */
-  RESOURCE_ASSIGNMENT_WAIT("resource_assignment_wait"),
+  RESOURCE_ASSIGNMENT_WAIT,
 
   /** Time spent handling version creation failures (cleanup, error propagation). */
-  FAILURE_HANDLING("failure_handling"),
+  FAILURE_HANDLING,
 
   /** Time spent handling the existing source version (e.g., checking compatibility, preparing swap). */
-  EXISTING_VERSION_HANDLING("existing_version_handling"),
+  EXISTING_VERSION_HANDLING,
 
   /** Time spent sending the start-of-push signal to initiate data ingestion. */
-  START_OF_PUSH("start_of_push"),
+  START_OF_PUSH,
 
   /** Time spent creating Kafka batch topics (version topics) for the new store version. */
-  BATCH_TOPIC_CREATION("batch_topic_creation"),
+  BATCH_TOPIC_CREATION,
 
   /** Time spent creating Helix storage cluster resources for partition assignment. */
-  HELIX_RESOURCE_CREATION("helix_resource_creation");
-
-  private final String dimensionValue;
-
-  AdminMessageProcessingPhase(String dimensionValue) {
-    this.dimensionValue = dimensionValue;
-  }
+  HELIX_RESOURCE_CREATION;
 
   @Override
   public VeniceMetricsDimensions getDimensionName() {
     return VeniceMetricsDimensions.VENICE_ADMIN_MESSAGE_PROCESSING_PHASE;
-  }
-
-  @Override
-  public String getDimensionValue() {
-    return dimensionValue;
   }
 }

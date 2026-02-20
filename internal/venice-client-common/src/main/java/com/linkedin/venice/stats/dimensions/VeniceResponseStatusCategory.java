@@ -9,12 +9,6 @@ package com.linkedin.venice.stats.dimensions;
 public enum VeniceResponseStatusCategory implements VeniceDimensionInterface {
   SUCCESS, FAIL;
 
-  private final String category;
-
-  VeniceResponseStatusCategory() {
-    this.category = name().toLowerCase();
-  }
-
   /**
    * All the instances of this Enum should have the same dimension name.
    * Refer {@link VeniceDimensionInterface#getDimensionName()} for more details.
@@ -22,10 +16,5 @@ public enum VeniceResponseStatusCategory implements VeniceDimensionInterface {
   @Override
   public VeniceMetricsDimensions getDimensionName() {
     return VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
-  }
-
-  @Override
-  public String getDimensionValue() {
-    return this.category;
   }
 }

@@ -44,10 +44,10 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VenicePushJobStatus;
-import com.linkedin.venice.stats.dimensions.VenicePushType;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
@@ -193,7 +193,7 @@ public class PushJobDetailsTest {
     // create a map for expected metrics for CountSinceLastMeasurement type which will be reset after each measurement
     HashMap<String, Double> metricsExpectedCountSinceLastMeasurement = new HashMap<>();
 
-    VenicePushType expectedPushType = isIncrementalPush ? VenicePushType.INCREMENTAL : VenicePushType.BATCH;
+    PushType expectedPushType = isIncrementalPush ? PushType.INCREMENTAL : PushType.BATCH;
     VenicePushJobStatus expectedPushStatus;
 
     if (isSucceeded) {
