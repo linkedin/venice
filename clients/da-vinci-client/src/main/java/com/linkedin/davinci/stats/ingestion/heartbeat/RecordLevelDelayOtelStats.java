@@ -23,7 +23,6 @@ import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
-import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
@@ -142,7 +141,10 @@ public class RecordLevelDelayOtelStats {
    * Record-level replication delay: Tracks nearline replication lag for regular data records in milliseconds.
    * Only populated when record-level timestamp tracking is enabled.
    */
-  public enum RecordLevelDelayOtelMetricEntity implements ModuleMetricEntityInterface {
+  // Fully-qualified name required: JDK 8 javac cannot resolve imported types in inner enum
+  // implements clauses when the interface contains static methods (fixed in JDK 9+).
+  public enum RecordLevelDelayOtelMetricEntity
+      implements com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface {
     INGESTION_RECORD_DELAY(
         "ingestion.replication.record.delay", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
         "Nearline ingestion record-level replication lag",

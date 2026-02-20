@@ -56,7 +56,6 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
-import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
@@ -453,7 +452,9 @@ public class IngestionOtelStats {
         .record(latencyMs, classifyVersion(version, versionInfo), sourceComponent, destComponent);
   }
 
-  public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
+  // Fully-qualified name required: JDK 8 javac cannot resolve imported types in inner enum
+  // implements clauses when the interface contains static methods (fixed in JDK 9+).
+  public enum IngestionOtelMetricEntity implements com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface {
     INGESTION_TASK_ERROR_COUNT(
         "ingestion.task.error_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
         "Count of ingestion tasks in error state", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
