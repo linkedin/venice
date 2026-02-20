@@ -54,7 +54,7 @@ public class HeartbeatBasedSystemStoreHealthChecker implements SystemStoreHealth
     long startTimestamp = System.currentTimeMillis();
     for (String storeName: systemStoreNames) {
       if (!shouldContinue(clusterName)) {
-        break;
+        return new HashMap<>();
       }
       long currentTimestamp = System.currentTimeMillis();
       sendHeartbeatToSystemStore(clusterName, storeName, currentTimestamp);
