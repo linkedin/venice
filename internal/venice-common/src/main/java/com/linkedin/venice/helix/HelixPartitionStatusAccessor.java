@@ -88,7 +88,7 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
    * - Always deletes OFFLINE_PUSH state
    * - Only deletes HYBRID_STORE_QUOTA state if helixHybridStoreQuotaEnabled is true
    *
-   * This uses the Helix {@link org.apache.helix.customizedstate.CustomizedStateProvider#deleteAllResourcesCustomizedStates(String)}
+   * This uses the Helix {@link CustomizedStateProvider#deleteAllResourcesCustomizedStates(String)}
    * API to remove all CV states.
    */
   public void deleteAllCustomizedStates() {
