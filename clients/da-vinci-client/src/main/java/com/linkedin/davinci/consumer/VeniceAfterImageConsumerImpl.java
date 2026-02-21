@@ -79,19 +79,14 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
 
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
-    try {
-      Exception versionSwapException = versionSwapThreadException.get();
-      if (versionSwapException != null) {
-        throw new VeniceException(
-            "Version Swap failed for store: " + storeName + " due to exception:",
-            versionSwapException);
-      }
-
-      return internalPoll(timeoutInMs);
-    } catch (Exception ex) {
-      LOGGER.error("Caught exception from internal poll, will attempt repair and retry: ", ex);
-      return internalPoll(timeoutInMs);
+    Exception versionSwapException = versionSwapThreadException.get();
+    if (versionSwapException != null) {
+      throw new VeniceException(
+          "Version Swap failed for store: " + storeName + " due to exception:",
+          versionSwapException);
     }
+
+    return internalPoll(timeoutInMs);
   }
 
   @Override
