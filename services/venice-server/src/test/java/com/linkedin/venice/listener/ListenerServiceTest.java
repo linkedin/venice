@@ -87,7 +87,8 @@ public class ListenerServiceTest {
         storeAccessController,
         diskHealthService,
         compressorFactory,
-        resourceReadUsageTracker);
+        resourceReadUsageTracker,
+        Optional.empty());
     // dummy method call
     listenerService.getName();
   }

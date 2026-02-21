@@ -54,6 +54,7 @@ import static com.linkedin.venice.Arg.FORCE;
 import static com.linkedin.venice.Arg.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.Arg.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.Arg.GRAVEYARD_CLUSTERS;
+import static com.linkedin.venice.Arg.GRPC_PORT;
 import static com.linkedin.venice.Arg.HYBRID_BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.Arg.HYBRID_DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.Arg.HYBRID_OFFSET_LAG;
@@ -67,6 +68,7 @@ import static com.linkedin.venice.Arg.INFILE;
 import static com.linkedin.venice.Arg.INITIAL_STEP;
 import static com.linkedin.venice.Arg.INSTANCES;
 import static com.linkedin.venice.Arg.INTERVAL;
+import static com.linkedin.venice.Arg.INTERVAL_MS;
 import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.Arg.KAFKA_CONSUMER_CONFIG_FILE;
 import static com.linkedin.venice.Arg.KAFKA_OPERATION_TIMEOUT;
@@ -135,6 +137,7 @@ import static com.linkedin.venice.Arg.SKIP_LAST_STORE_CREATION;
 import static com.linkedin.venice.Arg.SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.SRC_ZK_SSL_CONFIG_FILE;
 import static com.linkedin.venice.Arg.SRC_ZOOKEEPER_URL;
+import static com.linkedin.venice.Arg.SSL_CONFIG_PATH;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
 import static com.linkedin.venice.Arg.STARTING_POSITION;
 import static com.linkedin.venice.Arg.START_DATE;
@@ -634,6 +637,11 @@ public enum Command {
   CLEAN_EXECUTION_IDS(
       "clean-execution-ids", "Clean execution ids for the deleted store from `succeededPerStore` map.",
       new Arg[] { URL, CLUSTER }
+  ),
+  MONITOR_INGESTION(
+      "monitor-ingestion",
+      "Connect to a Venice server via gRPC and continuously stream ingestion metrics for a specific replica",
+      new Arg[] { SERVER_URL, STORE, VERSION, PARTITION }, new Arg[] { GRPC_PORT, INTERVAL_MS, SSL_CONFIG_PATH }
   );
 
   private final String commandName;
