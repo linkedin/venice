@@ -102,7 +102,6 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -1454,8 +1453,7 @@ public class VenicePushJobTest {
         new MaterializedViewParameters.Builder("testView").setPartitionCount(12)
             .setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
     viewConfigs.put("testView", new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder.build()));
-    viewConfigs
-        .put("dummyView", new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap()));
+    viewConfigs.put("dummyView", new ViewConfigImpl("com.linkedin.venice.views.DummyView", Collections.emptyMap()));
     Version version = new VersionImpl(TEST_STORE, 1, TEST_PUSH);
     version.setViewConfigs(viewConfigs);
     client = getClient(storeInfo -> {
@@ -1503,8 +1501,7 @@ public class VenicePushJobTest {
         new MaterializedViewParameters.Builder("testView").setPartitionCount(12)
             .setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
     viewConfigs.put("testView", new ViewConfigImpl(MaterializedView.class.getCanonicalName(), builder.build()));
-    viewConfigs
-        .put("dummyView", new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap()));
+    viewConfigs.put("dummyView", new ViewConfigImpl("com.linkedin.venice.views.DummyView", Collections.emptyMap()));
     Version version = new VersionImpl(TEST_STORE, 1, TEST_PUSH);
     version.setViewConfigs(viewConfigs);
     client = getClient(storeInfo -> {
