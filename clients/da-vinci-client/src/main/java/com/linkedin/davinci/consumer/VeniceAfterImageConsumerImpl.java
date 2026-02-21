@@ -13,7 +13,6 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Collection;
 import java.util.Collections;
@@ -25,7 +24,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -79,11 +77,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         changelogClientConfig.isVersionSwapByControlMessageEnabled());
   }
 
-  // Intended for unit test only.
-  void setTime(Time time) {
-    this.time = time;
-  }
-
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
     try {
@@ -95,8 +88,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       }
 
       return internalPoll(timeoutInMs);
-    } catch (UnknownTopicOrPartitionException ex) {
-      LOGGER.error("Caught unknown Topic exception, will attempt repair and retry: ", ex);
+    } catch (Exception ex) {
+      LOGGER.error("Caught exception from internal poll, will attempt repair and retry: ", ex);
       return internalPoll(timeoutInMs);
     }
   }
