@@ -1145,7 +1145,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           .add(new VeniceChangeCoordinate(newTopic.getName(), PubSubSymbolicPosition.EARLIEST, partition));
       synchronousSeekToCheckpoint(beginningOfNewTopic);
     } catch (Exception e) {
-      throw new VeniceException("Subscribe to new topic:" + newTopic + " is not successful, error: " + e);
+      throw new VeniceException("Subscribe to new topic:" + newTopic + " is not successful", e);
     }
     return true;
   }
