@@ -41,8 +41,6 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -422,37 +420,27 @@ public class HelixParticipationService extends AbstractVeniceService
     });
   }
 
+  /**
+   * Resets all instance CV states using Helix's bulk delete API.
+   * The bulk delete approach ensures all CV states are cleaned up regardless of local disk state.
+   *
+   * @param accessor The Helix partition status accessor
+   * @param storageService The storage service (kept for backward compatibility, may be removed in future)
+   * @param currentLogger Logger for diagnostic output
+   */
   static void resetAllInstanceCVStates(
       HelixPartitionStatusAccessor accessor,
       StorageService storageService,
       Logger currentLogger) {
-    // Get all hosted stores
-    currentLogger.info("Started resetting all instance CV states");
-    Map<String, Set<Integer>> storePartitionMapping = storageService.getStoreAndUserPartitionsMapping();
-
-    // TODO: remove the log
-    currentLogger.info("Reset total {} of stores' CV states", storePartitionMapping.size());
-    storePartitionMapping.entrySet().stream().limit(10).forEach(entry -> {
-      String storeName = entry.getKey();
-      Set<Integer> partitionIds = entry.getValue();
-      currentLogger.info(
-          "Resetting store: {}, Total partitions: {}, First 10 partitions: {}",
-          storeName,
-          partitionIds.size(),
-          partitionIds.stream().limit(10).collect(java.util.stream.Collectors.toList()));
-    });
-
-    storePartitionMapping.forEach((storeName, partitionIds) -> {
-      partitionIds.forEach(partitionId -> {
-        try {
-          accessor.deleteReplicaStatus(storeName, partitionId);
-        } catch (Exception e) {
-          currentLogger
-              .error("Failed to delete CV state for resource: {} and partition id: {}", storeName, partitionId, e);
-        }
-      });
-    });
-    currentLogger.info("Finished resetting all instance CV states");
+    currentLogger.info("Started resetting all instance CV states via bulk delete");
+    long startTimeMs = System.currentTimeMillis();
+    try {
+      accessor.deleteAllCustomizedStates();
+      currentLogger
+          .info("Finished resetting all instance CV states. Took {} ms", System.currentTimeMillis() - startTimeMs);
+    } catch (Exception e) {
+      currentLogger.error("Failed to reset all instance CV states", e);
+    }
   }
 
   // test only
