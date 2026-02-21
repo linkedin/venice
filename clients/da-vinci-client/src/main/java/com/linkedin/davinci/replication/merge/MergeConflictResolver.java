@@ -253,11 +253,8 @@ public class MergeConflictResolver {
     if (ignoreNewUpdate(updateOperationTimestamp, writeComputeRecord, rmdWithValueSchemaId)) {
       return MergeConflictResult.getIgnoredResult();
     }
-    ValueAndRmd<GenericRecord> oldValueAndRmd = prepareValueAndRmdForUpdate(
-        oldValueBytes.get(),
-        rmdWithValueSchemaId,
-        supersetValueSchemaEntry,
-        oldValueManifest);
+    ValueAndRmd<GenericRecord> oldValueAndRmd =
+        prepareValueAndRmdForUpdate(oldValueBytes, rmdWithValueSchemaId, supersetValueSchemaEntry, oldValueManifest);
 
     int oldValueSchemaID = oldValueAndRmd.getValueSchemaId();
     if (oldValueSchemaID == -1) {
@@ -442,6 +439,29 @@ public class MergeConflictResolver {
       int oldValueWriterSchemaID,
       Lazy<ByteBuffer> oldValueBytesProvider,
       GenericRecord oldRmdRecord) {
+    Object timestampObject = oldRmdRecord.get(TIMESTAMP_FIELD_POS);
+    RmdTimestampType timestampType = RmdUtils.getRmdTimestampType(timestampObject);
+
+    if (timestampType == PER_FIELD_TIMESTAMP) {
+      // RMD is already per-field — convertToPerFieldTimestampRmd() is a no-op, so we can defer
+      // old value deserialization into the Lazy wrapper. The value is only materialized when
+      // the merge logic in WriteComputeHandlerV2 actually reads it via getValue().
+      if (readerValueSchemaID != oldValueWriterSchemaID) {
+        oldRmdRecord = convertRmdToUseReaderValueSchema(readerValueSchemaID, oldValueWriterSchemaID, oldRmdRecord);
+      }
+      Lazy<GenericRecord> lazyOldValue = Lazy.of(
+          () -> createValueRecordFromByteBuffer(
+              readerValueSchema,
+              readerValueSchemaID,
+              oldValueWriterSchemaID,
+              oldValueBytesProvider.get()));
+      ValueAndRmd<GenericRecord> createdOldValueAndRmd = new ValueAndRmd<>(lazyOldValue, oldRmdRecord);
+      createdOldValueAndRmd.setValueSchemaId(readerValueSchemaID);
+      return createdOldValueAndRmd;
+    }
+
+    // VALUE_LEVEL_TIMESTAMP: must eagerly deserialize old value because
+    // convertToPerFieldTimestampRmd() needs it to compute collection field lengths.
     final GenericRecord oldValueRecord = createValueRecordFromByteBuffer(
         readerValueSchema,
         readerValueSchemaID,
@@ -632,12 +652,14 @@ public class MergeConflictResolver {
   }
 
   private ValueAndRmd<GenericRecord> prepareValueAndRmdForUpdate(
-      ByteBuffer oldValueBytes,
+      Lazy<ByteBuffer> oldValueBytesProvider,
       RmdWithValueSchemaId rmdWithValueSchemaId,
       SchemaEntry readerValueSchemaSchemaEntry,
       ChunkedValueManifestContainer oldValueManifest) {
 
     if (rmdWithValueSchemaId == null) {
+      // No RMD means value was written in batch phase. Must eagerly deserialize to build initial RMD.
+      ByteBuffer oldValueBytes = oldValueBytesProvider.get();
       GenericRecord newValue;
       if (oldValueBytes == null) {
         // Value and RMD both never existed
@@ -670,7 +692,7 @@ public class MergeConflictResolver {
         readerValueSchemaSchemaEntry.getSchema(),
         readerValueSchemaSchemaEntry.getId(),
         oldValueWriterSchemaId,
-        Lazy.of(() -> oldValueBytes),
+        oldValueBytesProvider,
         rmdWithValueSchemaId.getRmdRecord());
   }
 
