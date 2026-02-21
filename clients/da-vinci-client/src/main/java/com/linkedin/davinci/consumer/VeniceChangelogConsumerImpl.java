@@ -130,7 +130,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final PubSubMessageDeserializer pubSubMessageDeserializer;
   protected final ExecutorService seekExecutorService;
 
-  protected final VeniceConcurrentHashMap<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
+  protected final Map<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
 
   protected final ChangelogClientConfig changelogClientConfig;
 
