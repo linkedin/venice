@@ -40,6 +40,7 @@ import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.GzipCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -1598,6 +1599,116 @@ public class VeniceChangelogConsumerImplTest {
     kafkaMessageEnvelope.payloadUnion = controlMessage;
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
     return new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, mockPubSubPosition, 0, 0);
+  }
+
+  /**
+   * Verifies that chunked records with GZIP compression are handled correctly without
+   * double-decompression. The chunk assembler already decompresses the assembled value via
+   * RawBytesChunkingAdapter's decompressingInputStreamDecoder, so convertPubSubMessageToPubSubChangeEventMessage
+   * must skip decompression for chunked records. It must also not attempt to decompress
+   * put.getPutValue() which is the chunk manifest (not compressed user data).
+   */
+  @Test
+  public void testChunkedRecordWithGzipCompressionSkipsDoubleDecompression()
+      throws NoSuchFieldException, IllegalAccessException {
+    VeniceChangelogConsumerImpl veniceChangelogConsumer = mock(VeniceChangelogConsumerImpl.class);
+
+    Field changelogClientConfigField = VeniceChangelogConsumerImpl.class.getDeclaredField("changelogClientConfig");
+    changelogClientConfigField.setAccessible(true);
+    changelogClientConfigField.set(veniceChangelogConsumer, changelogClientConfig);
+
+    // Use a REAL GzipCompressor — if decompression were attempted on already-decompressed data
+    // or on manifest bytes, it would throw ZipException: Not in GZIP format
+    GzipCompressor realCompressor = new GzipCompressor();
+    when(veniceChangelogConsumer.getVersionCompressor(any(PubSubTopic.class))).thenReturn(realCompressor);
+
+    ChunkAssembler chunkAssembler = mock(ChunkAssembler.class);
+    Field chunkAssemblerField = VeniceChangelogConsumerImpl.class.getDeclaredField("chunkAssembler");
+    chunkAssemblerField.setAccessible(true);
+    chunkAssemblerField.set(veniceChangelogConsumer, chunkAssembler);
+
+    BasicConsumerStats consumerStats = mock(BasicConsumerStats.class);
+    Field changeCaptureStatsField = VeniceChangelogConsumerImpl.class.getDeclaredField("changeCaptureStats");
+    changeCaptureStatsField.setAccessible(true);
+    changeCaptureStatsField.set(veniceChangelogConsumer, consumerStats);
+
+    StoreDeserializerCache storeDeserializerCache = mock(StoreDeserializerCache.class);
+    Field storeDeserializerCacheField = VeniceChangelogConsumerImpl.class.getDeclaredField("storeDeserializerCache");
+    storeDeserializerCacheField.setAccessible(true);
+    storeDeserializerCacheField.set(veniceChangelogConsumer, storeDeserializerCache);
+    RecordDeserializer valueDeserializer = mock(RecordDeserializer.class);
+    when(storeDeserializerCache.getDeserializer(anyInt(), anyInt())).thenReturn(valueDeserializer);
+    when(valueDeserializer.deserialize(any(ByteBuffer.class))).thenReturn("deserialized-value");
+
+    RecordDeserializer keyDeserializer = mock(RecordDeserializer.class);
+    Field keyDeserializerField = VeniceChangelogConsumerImpl.class.getDeclaredField("keyDeserializer");
+    keyDeserializerField.setAccessible(true);
+    keyDeserializerField.set(veniceChangelogConsumer, keyDeserializer);
+
+    Map<Integer, AtomicLong> partitionToPutMessageCount = new VeniceConcurrentHashMap<>();
+    Field partitionToPutMessageCountField =
+        VeniceChangelogConsumerImpl.class.getDeclaredField("partitionToPutMessageCount");
+    partitionToPutMessageCountField.setAccessible(true);
+    partitionToPutMessageCountField.set(veniceChangelogConsumer, partitionToPutMessageCount);
+
+    Map<Integer, Map<Integer, List<Long>>> currentVersionHighWatermarks = new VeniceConcurrentHashMap<>();
+    Field currentVersionHighWatermarksField =
+        VeniceChangelogConsumerImpl.class.getDeclaredField("currentVersionHighWatermarks");
+    currentVersionHighWatermarksField.setAccessible(true);
+    currentVersionHighWatermarksField.set(veniceChangelogConsumer, currentVersionHighWatermarks);
+
+    int partition = 0;
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
+
+    // Simulate a chunk manifest PUT message. putValue is manifest bytes, NOT GZIP data.
+    byte[] serializedKey = "test-key".getBytes();
+    byte[] manifestBytes = new byte[] { 0x01, 0x02, 0x03, 0x04 };
+
+    Put put = new Put();
+    put.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    put.putValue = ByteBuffer.wrap(manifestBytes);
+    put.replicationMetadataVersionId = 1;
+    put.replicationMetadataPayload = ByteBuffer.allocate(0);
+
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.setMessageTimestamp(1000L);
+    KafkaMessageEnvelope kafkaMessageEnvelope =
+        new KafkaMessageEnvelope(MessageType.PUT.getValue(), producerMetadata, put, null);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
+    DefaultPubSubMessage message =
+        new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, topicPartition, mockPubSubPosition, 0, 0);
+
+    // The chunk assembler returns a ByteBufferValueRecord with DECOMPRESSED data (simulating what
+    // RawBytesChunkingAdapter returns after decompressingInputStreamDecoder processes the chunks).
+    byte[] decompressedValue = "this-is-already-decompressed-data".getBytes();
+    ByteBufferValueRecord<ByteBuffer> assembledRecord =
+        new ByteBufferValueRecord<>(ByteBuffer.wrap(decompressedValue), 1);
+
+    when(
+        chunkAssembler.bufferAndAssembleRecord(
+            eq(topicPartition),
+            eq(put.schemaId),
+            eq(serializedKey),
+            eq(put.putValue),
+            eq(mockPubSubPosition),
+            eq(realCompressor))).thenReturn(assembledRecord);
+
+    doCallRealMethod().when(veniceChangelogConsumer)
+        .convertPubSubMessageToPubSubChangeEventMessage(message, topicPartition);
+
+    // With the fix, the consumer skips decompression for chunked records. The already-decompressed
+    // assembled value is passed directly to the deserializer, and the manifest bytes in
+    // put.getPutValue() are not decompressed. This should succeed without ZipException.
+    veniceChangelogConsumer.convertPubSubMessageToPubSubChangeEventMessage(message, topicPartition);
+
+    // Verify the deserializer received the decompressed value directly (not re-decompressed)
+    ArgumentCaptor<ByteBuffer> deserializerCaptor = ArgumentCaptor.forClass(ByteBuffer.class);
+    verify(valueDeserializer).deserialize(deserializerCaptor.capture());
+    ByteBuffer capturedValue = deserializerCaptor.getValue();
+    byte[] capturedBytes = new byte[capturedValue.remaining()];
+    capturedValue.get(capturedBytes);
+    assertEquals(capturedBytes, decompressedValue, "Deserializer should receive the already-decompressed value");
   }
 
   private ChangelogClientConfig getChangelogClientConfig() {
