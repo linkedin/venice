@@ -2248,6 +2248,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     double enqueueLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS);
     getHostLevelIngestionStats().recordLeaderProduceLatency(enqueueLatency);
     getVersionIngestionStats().recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
+    {
+      PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+      if (monitor != null) {
+        monitor.recordLeaderProduceLatencyNs(System.nanoTime() - beforeProduceTimestampNS);
+      }
+    }
 
     try {
       if (shouldSendGlobalRtDiv(consumerRecord, pcs, kafkaUrl)) {
@@ -3407,6 +3413,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           versionNumber,
           LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingPerRecordTimestampNs),
           beforeProcessingBatchRecordsTimestampMs);
+      {
+        PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+        if (monitor != null) {
+          monitor.recordLeaderPreprocessingLatencyNs(System.nanoTime() - beforeProcessingPerRecordTimestampNs);
+        }
+      }
 
       if (kafkaKey.isControlMessage()) {
         boolean producedFinally = true;

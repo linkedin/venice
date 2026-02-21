@@ -370,7 +370,9 @@ public enum Arg {
   ), INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
   ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),
   PAUSE_AFTER_STEP("pause-after-step", "pas", true, "Pause the auto store migration after this step"),
-  STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks");
+  STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks"),
+  GRPC_PORT("grpc-port", "gp", true, "gRPC port on the target Venice server"),
+  INTERVAL_MS("interval-ms", "ims", true, "Monitoring interval in milliseconds (default: 5000, minimum: 1000)");
 
   private final String argName;
   private final String first;
