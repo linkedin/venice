@@ -258,15 +258,18 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, RepushInfoResponse veniceResponse) {
         AdminSparkServer.validateParams(request, GET_REPUSH_INFO.getParams(), admin);
+
+        // Extract primitives from HTTP request
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String fabricName = request.queryParams(FABRIC);
+        Optional<String> fabric = fabricName != null ? Optional.of(fabricName) : Optional.empty();
 
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
 
-        RepushInfo repushInfo = admin.getRepushInfo(clusterName, storeName, Optional.ofNullable(fabricName));
-
+        // Call handler - returns RepushInfo POJO directly
+        RepushInfo repushInfo = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
         veniceResponse.setRepushInfo(repushInfo);
       }
     };
