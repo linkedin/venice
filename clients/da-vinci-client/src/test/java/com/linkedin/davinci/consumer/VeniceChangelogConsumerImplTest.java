@@ -1294,11 +1294,11 @@ public class VeniceChangelogConsumerImplTest {
         .getAssignment();
 
     // switchToNewTopic with the same topic should return false (no-op)
-    assertFalse(veniceChangelogConsumer.switchToNewTopic(oldVersionTopic, 0));
+    assertFalse(veniceChangelogConsumer.switchToNewTopic(subscribedPartition));
 
     // switchToNewTopic with a different topic on the same partition should return true
     PubSubTopic newVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
-    assertTrue(veniceChangelogConsumer.switchToNewTopic(newVersionTopic, 0));
+    assertTrue(veniceChangelogConsumer.switchToNewTopic(new PubSubTopicPartitionImpl(newVersionTopic, 0)));
   }
 
   private ChangelogClientConfig getChangelogClientConfig() {

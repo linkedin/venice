@@ -593,10 +593,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   public CompletableFuture<Void> internalSeekToTimestamps(Map<Integer, Long> timestamps, Logger logger) {
-    Store store = storeRepository.getStore(storeName);
-    int currentVersion = store.getCurrentVersion();
-    String topicName = Version.composeKafkaTopic(storeName, currentVersion);
-    PubSubTopic topic = pubSubTopicRepository.getTopic(topicName);
+    PubSubTopic topic = getCurrentServingVersionTopic();
     Map<PubSubTopicPartition, Long> topicPartitionLongMap = new HashMap<>();
     for (Map.Entry<Integer, Long> timestampPair: timestamps.entrySet()) {
       PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, timestampPair.getKey());
@@ -955,7 +952,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           "End of Push message received for version {} for store {}",
           Version.parseVersionFromKafkaTopicName(pubSubTopicPartition.getPubSubTopic().getName()),
           storeName);
-      return switchToNewTopic(pubSubTopicPartition.getPubSubTopic(), pubSubTopicPartition.getPartitionNumber());
+      return switchToNewTopic(pubSubTopicPartition);
     }
 
     if (versionSwapByControlMessage && controlMessageType.equals(ControlMessageType.VERSION_SWAP)
@@ -1052,7 +1049,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         deserializer = storeDeserializerCache.getDeserializer(readerSchemaId, readerSchemaId);
       } catch (InvalidVeniceSchemaException invalidSchemaException) {
         // It's possible that a new schema was just added and our async metadata is outdated
-        LOGGER.info("{}. Refreshing the local metadata cache to try again", invalidSchemaException.getMessage());
+        LOGGER.info("Refreshing the local metadata cache to try again", invalidSchemaException);
         storeRepository.refreshOneStore(storeName);
         deserializer = storeDeserializerCache.getDeserializer(readerSchemaId, readerSchemaId);
       }
@@ -1128,11 +1125,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return Collections.synchronizedSet(pubSubConsumer.getAssignment());
   }
 
-  protected boolean switchToNewTopic(PubSubTopic newTopic, Integer partition) {
+  protected boolean switchToNewTopic(PubSubTopicPartition newTopicPartition) {
+    PubSubTopic newTopic = newTopicPartition.getPubSubTopic();
+    int partition = newTopicPartition.getPartitionNumber();
     Set<Integer> partitions = Collections.singleton(partition);
     Set<PubSubTopicPartition> assignment = getTopicAssignment();
     for (PubSubTopicPartition currentSubscribedPartition: assignment) {
-      if (partition.equals(currentSubscribedPartition.getPartitionNumber())) {
+      if (partition == currentSubscribedPartition.getPartitionNumber()) {
         if (newTopic.getName().equals(currentSubscribedPartition.getPubSubTopic().getName())) {
           // We're being asked to switch to a topic that we're already subscribed to, NoOp this
           return false;
@@ -1142,9 +1141,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     unsubscribe(partitions);
     try {
       Set<VeniceChangeCoordinate> beginningOfNewTopic = new HashSet<>(partitions.size());
-      for (Integer p: partitions) {
-        beginningOfNewTopic.add(new VeniceChangeCoordinate(newTopic.getName(), PubSubSymbolicPosition.EARLIEST, p));
-      }
+      beginningOfNewTopic
+          .add(new VeniceChangeCoordinate(newTopic.getName(), PubSubSymbolicPosition.EARLIEST, partition));
       synchronousSeekToCheckpoint(beginningOfNewTopic);
     } catch (Exception e) {
       throw new VeniceException("Subscribe to new topic:" + newTopic + " is not successful, error: " + e);
