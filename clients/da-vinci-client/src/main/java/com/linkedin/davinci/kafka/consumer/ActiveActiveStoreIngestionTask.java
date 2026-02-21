@@ -418,11 +418,21 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final long lookupStartTimeInNS = System.nanoTime();
     ValueRecord result = databaseLookupWithConcurrencyLimit(
         () -> getRmdWithValueSchemaByteBufferFromStorageInternal(partition, key, rmdManifestContainer));
+    long rmdLookupElapsedNs = System.nanoTime() - lookupStartTimeInNS;
     double rmdLookupLatency = LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS);
     getHostLevelIngestionStats()
         .recordIngestionReplicationMetadataLookUpLatency(rmdLookupLatency, currentTimeForMetricsMs);
     versionedIngestionStats
         .recordDcrLookupTime(storeName, versionNumber, VeniceRecordType.REPLICATION_METADATA, rmdLookupLatency);
+    {
+      PartitionConsumptionState pcs = getPartitionConsumptionState(partition);
+      if (pcs != null) {
+        PartitionIngestionMonitor monitor = pcs.getIngestionMonitor();
+        if (monitor != null) {
+          monitor.recordRmdLookupLatencyNs(rmdLookupElapsedNs);
+        }
+      }
+    }
     if (result == null) {
       return null;
     }
@@ -766,9 +776,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               RawBytesStoreDeserializerCache.getInstance(),
               compressor.get(),
               valueManifestContainer));
+      long valueLookupElapsedNs = System.nanoTime() - lookupStartTimeInNS;
       double valueLookupLatency = LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS);
       getHostLevelIngestionStats().recordIngestionValueBytesLookUpLatency(valueLookupLatency, currentTimeForMetricsMs);
       versionedIngestionStats.recordDcrLookupTime(storeName, versionNumber, VeniceRecordType.DATA, valueLookupLatency);
+      {
+        PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+        if (monitor != null) {
+          monitor.recordValueLookupLatencyNs(valueLookupElapsedNs);
+        }
+      }
     } else {
       getHostLevelIngestionStats().recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
       versionedIngestionStats.recordDcrLookupCacheHitCount(storeName, versionNumber, VeniceRecordType.DATA);
