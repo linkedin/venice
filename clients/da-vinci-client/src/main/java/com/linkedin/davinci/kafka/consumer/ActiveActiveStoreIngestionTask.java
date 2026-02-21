@@ -470,24 +470,47 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
     final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-    Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider = Lazy.of(
-        () -> getValueBytesForKey(
-            partitionConsumptionState,
-            keyBytes,
-            consumerRecord.getTopicPartition(),
-            valueManifestContainer,
-            beforeProcessingBatchRecordsTimestampMs));
-    if (hasComplexVenicePartitionerMaterializedView && msgType == MessageType.DELETE) {
-      // We need to lookup first because this function updates the transient cache before writing the view.
-      // Otherwise, the transient cache will be populated when writing to the view after this function.
-      oldValueProvider.get();
-    }
 
-    final RmdWithValueSchemaId rmdWithValueSchemaID = getReplicationMetadataAndSchemaId(
-        partitionConsumptionState,
-        keyBytes,
-        partition,
-        beforeProcessingBatchRecordsTimestampMs);
+    // Look up the transient cache once for this key. Both the RMD and value paths need to check it,
+    // and each lookup allocates a ByteArrayKey wrapper + computes a hash over the key bytes.
+    // Consolidating to a single lookup avoids that redundant work on the hot path.
+    final PartitionConsumptionState.TransientRecord cachedRecord =
+        partitionConsumptionState.getTransientRecord(keyBytes);
+
+    final Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider;
+    final RmdWithValueSchemaId rmdWithValueSchemaID;
+
+    if (cachedRecord != null) {
+      // Cache hit: build both RMD and value directly from the single cached record.
+      hostLevelIngestionStats.recordIngestionReplicationMetadataCacheHitCount(beforeProcessingBatchRecordsTimestampMs);
+      rmdWithValueSchemaID = buildRmdFromTransientRecord(cachedRecord);
+
+      hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(beforeProcessingBatchRecordsTimestampMs);
+      oldValueProvider = buildOldValueProviderFromTransientRecord(cachedRecord, valueManifestContainer);
+    } else {
+      // Cache miss: fall through to storage lookup paths. These methods will re-check the
+      // transient cache (redundantly for this key), but this only happens on the cache-miss path
+      // where the cost is dominated by disk I/O.
+      oldValueProvider = Lazy.of(
+          () -> getValueBytesForKey(
+              partitionConsumptionState,
+              keyBytes,
+              consumerRecord.getTopicPartition(),
+              valueManifestContainer,
+              beforeProcessingBatchRecordsTimestampMs));
+
+      if (hasComplexVenicePartitionerMaterializedView && msgType == MessageType.DELETE) {
+        // We need to lookup first because this function updates the transient cache before writing the view.
+        // Otherwise, the transient cache will be populated when writing to the view after this function.
+        oldValueProvider.get();
+      }
+
+      rmdWithValueSchemaID = getReplicationMetadataAndSchemaId(
+          partitionConsumptionState,
+          keyBytes,
+          partition,
+          beforeProcessingBatchRecordsTimestampMs);
+    }
 
     final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
     final long offsetSumPreOperation =
@@ -807,6 +830,35 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       }
     }
     return originalValue;
+  }
+
+  /**
+   * Build RMD from a transient cache record.
+   */
+  RmdWithValueSchemaId buildRmdFromTransientRecord(PartitionConsumptionState.TransientRecord cachedRecord) {
+    return new RmdWithValueSchemaId(
+        cachedRecord.getValueSchemaId(),
+        getRmdProtocolVersionId(),
+        cachedRecord.getReplicationMetadataRecord(),
+        cachedRecord.getRmdManifest());
+  }
+
+  /**
+   * Build an old-value provider from a transient cache record. If the cached record has a non-null value,
+   * the provider wraps the value bytes and sets the manifest on the container. Otherwise, it returns null.
+   */
+  Lazy<ByteBufferValueRecord<ByteBuffer>> buildOldValueProviderFromTransientRecord(
+      PartitionConsumptionState.TransientRecord cachedRecord,
+      ChunkedValueManifestContainer valueManifestContainer) {
+    if (cachedRecord.getValue() != null) {
+      valueManifestContainer.setManifest(cachedRecord.getValueManifest());
+      return Lazy.of(
+          () -> new ByteBufferValueRecord<>(
+              getCurrentValueFromTransientRecord(cachedRecord),
+              cachedRecord.getValueSchemaId()));
+    } else {
+      return Lazy.of(() -> null);
+    }
   }
 
   ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {
