@@ -59,7 +59,6 @@ import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.PutMetadata;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -576,9 +575,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       }
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
 
+      // Save uncompressed (serialized) value before compression may advance the ByteBuffer position.
+      // The transient cache stores uncompressed bytes so that subsequent reads for the same key
+      // skip the decompress-deserialize-reserialize-recompress round-trip.
+      final ByteBuffer uncompressedNewValue = mergeConflictResult.getNewValue();
+      final byte[] uncompressedArray = uncompressedNewValue != null ? uncompressedNewValue.array() : null;
+      final int uncompressedOffset = uncompressedNewValue != null ? uncompressedNewValue.position() : 0;
+      final int uncompressedLen = uncompressedNewValue != null ? uncompressedNewValue.remaining() : 0;
+
       final ByteBuffer updatedValueBytes = maybeCompressData(
           consumerRecord.getTopicPartition().getPartitionNumber(),
-          mergeConflictResult.getNewValue(),
+          uncompressedNewValue,
           partitionConsumptionState);
 
       final int valueSchemaId = mergeConflictResult.getValueSchemaId();
@@ -593,14 +600,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         partitionConsumptionState
             .setTransientRecord(kafkaClusterId, consumerRecord.getPosition(), keyBytes, valueSchemaId, rmdRecord);
       } else {
-        int valueLen = updatedValueBytes.remaining();
+        // Store uncompressed bytes in the transient cache. The produce path uses the compressed
+        // updatedValueBytes from MergeConflictResultWrapper independently.
         partitionConsumptionState.setTransientRecord(
             kafkaClusterId,
             consumerRecord.getPosition(),
             keyBytes,
-            updatedValueBytes.array(),
-            updatedValueBytes.position(),
-            valueLen,
+            uncompressedArray,
+            uncompressedOffset,
+            uncompressedLen,
             valueSchemaId,
             rmdRecord);
       }
@@ -810,16 +818,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {
-    ByteBuffer compressedValue =
-        ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
-    try {
-      return getCompressionStrategy().isCompressionEnabled()
-          ? getCompressor().get()
-              .decompress(compressedValue.array(), compressedValue.position(), compressedValue.remaining())
-          : compressedValue;
-    } catch (IOException e) {
-      throw new VeniceException(e);
-    }
+    // Transient cache stores uncompressed (serialized) value bytes since the merge path needs
+    // deserialized Avro records, not compressed bytes. Skipping the decompress-recompress cycle
+    // for consecutive same-key updates avoids redundant compression work on the AA/WC hot path.
+    return ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
   }
 
   /**

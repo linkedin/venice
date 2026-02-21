@@ -148,24 +148,14 @@ public class ActiveActiveStoreIngestionTaskTest {
   public void testGetValueBytesFromTransientRecords(CompressionStrategy strategy) throws IOException {
     ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
     PartitionConsumptionState.TransientRecord transientRecord = mock(PartitionConsumptionState.TransientRecord.class);
-    VeniceCompressor compressor = getCompressor(strategy);
-    when(ingestionTask.getCompressor()).thenReturn(Lazy.of(() -> compressor));
-    when(ingestionTask.getCompressionStrategy()).thenReturn(strategy);
     when(ingestionTask.getCurrentValueFromTransientRecord(any())).thenCallRealMethod();
 
+    // Transient cache now stores uncompressed (serialized) bytes regardless of compression strategy.
+    // getCurrentValueFromTransientRecord returns the raw bytes without decompression.
     byte[] dataBytes = "Hello World".getBytes();
-    byte[] transientRecordValueBytes = dataBytes;
-    int startPosition = 0;
-    int dataLength = dataBytes.length;
-    if (strategy != CompressionStrategy.NO_OP) {
-      ByteBuffer compressedByteBuffer = compressor.compress(ByteBuffer.wrap(dataBytes), 4);
-      transientRecordValueBytes = compressedByteBuffer.array();
-      startPosition = compressedByteBuffer.position();
-      dataLength = compressedByteBuffer.remaining();
-    }
-    when(transientRecord.getValue()).thenReturn(transientRecordValueBytes);
-    when(transientRecord.getValueOffset()).thenReturn(startPosition);
-    when(transientRecord.getValueLen()).thenReturn(dataLength);
+    when(transientRecord.getValue()).thenReturn(dataBytes);
+    when(transientRecord.getValueOffset()).thenReturn(0);
+    when(transientRecord.getValueLen()).thenReturn(dataBytes.length);
     ByteBuffer result = ingestionTask.getCurrentValueFromTransientRecord(transientRecord);
     Assert.assertEquals(result.remaining(), dataBytes.length);
     byte[] resultByteArray = new byte[result.remaining()];
