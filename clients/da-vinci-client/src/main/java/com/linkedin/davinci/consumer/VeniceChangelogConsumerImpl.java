@@ -1054,7 +1054,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         deserializer = storeDeserializerCache.getDeserializer(readerSchemaId, readerSchemaId);
       }
       try {
-        assembledObject = deserializer.deserialize(compressor.decompress(assembledRecord.value()));
+        assembledObject = deserializer.deserialize(
+            ChunkAssembler.decompressValueIfNeeded(assembledRecord.value(), put.getSchemaId(), compressor));
       } catch (IOException e) {
         throw new VeniceException(
             "Failed to deserialize or decompress record consumed from topic: "

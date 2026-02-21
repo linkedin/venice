@@ -136,6 +136,17 @@ public class TestStatelessChangelogConsumerWithCompression {
     testStatelessChangelogConsumerWithCompression(CompressionStrategy.ZSTD_WITH_DICT);
   }
 
+  /**
+   * Tests that chunked records (values exceeding the chunk size threshold) are correctly consumed
+   * when the store uses GZIP compression. This verifies that the chunk assembler's decompression
+   * is not followed by a redundant second decompression in the changelog consumer.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStatelessChangelogConsumerWithChunkedGzipRecords()
+      throws IOException, ExecutionException, InterruptedException {
+    testStatelessChangelogConsumerWithChunking(CompressionStrategy.GZIP);
+  }
+
   private void testStatelessChangelogConsumerWithCompression(CompressionStrategy compressionStrategy)
       throws IOException, ExecutionException, InterruptedException {
     File inputDir = getTempDataDirectory();
@@ -238,6 +249,94 @@ public class TestStatelessChangelogConsumerWithCompression {
     assertEquals(receivedKeys.size(), numKeys, "Should have received exactly " + numKeys + " keys");
     for (int i = 1; i <= numKeys; i++) {
       assertTrue(receivedKeys.contains(i), "Should have received key " + i);
+    }
+
+    changeLogConsumer.close();
+  }
+
+  private void testStatelessChangelogConsumerWithChunking(CompressionStrategy compressionStrategy)
+      throws IOException, ExecutionException, InterruptedException {
+    File inputDir = getTempDataDirectory();
+    // Create records larger than the default chunk threshold (~950KB) to force chunking
+    int numKeys = 5;
+    int valueSizeBytes = 1024 * 1024; // 1MB per value, exceeds the ~950KB chunk threshold
+    Schema recordSchema =
+        TestWriteUtils.writeSimpleAvroFileWithCustomSize(inputDir, numKeys, valueSizeBytes, valueSizeBytes);
+    int partitionCount = 3;
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store-chunked-" + compressionStrategy.name().toLowerCase());
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        clusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = STRING_SCHEMA.toString();
+
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(500)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(partitionCount)
+        .setCompressionStrategy(compressionStrategy);
+
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+
+    IntegrationTestPushUtils.runVPJ(props);
+
+    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
+    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
+    Properties consumerProperties = new Properties();
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
+    String localKafkaUrl = localKafka.getAddress();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+    consumerProperties.put(CLUSTER_NAME, clusterName);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setLocalD2ZkHosts(localZkServer.getAddress())
+            .setControllerRequestRetryCount(3)
+            .setVersionSwapDetectionIntervalTimeInSeconds(3)
+            .setD2Client(d2Client)
+            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+    VeniceChangelogConsumer<Utf8, Utf8> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
+
+    changeLogConsumer.subscribeAll().get();
+
+    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+          changeLogConsumer.poll(1000);
+      for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+        if (message.getKey() != null) {
+          pubSubMessagesMap.put(message.getKey().toString(), message);
+        }
+      }
+      assertEquals(pubSubMessagesMap.size(), numKeys, "Expected to receive all " + numKeys + " chunked messages");
+    });
+
+    // Verify the content of received chunked messages
+    for (int i = 0; i < numKeys; i++) {
+      String key = Integer.toString(i);
+      assertTrue(pubSubMessagesMap.containsKey(key), "Should have received key " + key);
+      PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(key);
+      assertNotNull(message.getValue(), "Value for key " + key + " should not be null");
+      ChangeEvent<Utf8> changeEvent = message.getValue();
+      assertNotNull(changeEvent.getCurrentValue(), "Current value for key " + key + " should not be null");
+      // Each value should be at least valueSizeBytes long (large enough to have been chunked)
+      assertTrue(
+          changeEvent.getCurrentValue().toString().length() >= valueSizeBytes,
+          "Value for key " + key + " should be at least " + valueSizeBytes + " chars");
     }
 
     changeLogConsumer.close();
