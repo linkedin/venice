@@ -1196,8 +1196,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           deserializer = storeDeserializerCache.getDeserializer(readerSchemaId, readerSchemaId);
         }
       }
+      // For chunked records, the chunk assembler already decompresses the assembled value via
+      // RawBytesChunkingAdapter's decompressingInputStreamDecoder. For non-chunked records, the
+      // value is still compressed and needs explicit decompression here.
+      boolean isChunkedRecord = ChunkAssembler.isChunkedRecord(put.getSchemaId());
       try {
-        assembledObject = deserializer.deserialize(compressor.decompress(assembledRecord.value()));
+        ByteBuffer decompressedValue =
+            isChunkedRecord ? assembledRecord.value() : compressor.decompress(assembledRecord.value());
+        assembledObject = deserializer.deserialize(decompressedValue);
       } catch (IOException e) {
         throw new VeniceException(
             "Failed to deserialize or decompress record consumed from topic: "
@@ -1205,8 +1211,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             e);
       }
       try {
+        // For chunked records, put.getPutValue() is the chunk manifest, not compressed user data.
+        // Use the already-decompressed assembled value instead.
+        ByteBuffer decompressedBytes =
+            isChunkedRecord ? assembledRecord.value() : compressor.decompress(put.getPutValue());
         assembledObject = processRecordBytes(
-            compressor.decompress(put.getPutValue()),
+            decompressedBytes,
             assembledObject,
             keyBytes,
             put.getPutValue(),
@@ -1352,8 +1362,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           deserializer = storeDeserializerCache.getDeserializer(readerSchemaId, readerSchemaId);
         }
       }
+      // For chunked records, the chunk assembler already decompresses the assembled value via
+      // RawBytesChunkingAdapter's decompressingInputStreamDecoder. For non-chunked records, the
+      // value is still compressed and needs explicit decompression here.
+      boolean isChunkedRecord = ChunkAssembler.isChunkedRecord(put.getSchemaId());
       try {
-        assembledObject = deserializer.deserialize(compressor.decompress(assembledRecord.value()));
+        ByteBuffer decompressedValue =
+            isChunkedRecord ? assembledRecord.value() : compressor.decompress(assembledRecord.value());
+        assembledObject = deserializer.deserialize(decompressedValue);
       } catch (IOException e) {
         throw new VeniceException(
             "Failed to deserialize or decompress record consumed from topic: "
@@ -1361,8 +1377,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             e);
       }
       try {
+        // For chunked records, put.getPutValue() is the chunk manifest, not compressed user data.
+        // Use the already-decompressed assembled value instead.
+        ByteBuffer decompressedBytes =
+            isChunkedRecord ? assembledRecord.value() : compressor.decompress(put.getPutValue());
         assembledObject = processRecordBytes(
-            compressor.decompress(put.getPutValue()),
+            decompressedBytes,
             assembledObject,
             keyBytes,
             put.getPutValue(),
