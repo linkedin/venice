@@ -2833,6 +2833,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         recordProcessedRecordStats(partitionConsumptionState, recordSize);
       }
+      PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+      if (monitor != null) {
+        monitor.recordConsumed(recordSize);
+      }
       partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
     }
     reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
@@ -3627,6 +3631,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
         }
       }
+      {
+        PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+        if (monitor != null) {
+          monitor.recordE2EProcessingLatencyNs(System.nanoTime() - beforeProcessingRecordTimestampNs);
+        }
+      }
     } catch (DuplicateDataException e) {
       divErrorMetricCallback.accept(e);
       LOGGER.debug(
@@ -4244,7 +4254,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (emitRecordLevelMetrics) {
           hostLevelIngestionStats
               .recordStorageEnginePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs), currentTimeMs);
+        } {
+        PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+        if (monitor != null) {
+          monitor.recordStoragePutLatencyNs(System.nanoTime() - startTimeNs);
         }
+      }
         break;
 
       case DELETE:

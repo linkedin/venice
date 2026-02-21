@@ -413,9 +413,19 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final long lookupStartTimeInNS = System.nanoTime();
     ValueRecord result = databaseLookupWithConcurrencyLimit(
         () -> getRmdWithValueSchemaByteBufferFromStorageInternal(partition, key, rmdManifestContainer));
+    long rmdLookupElapsedNs = System.nanoTime() - lookupStartTimeInNS;
     getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
         LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
         currentTimeForMetricsMs);
+    {
+      PartitionConsumptionState pcs = getPartitionConsumptionState(partition);
+      if (pcs != null) {
+        PartitionIngestionMonitor monitor = pcs.getIngestionMonitor();
+        if (monitor != null) {
+          monitor.recordRmdLookupLatencyNs(rmdLookupElapsedNs);
+        }
+      }
+    }
     if (result == null) {
       return null;
     }
@@ -791,9 +801,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               RawBytesStoreDeserializerCache.getInstance(),
               compressor.get(),
               valueManifestContainer));
+      long valueLookupElapsedNs = System.nanoTime() - lookupStartTimeInNS;
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
           LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
           currentTimeForMetricsMs);
+      {
+        PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+        if (monitor != null) {
+          monitor.recordValueLookupLatencyNs(valueLookupElapsedNs);
+        }
+      }
     } else {
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
       // construct originalValue from this transient record only if it's not null.

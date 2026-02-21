@@ -637,6 +637,9 @@ public class AdminTool {
         case UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION:
           updateAdminOperationProtocolVersion(cmd);
           break;
+        case MONITOR_INGESTION:
+          monitorIngestion(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -3455,6 +3458,121 @@ public class AdminTool {
           getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
+  private static void monitorIngestion(CommandLine cmd) {
+    String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL, Command.MONITOR_INGESTION);
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.MONITOR_INGESTION);
+    int version = Integer.parseInt(getRequiredArgument(cmd, Arg.VERSION, Command.MONITOR_INGESTION));
+    int partition = Integer.parseInt(getRequiredArgument(cmd, Arg.PARTITION, Command.MONITOR_INGESTION));
+    String versionTopic = Version.composeKafkaTopic(storeName, version);
+
+    int grpcPort;
+    String grpcPortStr = getOptionalArgument(cmd, Arg.GRPC_PORT);
+    if (grpcPortStr != null) {
+      grpcPort = Integer.parseInt(grpcPortStr);
+    } else {
+      // Default: derive from server URL port + 1, or use a common default
+      try {
+        java.net.URI uri = new java.net.URI(serverUrl);
+        grpcPort = uri.getPort() + 1;
+      } catch (Exception e) {
+        grpcPort = 1691; // fallback default
+      }
+    }
+
+    int intervalMs = 5000;
+    String intervalStr = getOptionalArgument(cmd, Arg.INTERVAL_MS);
+    if (intervalStr != null) {
+      intervalMs = Integer.parseInt(intervalStr);
+    }
+
+    // Extract host from server URL
+    String host;
+    try {
+      java.net.URI uri = new java.net.URI(serverUrl);
+      host = uri.getHost();
+    } catch (Exception e) {
+      throw new VeniceException("Invalid server URL: " + serverUrl, e);
+    }
+
+    io.grpc.ManagedChannel channel = null;
+    try {
+      io.grpc.ManagedChannelBuilder<?> channelBuilder = io.grpc.ManagedChannelBuilder.forAddress(host, grpcPort);
+
+      String sslConfigPath = getOptionalArgument(cmd, Arg.SSL_CONFIG_PATH);
+      if (sslConfigPath == null && sslFactory.isPresent()) {
+        // Use TLS via the existing sslFactory
+        channelBuilder.useTransportSecurity();
+      } else if (sslConfigPath == null) {
+        channelBuilder.usePlaintext();
+      } else {
+        channelBuilder.useTransportSecurity();
+      }
+
+      channel = channelBuilder.build();
+
+      com.linkedin.venice.protocols.IngestionMonitorRequest request =
+          com.linkedin.venice.protocols.IngestionMonitorRequest.newBuilder()
+              .setVersionTopic(versionTopic)
+              .setPartition(partition)
+              .setIntervalMs(intervalMs)
+              .build();
+
+      java.util.Iterator<com.linkedin.venice.protocols.IngestionMonitorResponse> responses =
+          com.linkedin.venice.protocols.VeniceIngestionMonitorServiceGrpc.newBlockingStub(channel)
+              .monitorIngestion(request);
+
+      System.out.println(
+          "Connected to " + host + ":" + grpcPort + " - monitoring " + versionTopic + " partition " + partition
+              + " (interval: " + intervalMs + "ms)");
+      System.out.println("Press Ctrl+C to stop.\n");
+
+      // Print header
+      System.out.printf(
+          "%-24s %-10s %-7s %12s %12s %12s %12s %10s %10s %10s %10s %10s%n",
+          "Timestamp",
+          "L/F State",
+          "Hybrid",
+          "Rec/s In",
+          "MB/s In",
+          "Rec/s Out",
+          "MB/s Out",
+          "E2E ms",
+          "Put ms",
+          "Produce ms",
+          "Complete ms",
+          "Idle ms");
+      for (int i = 0; i < 160; i++) {
+        System.out.print('-');
+      }
+      System.out.println();
+
+      while (responses.hasNext()) {
+        com.linkedin.venice.protocols.IngestionMonitorResponse resp = responses.next();
+        System.out.printf(
+            "%-24s %-10s %-7s %12.1f %12.3f %12.1f %12.3f %10.2f %10.2f %10.2f %10.2f %10d%n",
+            java.time.Instant.ofEpochMilli(resp.getTimestampMs()).toString(),
+            resp.getLeaderFollowerState(),
+            resp.getIsHybrid(),
+            resp.getRecordsPolledPerSec(),
+            resp.getBytesPolledPerSec() / (1024.0 * 1024.0),
+            resp.getLeaderRecordsProducedPerSec(),
+            resp.getLeaderBytesProducedPerSec() / (1024.0 * 1024.0),
+            resp.getConsumedRecordE2EProcessingLatencyAvgMs(),
+            resp.getStorageEnginePutLatencyAvgMs(),
+            resp.getLeaderProduceLatencyAvgMs(),
+            resp.getLeaderProducerCompletionLatencyAvgMs(),
+            resp.getElapsedTimeSinceLastRecordMs());
+      }
+    } catch (io.grpc.StatusRuntimeException e) {
+      System.err.println("gRPC error: " + e.getStatus().getDescription());
+      throw new VeniceException("gRPC monitoring failed: " + e.getMessage(), e);
+    } finally {
+      if (channel != null) {
+        channel.shutdownNow();
+      }
     }
   }
 
