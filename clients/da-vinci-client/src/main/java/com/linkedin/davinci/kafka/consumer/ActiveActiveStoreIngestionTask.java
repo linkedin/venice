@@ -424,13 +424,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         .recordIngestionReplicationMetadataLookUpLatency(rmdLookupLatency, currentTimeForMetricsMs);
     versionedIngestionStats
         .recordDcrLookupTime(storeName, versionNumber, VeniceRecordType.REPLICATION_METADATA, rmdLookupLatency);
-    {
-      PartitionConsumptionState pcs = getPartitionConsumptionState(partition);
-      if (pcs != null) {
-        PartitionIngestionMonitor monitor = pcs.getIngestionMonitor();
-        if (monitor != null) {
-          monitor.recordRmdLookupLatencyNs(rmdLookupElapsedNs);
-        }
+    PartitionConsumptionState pcs = getPartitionConsumptionState(partition);
+    if (pcs != null) {
+      PartitionIngestionMonitor monitor = pcs.getIngestionMonitor();
+      if (monitor != null) {
+        monitor.recordRmdLookupLatencyNs(rmdLookupElapsedNs);
       }
     }
     if (result == null) {
@@ -780,11 +778,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       double valueLookupLatency = LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS);
       getHostLevelIngestionStats().recordIngestionValueBytesLookUpLatency(valueLookupLatency, currentTimeForMetricsMs);
       versionedIngestionStats.recordDcrLookupTime(storeName, versionNumber, VeniceRecordType.DATA, valueLookupLatency);
-      {
-        PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
-        if (monitor != null) {
-          monitor.recordValueLookupLatencyNs(valueLookupElapsedNs);
-        }
+      PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+      if (monitor != null) {
+        monitor.recordValueLookupLatencyNs(valueLookupElapsedNs);
       }
     } else {
       getHostLevelIngestionStats().recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
