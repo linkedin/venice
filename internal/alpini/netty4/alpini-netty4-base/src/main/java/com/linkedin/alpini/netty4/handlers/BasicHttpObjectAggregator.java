@@ -1,7 +1,9 @@
 package com.linkedin.alpini.netty4.handlers;
 
+import com.linkedin.alpini.base.misc.Time;
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.netty4.misc.BasicFullHttpResponse;
+import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
 import com.linkedin.alpini.netty4.misc.HttpUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -20,6 +22,7 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.util.AttributeKey;
 import java.util.concurrent.ThreadLocalRandom;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -30,6 +33,14 @@ import org.apache.logging.log4j.Logger;
  */
 public class BasicHttpObjectAggregator extends HttpObjectAggregator {
   private static final Logger LOG = LogManager.getLogger(BasicHttpObjectAggregator.class);
+
+  /**
+   * AttributeKey for storing body aggregation latency (HEADERS to last DATA frame) in nanoseconds.
+   * Stored on the request's AttributeMap so it survives retainedDuplicate() calls in the scatter-gather path,
+   * since duplicated BasicHttpRequest objects share the same AttributeMap.
+   */
+  public static final AttributeKey<Long> BODY_AGGREGATION_LATENCY_NS =
+      AttributeKey.valueOf("BODY_AGGREGATION_LATENCY_NS");
 
   /**
    * Creates a new instance.
@@ -110,6 +121,16 @@ public class BasicHttpObjectAggregator extends HttpObjectAggregator {
         ((AggregatedMessage) aggregated).setTrailingHeaders(((LastHttpContent) content).trailingHeaders());
       } else {
         super.aggregate(aggregated, content);
+      }
+      // Record body aggregation latency when aggregation completes.
+      // We store this in the request's AttributeMap (not a plain field) because the scatter-gather
+      // framework calls retainedDuplicate() which creates a new object but shares the same AttributeMap.
+      if (aggregated instanceof BasicHttpRequest) {
+        BasicHttpRequest request = (BasicHttpRequest) aggregated;
+        if (request.method() != HttpMethod.GET) {
+          long delayNs = Time.nanoTime() - request.getRequestNanos();
+          request.attr(BODY_AGGREGATION_LATENCY_NS).set(delayNs);
+        }
       }
     }
   }

@@ -21,6 +21,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
 import com.linkedin.alpini.base.misc.HeaderNames;
 import com.linkedin.alpini.base.misc.Metrics;
+import com.linkedin.alpini.netty4.handlers.BasicHttpObjectAggregator;
 import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
 import com.linkedin.alpini.router.api.ResponseAggregatorFactory;
 import com.linkedin.venice.HttpConstants;
@@ -301,6 +302,18 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     if (HEALTHY_STATUSES.contains(httpResponseStatus) && !venicePath.isStreamingRequest()) {
       // Only record successful response
       stats.recordResponseSize(storeName, finalResponse.content().readableBytes());
+    }
+    // Record body aggregation latency for multiget streaming requests.
+    // The latency is stored in the request's AttributeMap (not a plain field) because the scatter-gather
+    // framework calls retainedDuplicate() which creates a new BasicHttpRequest object. The AttributeMap
+    // is shared across duplicates, so the value set by BasicHttpObjectAggregator is visible here.
+    if (requestType == RequestType.MULTI_GET_STREAMING) {
+      Long bodyAggLatencyNs = request.hasAttr(BasicHttpObjectAggregator.BODY_AGGREGATION_LATENCY_NS)
+          ? request.attr(BasicHttpObjectAggregator.BODY_AGGREGATION_LATENCY_NS).get()
+          : null;
+      if (bodyAggLatencyNs != null && bodyAggLatencyNs > 0) {
+        stats.recordBodyAggregationLatency(storeName, LatencyUtils.convertNSToMS(bodyAggLatencyNs));
+      }
     }
     stats.recordResponse(storeName);
 
