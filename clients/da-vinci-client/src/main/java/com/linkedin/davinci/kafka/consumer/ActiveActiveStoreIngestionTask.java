@@ -62,7 +62,6 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -492,9 +491,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
     final long offsetSumPreOperation =
         rmdWithValueSchemaID != null ? RmdUtils.extractOffsetVectorSumFromRmd(rmdWithValueSchemaID.getRmdRecord()) : 0;
-    List<Long> recordTimestampsPreOperation = rmdWithValueSchemaID != null
-        ? RmdUtils.extractTimestampFromRmd(rmdWithValueSchemaID.getRmdRecord())
-        : Collections.singletonList(0L);
 
     // get the source offset and the id
     PubSubPosition sourcePosition = consumerRecord.getPosition();
@@ -574,7 +570,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (rmdWithValueSchemaID != null) {
         aggVersionedIngestionStats.recordTotalDuplicateKeyUpdate(storeName, versionNumber);
       }
-      validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
+      validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation);
 
       final ByteBuffer updatedValueBytes = maybeCompressData(
           consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -737,8 +733,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   private void validatePostOperationResultsAndRecord(
       MergeConflictResult mergeConflictResult,
-      Long offsetSumPreOperation,
-      List<Long> timestampsPreOperation) {
+      long offsetSumPreOperation) {
     // Nothing was applied, no harm no foul
     if (mergeConflictResult.isUpdateIgnored()) {
       return;
