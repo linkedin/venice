@@ -226,13 +226,11 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
                   LatencyUtils.getElapsedTimeFromMsToMs(currentTimeForMetricsMs),
                   currentTimeForMetricsMs);
         }
-        {
-          PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
-          if (monitor != null) {
-            monitor.recordLeaderCallbackLatencyNs(
-                (long) ((System.currentTimeMillis() - currentTimeForMetricsMs) * 1_000_000L));
-            monitor.recordLeaderProduced(producedRecordSize);
-          }
+        PartitionIngestionMonitor callbackMonitor = partitionConsumptionState.getIngestionMonitor();
+        if (callbackMonitor != null) {
+          callbackMonitor.recordLeaderCallbackLatencyNs(
+              (long) ((System.currentTimeMillis() - currentTimeForMetricsMs) * 1_000_000L));
+          callbackMonitor.recordLeaderProduced(producedRecordSize);
         }
         this.onCompletionCallback.accept(produceResult);
       } catch (Exception oe) {

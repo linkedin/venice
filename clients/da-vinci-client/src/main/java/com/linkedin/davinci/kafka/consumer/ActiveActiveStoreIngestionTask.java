@@ -417,13 +417,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
         LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
         currentTimeForMetricsMs);
-    {
-      PartitionConsumptionState pcs = getPartitionConsumptionState(partition);
-      if (pcs != null) {
-        PartitionIngestionMonitor monitor = pcs.getIngestionMonitor();
-        if (monitor != null) {
-          monitor.recordRmdLookupLatencyNs(rmdLookupElapsedNs);
-        }
+    PartitionConsumptionState pcs = getPartitionConsumptionState(partition);
+    if (pcs != null) {
+      PartitionIngestionMonitor monitor = pcs.getIngestionMonitor();
+      if (monitor != null) {
+        monitor.recordRmdLookupLatencyNs(rmdLookupElapsedNs);
       }
     }
     if (result == null) {
@@ -805,11 +803,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
           LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
           currentTimeForMetricsMs);
-      {
-        PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
-        if (monitor != null) {
-          monitor.recordValueLookupLatencyNs(valueLookupElapsedNs);
-        }
+      PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+      if (monitor != null) {
+        monitor.recordValueLookupLatencyNs(valueLookupElapsedNs);
       }
     } else {
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);

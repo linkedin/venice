@@ -1960,11 +1960,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     produceFunction.accept(callback, leaderMetadataWrapper);
     getHostLevelIngestionStats()
         .recordLeaderProduceLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS));
-    {
-      PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
-      if (monitor != null) {
-        monitor.recordLeaderProduceLatencyNs(System.nanoTime() - beforeProduceTimestampNS);
-      }
+    PartitionIngestionMonitor produceMonitor = partitionConsumptionState.getIngestionMonitor();
+    if (produceMonitor != null) {
+      produceMonitor.recordLeaderProduceLatencyNs(System.nanoTime() - beforeProduceTimestampNS);
     }
 
     try {
@@ -2748,11 +2746,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           versionNumber,
           LatencyUtils.getElapsedTimeFromNSToMS(beforeProcessingPerRecordTimestampNs),
           beforeProcessingBatchRecordsTimestampMs);
-      {
-        PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
-        if (monitor != null) {
-          monitor.recordLeaderPreprocessingLatencyNs(System.nanoTime() - beforeProcessingPerRecordTimestampNs);
-        }
+      PartitionIngestionMonitor preprocessMonitor = partitionConsumptionState.getIngestionMonitor();
+      if (preprocessMonitor != null) {
+        preprocessMonitor.recordLeaderPreprocessingLatencyNs(System.nanoTime() - beforeProcessingPerRecordTimestampNs);
       }
 
       if (kafkaKey.isControlMessage()) {
