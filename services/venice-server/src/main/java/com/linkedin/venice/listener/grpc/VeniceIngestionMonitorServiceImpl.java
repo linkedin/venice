@@ -156,13 +156,14 @@ public class VeniceIngestionMonitorServiceImpl
         try {
           serverObserver
               .onError(Status.INTERNAL.withDescription("Monitoring error: " + e.getMessage()).asRuntimeException());
-        } catch (Exception ignored) {
-          // Observer may already be closed
+        } catch (Exception observerException) {
+          LOGGER
+              .debug("Failed to send error to observer for {} (likely already closed)", sessionKey, observerException);
         }
       }
     }, 0, intervalMs, TimeUnit.MILLISECONDS);
 
-    ActiveSession session = new ActiveSession(future, pcs, monitor);
+    ActiveSession session = new ActiveSession(future, monitor);
     activeSessions.put(sessionKey, session);
 
     // Handle client disconnect
@@ -193,12 +194,10 @@ public class VeniceIngestionMonitorServiceImpl
 
   private static class ActiveSession {
     final ScheduledFuture<?> future;
-    final PartitionConsumptionState pcs;
     final PartitionIngestionMonitor monitor;
 
-    ActiveSession(ScheduledFuture<?> future, PartitionConsumptionState pcs, PartitionIngestionMonitor monitor) {
+    ActiveSession(ScheduledFuture<?> future, PartitionIngestionMonitor monitor) {
       this.future = future;
-      this.pcs = pcs;
       this.monitor = monitor;
     }
   }
