@@ -70,6 +70,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
@@ -470,13 +472,53 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             ingestionTaskName + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
     final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-    Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider = Lazy.of(
-        () -> getValueBytesForKey(
-            partitionConsumptionState,
-            keyBytes,
-            consumerRecord.getTopicPartition(),
-            valueManifestContainer,
-            beforeProcessingBatchRecordsTimestampMs));
+
+    // When parallel processing is enabled and the transient cache has no entry for this key, both the
+    // value and RMD must be read from storage. Fire the value storage lookup asynchronously so it
+    // overlaps with the (synchronous) RMD storage lookup, saving one RocksDB read latency per cache miss.
+    final Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider;
+    final boolean hasCachedRecord = partitionConsumptionState.getTransientRecord(keyBytes) != null;
+    if (!hasCachedRecord && serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
+      final int partitionNumber = consumerRecord.getTopicPartition().getPartitionNumber();
+      Future<ByteBufferValueRecord<ByteBuffer>> valuePrefetchFuture =
+          aaWCIngestionStorageLookupThreadPool.submit(() -> {
+            long lookupStartTimeInNS = System.nanoTime();
+            IngestionTaskReusableObjects reusableObjects = reusableObjectsSupplier.get();
+            ByteBufferValueRecord<ByteBuffer> result = RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(
+                storageEngine,
+                partitionNumber,
+                ByteBuffer.wrap(keyBytes),
+                isChunked,
+                reusableObjects.getReusedByteBuffer(),
+                reusableObjects.getBinaryDecoder(),
+                RawBytesStoreDeserializerCache.getInstance(),
+                compressor.get(),
+                valueManifestContainer);
+            hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
+                LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
+                beforeProcessingBatchRecordsTimestampMs);
+            return result;
+          });
+      oldValueProvider = Lazy.of(() -> {
+        try {
+          return valuePrefetchFuture.get();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new VeniceException("Value prefetch interrupted", e);
+        } catch (ExecutionException e) {
+          throw new VeniceException("Value prefetch failed", e);
+        }
+      });
+    } else {
+      oldValueProvider = Lazy.of(
+          () -> getValueBytesForKey(
+              partitionConsumptionState,
+              keyBytes,
+              consumerRecord.getTopicPartition(),
+              valueManifestContainer,
+              beforeProcessingBatchRecordsTimestampMs));
+    }
+
     if (hasComplexVenicePartitionerMaterializedView && msgType == MessageType.DELETE) {
       // We need to lookup first because this function updates the transient cache before writing the view.
       // Otherwise, the transient cache will be populated when writing to the view after this function.
