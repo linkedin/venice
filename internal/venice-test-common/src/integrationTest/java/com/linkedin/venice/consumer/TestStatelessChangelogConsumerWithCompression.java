@@ -127,13 +127,15 @@ public class TestStatelessChangelogConsumerWithCompression {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStatelessChangelogConsumerWithGzipCompression()
       throws IOException, ExecutionException, InterruptedException {
-    testStatelessChangelogConsumerWithCompression(CompressionStrategy.GZIP);
+    String storeName = Utils.getUniqueString("store-with-gzip-compression");
+    testStatelessChangelogConsumerWithCompression(storeName, CompressionStrategy.GZIP);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStatelessChangelogConsumerWithZstdWithDictCompression()
       throws IOException, ExecutionException, InterruptedException {
-    testStatelessChangelogConsumerWithCompression(CompressionStrategy.ZSTD_WITH_DICT);
+    String storeName = Utils.getUniqueString("store-with-zstd-compression");
+    testStatelessChangelogConsumerWithCompression(storeName, CompressionStrategy.ZSTD_WITH_DICT);
   }
 
   /**
@@ -144,10 +146,11 @@ public class TestStatelessChangelogConsumerWithCompression {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStatelessChangelogConsumerWithChunkedGzipRecords()
       throws IOException, ExecutionException, InterruptedException {
-    testStatelessChangelogConsumerWithChunking(CompressionStrategy.GZIP);
+    String storeName = Utils.getUniqueString("store-with-gzip-chunking");
+    testStatelessChangelogConsumerWithChunking(storeName, CompressionStrategy.GZIP);
   }
 
-  private void testStatelessChangelogConsumerWithCompression(CompressionStrategy compressionStrategy)
+  private void testStatelessChangelogConsumerWithCompression(String storeName, CompressionStrategy compressionStrategy)
       throws IOException, ExecutionException, InterruptedException {
     File inputDir = getTempDataDirectory();
     int version = 1;
@@ -155,10 +158,10 @@ public class TestStatelessChangelogConsumerWithCompression {
     int numKeys = compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT ? 1000 : 10;
     Schema recordSchema =
         TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
-    consumeAndValidate(inputDir, recordSchema, numKeys, Function.identity(), 0, compressionStrategy);
+    consumeAndValidate(storeName, inputDir, recordSchema, numKeys, Function.identity(), 0, compressionStrategy);
   }
 
-  private void testStatelessChangelogConsumerWithChunking(CompressionStrategy compressionStrategy)
+  private void testStatelessChangelogConsumerWithChunking(String storeName, CompressionStrategy compressionStrategy)
       throws IOException, ExecutionException, InterruptedException {
     File inputDir = getTempDataDirectory();
     // Create records larger than the default chunk threshold (~950KB) to force chunking
@@ -166,10 +169,18 @@ public class TestStatelessChangelogConsumerWithCompression {
     int valueSizeBytes = 1024 * 1024; // 1MB per value, exceeds the ~950KB chunk threshold
     Schema recordSchema =
         TestWriteUtils.writeSimpleAvroFileWithCustomSize(inputDir, numKeys, valueSizeBytes, valueSizeBytes);
-    consumeAndValidate(inputDir, recordSchema, numKeys, i -> Integer.toString(i), valueSizeBytes, compressionStrategy);
+    consumeAndValidate(
+        storeName,
+        inputDir,
+        recordSchema,
+        numKeys,
+        i -> new org.apache.avro.util.Utf8(Integer.toString(i)),
+        valueSizeBytes,
+        compressionStrategy);
   }
 
   private <T> void consumeAndValidate(
+      String storeName,
       File inputDir,
       Schema recordSchema,
       int numKeys,
@@ -177,7 +188,6 @@ public class TestStatelessChangelogConsumerWithCompression {
       int valueSizeBytes,
       CompressionStrategy compressionStrategy) throws InterruptedException, ExecutionException {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store-" + compressionStrategy.name().toLowerCase());
     Properties props = TestWriteUtils.defaultVPJProps(
         parentControllers.get(0).getControllerUrl(),
         inputDirPath,
@@ -229,20 +239,20 @@ public class TestStatelessChangelogConsumerWithCompression {
 
     changeLogConsumer.subscribeAll().get();
 
-    Map<String, PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap<>();
+    Map<T, PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Collection<PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
           changeLogConsumer.poll(1000);
       for (PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
         if (message.getKey() != null) {
-          pubSubMessagesMap.put(message.getKey().toString(), message);
+          pubSubMessagesMap.put(message.getKey(), message);
         }
       }
       assertEquals(pubSubMessagesMap.size(), numKeys, "Expected to receive all " + numKeys + " chunked messages");
     });
 
     // Verify the content of received chunked messages
-    for (int i = 0; i < numKeys; i++) {
+    for (int i = 1; i < numKeys; i++) {
       T key = keyConverter.apply(i);
       assertTrue(pubSubMessagesMap.containsKey(key), "Should have received key " + key);
       PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(key);
