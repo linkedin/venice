@@ -575,13 +575,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       }
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
 
-      // Save uncompressed (serialized) value before compression may advance the ByteBuffer position.
+      // Save uncompressed (serialized) value before calling maybeCompressData.
       // The transient cache stores uncompressed bytes so that subsequent reads for the same key
       // skip the decompress-deserialize-reserialize-recompress round-trip.
       final ByteBuffer uncompressedNewValue = mergeConflictResult.getNewValue();
-      final byte[] uncompressedArray = uncompressedNewValue != null ? uncompressedNewValue.array() : null;
-      final int uncompressedOffset = uncompressedNewValue != null ? uncompressedNewValue.position() : 0;
-      final int uncompressedLen = uncompressedNewValue != null ? uncompressedNewValue.remaining() : 0;
+      final byte[] uncompressedArray =
+          uncompressedNewValue != null ? ByteUtils.extractByteArray(uncompressedNewValue) : null;
+      final int uncompressedOffset = 0;
+      final int uncompressedLen = uncompressedArray != null ? uncompressedArray.length : 0;
 
       final ByteBuffer updatedValueBytes = maybeCompressData(
           consumerRecord.getTopicPartition().getPartitionNumber(),
