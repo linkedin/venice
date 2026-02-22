@@ -863,8 +863,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     @SuppressWarnings("unchecked")
     java.util.Map<String, String> copiedMap = (java.util.Map<String, String>) mapValue;
     Assert.assertEquals(copiedMap.size(), 2);
-    Assert.assertEquals(copiedMap.get("k1").toString(), "v1");
-    Assert.assertEquals(copiedMap.get("k2").toString(), "v2");
+    Assert.assertEquals(String.valueOf(copiedMap.get("k1")), "v1");
+    Assert.assertEquals(String.valueOf(copiedMap.get("k2")), "v2");
     // Must be a different map instance
     Assert.assertNotSame(mapValue, indexedMap);
   }
