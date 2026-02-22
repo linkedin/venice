@@ -1054,6 +1054,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         deserializer = storeDeserializerCache.getDeserializer(readerSchemaId, readerSchemaId);
       }
       try {
+        /*
+         * In case of chunked records, the put schemaId is either AvroProtocolDefinitions.CHUNK_MANIFEST_SCHEMA_ID or
+         * AvroProtocolDefinitions.CHUNK_DATA_SCHEMA_ID and both are negative. This is not to be confused with the
+         * schema id of the actual payload which is a positive integer and is included in the chunk manifest for
+         * chunked records or is the put schema id for non-chunked records.
+         */
         assembledObject = deserializer.deserialize(
             ChunkAssembler.decompressValueIfNeeded(assembledRecord.value(), put.getSchemaId(), compressor));
       } catch (IOException e) {

@@ -150,6 +150,18 @@ public class TestStatelessChangelogConsumerWithCompression {
     testStatelessChangelogConsumerWithChunking(storeName, CompressionStrategy.GZIP);
   }
 
+  /**
+   * Tests that chunked records (values exceeding the chunk size threshold) are correctly consumed
+   * when the store uses ZSTD with dictionary compression. This verifies that the chunk assembler's decompression
+   * is not followed by a redundant second decompression in the changelog consumer.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStatelessChangelogConsumerWithChunkedZstdRecords()
+      throws IOException, ExecutionException, InterruptedException {
+    String storeName = Utils.getUniqueString("store-with-zstd-chunking");
+    testStatelessChangelogConsumerWithChunking(storeName, CompressionStrategy.ZSTD_WITH_DICT);
+  }
+
   private void testStatelessChangelogConsumerWithCompression(String storeName, CompressionStrategy compressionStrategy)
       throws IOException, ExecutionException, InterruptedException {
     File inputDir = getTempDataDirectory();
