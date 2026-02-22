@@ -24,6 +24,7 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ByteArrayKey;
+import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -74,6 +75,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
@@ -613,7 +615,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // key can skip deserialization. Deep copy is required because merge operations modify records in-place.
       if (mergeConflictResult.getDeserializedValue().isPresent()) {
         GenericRecord original = mergeConflictResult.getDeserializedValue().get();
-        GenericRecord deepCopy = GenericData.get().deepCopy(original.getSchema(), original);
+        GenericRecord deepCopy = deepCopyPreservingIndexedHashMap(original);
         transientRecord.setCachedValueRecord(deepCopy);
         transientRecord.setCachedValueSchemaId(mergeConflictResult.getDeserializedValueSchemaId());
       }
@@ -738,6 +740,35 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ByteBufferValueRecord<ByteBuffer> bbValueRecord = oldValueProvider.get();
       return bbValueRecord == null ? null : bbValueRecord.value();
     });
+  }
+
+  /**
+   * Deep copies a GenericRecord while preserving {@link IndexedHashMap} for map fields.
+   * Avro's {@link GenericData#deepCopy} converts all maps to LinkedHashMap, but Venice's
+   * write-compute handler requires map fields to be IndexedHashMap.
+   */
+  @SuppressWarnings("unchecked")
+  static GenericRecord deepCopyPreservingIndexedHashMap(GenericRecord original) {
+    GenericRecord copy = (GenericRecord) GenericData.get().deepCopy(original.getSchema(), original);
+    for (Schema.Field field: copy.getSchema().getFields()) {
+      Schema fieldSchema = field.schema();
+      // Unwrap optional union to find the actual type
+      if (fieldSchema.getType() == Schema.Type.UNION) {
+        for (Schema branch: fieldSchema.getTypes()) {
+          if (branch.getType() != Schema.Type.NULL) {
+            fieldSchema = branch;
+            break;
+          }
+        }
+      }
+      if (fieldSchema.getType() == Schema.Type.MAP) {
+        Object value = copy.get(field.pos());
+        if (value instanceof Map && !(value instanceof IndexedHashMap)) {
+          copy.put(field.pos(), new IndexedHashMap<>((Map<Object, Object>) value));
+        }
+      }
+    }
+    return copy;
   }
 
   private long getWriteTimestampFromKME(KafkaMessageEnvelope kme) {

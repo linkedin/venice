@@ -87,6 +87,8 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.mockito.ArgumentCaptor;
@@ -831,6 +833,40 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertEquals(
         ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
+  }
+
+  @Test
+  public void testDeepCopyPreservingIndexedHashMapConvertsMapTypes() {
+    Schema schema = new Schema.Parser().parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":["
+            + "{\"name\":\"name\",\"type\":\"string\",\"default\":\"def\"},"
+            + "{\"name\":\"m\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"default\":{}}]}");
+    GenericRecord original = new org.apache.avro.generic.GenericData.Record(schema);
+    original.put("name", "hello");
+    com.linkedin.davinci.utils.IndexedHashMap<String, String> indexedMap =
+        new com.linkedin.davinci.utils.IndexedHashMap<>();
+    indexedMap.put("k1", "v1");
+    indexedMap.put("k2", "v2");
+    original.put("m", indexedMap);
+
+    GenericRecord copy = ActiveActiveStoreIngestionTask.deepCopyPreservingIndexedHashMap(original);
+
+    // Must be a different object (deep copy)
+    Assert.assertNotSame(copy, original);
+    // String field preserved
+    Assert.assertEquals(copy.get("name").toString(), "hello");
+    // Map field must be IndexedHashMap with same entries
+    Object mapValue = copy.get("m");
+    Assert.assertTrue(
+        mapValue instanceof com.linkedin.davinci.utils.IndexedHashMap,
+        "Map field should be IndexedHashMap, got: " + mapValue.getClass().getName());
+    @SuppressWarnings("unchecked")
+    java.util.Map<String, String> copiedMap = (java.util.Map<String, String>) mapValue;
+    Assert.assertEquals(copiedMap.size(), 2);
+    Assert.assertEquals(copiedMap.get("k1").toString(), "v1");
+    Assert.assertEquals(copiedMap.get("k2").toString(), "v2");
+    // Must be a different map instance
+    Assert.assertNotSame(mapValue, indexedMap);
   }
 
 }
