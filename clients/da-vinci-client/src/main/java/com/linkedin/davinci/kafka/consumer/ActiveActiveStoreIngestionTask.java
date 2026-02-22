@@ -476,6 +476,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // When parallel processing is enabled and the transient cache has no entry for this key, both the
     // value and RMD must be read from storage. Fire the value storage lookup asynchronously so it
     // overlaps with the (synchronous) RMD storage lookup, saving one RocksDB read latency per cache miss.
+    //
+    // Note: The prefetch fires before RMD is read, so it may be "wasted" for updates that conflict
+    // resolution ignores based on RMD alone. This is an intentional trade-off — we cannot overlap the
+    // value read with the RMD read if we wait for the RMD result first. In practice, most messages are
+    // not ignored, and the wasted prefetch cost (one RocksDB read) is bounded by the thread pool size.
+    //
+    // The cache check here is duplicated inside getValueBytesForKey() for the else branch. The duplicate
+    // HashMap.get (~50ns) is negligible and avoids complicating the getValueBytesForKey API.
     final Lazy<ByteBufferValueRecord<ByteBuffer>> oldValueProvider;
     final boolean hasCachedRecord = partitionConsumptionState.getTransientRecord(keyBytes) != null;
     if (!hasCachedRecord && serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
