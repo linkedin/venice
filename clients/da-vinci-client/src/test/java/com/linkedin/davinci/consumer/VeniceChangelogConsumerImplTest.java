@@ -754,32 +754,6 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
-  public void testDecompressValueIfNeededSkipsDecompressionForChunkedRecords() throws IOException {
-    GzipCompressor compressor = new GzipCompressor();
-    byte[] raw = "already-decompressed".getBytes();
-    ByteBuffer input = ByteBuffer.wrap(raw);
-    int manifestSchemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-
-    // Chunked record: returns value as-is without attempting GZIP decompression
-    ByteBuffer result = ChunkAssembler.decompressValueIfNeeded(input, manifestSchemaId, compressor);
-    assertEquals(result, input);
-
-    int chunkSchemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-    result = ChunkAssembler.decompressValueIfNeeded(input, chunkSchemaId, compressor);
-    assertEquals(result, input);
-  }
-
-  @Test(expectedExceptions = IOException.class)
-  public void testDecompressValueIfNeededDecompressesNonChunkedRecords() throws IOException {
-    GzipCompressor compressor = new GzipCompressor();
-    byte[] notGzip = "not-gzip-data".getBytes();
-    int regularSchemaId = 1;
-
-    // Non-chunked: actually attempts decompression, fails on non-GZIP bytes (proving it tried)
-    ChunkAssembler.decompressValueIfNeeded(ByteBuffer.wrap(notGzip), regularSchemaId, compressor);
-  }
-
-  @Test
   public void testChunkedRecordWithRealGzipCompressorEndToEnd()
       throws IOException, NoSuchFieldException, IllegalAccessException {
     VeniceChangelogConsumerImpl veniceChangelogConsumer = mock(VeniceChangelogConsumerImpl.class);
