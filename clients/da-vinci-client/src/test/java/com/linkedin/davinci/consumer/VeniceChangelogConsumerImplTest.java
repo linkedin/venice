@@ -38,6 +38,7 @@ import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.GzipCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -84,6 +85,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -749,6 +751,71 @@ public class VeniceChangelogConsumerImplTest {
     verify(consumerStats, times(2)).emitChunkedRecordCountMetrics(SUCCESS);
     verify(consumerStats).emitPollCountMetrics(SUCCESS);
     verify(consumerStats).emitRecordsConsumedCountMetrics(1);
+  }
+
+  @Test
+  public void testChunkedRecordWithRealGzipCompressorEndToEnd()
+      throws IOException, NoSuchFieldException, IllegalAccessException {
+    VeniceChangelogConsumerImpl veniceChangelogConsumer = mock(VeniceChangelogConsumerImpl.class);
+
+    GzipCompressor realCompressor = new GzipCompressor();
+    when(veniceChangelogConsumer.getVersionCompressor(any(PubSubTopic.class))).thenReturn(realCompressor);
+
+    ChunkAssembler chunkAssembler = mock(ChunkAssembler.class);
+    setField(veniceChangelogConsumer, "chunkAssembler", chunkAssembler);
+
+    StoreDeserializerCache storeDeserializerCache = mock(StoreDeserializerCache.class);
+    setField(veniceChangelogConsumer, "storeDeserializerCache", storeDeserializerCache);
+    RecordDeserializer valueDeserializer = mock(RecordDeserializer.class);
+    when(storeDeserializerCache.getDeserializer(anyInt(), anyInt())).thenReturn(valueDeserializer);
+
+    RecordDeserializer keyDeserializer = mock(RecordDeserializer.class);
+    setField(veniceChangelogConsumer, "keyDeserializer", keyDeserializer);
+
+    int partition = 0;
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
+
+    // Build a chunk manifest PUT message with non-GZIP manifest bytes
+    Put put = new Put();
+    put.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    put.putValue = ByteBuffer.wrap(new byte[] { 0x01, 0x02, 0x03, 0x04 });
+
+    DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
+    when(message.getPosition()).thenReturn(mockPubSubPosition);
+    when(message.getPartition()).thenReturn(partition);
+    KafkaKey mockKey = mock(KafkaKey.class);
+    when(mockKey.getKey()).thenReturn(Integer.toString(1).getBytes());
+    when(message.getKey()).thenReturn(mockKey);
+    KafkaMessageEnvelope envelope = mock(KafkaMessageEnvelope.class);
+    envelope.payloadUnion = put;
+    when(message.getValue()).thenReturn(envelope);
+
+    // ChunkAssembler returns an already-decompressed record (as RawBytesChunkingAdapter would)
+    byte[] decompressedValue = "this-is-already-decompressed-data".getBytes();
+    ByteBufferValueRecord<ByteBuffer> assembledRecord =
+        new ByteBufferValueRecord<>(ByteBuffer.wrap(decompressedValue), 1);
+    when(chunkAssembler.bufferAndAssembleRecord(eq(topicPartition), eq(put.schemaId), any(), any(), any(), any()))
+        .thenReturn(assembledRecord);
+
+    doCallRealMethod().when(veniceChangelogConsumer).convertPubSubMessageToChangeEvent(message, topicPartition);
+
+    // Before the fix, this threw VeniceException wrapping "ZipException: Not in GZIP format"
+    veniceChangelogConsumer.convertPubSubMessageToChangeEvent(message, topicPartition);
+
+    // Verify the deserializer received the already-decompressed value directly
+    ArgumentCaptor<ByteBuffer> captor = ArgumentCaptor.forClass(ByteBuffer.class);
+    verify(valueDeserializer).deserialize(captor.capture());
+    byte[] capturedBytes = new byte[captor.getValue().remaining()];
+    captor.getValue().get(capturedBytes);
+    assertEquals(capturedBytes, decompressedValue);
+  }
+
+  private static void setField(Object target, String fieldName, Object value)
+      throws NoSuchFieldException, IllegalAccessException {
+    Field field = VeniceChangelogConsumerImpl.class.getDeclaredField(fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
   }
 
   @Test

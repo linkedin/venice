@@ -51,6 +51,7 @@ import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ByteArrayKey;
+import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.davinci.utils.InMemoryChunkAssembler;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -4155,7 +4156,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
           Lazy<Object> lazyValue = Lazy.of(() -> {
             try {
-              ByteBuffer decompressedAssembledObject = compressor.get().decompress(assembledObject);
+              ByteBuffer decompressedAssembledObject =
+                  ChunkAssembler.decompressValueIfNeeded(assembledObject, put.getSchemaId(), compressor.get());
               Schema valueSchema = this.schemaIdToSchemaMap.computeIfAbsent(
                   readerSchemaId,
                   i -> schemaRepository.getValueSchema(storeName, readerSchemaId).getSchema());
