@@ -1,10 +1,5 @@
 package com.linkedin.davinci.replication.merge;
 
-import java.util.ArrayList;
-import java.util.List;
-import javax.annotation.Nullable;
-
-
 public class MergeUtils {
   private MergeUtils() {
     // Utility class
@@ -29,26 +24,5 @@ public class MergeUtils {
     } else {
       return o2;
     }
-  }
-
-  /**
-   * @return If the input {@param oldOffsetVector} is null, the returned value could be null.
-   */
-  static @Nullable List<Long> mergeOffsetVectors(List<Long> oldOffsetVector, Long newOffset, int sourceBrokerID) {
-    if (sourceBrokerID < 0) {
-      // Can happen if we could not deduce the sourceBrokerID (can happen due to a misconfiguration)
-      // in such cases, we will not try to alter the existing offsetVector, instead just returning it.
-      return oldOffsetVector;
-    }
-    final List<Long> offsetVector = oldOffsetVector == null ? new ArrayList<>(sourceBrokerID) : oldOffsetVector;
-
-    // Making sure there is room available for the insertion (fastserde LongList can't be cast to arraylist)
-    // Lists in java require that gaps be filled, so first we fill any gaps by adding some initial offset values
-    int i = offsetVector.size();
-    for (; i <= sourceBrokerID; i++) {
-      offsetVector.add(i, 0L);
-    }
-    offsetVector.set(sourceBrokerID, newOffset);
-    return offsetVector;
   }
 }

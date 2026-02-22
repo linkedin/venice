@@ -5,7 +5,7 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import java.util.List;
+import java.util.Collections;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -28,7 +28,7 @@ abstract class AbstractMerge<T> implements Merge<T> {
       // New value wins
       oldValueAndRmd.setValue(newValue);
       oldRmd.put(TIMESTAMP_FIELD_POS, putOperationTimestamp);
-      updateReplicationCheckpointVector(oldRmd, newValueSourcePosition, newValueSourceBrokerID);
+      updateReplicationCheckpointVector(oldRmd);
 
     } else if (oldTimestamp == putOperationTimestamp) {
       // When timestamps tie, compare decide which one should win.
@@ -38,7 +38,7 @@ abstract class AbstractMerge<T> implements Merge<T> {
         oldValueAndRmd.setUpdateIgnored(true);
       } else {
         oldValueAndRmd.setValue(newValue);
-        updateReplicationCheckpointVector(oldRmd, newValueSourcePosition, newValueSourceBrokerID);
+        updateReplicationCheckpointVector(oldRmd);
       }
 
     } else {
@@ -60,7 +60,7 @@ abstract class AbstractMerge<T> implements Merge<T> {
       // Still need to track the delete timestamp in order to reject future PUT record with lower replication timestamp
       final GenericRecord oldRmd = oldValueAndRmd.getRmd();
       oldRmd.put(TIMESTAMP_FIELD_POS, deleteOperationTimestamp);
-      updateReplicationCheckpointVector(oldRmd, newValueSourcePosition, newValueSourceBrokerID);
+      updateReplicationCheckpointVector(oldRmd);
 
     } else {
       oldValueAndRmd.setUpdateIgnored(true);
@@ -68,16 +68,8 @@ abstract class AbstractMerge<T> implements Merge<T> {
     return oldValueAndRmd;
   }
 
-  protected void updateReplicationCheckpointVector(
-      GenericRecord oldRmd,
-      PubSubPosition newValueSourcePosition,
-      int newValueSourceBrokerID) {
-    oldRmd.put(
-        REPLICATION_CHECKPOINT_VECTOR_FIELD_POS,
-        MergeUtils.mergeOffsetVectors(
-            (List<Long>) oldRmd.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS),
-            newValueSourcePosition.getNumericOffset(),
-            newValueSourceBrokerID));
+  protected void updateReplicationCheckpointVector(GenericRecord oldRmd) {
+    oldRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS, Collections.emptyList());
   }
 
   /**

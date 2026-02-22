@@ -116,7 +116,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
       GenericRecord newValue) {
     final GenericRecord oldReplicationMetadata = oldValueAndRmd.getRmd();
     final GenericRecord oldValue = oldValueAndRmd.getValue();
-    updateReplicationCheckpointVector(oldReplicationMetadata, sourcePositionOfNewValue, newValueSourceBrokerID);
+    updateReplicationCheckpointVector(oldReplicationMetadata);
 
     List<Schema.Field> fieldsInNewRecord = newValue.getSchema().getFields();
     boolean noFieldUpdated = true;
@@ -166,7 +166,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
             oldValueAndRmd);
 
       case PER_FIELD_TIMESTAMP:
-        updateReplicationCheckpointVector(oldReplicationMetadata, newValueSourcePosition, newValueSourceBrokerID);
+        updateReplicationCheckpointVector(oldReplicationMetadata);
         UpdateResultStatus recordDeleteResultStatus = mergeRecordHelper.deleteRecord(
             oldValueAndRmd.getValue(),
             (GenericRecord) tsObject,
@@ -195,7 +195,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
       int updateOperationColoID,
       PubSubPosition newValueSourcePosition,
       int newValueSourceBrokerID) {
-    updateReplicationCheckpointVector(oldValueAndRmd.getRmd(), newValueSourcePosition, newValueSourceBrokerID);
+    updateReplicationCheckpointVector(oldValueAndRmd.getRmd());
     return writeComputeProcessor.updateRecordWithRmd(
         currValueSchema,
         oldValueAndRmd,
