@@ -56,9 +56,11 @@ import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -75,7 +77,9 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -83,6 +87,11 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.EncoderFactory;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.mockito.ArgumentCaptor;
@@ -809,6 +818,75 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertEquals(
         ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
+  }
+
+  @Test
+  public void testReadStoredValueRecordUsesNoopCompressorForTransientRecords() throws Exception {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).readStoredValueRecord(any(), any(), anyInt(), any(), any());
+
+    // Set hostLevelIngestionStats via reflection (protected final field in StoreIngestionTask)
+    HostLevelIngestionStats stats = mock(HostLevelIngestionStats.class);
+    Field statsField = StoreIngestionTask.class.getDeclaredField("hostLevelIngestionStats");
+    statsField.setAccessible(true);
+    statsField.set(ingestionTask, stats);
+
+    // Create a real AvroStoreDeserializerCache backed by a simple record schema
+    Schema schema = new Schema.Parser()
+        .parse("{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"f1\",\"type\":\"string\"}]}");
+    AvroStoreDeserializerCache<GenericRecord> deserializerCache = new AvroStoreDeserializerCache<>(
+        id -> schema,
+        (writer, reader) -> SerializerDeserializerFactory.getAvroGenericDeserializer(writer, reader));
+
+    // Set storeDeserializerCache via reflection (protected final field in LeaderFollowerStoreIngestionTask)
+    Field cacheField = LeaderFollowerStoreIngestionTask.class.getDeclaredField("storeDeserializerCache");
+    cacheField.setAccessible(true);
+    cacheField.set(ingestionTask, deserializerCache);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    byte[] keyBytes = "testKey".getBytes();
+    int readerSchemaId = 1;
+
+    // ---- Case 1: Transient record with null value → return null ----
+    PubSubPosition position = mock(PubSubPosition.class);
+    PartitionConsumptionState.TransientRecord nullValueRecord =
+        new PartitionConsumptionState.TransientRecord(null, 0, 0, 1, 0, position);
+    when(pcs.getTransientRecord(keyBytes)).thenReturn(nullValueRecord);
+
+    GenericRecord result = ingestionTask.readStoredValueRecord(pcs, keyBytes, readerSchemaId, topicPartition, null);
+    assertNull(result);
+    verify(stats, times(1)).recordWriteComputeCacheHitCount();
+
+    // ---- Case 2: Transient record with real value + manifest container ----
+    // Serialize a test GenericRecord to Avro binary
+    GenericRecord testRecord = new GenericData.Record(schema);
+    testRecord.put("f1", "hello");
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    org.apache.avro.io.BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(baos, null);
+    new GenericDatumWriter<GenericRecord>(schema).write(testRecord, encoder);
+    encoder.flush();
+    byte[] serializedBytes = baos.toByteArray();
+
+    PartitionConsumptionState.TransientRecord valueRecord =
+        new PartitionConsumptionState.TransientRecord(serializedBytes, 0, serializedBytes.length, 1, 0, position);
+    ChunkedValueManifest testManifest = new ChunkedValueManifest();
+    valueRecord.setValueManifest(testManifest);
+    when(pcs.getTransientRecord(keyBytes)).thenReturn(valueRecord);
+
+    ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
+    result = ingestionTask.readStoredValueRecord(pcs, keyBytes, readerSchemaId, topicPartition, manifestContainer);
+
+    assertNotNull(result);
+    assertEquals(result.get("f1").toString(), "hello");
+    assertEquals(manifestContainer.getManifest(), testManifest);
+    verify(stats, times(2)).recordWriteComputeCacheHitCount();
+
+    // ---- Case 3: Same transient record but null manifest container → should not NPE ----
+    result = ingestionTask.readStoredValueRecord(pcs, keyBytes, readerSchemaId, topicPartition, null);
+    assertNotNull(result);
+    assertEquals(result.get("f1").toString(), "hello");
+    verify(stats, times(3)).recordWriteComputeCacheHitCount();
   }
 
 }
