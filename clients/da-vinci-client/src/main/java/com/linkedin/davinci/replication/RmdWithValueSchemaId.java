@@ -17,6 +17,11 @@ public class RmdWithValueSchemaId {
 
   private ChunkedValueManifest rmdManifest;
 
+  /** Cached merged GenericRecord from the transient cache, used to skip deserialization on cache hit. */
+  private GenericRecord cachedOldValue;
+  /** The Avro schema ID of {@link #cachedOldValue}. */
+  private int cachedOldValueSchemaId = -1;
+
   public RmdWithValueSchemaId(
       int valueSchemaId,
       int rmdProtocolVersionId,
@@ -67,5 +72,21 @@ public class RmdWithValueSchemaId {
 
   public ChunkedValueManifest getRmdManifest() {
     return rmdManifest;
+  }
+
+  public GenericRecord getCachedOldValue() {
+    return cachedOldValue;
+  }
+
+  public void setCachedOldValue(GenericRecord cachedOldValue) {
+    this.cachedOldValue = cachedOldValue;
+  }
+
+  public int getCachedOldValueSchemaId() {
+    return cachedOldValueSchemaId;
+  }
+
+  public void setCachedOldValueSchemaId(int cachedOldValueSchemaId) {
+    this.cachedOldValueSchemaId = cachedOldValueSchemaId;
   }
 }

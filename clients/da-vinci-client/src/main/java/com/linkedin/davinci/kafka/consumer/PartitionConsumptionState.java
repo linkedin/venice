@@ -678,16 +678,24 @@ public class PartitionConsumptionState {
     return consumptionStartTimeInMs;
   }
 
-  public void setTransientRecord(
+  public TransientRecord setTransientRecord(
       int kafkaClusterId,
       PubSubPosition consumedPosition,
       byte[] key,
       int valueSchemaId,
       GenericRecord replicationMetadataRecord) {
-    setTransientRecord(kafkaClusterId, consumedPosition, key, null, -1, -1, valueSchemaId, replicationMetadataRecord);
+    return setTransientRecord(
+        kafkaClusterId,
+        consumedPosition,
+        key,
+        null,
+        -1,
+        -1,
+        valueSchemaId,
+        replicationMetadataRecord);
   }
 
-  public void setTransientRecord(
+  public TransientRecord setTransientRecord(
       int kafkaClusterId,
       PubSubPosition consumedPosition,
       byte[] key,
@@ -703,6 +711,7 @@ public class PartitionConsumptionState {
     }
 
     transientRecordMap.put(ByteArrayKey.wrap(key), transientRecord);
+    return transientRecord;
   }
 
   public TransientRecord getTransientRecord(byte[] key) {
@@ -779,6 +788,11 @@ public class PartitionConsumptionState {
     private ChunkedValueManifest valueManifest;
     private ChunkedValueManifest rmdManifest;
 
+    /** Deep-copied merged GenericRecord cached for reuse in subsequent merges to skip deserialization. */
+    private GenericRecord cachedValueRecord;
+    /** The Avro schema ID of {@link #cachedValueRecord}. */
+    private int cachedValueSchemaId = -1;
+
     public TransientRecord(
         byte[] value,
         int valueOffset,
@@ -832,6 +846,22 @@ public class PartitionConsumptionState {
 
     public int getValueSchemaId() {
       return valueSchemaId;
+    }
+
+    public GenericRecord getCachedValueRecord() {
+      return cachedValueRecord;
+    }
+
+    public void setCachedValueRecord(GenericRecord cachedValueRecord) {
+      this.cachedValueRecord = cachedValueRecord;
+    }
+
+    public int getCachedValueSchemaId() {
+      return cachedValueSchemaId;
+    }
+
+    public void setCachedValueSchemaId(int cachedValueSchemaId) {
+      this.cachedValueSchemaId = cachedValueSchemaId;
     }
   }
 

@@ -74,6 +74,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
@@ -377,11 +378,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
       getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount(currentTimeForMetricsMs);
-      return new RmdWithValueSchemaId(
+      RmdWithValueSchemaId rmd = new RmdWithValueSchemaId(
           cachedRecord.getValueSchemaId(),
           getRmdProtocolVersionId(),
           cachedRecord.getReplicationMetadataRecord(),
           cachedRecord.getRmdManifest());
+      rmd.setCachedOldValue(cachedRecord.getCachedValueRecord());
+      rmd.setCachedOldValueSchemaId(cachedRecord.getCachedValueSchemaId());
+      return rmd;
     }
     ChunkedValueManifestContainer rmdManifestContainer = new ChunkedValueManifestContainer();
     byte[] replicationMetadataWithValueSchemaBytes =
@@ -587,14 +591,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       final ByteBuffer updatedRmdBytes =
           rmdSerDe.serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
 
+      final PartitionConsumptionState.TransientRecord transientRecord;
       if (updatedValueBytes == null) {
         hostLevelIngestionStats.recordTombstoneCreatedDCR();
         aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-        partitionConsumptionState
+        transientRecord = partitionConsumptionState
             .setTransientRecord(kafkaClusterId, consumerRecord.getPosition(), keyBytes, valueSchemaId, rmdRecord);
       } else {
         int valueLen = updatedValueBytes.remaining();
-        partitionConsumptionState.setTransientRecord(
+        transientRecord = partitionConsumptionState.setTransientRecord(
             kafkaClusterId,
             consumerRecord.getPosition(),
             keyBytes,
@@ -603,6 +608,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             valueLen,
             valueSchemaId,
             rmdRecord);
+      }
+      // Cache a deep copy of the merged GenericRecord in the transient record so subsequent merges for the same
+      // key can skip deserialization. Deep copy is required because merge operations modify records in-place.
+      if (mergeConflictResult.getDeserializedValue().isPresent()) {
+        GenericRecord original = mergeConflictResult.getDeserializedValue().get();
+        GenericRecord deepCopy = GenericData.get().deepCopy(original.getSchema(), original);
+        transientRecord.setCachedValueRecord(deepCopy);
+        transientRecord.setCachedValueSchemaId(mergeConflictResult.getDeserializedValueSchemaId());
       }
       return new PubSubMessageProcessedResult(
           new MergeConflictResultWrapper(
