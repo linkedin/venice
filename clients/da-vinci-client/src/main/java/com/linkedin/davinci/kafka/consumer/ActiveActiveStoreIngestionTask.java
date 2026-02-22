@@ -18,12 +18,14 @@ import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ByteArrayKey;
+import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -823,6 +825,47 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // deserialized Avro records, not compressed bytes. Skipping the decompress-recompress cycle
     // for consecutive same-key updates avoids redundant compression work on the AA/WC hot path.
     return ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
+  }
+
+  private static final NoopCompressor NOOP_COMPRESSOR = new NoopCompressor();
+
+  /**
+   * Override to account for the fact that AA stores uncompressed bytes in the transient cache, while the parent's
+   * implementation passes transient record bytes through the store compressor (which expects compressed input).
+   * This matters during data recovery when the parent's WC path may read transient records written by the AA path.
+   */
+  @Override
+  GenericRecord readStoredValueRecord(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] keyBytes,
+      int readerValueSchemaID,
+      PubSubTopicPartition topicPartition,
+      ChunkedValueManifestContainer manifestContainer) {
+    PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
+    if (transientRecord == null) {
+      // No transient record — delegate to parent for RocksDB lookup (storage has compressed bytes).
+      return super.readStoredValueRecord(
+          partitionConsumptionState,
+          keyBytes,
+          readerValueSchemaID,
+          topicPartition,
+          manifestContainer);
+    }
+    hostLevelIngestionStats.recordWriteComputeCacheHitCount();
+    if (transientRecord.getValue() == null) {
+      return null;
+    }
+    // AA transient records contain uncompressed bytes — use NoopCompressor to skip decompression.
+    GenericRecord currValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(
+        transientRecord.getValue(),
+        transientRecord.getValueOffset(),
+        transientRecord.getValueLen(),
+        storeDeserializerCache.getDeserializer(transientRecord.getValueSchemaId(), readerValueSchemaID),
+        NOOP_COMPRESSOR);
+    if (manifestContainer != null) {
+      manifestContainer.setManifest(transientRecord.getValueManifest());
+    }
+    return currValue;
   }
 
   /**
