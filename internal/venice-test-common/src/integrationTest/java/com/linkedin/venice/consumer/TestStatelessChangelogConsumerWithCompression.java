@@ -48,7 +48,6 @@ import com.linkedin.venice.view.TestView;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -56,6 +55,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
@@ -155,7 +155,27 @@ public class TestStatelessChangelogConsumerWithCompression {
     int numKeys = compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT ? 1000 : 10;
     Schema recordSchema =
         TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
-    int partitionCount = 3;
+    consumeAndValidate(inputDir, recordSchema, numKeys, Function.identity(), 0, compressionStrategy);
+  }
+
+  private void testStatelessChangelogConsumerWithChunking(CompressionStrategy compressionStrategy)
+      throws IOException, ExecutionException, InterruptedException {
+    File inputDir = getTempDataDirectory();
+    // Create records larger than the default chunk threshold (~950KB) to force chunking
+    int numKeys = 5;
+    int valueSizeBytes = 1024 * 1024; // 1MB per value, exceeds the ~950KB chunk threshold
+    Schema recordSchema =
+        TestWriteUtils.writeSimpleAvroFileWithCustomSize(inputDir, numKeys, valueSizeBytes, valueSizeBytes);
+    consumeAndValidate(inputDir, recordSchema, numKeys, i -> Integer.toString(i), valueSizeBytes, compressionStrategy);
+  }
+
+  private <T> void consumeAndValidate(
+      File inputDir,
+      Schema recordSchema,
+      int numKeys,
+      Function<Integer, T> keyConverter,
+      int valueSizeBytes,
+      CompressionStrategy compressionStrategy) throws InterruptedException, ExecutionException {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store-" + compressionStrategy.name().toLowerCase());
     Properties props = TestWriteUtils.defaultVPJProps(
@@ -172,120 +192,16 @@ public class TestStatelessChangelogConsumerWithCompression {
         .setHybridOffsetLagThreshold(8)
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
-        .setPartitionCount(partitionCount)
+        .setPartitionCount(3)
         .setCompressionStrategy(compressionStrategy);
 
-    MetricsRepository metricsRepository =
-        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
 
     // Push data to the store
     IntegrationTestPushUtils.runVPJ(props);
 
-    // Set up consumer properties
-    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
-    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
-
-    // Create changelog client config
-    ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setLocalD2ZkHosts(localZkServer.getAddress())
-            .setControllerRequestRetryCount(3)
-            .setVersionSwapDetectionIntervalTimeInSeconds(3)
-            .setD2Client(d2Client)
-            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
-
-    // Create stateless changelog consumer using getChangelogConsumer
-    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
-        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
-    VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
-        veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
-
-    // Subscribe to all partitions
-    changeLogConsumer.subscribeAll().get();
-
-    // Poll and verify that all data is received correctly with the specified compression
-    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap<>();
-    List<Integer> receivedKeys = new ArrayList<>();
-
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-          changeLogConsumer.poll(1000);
-      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-        if (message.getKey() != null) {
-          pubSubMessagesMap.put(message.getKey(), message);
-          receivedKeys.add(message.getKey());
-        }
-      }
-      assertEquals(pubSubMessagesMap.size(), numKeys, "Expected to receive all " + numKeys + " messages");
-    });
-
-    // Verify the content of received messages
-    for (int i = 1; i <= numKeys; i++) {
-      assertTrue(pubSubMessagesMap.containsKey(i), "Should have received key " + i);
-      PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
-      assertNotNull(message, "Message for key " + i + " should not be null");
-      assertNotNull(message.getValue(), "Value for key " + i + " should not be null");
-
-      ChangeEvent<Utf8> changeEvent = message.getValue();
-      assertNotNull(changeEvent.getCurrentValue(), "Current value for key " + i + " should not be null");
-
-      String expectedValue = Integer.toString(version) + i;
-      assertEquals(
-          changeEvent.getCurrentValue().toString(),
-          expectedValue,
-          "Value should match expected value for key " + i);
-    }
-
-    // Verify all keys were received
-    assertEquals(receivedKeys.size(), numKeys, "Should have received exactly " + numKeys + " keys");
-    for (int i = 1; i <= numKeys; i++) {
-      assertTrue(receivedKeys.contains(i), "Should have received key " + i);
-    }
-
-    changeLogConsumer.close();
-  }
-
-  private void testStatelessChangelogConsumerWithChunking(CompressionStrategy compressionStrategy)
-      throws IOException, ExecutionException, InterruptedException {
-    File inputDir = getTempDataDirectory();
-    // Create records larger than the default chunk threshold (~950KB) to force chunking
-    int numKeys = 5;
-    int valueSizeBytes = 1024 * 1024; // 1MB per value, exceeds the ~950KB chunk threshold
-    Schema recordSchema =
-        TestWriteUtils.writeSimpleAvroFileWithCustomSize(inputDir, numKeys, valueSizeBytes, valueSizeBytes);
-    int partitionCount = 3;
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store-chunked-" + compressionStrategy.name().toLowerCase());
-    Properties props = TestWriteUtils.defaultVPJProps(
-        parentControllers.get(0).getControllerUrl(),
-        inputDirPath,
-        storeName,
-        clusterWrapper.getPubSubClientProperties());
-    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-    String valueSchemaStr = STRING_SCHEMA.toString();
-
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(500)
-        .setHybridOffsetLagThreshold(8)
-        .setChunkingEnabled(true)
-        .setNativeReplicationEnabled(true)
-        .setPartitionCount(partitionCount)
-        .setCompressionStrategy(compressionStrategy);
-
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
-
-    IntegrationTestPushUtils.runVPJ(props);
 
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
     PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
@@ -308,16 +224,16 @@ public class TestStatelessChangelogConsumerWithCompression {
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
-    VeniceChangelogConsumer<Utf8, Utf8> changeLogConsumer =
+    VeniceChangelogConsumer<T, Utf8> changeLogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
 
     changeLogConsumer.subscribeAll().get();
 
-    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap<>();
+    Map<String, PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+      Collection<PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
           changeLogConsumer.poll(1000);
-      for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+      for (PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
         if (message.getKey() != null) {
           pubSubMessagesMap.put(message.getKey().toString(), message);
         }
@@ -327,9 +243,9 @@ public class TestStatelessChangelogConsumerWithCompression {
 
     // Verify the content of received chunked messages
     for (int i = 0; i < numKeys; i++) {
-      String key = Integer.toString(i);
+      T key = keyConverter.apply(i);
       assertTrue(pubSubMessagesMap.containsKey(key), "Should have received key " + key);
-      PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(key);
+      PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(key);
       assertNotNull(message.getValue(), "Value for key " + key + " should not be null");
       ChangeEvent<Utf8> changeEvent = message.getValue();
       assertNotNull(changeEvent.getCurrentValue(), "Current value for key " + key + " should not be null");
