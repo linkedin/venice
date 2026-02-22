@@ -20,7 +20,6 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
-import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
@@ -30,10 +29,8 @@ import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
-import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -83,7 +80,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
@@ -583,14 +579,6 @@ public class ActiveActiveStoreIngestionTaskTest {
     assertEquals(
         ActiveActiveStoreIngestionTask.getUpstreamKafkaUrlFromKafkaValue(validMsg, sourceKafka, kafkaClusterIdToUrlMap),
         "url0");
-  }
-
-  private VeniceCompressor getCompressor(CompressionStrategy strategy) {
-    if (Objects.requireNonNull(strategy) == CompressionStrategy.ZSTD_WITH_DICT) {
-      byte[] dictionary = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
-      return new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
-    }
-    return new CompressorFactory().getCompressor(strategy);
   }
 
   @Test
