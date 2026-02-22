@@ -106,7 +106,7 @@ public class MergeGenericRecordTest {
     Assert.assertEquals(deletedValueAndRmd3.getValue(), valueAndRmd.getValue());
     Assert.assertEquals(
         (List<Long>) deletedValueAndRmd3.getRmd().get(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
-        Collections.singletonList(1L));
+        Collections.emptyList());
     // Verify that the same object is returned
     Assert.assertSame(deletedValueAndRmd3, valueAndRmd);
   }

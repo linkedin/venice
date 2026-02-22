@@ -1,16 +1,13 @@
 package com.linkedin.venice.schema.rmd;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import org.antlr.v4.runtime.misc.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -36,19 +33,6 @@ public class RmdUtils {
     }
   }
 
-  public static long extractOffsetVectorSumFromRmd(GenericRecord replicationMetadataRecord) {
-    Object offsetVectorObject = replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
-    return sumOffsetVector(offsetVectorObject);
-  }
-
-  public static List<Long> extractOffsetVectorFromRmd(GenericRecord replicationMetadataRecord) {
-    Object offsetVector = replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
-    if (offsetVector == null) {
-      return Collections.emptyList();
-    }
-    return (List<Long>) offsetVector;
-  }
-
   public static List<Long> extractTimestampFromRmd(GenericRecord replicationMetadataRecord) {
     // TODO: This function needs a heuristic to work on field level timestamps. At time of writing, this function
     // is only for recording the previous value of a record's timestamp, so we could consider specifying the incoming
@@ -71,67 +55,6 @@ public class RmdUtils {
       // TODO Must clone the results when PER_FIELD_TIMESTAMP mode is enabled to return the list.
       return Collections.singletonList(0L);
     }
-  }
-
-  /**
-   * Returns a summation of all component parts to an offsetVector for vector comparison
-   * @param offsetVector offsetVector to be summed
-   * @return the sum of all offset vectors
-   */
-  public static long sumOffsetVector(Object offsetVector) {
-    if (offsetVector == null) {
-      return 0L;
-    }
-    return ((List<Long>) offsetVector).stream().reduce(0L, Long::sum);
-  }
-
-  /**
-   * Checks to see if an offset vector has advanced completely beyond some base offset vector or not.
-   *
-   * @param baseOffset      The vector to compare against.
-   * @param advancedOffset  The vector has should be advanced along.
-   * @return                True if the advancedOffset vector has grown beyond the baseOffset
-   */
-  static public boolean hasOffsetAdvanced(@NotNull List<Long> baseOffset, @NotNull List<Long> advancedOffset) {
-    for (int i = 0; i < baseOffset.size(); i++) {
-      if (advancedOffset.size() - 1 < i) {
-        if (baseOffset.get(i) > 0) {
-          return false;
-        }
-        continue;
-      }
-      if (advancedOffset.get(i) < baseOffset.get(i)) {
-        return false;
-      } else if (advancedOffset.get(i) > baseOffset.get(i)) {
-        return true;
-      }
-    }
-    return true;
-  }
-
-  static public List<Long> mergeOffsetVectors(@NotNull List<Long> baseOffset, @NotNull List<Long> advancedOffset) {
-    List<Long> shortVector;
-    List<Long> longVector;
-
-    if (baseOffset.size() > advancedOffset.size()) {
-      shortVector = advancedOffset;
-      longVector = baseOffset;
-    } else {
-      shortVector = baseOffset;
-      longVector = advancedOffset;
-    }
-
-    List<Long> mergedVector = new ArrayList<>(longVector.size());
-
-    for (int i = 0; i < shortVector.size(); i++) {
-      mergedVector.add(Math.max(shortVector.get(i), longVector.get(i)));
-    }
-
-    if (longVector.size() != shortVector.size()) {
-      mergedVector.addAll(longVector.subList(shortVector.size(), longVector.size()));
-    }
-
-    return mergedVector;
   }
 
   static public long getLastUpdateTimestamp(Object object) {
