@@ -592,7 +592,9 @@ public class TestGlobalRtDiv {
       assertNotNull(producerState);
       assertTrue(producerState.getSegmentNumber() >= 0, "Segment number should be non-negative");
       assertTrue(producerState.getMessageSequenceNumber() >= 0, "Message sequence number should be non-negative");
-      assertTrue(producerState.getMessageTimestamp() >= 0, "Message timestamp should be non-negative");
+      assertTrue(
+          producerState.getMessageTimestamp() >= 0,
+          "Message timestamp should be non-negative" + producerState.getMessageTimestamp());
       assertTrue(producerState.getChecksumType() >= 0 && producerState.getChecksumType() <= 3, "Checksum validity");
       assertNotNull(producerState.getChecksumState(), "Checksum state should not be null");
       assertNotNull(producerState.getAggregates(), "Aggregates should not be null");
