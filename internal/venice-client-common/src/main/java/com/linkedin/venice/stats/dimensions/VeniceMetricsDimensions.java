@@ -101,8 +101,8 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceSystemStoreType} */
   VENICE_SYSTEM_STORE_TYPE("venice.system_store.type"),
 
-  /** {@link AdminMessageProcessingPhase} */
-  VENICE_ADMIN_MESSAGE_PROCESSING_PHASE("venice.admin_message.processing_phase"),
+  /** {@link AdminMessageProcessingComponent} */
+  VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT("venice.admin_message.processing.component"),
 
   /** AdminMessageType */
   VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type");

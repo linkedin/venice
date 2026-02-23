@@ -1,19 +1,19 @@
 package com.linkedin.venice.stats.dimensions;
 
 /**
- * Dimension enum representing the sub-phases of admin message processing pipelines.
- * Each value corresponds to a distinct phase within an admin message handler, enabling
- * per-phase latency breakdown within the
- * {@code controller.admin_consumption.message.processing_time_per_component} OTel histogram.
+ * Dimension enum representing the sub-components of admin message processing pipelines.
+ * Each value corresponds to a distinct component within an admin message handler, enabling
+ * per-component latency breakdown within the
+ * {@code controller.admin_consumption.message.phase.start_to_end_processing.time} OTel histogram.
  *
  * <p>This dimension is paired with {@link VeniceMetricsDimensions#VENICE_ADMIN_MESSAGE_TYPE} so
- * that phases can be attributed to the specific admin message type being processed. Currently
+ * that components can be attributed to the specific admin message type being processed. Currently
  * the values below cover the AddVersion pipeline, but new values should be added here as other
- * admin message types gain per-phase instrumentation.
+ * admin message types gain per-component instrumentation.
  *
- * Maps to {@link VeniceMetricsDimensions#VENICE_ADMIN_MESSAGE_PROCESSING_PHASE}.
+ * Maps to {@link VeniceMetricsDimensions#VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT}.
  */
-public enum AdminMessageProcessingPhase implements VeniceDimensionInterface {
+public enum AdminMessageProcessingComponent implements VeniceDimensionInterface {
   /** Time spent retiring outdated store versions before creating a new one. */
   RETIRE_OLD_VERSIONS,
 
@@ -37,6 +37,6 @@ public enum AdminMessageProcessingPhase implements VeniceDimensionInterface {
 
   @Override
   public VeniceMetricsDimensions getDimensionName() {
-    return VeniceMetricsDimensions.VENICE_ADMIN_MESSAGE_PROCESSING_PHASE;
+    return VeniceMetricsDimensions.VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT;
   }
 }

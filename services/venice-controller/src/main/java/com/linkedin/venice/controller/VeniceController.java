@@ -19,6 +19,8 @@ import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentControll
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
+import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
+import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
@@ -80,7 +82,9 @@ public class VeniceController {
           PushJobStatusStats.PushJobOtelMetricEntity.class,
           StoreBackupVersionCleanupServiceStats.BackupVersionCleanupOtelMetricEntity.class,
           TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.class,
-          VeniceAdminStats.VeniceAdminOtelMetricEntity.class);
+          VeniceAdminStats.VeniceAdminOtelMetricEntity.class,
+          AdminConsumptionStats.AdminConsumptionOtelMetricEntity.class,
+          AddVersionLatencyStats.AddVersionLatencyOtelMetricEntity.class);
 
   // services
   private final VeniceControllerService controllerService;
