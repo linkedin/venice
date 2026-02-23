@@ -2,7 +2,6 @@ package com.linkedin.venice.response;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -12,6 +11,7 @@ import org.testng.annotations.Test;
 public class VeniceReadResponseStatusTest {
   @Test
   public void testGetCode() {
+    assertEquals(VeniceReadResponseStatus.UNKNOWN.getCode(), -1);
     assertEquals(VeniceReadResponseStatus.KEY_NOT_FOUND.getCode(), -420);
     assertEquals(VeniceReadResponseStatus.OK.getCode(), 200);
     assertEquals(VeniceReadResponseStatus.BAD_REQUEST.getCode(), 400);
@@ -26,6 +26,9 @@ public class VeniceReadResponseStatusTest {
   @Test
   public void testFromCode() {
     for (VeniceReadResponseStatus status: VeniceReadResponseStatus.values()) {
+      if (status == VeniceReadResponseStatus.UNKNOWN) {
+        continue;
+      }
       VeniceReadResponseStatus resolved = VeniceReadResponseStatus.fromCode(status.getCode());
       assertNotNull(resolved, "fromCode should resolve " + status.name());
       assertEquals(resolved, status);
@@ -34,9 +37,9 @@ public class VeniceReadResponseStatusTest {
 
   @Test
   public void testFromCodeWithUnknownCode() {
-    assertNull(VeniceReadResponseStatus.fromCode(999));
-    assertNull(VeniceReadResponseStatus.fromCode(0));
-    assertNull(VeniceReadResponseStatus.fromCode(-1));
+    assertEquals(VeniceReadResponseStatus.fromCode(999), VeniceReadResponseStatus.UNKNOWN);
+    assertEquals(VeniceReadResponseStatus.fromCode(0), VeniceReadResponseStatus.UNKNOWN);
+    assertEquals(VeniceReadResponseStatus.fromCode(-1), VeniceReadResponseStatus.UNKNOWN);
   }
 
   @Test

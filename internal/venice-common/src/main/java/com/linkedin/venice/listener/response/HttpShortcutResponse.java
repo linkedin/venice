@@ -2,12 +2,14 @@ package com.linkedin.venice.listener.response;
 
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import javax.annotation.Nullable;
 
 
 /** A response object carrying an HTTP status and optional Venice read response status. */
 public class HttpShortcutResponse {
   private final String message;
   private final HttpResponseStatus status;
+  @Nullable
   private final VeniceReadResponseStatus veniceReadResponseStatus;
 
   private boolean misroutedStoreVersion = false;
@@ -34,6 +36,7 @@ public class HttpShortcutResponse {
     return status;
   }
 
+  @Nullable
   public VeniceReadResponseStatus getVeniceReadResponseStatus() {
     return veniceReadResponseStatus;
   }

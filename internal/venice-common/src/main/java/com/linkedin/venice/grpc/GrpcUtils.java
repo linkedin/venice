@@ -105,7 +105,10 @@ public final class GrpcUtils {
     return keyStore;
   }
 
-  /** Wraps a byte array into a {@link ByteString} without copying. */
+  /**
+   * Wraps a byte array into a {@link ByteString} without copying. The caller must not modify the byte array after
+   * calling this method, as the returned {@link ByteString} directly references the same array.
+   */
   public static ByteString toByteString(byte[] bytes) {
     if (bytes == null || bytes.length == 0) {
       return ByteString.EMPTY;
@@ -113,7 +116,7 @@ public final class GrpcUtils {
     return UnsafeByteOperations.unsafeWrap(bytes);
   }
 
-  /** Reads readable bytes from a {@link ByteBuf} and wraps them into a {@link ByteString}. */
+  /** Copies readable bytes from a {@link ByteBuf} into a {@link ByteString}. */
   public static ByteString toByteString(ByteBuf buf) {
     if (buf == null || buf.readableBytes() == 0) {
       return ByteString.EMPTY;

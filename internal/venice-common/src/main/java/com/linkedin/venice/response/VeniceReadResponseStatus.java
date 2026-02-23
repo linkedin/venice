@@ -1,5 +1,6 @@
 package com.linkedin.venice.response;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -11,17 +12,21 @@ import java.util.Map;
  * Negative values represent custom Venice-specific error codes.
  */
 public enum VeniceReadResponseStatus {
-  KEY_NOT_FOUND(-420), OK(200), BAD_REQUEST(400), METHOD_NOT_ALLOWED(405), REQUEST_TIMEOUT(408),
+  UNKNOWN(-1), KEY_NOT_FOUND(-420), OK(200), BAD_REQUEST(400), METHOD_NOT_ALLOWED(405), REQUEST_TIMEOUT(408),
   MISROUTED_STORE_VERSION(410), TOO_MANY_REQUESTS(429), INTERNAL_ERROR(500), SERVICE_UNAVAILABLE(503);
 
   private final int code;
 
-  private static final Map<Integer, VeniceReadResponseStatus> CODE_MAP = new HashMap<>();
+  private static final Map<Integer, VeniceReadResponseStatus> CODE_MAP;
 
   static {
+    Map<Integer, VeniceReadResponseStatus> map = new HashMap<>();
     for (VeniceReadResponseStatus status: values()) {
-      CODE_MAP.put(status.code, status);
+      if (status != UNKNOWN) {
+        map.put(status.code, status);
+      }
     }
+    CODE_MAP = Collections.unmodifiableMap(map);
   }
 
   VeniceReadResponseStatus(int code) {
@@ -33,9 +38,9 @@ public enum VeniceReadResponseStatus {
   }
 
   /**
-   * Returns the {@link VeniceReadResponseStatus} for the given integer code, or {@code null} if no match is found.
+   * Returns the {@link VeniceReadResponseStatus} for the given integer code, or {@link #UNKNOWN} if no match is found.
    */
   public static VeniceReadResponseStatus fromCode(int code) {
-    return CODE_MAP.get(code);
+    return CODE_MAP.getOrDefault(code, UNKNOWN);
   }
 }
