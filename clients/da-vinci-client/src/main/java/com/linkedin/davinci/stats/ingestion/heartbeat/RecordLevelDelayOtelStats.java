@@ -1,22 +1,20 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
-import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_RECORD_DELAY;
+import static com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOtelMetricEntity.INGESTION_RECORD_DELAY;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
-import static com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface.getUniqueMetricEntities;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.linkedin.davinci.stats.ServerMetricEntity;
+import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
+import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -26,9 +24,7 @@ import java.util.Map;
  * Tracks delays for regular data records (not heartbeat control messages).
  * Note: Tehuti metrics are managed separately in {@link HeartbeatStatReporter}.
  */
-public class RecordOtelStats {
-  public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =
-      getUniqueMetricEntities(ServerMetricEntity.class);
+public class RecordLevelDelayOtelStats {
   private final boolean emitOtelMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
@@ -36,19 +32,10 @@ public class RecordOtelStats {
   // Per-region metric entity states
   private final Map<String, MetricEntityStateThreeEnums<VersionRole, ReplicaType, ReplicaState>> metricsByRegion;
 
-  private static class VersionInfo {
-    private final int currentVersion;
-    private final int futureVersion;
-
-    VersionInfo(int currentVersion, int futureVersion) {
-      this.currentVersion = currentVersion;
-      this.futureVersion = futureVersion;
-    }
-  }
-
+  // Version info cache for classifying versions as CURRENT/FUTURE/BACKUP
   private volatile VersionInfo versionInfo = new VersionInfo(NON_EXISTING_VERSION, NON_EXISTING_VERSION);
 
-  public RecordOtelStats(MetricsRepository metricsRepository, String storeName, String clusterName) {
+  public RecordLevelDelayOtelStats(MetricsRepository metricsRepository, String storeName, String clusterName) {
     this.metricsByRegion = new VeniceConcurrentHashMap<>();
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelSetup =
@@ -98,7 +85,7 @@ public class RecordOtelStats {
     if (!emitOtelMetrics()) {
       return;
     }
-    VersionRole versionRole = classifyVersion(version, this.versionInfo);
+    VersionRole versionRole = OtelVersionedStatsUtils.classifyVersion(version, this.versionInfo);
 
     MetricEntityStateThreeEnums<VersionRole, ReplicaType, ReplicaState> metricState = getOrCreateMetricState(region);
 
@@ -125,24 +112,18 @@ public class RecordOtelStats {
     });
   }
 
-  /**
-   * Classifies a version as CURRENT or FUTURE or BACKUP
-   *
-   * @param version The version number to classify
-   * @param versionInfo The current/future version (cached)
-   * @return {@link VersionRole}
-   */
-  static VersionRole classifyVersion(int version, VersionInfo versionInfo) {
-    if (version == versionInfo.currentVersion) {
-      return VersionRole.CURRENT;
-    } else if (version == versionInfo.futureVersion) {
-      return VersionRole.FUTURE;
-    }
-    return VersionRole.BACKUP;
-  }
-
   @VisibleForTesting
   public VersionInfo getVersionInfo() {
     return versionInfo;
   }
+
+  /**
+   * Clears the per-region metric state map, releasing references to MetricEntityState objects.
+   * Does not deregister OTel instruments from the metrics repository — they will be
+   * cleaned up when the Meter/MeterProvider is closed or the SDK shuts down.
+   */
+  public void close() {
+    metricsByRegion.clear();
+  }
+
 }

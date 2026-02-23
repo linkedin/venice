@@ -1,10 +1,7 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
-import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.utils.Utils.getUniqueString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -56,7 +53,6 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
-import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -97,7 +93,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -990,14 +986,6 @@ public class TestUtils {
     Assert.assertTrue(executor.awaitTermination(timeout, unit));
   }
 
-  public static Map<String, Object> getIngestionIsolationPropertyMap() {
-    Map<String, Object> propertyMap = new HashMap<>();
-    propertyMap.put(SERVER_INGESTION_MODE, IngestionMode.ISOLATED);
-    propertyMap.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 1 * 1024 * 1024 * 1024L);
-    propertyMap.put(SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "-Xms256M;-Xmx1G");
-    return propertyMap;
-  }
-
   public static String getUniqueTopicString(String prefix) {
     int typesNum = PubSubTopicType.values().length;
     int pubSubTopicTypeIndex = Math.abs(ThreadLocalRandom.current().nextInt() % typesNum);
@@ -1013,7 +1001,7 @@ public class TestUtils {
       return PubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
     } else if (pubSubTopicType.equals(PubSubTopicType.VIEW_TOPIC)) {
       return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version)
-          + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+          + MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX;
     } else if (pubSubTopicType.equals(PubSubTopicType.UNKNOWN_TYPE_TOPIC)) {
       return getUniqueString(prefix);
     } else {

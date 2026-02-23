@@ -7,12 +7,12 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.google.common.collect.ImmutableMap;
+import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VenicePushJobStatus;
-import com.linkedin.venice.stats.dimensions.VenicePushType;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
 import com.linkedin.venice.stats.metrics.MetricType;
@@ -95,37 +95,37 @@ public class PushJobStatusStats extends AbstractVeniceStats {
   }
 
   public void recordBatchPushSuccessSensor(String storeName) {
-    batchPushSuccessMetric.record(1, buildDimensions(storeName, VenicePushType.BATCH, VenicePushJobStatus.SUCCESS));
+    batchPushSuccessMetric.record(1, buildDimensions(storeName, PushType.BATCH, VenicePushJobStatus.SUCCESS));
   }
 
   public void recordBatchPushFailureDueToUserErrorSensor(String storeName) {
     batchPushFailureDueToUserErrorMetric
-        .record(1, buildDimensions(storeName, VenicePushType.BATCH, VenicePushJobStatus.USER_ERROR));
+        .record(1, buildDimensions(storeName, PushType.BATCH, VenicePushJobStatus.USER_ERROR));
   }
 
   public void recordBatchPushFailureNotDueToUserErrorSensor(String storeName) {
     batchPushFailureDueToNonUserErrorMetric
-        .record(1, buildDimensions(storeName, VenicePushType.BATCH, VenicePushJobStatus.SYSTEM_ERROR));
+        .record(1, buildDimensions(storeName, PushType.BATCH, VenicePushJobStatus.SYSTEM_ERROR));
   }
 
   public void recordIncrementalPushSuccessSensor(String storeName) {
     incrementalPushSuccessMetric
-        .record(1, buildDimensions(storeName, VenicePushType.INCREMENTAL, VenicePushJobStatus.SUCCESS));
+        .record(1, buildDimensions(storeName, PushType.INCREMENTAL, VenicePushJobStatus.SUCCESS));
   }
 
   public void recordIncrementalPushFailureDueToUserErrorSensor(String storeName) {
     incrementalPushFailureDueToUserErrorMetric
-        .record(1, buildDimensions(storeName, VenicePushType.INCREMENTAL, VenicePushJobStatus.USER_ERROR));
+        .record(1, buildDimensions(storeName, PushType.INCREMENTAL, VenicePushJobStatus.USER_ERROR));
   }
 
   public void recordIncrementalPushFailureNotDueToUserErrorSensor(String storeName) {
     incrementalPushFailureDueToNonUserErrorMetric
-        .record(1, buildDimensions(storeName, VenicePushType.INCREMENTAL, VenicePushJobStatus.SYSTEM_ERROR));
+        .record(1, buildDimensions(storeName, PushType.INCREMENTAL, VenicePushJobStatus.SYSTEM_ERROR));
   }
 
   private Map<VeniceMetricsDimensions, String> buildDimensions(
       String storeName,
-      VenicePushType pushType,
+      PushType pushType,
       VenicePushJobStatus status) {
     ImmutableMap.Builder<VeniceMetricsDimensions, String> builder = ImmutableMap.builder();
     if (baseDimensionsMap != null) {
@@ -172,6 +172,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
       this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
     }
 
+    @Override
     public MetricEntity getMetricEntity() {
       return metricEntity;
     }

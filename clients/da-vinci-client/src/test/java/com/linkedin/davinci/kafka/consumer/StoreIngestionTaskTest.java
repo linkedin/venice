@@ -988,7 +988,6 @@ public abstract class StoreIngestionTaskTest {
             isCurrentVersion,
             storeConfig,
             PARTITION_FOO,
-            false,
             Optional.empty(),
             internalDaVinciRecordTransformerConfig,
             Lazy.of(() -> zkHelixAdmin)));
@@ -3195,7 +3194,6 @@ public abstract class StoreIngestionTaskTest {
             isCurrentVersion,
             storeConfig,
             PARTITION_FOO,
-            false,
             Optional.empty(),
             null,
             null));
@@ -3421,7 +3419,6 @@ public abstract class StoreIngestionTaskTest {
         isCurrentVersion,
         storeConfig,
         PARTITION_FOO,
-        false,
         Optional.empty(),
         null,
         null);
@@ -3569,7 +3566,6 @@ public abstract class StoreIngestionTaskTest {
         isCurrentVersion,
         storeConfig,
         PARTITION_FOO,
-        false,
         Optional.empty(),
         null,
         null);
@@ -3801,7 +3797,6 @@ public abstract class StoreIngestionTaskTest {
         isCurrentVersion,
         storeConfig,
         PARTITION_FOO,
-        false,
         Optional.empty(),
         null,
         null);
@@ -3952,7 +3947,6 @@ public abstract class StoreIngestionTaskTest {
         isCurrentVersion,
         storeConfig,
         PARTITION_FOO,
-        false,
         Optional.empty(),
         null,
         null);
@@ -4096,7 +4090,6 @@ public abstract class StoreIngestionTaskTest {
             isCurrentVersion,
             storeConfig,
             PARTITION_FOO,
-            false,
             Optional.empty(),
             null,
             null);
@@ -4198,7 +4191,6 @@ public abstract class StoreIngestionTaskTest {
         isCurrentVersion,
         storeConfig,
         PARTITION_FOO,
-        false,
         Optional.empty(),
         null,
         null);
@@ -4272,7 +4264,6 @@ public abstract class StoreIngestionTaskTest {
             () -> true,
             mockVeniceStoreVersionConfig,
             0,
-            false,
             Optional.empty(),
             null,
             null);
@@ -4394,7 +4385,6 @@ public abstract class StoreIngestionTaskTest {
             mock(BooleanSupplier.class),
             storeConfig,
             -1,
-            false,
             Optional.empty(),
             null,
             null));
@@ -4693,7 +4683,6 @@ public abstract class StoreIngestionTaskTest {
             mock(BooleanSupplier.class),
             storeConfig,
             -1,
-            false,
             Optional.empty(),
             null,
             null));
@@ -5110,7 +5099,6 @@ public abstract class StoreIngestionTaskTest {
         isCurrentVersion,
         storeConfig,
         1,
-        false,
         Optional.empty(),
         null,
         null);
@@ -5235,7 +5223,6 @@ public abstract class StoreIngestionTaskTest {
             () -> true,
             mockVeniceStoreVersionConfig,
             0,
-            false,
             Optional.empty(),
             null,
             null);
@@ -5333,7 +5320,6 @@ public abstract class StoreIngestionTaskTest {
             () -> true,
             mockVeniceStoreVersionConfig,
             0,
-            false,
             Optional.empty(),
             null,
             null);
@@ -6049,7 +6035,6 @@ public abstract class StoreIngestionTaskTest {
             mock(BooleanSupplier.class),
             storeConfig,
             -1,
-            false,
             Optional.empty(),
             null,
             null));

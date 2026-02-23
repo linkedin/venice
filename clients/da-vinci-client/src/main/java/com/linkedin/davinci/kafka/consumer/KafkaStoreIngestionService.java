@@ -179,8 +179,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final StoreIngestionTaskFactory ingestionTaskFactory;
 
-  private final boolean isIsolatedIngestion;
-
   private final boolean isDaVinciClient;
 
   private final TopicManagerRepository topicManagerRepository;
@@ -242,7 +240,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Optional<HelixReadOnlyZKSharedSchemaRepository> zkSharedSchemaRepository,
       ICProvider icProvider,
-      boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
       boolean isDaVinciClient,
@@ -260,7 +257,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
     this.veniceConfigLoader = veniceConfigLoader;
-    this.isIsolatedIngestion = isIsolatedIngestion;
     this.isDaVinciClient = isDaVinciClient;
     this.partitionStateSerializer = partitionStateSerializer;
     this.compressorFactory = compressorFactory;
@@ -663,7 +659,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         isVersionCurrent,
         veniceStoreVersionConfig,
         partitionId,
-        isIsolatedIngestion,
         cacheBackend,
         getInternalRecordTransformerConfig(storeName),
         zkHelixAdmin);
@@ -1099,14 +1094,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       // Must check the idle status again after acquiring the lock.
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topicName);
       if (ingestionTask != null && !ingestionTask.hasAnySubscription()) {
-        if (isIsolatedIngestion) {
-          LOGGER.info(
-              "Ingestion task for topic {} will be kept open for the access from main process even though it has no subscription now.",
-              topicName);
-        } else {
-          LOGGER.info("Shutting down ingestion task of topic {}", topicName);
-          shutdownStoreIngestionTask(topicName);
-        }
+        LOGGER.info("Shutting down ingestion task of topic {}", topicName);
+        shutdownStoreIngestionTask(topicName);
       }
     }
   }

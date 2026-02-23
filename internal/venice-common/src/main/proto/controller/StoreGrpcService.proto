@@ -15,6 +15,7 @@ service StoreGrpcService {
   rpc validateStoreDeleted(ValidateStoreDeletedGrpcRequest) returns (ValidateStoreDeletedGrpcResponse);
   rpc listStores(ListStoresGrpcRequest) returns (ListStoresGrpcResponse);
   rpc getStoreStatuses(GetStoreStatusRequest) returns (GetStoreStatusResponse);
+  rpc getRepushInfo(GetRepushInfoGrpcRequest) returns (GetRepushInfoGrpcResponse);
   rpc getStore(GetStoreGrpcRequest) returns (GetStoreGrpcResponse);
 }
 
@@ -98,6 +99,23 @@ message StoreStatus {
 message GetStoreStatusResponse {
   string clusterName = 1;
   repeated StoreStatus storeStatuses = 2;
+}
+
+message GetRepushInfoGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  optional string fabric = 2;
+}
+
+message GetRepushInfoGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  RepushInfoGrpc repushInfo = 2;
+}
+
+message RepushInfoGrpc {
+  string pubSubUrl = 1;
+  optional VersionGrpc version = 2;
+  optional string systemSchemaClusterD2ServiceName = 3;
+  optional string systemSchemaClusterD2ZkHost = 4;
 }
 
 message GetStoreGrpcRequest {

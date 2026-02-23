@@ -73,9 +73,10 @@ public class LeaderFollowerPartitionStateModelTest {
     ingestionBackend = mock(IngestionBackend.class);
     storeIngestionService = mock(KafkaStoreIngestionService.class);
     doReturn(storeIngestionService).when(ingestionBackend).getStoreIngestionService();
-    doReturn(CompletableFuture.completedFuture(null)).when(ingestionBackend).stopConsumption(any(), anyInt());
     doReturn(CompletableFuture.completedFuture(null)).when(ingestionBackend)
-        .dropStoragePartitionGracefully(any(), anyInt(), anyInt());
+        .stopConsumption(any(), anyInt(), anyString());
+    doReturn(CompletableFuture.completedFuture(null)).when(ingestionBackend)
+        .dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
 
     storeAndServerConfigs = mock(VeniceStoreVersionConfig.class);
     notifier = mock(LeaderFollowerIngestionProgressNotifier.class);
@@ -436,7 +437,7 @@ public class LeaderFollowerPartitionStateModelTest {
       DefaultIngestionBackend realIngestionBackend = mock(DefaultIngestionBackend.class);
 
       // When dropStoragePartitionGracefully is called, actually delete the partition
-      when(realIngestionBackend.dropStoragePartitionGracefully(any(), eq(testPartition), anyInt()))
+      when(realIngestionBackend.dropStoragePartitionGracefully(any(), eq(testPartition), anyInt(), anyString()))
           .thenAnswer(invocation -> {
             // Simulate the actual deletion by calling factory.removeStorageEngine
             factory.removeStorageEngine(storeEngine);
@@ -444,7 +445,8 @@ public class LeaderFollowerPartitionStateModelTest {
           });
 
       when(realIngestionBackend.getStoreIngestionService()).thenReturn(mockIngestionService);
-      when(realIngestionBackend.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+      when(realIngestionBackend.stopConsumption(any(), anyInt(), anyString()))
+          .thenReturn(CompletableFuture.completedFuture(null));
 
       // Setup: Create state model with real backend
       VeniceStoreVersionConfig stateModelConfig = mock(VeniceStoreVersionConfig.class);

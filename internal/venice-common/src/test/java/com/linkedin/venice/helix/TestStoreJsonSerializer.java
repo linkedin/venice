@@ -82,9 +82,8 @@ public class TestStoreJsonSerializer {
     store.setReadQuotaInCU(100);
 
     Map<String, ViewConfig> viewConfigMap = new HashMap<>();
-    viewConfigMap.put(
-        "changeCapture",
-        new ViewConfigImpl("com.linkedin.venice.views.ChangeCaptureView", Collections.emptyMap()));
+    viewConfigMap
+        .put("testView", new ViewConfigImpl("com.linkedin.venice.views.MaterializedView", Collections.emptyMap()));
     store.setViewConfigs(viewConfigMap);
 
     StoreJSONSerializer serializer = new StoreJSONSerializer();

@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
 import com.linkedin.venice.controller.StoreDeletedValidation;
+import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
@@ -274,6 +275,29 @@ public class StoreRequestHandler {
     LOGGER.debug("Found {} stores with health status in cluster: {}", storeStatusMap.size(), clusterName);
 
     return storeStatusMap;
+  }
+
+  /**
+   * Retrieves repush information for a store.
+   * No ACL check required - reading repush info is public.
+   *
+   * @param clusterName the cluster name
+   * @param storeName the store name
+   * @param fabric optional fabric for multi-region setups
+   * @return RepushInfo containing repush information including version and Kafka details
+   */
+  public RepushInfo getRepushInfo(String clusterName, String storeName, Optional<String> fabric) {
+    LOGGER.debug(
+        "Getting repush info for store: {} in cluster: {} with fabric: {}",
+        storeName,
+        clusterName,
+        fabric.orElse("none"));
+
+    RepushInfo repushInfo = admin.getRepushInfo(clusterName, storeName, fabric);
+    if (repushInfo == null) {
+      throw new VeniceException("Repush info not available for store: " + storeName + " in cluster: " + clusterName);
+    }
+    return repushInfo;
   }
 
   /**

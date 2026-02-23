@@ -82,6 +82,38 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
     }
   }
 
+  /**
+   * Deletes all customized states for this instance across all resources.
+   * This method follows the same logic as {@link #deleteReplicaStatus(String, int)}:
+   * - Always deletes OFFLINE_PUSH state
+   * - Only deletes HYBRID_STORE_QUOTA state if helixHybridStoreQuotaEnabled is true
+   *
+   * This uses the Helix {@link CustomizedStateProvider#deleteAllResourcesCustomizedStates(String)}
+   * API to remove all CV states.
+   */
+  public void deleteAllCustomizedStates() {
+    /**
+     * We don't want to do the two delete operations atomically; Even if one delete fails,
+     * the other delete operation should still continue.
+     */
+    try {
+      super.deleteAllReplicaStatus(HelixPartitionState.OFFLINE_PUSH);
+    } catch (NullPointerException e) {
+      LOGGER.warn("Failed to delete all resources with state type {}.", HelixPartitionState.OFFLINE_PUSH.name(), e);
+    }
+
+    if (helixHybridStoreQuotaEnabled) {
+      try {
+        super.deleteAllReplicaStatus(HelixPartitionState.HYBRID_STORE_QUOTA);
+      } catch (NullPointerException e) {
+        LOGGER.warn(
+            "Failed to delete all resources with state type {}.",
+            HelixPartitionState.HYBRID_STORE_QUOTA.name(),
+            e);
+      }
+    }
+  }
+
   public ExecutionStatus getReplicaStatus(String topic, int partitionId) {
     return ExecutionStatus.valueOf(
         super.getReplicaStatus(HelixPartitionState.OFFLINE_PUSH, topic, getPartitionNameFromId(topic, partitionId)));
@@ -114,6 +146,6 @@ public class HelixPartitionStatusAccessor extends HelixPartitionStateAccessor {
   }
 
   private int getPartitionIdFromName(String partitionName) {
-    return Integer.parseInt(partitionName.substring(partitionName.indexOf(PARTITION_DELIMITER) + 1));
+    return Integer.parseInt(partitionName.substring(partitionName.lastIndexOf(PARTITION_DELIMITER) + 1));
   }
 }

@@ -36,7 +36,6 @@ import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
@@ -208,7 +207,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private volatile long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
   protected final Map<String, VeniceViewWriter> viewWriters;
-  protected final boolean hasChangeCaptureView;
   protected final boolean hasComplexVenicePartitionerMaterializedView;
 
   protected final InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer =
@@ -232,7 +230,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       BooleanSupplier isCurrentVersion,
       VeniceStoreVersionConfig storeConfig,
       int errorPartitionId,
-      boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
@@ -245,7 +242,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         isCurrentVersion,
         storeConfig,
         errorPartitionId,
-        isIsolatedIngestion,
         cacheBackend,
         internalRecordTransformerConfig,
         builder.getLeaderFollowerNotifiers(),
@@ -306,27 +302,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()
         && !store.isFlinkVeniceViewsEnabled()) {
-      viewWriters = builder.getVeniceViewWriterFactory()
-          .buildStoreViewWriters(
-              store,
-              version.getNumber(),
-              schemaRepository.getKeySchema(store.getName()).getSchema());
-      boolean tmpValueForHasChangeCaptureViewWriter = false;
+      viewWriters = builder.getVeniceViewWriterFactory().buildStoreViewWriters(store, version.getNumber());
       boolean tmpValueForHasComplexVenicePartitioner = false;
       for (Map.Entry<String, VeniceViewWriter> viewWriter: viewWriters.entrySet()) {
-        if (viewWriter.getValue() instanceof ChangeCaptureViewWriter) {
-          tmpValueForHasChangeCaptureViewWriter = true;
-        } else if (viewWriter.getValue().getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
+        if (viewWriter.getValue().getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
           if (((MaterializedViewWriter) viewWriter.getValue()).isComplexVenicePartitioner()) {
             tmpValueForHasComplexVenicePartitioner = true;
           }
         }
       }
-      hasChangeCaptureView = tmpValueForHasChangeCaptureViewWriter;
       hasComplexVenicePartitionerMaterializedView = tmpValueForHasComplexVenicePartitioner;
     } else {
       viewWriters = Collections.emptyMap();
-      hasChangeCaptureView = false;
       hasComplexVenicePartitionerMaterializedView = false;
     }
     this.storeDeserializerCache = new AvroStoreDeserializerCache(

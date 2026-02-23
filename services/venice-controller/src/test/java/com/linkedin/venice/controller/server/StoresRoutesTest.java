@@ -21,6 +21,8 @@ import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.RepushInfo;
+import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreDeletedValidationResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
@@ -31,6 +33,9 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
@@ -738,5 +743,86 @@ public class StoresRoutesTest {
             MultiStoreStatusResponse.class);
     Assert.assertTrue(response.isError());
     Assert.assertTrue(response.getError().contains(errorMessage));
+  }
+
+  @Test
+  public void testGetRepushInfo() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    StoreRequestHandler mockRequestHandler = mock(StoreRequestHandler.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+    doReturn("test-fabric").when(request).queryParams(eq(ControllerApiConstants.FABRIC));
+
+    // Mock queryMap for error handling
+    QueryParamsMap queryParamsMap = mock(QueryParamsMap.class);
+    Map<String, String[]> queryMap = new HashMap<>();
+    queryMap.put(ControllerApiConstants.CLUSTER, new String[] { TEST_CLUSTER });
+    queryMap.put(ControllerApiConstants.NAME, new String[] { TEST_STORE_NAME });
+    queryMap.put(ControllerApiConstants.FABRIC, new String[] { "test-fabric" });
+    doReturn(queryMap).when(queryParamsMap).toMap();
+    doReturn(queryParamsMap).when(request).queryMap();
+
+    Route route =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler).getRepushInfo(mockAdmin);
+
+    // Create a real Version for admin.getRepushInfo() call to avoid Jackson serialization issues
+    Version version = new VersionImpl(TEST_STORE_NAME, 1, "test-push-job", 10);
+    version.setStatus(VersionStatus.ONLINE);
+    version.setReplicationFactor(3);
+
+    RepushInfo mockRepushInfo = RepushInfo.createRepushInfo(version, "kafka.broker:9092", "d2-service", "zk-host");
+
+    when(mockRequestHandler.getRepushInfo(any(), any(), any())).thenReturn(mockRepushInfo);
+
+    RepushInfoResponse response = ObjectMapperFactory.getInstance()
+        .readValue(route.handle(request, mock(Response.class)).toString(), RepushInfoResponse.class);
+
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response.getName(), TEST_STORE_NAME);
+    Assert.assertNotNull(response.getRepushInfo());
+    Assert.assertEquals(response.getRepushInfo().getKafkaBrokerUrl(), "kafka.broker:9092");
+
+    // Test error case
+    when(mockRequestHandler.getRepushInfo(any(), any(), any())).thenThrow(new VeniceException("Error"));
+    response = ObjectMapperFactory.getInstance()
+        .readValue(route.handle(request, mock(Response.class)).toString(), RepushInfoResponse.class);
+    Assert.assertTrue(response.isError());
+  }
+
+  @Test
+  public void testGetRepushInfoWithoutFabric() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    StoreRequestHandler mockRequestHandler = mock(StoreRequestHandler.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+    doReturn(null).when(request).queryParams(eq(ControllerApiConstants.FABRIC));
+
+    // Mock queryMap for error handling
+    QueryParamsMap queryParamsMap = mock(QueryParamsMap.class);
+    Map<String, String[]> queryMap = new HashMap<>();
+    queryMap.put(ControllerApiConstants.CLUSTER, new String[] { TEST_CLUSTER });
+    queryMap.put(ControllerApiConstants.NAME, new String[] { TEST_STORE_NAME });
+    doReturn(queryMap).when(queryParamsMap).toMap();
+    doReturn(queryParamsMap).when(request).queryMap();
+
+    Route route =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler).getRepushInfo(mockAdmin);
+
+    RepushInfo mockRepushInfo = RepushInfo.createRepushInfo(null, "another.kafka:9092", null, null);
+
+    when(mockRequestHandler.getRepushInfo(any(), any(), any())).thenReturn(mockRepushInfo);
+
+    RepushInfoResponse response = ObjectMapperFactory.getInstance()
+        .readValue(route.handle(request, mock(Response.class)).toString(), RepushInfoResponse.class);
+
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getRepushInfo().getKafkaBrokerUrl(), "another.kafka:9092");
   }
 }

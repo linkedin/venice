@@ -203,33 +203,21 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
 
   /**
    * Hook method called when version info is updated for a store.
-   * Subclasses can override this to react to version changes.
+   * Subclasses can override this to update existing OTel stats with new version info.
    *
-   * <p><b>WARNING:</b> This method may be called from within a {@code ConcurrentHashMap.computeIfAbsent}
-   * lambda in {@link #addStore(Store)}. Implementations MUST NOT access {@code aggStats} (e.g., via
-   * {@link #getVersionedStats}, {@link #getCurrentVersion}, {@link #getFutureVersion}) as this would
-   * re-enter the ConcurrentHashMap and cause a deadlock (JDK 8) or IllegalStateException (JDK 9+).
-   *
-   * @param storeName The store whose version info changed
-   * @param currentVersion The new current version
-   * @param futureVersion The new future version
+   * <p><b>WARNING:</b> This method may be called from within {@code aggStats.computeIfAbsent}
+   * in {@link #addStore(Store)}. Implementations MUST NOT call {@link #getCurrentVersion},
+   * {@link #getFutureVersion}, or {@link #getVersionedStats} — these re-enter {@code aggStats}
+   * and cause a deadlock or IllegalStateException. Use {@code computeIfPresent} on the subclass's
+   * own OTel stats map to update existing entries only.
    */
   protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
     // no-op by default
   }
 
   /**
-   * Hook method for subclasses to clean up their own version-specific resources
-   * (e.g., OTel stats) when a version is removed. This is called after the internal
-   * versioned stats have been removed via {@link VeniceVersionedStats#removeVersion}.
-   *
-   * <p><b>WARNING:</b> This method may be called from within a {@code ConcurrentHashMap.computeIfAbsent}
-   * lambda in {@link #addStore(Store)}. Implementations MUST NOT access {@code aggStats} (e.g., via
-   * {@link #getVersionedStats}, {@link #getCurrentVersion}, {@link #getFutureVersion}) as this would
-   * re-enter the ConcurrentHashMap and cause a deadlock (JDK 8) or IllegalStateException (JDK 9+).
-   *
-   * @param storeName The store whose version was removed
-   * @param version The version number that was removed
+   * Hook method for subclasses to clean up version-specific resources (e.g., OTel stats)
+   * when a version is removed. Same re-entrance warning as {@link #onVersionInfoUpdated}.
    */
   protected void cleanupVersionResources(String storeName, int version) {
     // no-op by default
