@@ -6,8 +6,10 @@ import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK
 
 import com.linkedin.venice.controller.server.StoreRequestHandler;
 import com.linkedin.venice.controller.server.VeniceControllerAccessManager;
+import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.exceptions.VeniceUnauthorizedAccessException;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
@@ -15,10 +17,13 @@ import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.DeleteAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetAclForStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
+import com.linkedin.venice.protocols.controller.RepushInfoGrpc;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceImplBase;
@@ -26,9 +31,12 @@ import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
+import com.linkedin.venice.protocols.controller.VersionGrpc;
+import com.linkedin.venice.protocols.controller.VersionStatusGrpc;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
+import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -150,6 +158,68 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
         responseObserver,
         clusterName,
         null);
+  }
+
+  /**
+   * Retrieves repush information for a store.
+   * No ACL check is required for this operation as it only reads store metadata.
+   */
+  @Override
+  public void getRepushInfo(
+      GetRepushInfoGrpcRequest request,
+      StreamObserver<GetRepushInfoGrpcResponse> responseObserver) {
+    LOGGER.debug("Received getRepushInfo with args: {}", request);
+
+    ControllerGrpcServerUtils.handleRequest(StoreGrpcServiceGrpc.getGetRepushInfoMethod(), () -> {
+      // Extract primitives from protobuf
+      ClusterStoreGrpcInfo storeInfo = request.getStoreInfo();
+      String clusterName = storeInfo.getClusterName();
+      String storeName = storeInfo.getStoreName();
+      Optional<String> fabric = request.hasFabric() ? Optional.of(request.getFabric()) : Optional.empty();
+
+      // Call handler - returns RepushInfo POJO directly
+      RepushInfo repushInfo = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
+
+      // Convert POJO to protobuf response
+      RepushInfoGrpc.Builder repushInfoBuilder = RepushInfoGrpc.newBuilder()
+          .setPubSubUrl(repushInfo.getKafkaBrokerUrl() != null ? repushInfo.getKafkaBrokerUrl() : "");
+
+      if (repushInfo.getVersion() != null) {
+        repushInfoBuilder.setVersion(convertVersionToProto(repushInfo.getVersion()));
+      }
+      if (repushInfo.getSystemSchemaClusterD2ServiceName() != null) {
+        repushInfoBuilder.setSystemSchemaClusterD2ServiceName(repushInfo.getSystemSchemaClusterD2ServiceName());
+      }
+      if (repushInfo.getSystemSchemaClusterD2ZkHost() != null) {
+        repushInfoBuilder.setSystemSchemaClusterD2ZkHost(repushInfo.getSystemSchemaClusterD2ZkHost());
+      }
+
+      return GetRepushInfoGrpcResponse.newBuilder()
+          .setStoreInfo(storeInfo)
+          .setRepushInfo(repushInfoBuilder.build())
+          .build();
+    }, responseObserver, request.getStoreInfo());
+  }
+
+  /**
+   * Converts a Version object to protobuf VersionGrpc.
+   */
+  private VersionGrpc convertVersionToProto(Version version) {
+    VersionStatusGrpc statusGrpc = VersionStatusGrpc.forNumber(version.getStatus().getValue());
+    if (statusGrpc == null) {
+      throw new IllegalArgumentException(
+          "Unknown VersionStatus value: " + version.getStatus().getValue() + " (" + version.getStatus() + ")");
+    }
+    VersionGrpc.Builder builder = VersionGrpc.newBuilder()
+        .setNumber(version.getNumber())
+        .setCreatedTime(version.getCreatedTime())
+        .setStatus(statusGrpc)
+        .setPartitionCount(version.getPartitionCount())
+        .setReplicationFactor(version.getReplicationFactor());
+    if (version.getPushJobId() != null) {
+      builder.setPushJobId(version.getPushJobId());
+    }
+    return builder.build();
   }
 
   /**
