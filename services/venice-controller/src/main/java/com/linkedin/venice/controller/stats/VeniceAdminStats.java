@@ -64,7 +64,7 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         VeniceAdminOtelMetricEntity.ADMIN_TOPIC_UNEXPECTED_ABSENCE_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
-        VeniceAdminTehutiMetricNameEnum.UNEXPECTED_TOPIC_ABSENCE_COUNT,
+        VeniceAdminTehutiMetricNameEnum.UNEXPECTED_TOPIC_ABSENCE_DURING_INCREMENTAL_PUSH_COUNT,
         Arrays.asList(new Count()),
         baseDimensionsMap,
         PushType.class);
@@ -73,7 +73,7 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         VeniceAdminOtelMetricEntity.ADMIN_PUSH_STARTED_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
-        VeniceAdminTehutiMetricNameEnum.BATCH_PUSH_STARTED_COUNT,
+        VeniceAdminTehutiMetricNameEnum.SUCCESSFULLY_STARTED_USER_BATCH_PUSH_PARENT_ADMIN_COUNT,
         Arrays.asList(new Count()),
         baseDimensionsMap,
         PushType.class);
@@ -82,7 +82,7 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         VeniceAdminOtelMetricEntity.ADMIN_PUSH_STARTED_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
-        VeniceAdminTehutiMetricNameEnum.INCREMENTAL_PUSH_STARTED_COUNT,
+        VeniceAdminTehutiMetricNameEnum.SUCCESSFUL_STARTED_USER_INCREMENTAL_PUSH_PARENT_ADMIN_COUNT,
         Arrays.asList(new Count()),
         baseDimensionsMap,
         PushType.class);
@@ -91,7 +91,7 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         VeniceAdminOtelMetricEntity.ADMIN_OPERATION_SERIALIZATION_FAILURE_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
-        VeniceAdminTehutiMetricNameEnum.SERIALIZATION_FAILURE_COUNT,
+        VeniceAdminTehutiMetricNameEnum.FAILED_SERIALIZING_ADMIN_OPERATION_MESSAGE_COUNT,
         Arrays.asList(new Count()),
         baseDimensionsMap,
         baseAttributes);
@@ -114,21 +114,8 @@ public class VeniceAdminStats extends AbstractVeniceStats {
   }
 
   enum VeniceAdminTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    UNEXPECTED_TOPIC_ABSENCE_COUNT("unexpected_topic_absence_during_incremental_push_count"),
-    BATCH_PUSH_STARTED_COUNT("successfully_started_user_batch_push_parent_admin_count"),
-    INCREMENTAL_PUSH_STARTED_COUNT("successful_started_user_incremental_push_parent_admin_count"),
-    SERIALIZATION_FAILURE_COUNT("failed_serializing_admin_operation_message_count");
-
-    private final String metricName;
-
-    VeniceAdminTehutiMetricNameEnum(String metricName) {
-      this.metricName = metricName;
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    UNEXPECTED_TOPIC_ABSENCE_DURING_INCREMENTAL_PUSH_COUNT, SUCCESSFULLY_STARTED_USER_BATCH_PUSH_PARENT_ADMIN_COUNT,
+    SUCCESSFUL_STARTED_USER_INCREMENTAL_PUSH_PARENT_ADMIN_COUNT, FAILED_SERIALIZING_ADMIN_OPERATION_MESSAGE_COUNT
   }
 
   public enum VeniceAdminOtelMetricEntity implements ModuleMetricEntityInterface {

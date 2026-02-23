@@ -139,18 +139,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
 
   enum PushJobTehutiMetricNameEnum implements TehutiMetricNameEnum {
     BATCH_PUSH_JOB_SUCCESS, BATCH_PUSH_JOB_FAILED_USER_ERROR, BATCH_PUSH_JOB_FAILED_NON_USER_ERROR,
-    INCREMENTAL_PUSH_JOB_SUCCESS, INCREMENTAL_PUSH_JOB_FAILED_USER_ERROR, INCREMENTAL_PUSH_JOB_FAILED_NON_USER_ERROR;
-
-    private final String metricName;
-
-    PushJobTehutiMetricNameEnum() {
-      this.metricName = name().toLowerCase();
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    INCREMENTAL_PUSH_JOB_SUCCESS, INCREMENTAL_PUSH_JOB_FAILED_USER_ERROR, INCREMENTAL_PUSH_JOB_FAILED_NON_USER_ERROR
   }
 
   public enum PushJobOtelMetricEntity implements ModuleMetricEntityInterface {

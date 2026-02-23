@@ -139,18 +139,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
     /** for {@link LogCompactionOtelMetricEntity#STORE_COMPACTION_NOMINATED_COUNT} */
     STORE_NOMINATED_FOR_COMPACTION_COUNT,
     /** for {@link LogCompactionOtelMetricEntity#STORE_COMPACTION_TRIGGERED_COUNT} */
-    STORE_COMPACTION_TRIGGERED_COUNT;
-
-    private final String metricName;
-
-    ControllerTehutiMetricNameEnum() {
-      this.metricName = name().toLowerCase();
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    STORE_COMPACTION_TRIGGERED_COUNT
   }
 
   public enum LogCompactionOtelMetricEntity implements ModuleMetricEntityInterface {

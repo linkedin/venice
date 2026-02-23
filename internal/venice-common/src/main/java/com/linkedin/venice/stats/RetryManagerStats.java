@@ -105,17 +105,6 @@ public class RetryManagerStats extends AbstractVeniceStats {
   }
 
   public enum RetryManagerTehutiMetricName implements TehutiMetricNameEnum {
-    RETRY_LIMIT_PER_SECONDS, RETRIES_REMAINING, REJECTED_RETRY;
-
-    private final String metricName;
-
-    RetryManagerTehutiMetricName() {
-      this.metricName = name().toLowerCase();
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    RETRY_LIMIT_PER_SECONDS, RETRIES_REMAINING, REJECTED_RETRY
   }
 }

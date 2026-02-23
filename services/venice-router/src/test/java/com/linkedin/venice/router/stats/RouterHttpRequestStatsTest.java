@@ -42,6 +42,7 @@ import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import org.testng.annotations.Test;
@@ -299,5 +300,57 @@ public class RouterHttpRequestStatsTest {
         reporter.query("." + storeName + "--" + prefix + "body_aggregation_latency" + ".99thPercentile").value();
     assertEquals((int) p50, 50);
     assertEquals((int) p99, 99);
+  }
+
+  @Test
+  public void testRouterTehutiMetricNameEnum() {
+    Map<RouterHttpRequestStats.RouterTehutiMetricNameEnum, String> expectedNames = new HashMap<>();
+    expectedNames.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.HEALTHY_REQUEST, "healthy_request");
+    expectedNames.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.UNHEALTHY_REQUEST, "unhealthy_request");
+    expectedNames.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.TARDY_REQUEST, "tardy_request");
+    expectedNames.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.THROTTLED_REQUEST, "throttled_request");
+    expectedNames.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.BAD_REQUEST, "bad_request");
+    expectedNames
+        .put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.HEALTHY_REQUEST_LATENCY, "healthy_request_latency");
+    expectedNames
+        .put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.UNHEALTHY_REQUEST_LATENCY, "unhealthy_request_latency");
+    expectedNames.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.TARDY_REQUEST_LATENCY, "tardy_request_latency");
+    expectedNames
+        .put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.THROTTLED_REQUEST_LATENCY, "throttled_request_latency");
+    expectedNames.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.ERROR_RETRY, "error_retry");
+    expectedNames.put(
+        RouterHttpRequestStats.RouterTehutiMetricNameEnum.ALLOWED_RETRY_REQUEST_COUNT,
+        "allowed_retry_request_count");
+    expectedNames.put(
+        RouterHttpRequestStats.RouterTehutiMetricNameEnum.DISALLOWED_RETRY_REQUEST_COUNT,
+        "disallowed_retry_request_count");
+    expectedNames.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.RETRY_DELAY, "retry_delay");
+    expectedNames.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.REQUEST_SIZE, "request_size");
+    expectedNames.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.RESPONSE_SIZE, "response_size");
+    expectedNames.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.KEY_SIZE_IN_BYTE, "key_size_in_byte");
+    expectedNames.put(
+        RouterHttpRequestStats.RouterTehutiMetricNameEnum.DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST,
+        "delay_constraint_aborted_retry_request");
+    expectedNames.put(
+        RouterHttpRequestStats.RouterTehutiMetricNameEnum.SLOW_ROUTE_ABORTED_RETRY_REQUEST,
+        "slow_route_aborted_retry_request");
+    expectedNames.put(
+        RouterHttpRequestStats.RouterTehutiMetricNameEnum.RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST,
+        "retry_route_limit_aborted_retry_request");
+    expectedNames.put(
+        RouterHttpRequestStats.RouterTehutiMetricNameEnum.NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST,
+        "no_available_replica_aborted_retry_request");
+
+    assertEquals(
+        RouterHttpRequestStats.RouterTehutiMetricNameEnum.values().length,
+        expectedNames.size(),
+        "New RouterTehutiMetricNameEnum values were added but not included in this test");
+
+    for (RouterHttpRequestStats.RouterTehutiMetricNameEnum enumValue: RouterHttpRequestStats.RouterTehutiMetricNameEnum
+        .values()) {
+      String expectedName = expectedNames.get(enumValue);
+      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
+      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
+    }
   }
 }

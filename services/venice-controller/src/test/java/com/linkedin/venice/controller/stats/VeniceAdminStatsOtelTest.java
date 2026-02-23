@@ -198,16 +198,16 @@ public class VeniceAdminStatsOtelTest {
   public void testVeniceAdminTehutiMetricNameEnum() {
     Map<VeniceAdminStats.VeniceAdminTehutiMetricNameEnum, String> expectedNames = new HashMap<>();
     expectedNames.put(
-        VeniceAdminStats.VeniceAdminTehutiMetricNameEnum.UNEXPECTED_TOPIC_ABSENCE_COUNT,
+        VeniceAdminStats.VeniceAdminTehutiMetricNameEnum.UNEXPECTED_TOPIC_ABSENCE_DURING_INCREMENTAL_PUSH_COUNT,
         "unexpected_topic_absence_during_incremental_push_count");
     expectedNames.put(
-        VeniceAdminStats.VeniceAdminTehutiMetricNameEnum.BATCH_PUSH_STARTED_COUNT,
+        VeniceAdminStats.VeniceAdminTehutiMetricNameEnum.SUCCESSFULLY_STARTED_USER_BATCH_PUSH_PARENT_ADMIN_COUNT,
         "successfully_started_user_batch_push_parent_admin_count");
     expectedNames.put(
-        VeniceAdminStats.VeniceAdminTehutiMetricNameEnum.INCREMENTAL_PUSH_STARTED_COUNT,
+        VeniceAdminStats.VeniceAdminTehutiMetricNameEnum.SUCCESSFUL_STARTED_USER_INCREMENTAL_PUSH_PARENT_ADMIN_COUNT,
         "successful_started_user_incremental_push_parent_admin_count");
     expectedNames.put(
-        VeniceAdminStats.VeniceAdminTehutiMetricNameEnum.SERIALIZATION_FAILURE_COUNT,
+        VeniceAdminStats.VeniceAdminTehutiMetricNameEnum.FAILED_SERIALIZING_ADMIN_OPERATION_MESSAGE_COUNT,
         "failed_serializing_admin_operation_message_count");
 
     assertEquals(
