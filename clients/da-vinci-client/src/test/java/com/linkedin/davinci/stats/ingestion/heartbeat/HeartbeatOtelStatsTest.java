@@ -1,7 +1,7 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
-import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelStats.HeartbeatOtelMetricEntity.INGESTION_HEARTBEAT_DELAY;
+import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelMetricEntity.INGESTION_HEARTBEAT_DELAY;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
@@ -17,7 +17,6 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
-import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelStats.HeartbeatOtelMetricEntity;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;

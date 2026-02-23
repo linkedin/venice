@@ -41,7 +41,7 @@ public class ServerMetricEntityTest {
         assertNotNull(
             metric.getMetricEntity(),
             "getMetricEntity() should not return null for " + ((Enum<?>) metric).name() + " in "
-                + metric.getClass().getEnclosingClass().getSimpleName());
+                + metric.getClass().getSimpleName());
       }
     }
   }
@@ -64,7 +64,7 @@ public class ServerMetricEntityTest {
         String metricName = metric.getMetricEntity().getMetricName();
         assertTrue(
             registeredMetricNames.contains(metricName),
-            "Metric '" + metricName + "' from " + metric.getClass().getEnclosingClass().getSimpleName()
+            "Metric '" + metricName + "' from " + metric.getClass().getSimpleName()
                 + " is not registered in SERVER_METRIC_ENTITIES. "
                 + "Add it to ServerMetricEntity.SERVER_METRIC_ENTITIES.");
       }
