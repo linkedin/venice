@@ -16,12 +16,6 @@ public enum VeniceDCREvent implements VeniceDimensionInterface {
   /** An offset regression error occurred during conflict resolution */
   OFFSET_REGRESSION_ERROR;
 
-  private final String event;
-
-  VeniceDCREvent() {
-    this.event = name().toLowerCase();
-  }
-
   /**
    * All the instances of this Enum should have the same dimension name.
    * Refer {@link VeniceDimensionInterface#getDimensionName()} for more details.
@@ -29,10 +23,5 @@ public enum VeniceDCREvent implements VeniceDimensionInterface {
   @Override
   public VeniceMetricsDimensions getDimensionName() {
     return VENICE_DCR_EVENT;
-  }
-
-  @Override
-  public String getDimensionValue() {
-    return event;
   }
 }

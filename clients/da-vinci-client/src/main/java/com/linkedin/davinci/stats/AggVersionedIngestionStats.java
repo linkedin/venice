@@ -21,6 +21,12 @@ import org.apache.logging.log4j.Logger;
 /**
  * The store level stats or the total stats will be unpopulated because there is no easy and reliable way to aggregate
  * gauge stats such as rt topic offset lag.
+ *
+ * <p><b>OTel stats lifecycle:</b> OTel stats are created lazily by {@link #getIngestionOtelStats} and
+ * updated by {@link #onVersionInfoUpdated} via {@code computeIfPresent}. This class uses eager loading
+ * ({@code loadAllStats()} is NOT overridden), so {@code onVersionInfoUpdated} and
+ * {@code cleanupVersionResources} need null guards because they are called during the super()
+ * constructor before subclass fields ({@code otelStatsMap}) are initialized.
  */
 public class AggVersionedIngestionStats
     extends AbstractVeniceAggVersionedStats<IngestionStats, IngestionStatsReporter> {
@@ -44,10 +50,12 @@ public class AggVersionedIngestionStats
     this.emitOtelIngestionStats = serverConfig.isIngestionOtelStatsEnabled();
   }
 
+  /** Updates version info for existing OTel stats only. Null guard needed because eager loading
+   *  calls this from the super() constructor before {@code otelStatsMap} is initialized. */
   @Override
   protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
     if (otelStatsMap == null) {
-      return; // Called during super() constructor before otelStatsMap is initialized; Tehuti stats still load
+      return; // Called during super() constructor before otelStatsMap is initialized
     }
     otelStatsMap.computeIfPresent(storeName, (k, stats) -> {
       stats.updateVersionInfo(currentVersion, futureVersion);
@@ -78,13 +86,26 @@ public class AggVersionedIngestionStats
     }
   }
 
+  /**
+   * Gets or creates OTel stats for a store. {@code getCurrentVersion}/{@code getFutureVersion}
+   * are called <b>before</b> {@code computeIfAbsent} because they can trigger
+   * {@code addStore} → {@code onVersionInfoUpdated} → {@code otelStatsMap.computeIfPresent},
+   * which would re-enter this same map from inside the lambda (violates ConcurrentHashMap contract).
+   * The {@code get()} fast-path skips these calls when stats already exist.
+   */
   private IngestionOtelStats getIngestionOtelStats(String storeName) {
     if (!emitOtelIngestionStats) {
       return NoOpIngestionOtelStats.INSTANCE;
     }
+    IngestionOtelStats existing = otelStatsMap.get(storeName);
+    if (existing != null) {
+      return existing;
+    }
+    int currentVersion = getCurrentVersion(storeName);
+    int futureVersion = getFutureVersion(storeName);
     return otelStatsMap.computeIfAbsent(storeName, k -> {
       IngestionOtelStats stats = new IngestionOtelStats(getMetricsRepository(), k, clusterName);
-      stats.updateVersionInfo(getCurrentVersion(k), getFutureVersion(k));
+      stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
   }

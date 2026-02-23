@@ -192,6 +192,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
       this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
     }
 
+    @Override
     public MetricEntity getMetricEntity() {
       return metricEntity;
     }
