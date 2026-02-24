@@ -436,7 +436,6 @@ public class PartitionTracker {
         debugInfo,
         aggregates);
     newSegment.setLastRecordProducerTimestamp(consumerRecord.getValue().getProducerMetadata().getMessageTimestamp());
-    newSegment.setLastRecordTimestamp(consumerRecord.getPubSubMessageTime());
     getSegments(type).put(consumerRecord.getValue().getProducerMetadata().getProducerGUID(), newSegment);
 
     if (unregisteredProducer) {
@@ -494,7 +493,6 @@ public class PartitionTracker {
     if (!segment.isStarted()) {
       segment.start();
       segment.setLastRecordProducerTimestamp(recordMetadata.getMessageTimestamp());
-      segment.setLastRecordTimestamp(consumerRecord.getPubSubMessageTime());
       return;
     }
 
@@ -503,7 +501,6 @@ public class PartitionTracker {
         throw DataFaultType.DUPLICATE.getNewException(segment, consumerRecord, pubSubPositionDeserializer);
       }
       segment.setLastRecordProducerTimestamp(recordMetadata.getMessageTimestamp());
-      segment.setLastRecordTimestamp(consumerRecord.getPubSubMessageTime());
       /**
        * In any other cases for newly constructed segment, don't check sequence number anymore,
        * because "previousSequenceNumber" is going to be equal to "incomingSequenceNumber", and thus this message
@@ -516,7 +513,6 @@ public class PartitionTracker {
       // Expected case, in steady state
       segment.getAndIncrementSequenceNumber();
       segment.setLastRecordProducerTimestamp(recordMetadata.getMessageTimestamp());
-      segment.setLastRecordTimestamp(consumerRecord.getPubSubMessageTime());
       return;
     }
 
@@ -527,7 +523,6 @@ public class PartitionTracker {
         // see the record coming from samza producer before it is promoted to leader. This check prevents the first
         // message to be considered as "duplicated" and skipped.
         segment.setLastRecordProducerTimestamp(recordMetadata.getMessageTimestamp());
-        segment.setLastRecordTimestamp(consumerRecord.getPubSubMessageTime());
         return;
       }
       // This is a duplicate message, which we can safely ignore.
@@ -555,7 +550,6 @@ public class PartitionTracker {
           */
         segment.setSequenceNumber(incomingSequenceNumber);
         segment.setLastRecordProducerTimestamp(recordMetadata.getMessageTimestamp());
-        segment.setLastRecordTimestamp(consumerRecord.getPubSubMessageTime());
         return;
       }
 
