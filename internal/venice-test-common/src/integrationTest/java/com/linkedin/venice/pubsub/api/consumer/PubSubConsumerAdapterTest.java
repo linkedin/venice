@@ -1595,8 +1595,7 @@ public class PubSubConsumerAdapterTest {
   }
 
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
-  public void testAdvancePositionFromBeginning()
-      throws ExecutionException, InterruptedException, TimeoutException {
+  public void testAdvancePositionFromBeginning() throws ExecutionException, InterruptedException, TimeoutException {
     PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueString("advance-pos-topic-"));
     int numPartitions = 1;
     int numMessages = 10;
@@ -1673,8 +1672,6 @@ public class PubSubConsumerAdapterTest {
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(topic, 0);
 
     PubSubPosition beginPos = pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT);
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> pubSubConsumerAdapter.advancePosition(partition, beginPos, -1));
+    assertThrows(IllegalArgumentException.class, () -> pubSubConsumerAdapter.advancePosition(partition, beginPos, -1));
   }
 }

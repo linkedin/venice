@@ -1001,9 +1001,7 @@ public class ApacheKafkaConsumerAdapterTest {
   @Test
   public void testAdvancePositionOverflow() {
     ApacheKafkaOffsetPosition start = new ApacheKafkaOffsetPosition(Long.MAX_VALUE);
-    expectThrows(
-        ArithmeticException.class,
-        () -> kafkaConsumerAdapter.advancePosition(pubSubTopicPartition, start, 1));
+    expectThrows(ArithmeticException.class, () -> kafkaConsumerAdapter.advancePosition(pubSubTopicPartition, start, 1));
   }
 
 }
