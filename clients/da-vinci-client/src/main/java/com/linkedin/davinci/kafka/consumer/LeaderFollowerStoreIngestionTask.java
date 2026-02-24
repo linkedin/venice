@@ -3018,6 +3018,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
       CompletableFuture<Void> lastFuture = pcs.getLastQueuedRecordPersistedFuture();
       storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
+      // Reset consumer-side VT bytes so the size-based condition in shouldSyncOffsetFromSnapshot does not keep
+      // firing for every subsequent record.
+      getConsumedBytesSinceLastSync().put(getVersionTopic().getName(), 0L);
 
       // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
       LOGGER.info(
@@ -3042,8 +3045,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (payloadUnion instanceof Put && ((Put) payloadUnion).getSchemaId() != CHUNK_SCHEMA_ID) {
         return true; // Global RT DIV message can be multiple chunks + deletes, only sync on one Put (manifest or value)
       }
+    } else if (isNonSegmentControlMessage(consumerRecord, null)) {
+      return true; // sync when processing most control messages
     }
-    return isNonSegmentControlMessage(consumerRecord, null);
+
+    if (pcs == null) {
+      LOGGER.warn("event=globalRtDiv No PCS found for: {} Will not sync VT DIV", consumerRecord.getTopicPartition());
+      return false;
+    }
+
+    // must be greater than the interval in shouldSendGlobalRtDiv() to not interfere
+    final long syncBytesInterval = getSyncBytesInterval(pcs); // size-based sync condition
+    long vtConsumedBytesSinceLastSync = getConsumedBytesSinceLastSync().getOrDefault(getVersionTopic().getName(), 0L);
+    return syncBytesInterval > 0 && (vtConsumedBytesSinceLastSync >= 2 * syncBytesInterval);
   }
 
   /**

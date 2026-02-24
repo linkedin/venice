@@ -378,8 +378,8 @@ public class DataIntegrityValidatorTest {
     messageEnvelope.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     messageEnvelope.payloadUnion = payload;
 
-    if (offsetRecord != null && offsetRecord.getMaxMessageTimeInMs() < brokerTimestamp) {
-      when(offsetRecord.getMaxMessageTimeInMs()).thenReturn(brokerTimestamp);
+    if (offsetRecord != null && offsetRecord.calculateLatestMessageTimeInMs() < brokerTimestamp) {
+      when(offsetRecord.calculateLatestMessageTimeInMs()).thenReturn(brokerTimestamp);
     }
 
     return new ImmutablePubSubMessage(

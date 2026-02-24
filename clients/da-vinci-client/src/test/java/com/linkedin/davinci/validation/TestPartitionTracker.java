@@ -6,6 +6,7 @@ import static com.linkedin.venice.kafka.validation.checksum.CheckSumType.ADHASH;
 import static com.linkedin.venice.kafka.validation.checksum.CheckSumType.MD5;
 import static com.linkedin.venice.kafka.validation.checksum.CheckSumType.NONE;
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
@@ -39,18 +40,24 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPositionFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.specific.FixedSize;
 import org.apache.logging.log4j.LogManager;
@@ -70,7 +77,10 @@ public class TestPartitionTracker {
   private PubSubTopic realTimeTopic;
   private PubSubTopic versionTopic;
   int partitionId = 0;
+  public static final long MAX_AGE_IN_MS = 5000; // 5 seconds
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubPositionDeserializer positionDeserializer =
+      new PubSubPositionDeserializer(InMemoryPubSubPositionFactory.getPositionTypeRegistryWithInMemoryPosition());
 
   @BeforeMethod(alwaysRun = true)
   public void methodSetUp() {
@@ -326,13 +336,10 @@ public class TestPartitionTracker {
     Segment secondSegment = new Segment(partitionId, skipSegmentNumber, CheckSumType.NONE);
     long offset = 10;
 
-    // Send the first segment
+    // Send the first segment with sequence number 0
     ControlMessage startOfSegment = getStartOfSegment();
     KafkaMessageEnvelope startOfSegmentMessage =
-        getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, firstSegment, Optional.empty(), startOfSegment); // sequence
-                                                                                                                    // number
-                                                                                                                    // is
-                                                                                                                    // zero
+        getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, firstSegment, Optional.empty(), startOfSegment);
     DefaultPubSubMessage controlMessageConsumerRecord = new ImmutablePubSubMessage(
         getControlMessageKey(startOfSegmentMessage),
         startOfSegmentMessage,
@@ -381,13 +388,10 @@ public class TestPartitionTracker {
     Segment firstSegment = new Segment(partitionId, 0, checkSumType);
     long offset = 10;
 
-    // Send SOS
+    // Send SOS with sequence number 0
     ControlMessage startOfSegment = getStartOfSegment();
     KafkaMessageEnvelope startOfSegmentMessage =
-        getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, firstSegment, Optional.empty(), startOfSegment); // sequence
-                                                                                                                    // number
-                                                                                                                    // is
-                                                                                                                    // 0
+        getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, firstSegment, Optional.empty(), startOfSegment);
     DefaultPubSubMessage controlMessageConsumerRecord = new ImmutablePubSubMessage(
         getControlMessageKey(startOfSegmentMessage),
         startOfSegmentMessage,
@@ -398,12 +402,10 @@ public class TestPartitionTracker {
     partitionTracker.validateMessage(type, controlMessageConsumerRecord, true, Lazy.FALSE);
     Assert.assertEquals(partitionTracker.getSegment(type, guid).getSequenceNumber(), 0);
 
-    // send EOS
+    // Send EOS with sequence number 5
     ControlMessage endOfSegment = getEndOfSegment(ByteBuffer.allocate(0));
     KafkaMessageEnvelope endOfSegmentMessage =
-        getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, firstSegment, Optional.of(5), endOfSegment); // sequence
-                                                                                                                // number
-                                                                                                                // is 5
+        getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, firstSegment, Optional.of(5), endOfSegment);
     controlMessageConsumerRecord = new ImmutablePubSubMessage(
         getControlMessageKey(endOfSegmentMessage),
         endOfSegmentMessage,
@@ -714,5 +716,112 @@ public class TestPartitionTracker {
     assertTrue(offset > startingOffset);
 
     return messages;
+  }
+
+  /**
+   * Test that cloneVtProducerStates removes old entries from the source tracker when maxAgeInMs threshold is exceeded.
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testCloneVtProducerStates() throws InterruptedException {
+    final int NUM_PRODUCERS = 3;
+    String destTopicNamePrefix = "dest_topic_" + System.currentTimeMillis();
+    PubSubTopic destVersionTopic = pubSubTopicRepository.getTopic(destTopicNamePrefix + "_v1");
+    PartitionTracker destTracker = new PartitionTracker(destVersionTopic.getName(), partitionId, positionDeserializer);
+
+    // Create producer GUIDs, populate the source tracker's vt segments, and the latest consumed vt position
+    List<GUID> guids = createGuids(NUM_PRODUCERS);
+    List<GUID> oldGuids = Collections.singletonList(guids.get(0));
+    VeniceConcurrentHashMap<GUID, Segment> srcVtSegments = partitionTracker.getVtSegmentsForTesting();
+    createTestSegments(srcVtSegments, guids);
+    Map<GUID, Segment> destVtSegments = destTracker.getVtSegmentsForTesting();
+    List<Map<GUID, Segment>> allSegments = Arrays.asList(srcVtSegments, destVtSegments);
+    PubSubPosition testPosition = ApacheKafkaOffsetPosition.of(12345L);
+    partitionTracker.updateLatestConsumedVtPosition(testPosition);
+
+    // Clone with DISABLED maxAgeInMs. Verify that all segments were cloned, even the old segments.
+    partitionTracker.cloneVtProducerStates(destTracker, DataIntegrityValidator.DISABLED);
+    allSegments.forEach(segments -> assertEquals(segments.size(), 3, "All segments should be present"));
+    guids.forEach(guid -> assertTrue(srcVtSegments.containsKey(guid) && destVtSegments.containsKey(guid)));
+    assertEquals(destTracker.getLatestConsumedVtPosition(), testPosition, "latestConsumedVtPosition should be copied");
+
+    // Clone producer states using maxAgeInMs.
+    // Old segments should be removed from the source tracker and not be cloned to the dest tracker .
+    destVtSegments.clear();
+    partitionTracker.cloneVtProducerStates(destTracker, MAX_AGE_IN_MS);
+    allSegments.forEach(segments -> {
+      assertEquals(segments.size(), 2, "Segment 1 (very old) should've been removed so size goes 3->2");
+      guids.forEach(guid -> assertTrue(oldGuids.contains(guid) ^ segments.containsKey(guid)));
+    });
+    assertEquals(destTracker.getLatestConsumedVtPosition(), testPosition, "latestConsumedVtPosition should be copied");
+  }
+
+  /**
+   * Test that cloneRtProducerStates removes old entries from the source tracker when maxAgeInMs threshold is exceeded.
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testCloneRtProducerStates() {
+    final int NUM_PRODUCERS = 3;
+    String destTopicNamePrefix = "dest_topic_" + System.currentTimeMillis();
+    PubSubTopic destVersionTopic = pubSubTopicRepository.getTopic(destTopicNamePrefix + "_v1");
+    PartitionTracker destTracker = new PartitionTracker(destVersionTopic.getName(), partitionId, positionDeserializer);
+    String brokerUrl = "testBrokerUrl";
+    String expiredBrokerUrl = "expiredBrokerUrl";
+
+    List<GUID> guids = createGuids(NUM_PRODUCERS);
+    List<GUID> oldGuids = Collections.singletonList(guids.get(0));
+    Map<String, VeniceConcurrentHashMap<GUID, Segment>> allSrcRtSegments = partitionTracker.getRtSegmentsForTesting();
+    VeniceConcurrentHashMap<GUID, Segment> srcRtSegments = new VeniceConcurrentHashMap<>();
+    allSrcRtSegments.computeIfAbsent(brokerUrl, k -> srcRtSegments);
+
+    createTestSegments(srcRtSegments, guids);
+    Segment oldSegment = srcRtSegments.get(guids.get(0));
+    allSrcRtSegments.computeIfAbsent(expiredBrokerUrl, k -> new VeniceConcurrentHashMap<>());
+    guids.forEach(guid -> allSrcRtSegments.get(expiredBrokerUrl).put(guid, oldSegment));
+
+    // Clone the producer states for the expired broker. They should be removed on the source and not cloned to dest.
+    partitionTracker.cloneRtProducerStates(destTracker, expiredBrokerUrl, MAX_AGE_IN_MS);
+    Map<String, VeniceConcurrentHashMap<GUID, Segment>> allDestRtSegments = destTracker.getRtSegmentsForTesting();
+    Arrays.asList(allSrcRtSegments, allDestRtSegments).forEach(rtSegments -> {
+      assertFalse(rtSegments.containsKey(expiredBrokerUrl), "The expired broker entry should've been removed");
+    });
+
+    // Clone the producer states for the primary broker. Only recent and borderline segments should be cloned.
+    partitionTracker.cloneRtProducerStates(destTracker, brokerUrl, MAX_AGE_IN_MS);
+    Arrays.asList(allSrcRtSegments, allDestRtSegments).forEach(rtSegments -> {
+      assertEquals(rtSegments.size(), 1, "Only one broker URL should be remaining");
+      assertTrue(rtSegments.containsKey(brokerUrl), "The broker URL should've been cloned");
+
+      VeniceConcurrentHashMap<GUID, Segment> segments = rtSegments.get(brokerUrl);
+      assertEquals(segments.size(), 2, "Segment 1 (very old) should've been removed so size goes 3->2");
+      guids.forEach(guid -> Assert.assertTrue(oldGuids.contains(guid) ^ segments.containsKey(guid)));
+    });
+  }
+
+  private List<GUID> createGuids(int numGuids) {
+    List<GUID> guids = new ArrayList<>();
+    for (int i = 0; i < numGuids; i++) {
+      guids.add(GuidUtils.getGUID(VeniceProperties.empty()));
+    }
+    return guids;
+  }
+
+  private void createTestSegments(VeniceConcurrentHashMap<GUID, Segment> segments, List<GUID> guids) {
+    assertTrue(guids.size() >= 3, "Need at least 3 GUIDs to create test segments");
+    final long t = System.currentTimeMillis();
+
+    // Segment 1: Very old (should be removed)
+    Segment oldSegment = new Segment(partitionId, 0, CheckSumType.NONE);
+    oldSegment.setLastRecordProducerTimestamp(t - MAX_AGE_IN_MS - 2000); // Expired by 2 seconds
+    segments.put(guids.get(0), oldSegment);
+
+    // Segment 2: Recent (should be retained)
+    Segment recentSegment = new Segment(partitionId, 1, CheckSumType.NONE);
+    recentSegment.setLastRecordProducerTimestamp(t - 1000); // Only 1 second old
+    segments.put(guids.get(1), recentSegment);
+
+    // Segment 3: Recent but older than Segment 2 (should be retained)
+    Segment borderlineSegment = new Segment(partitionId, 2, CheckSumType.NONE);
+    borderlineSegment.setLastRecordProducerTimestamp(t - MAX_AGE_IN_MS / 2); // Well within threshold
+    segments.put(guids.get(2), borderlineSegment);
   }
 }
