@@ -869,4 +869,36 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertNotSame(mapValue, indexedMap);
   }
 
+  @Test
+  public void testDeepCopyPreservingIndexedHashMapConvertsRegularMapToIndexedHashMap() {
+    Schema schema = new Schema.Parser().parse(
+        "{\"type\":\"record\",\"name\":\"R\",\"fields\":["
+            + "{\"name\":\"name\",\"type\":\"string\",\"default\":\"def\"},"
+            + "{\"name\":\"m\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"default\":{}}]}");
+    GenericRecord original = new org.apache.avro.generic.GenericData.Record(schema);
+    original.put("name", "hello");
+    // Use a regular HashMap (not IndexedHashMap) to simulate what GenericData.deepCopy produces
+    java.util.HashMap<String, String> regularMap = new java.util.HashMap<>();
+    regularMap.put("k1", "v1");
+    regularMap.put("k2", "v2");
+    original.put("m", regularMap);
+
+    GenericRecord copy = ActiveActiveStoreIngestionTask.deepCopyPreservingIndexedHashMap(original);
+
+    // Must be a different object (deep copy)
+    Assert.assertNotSame(copy, original);
+    // String field preserved
+    Assert.assertEquals(copy.get("name").toString(), "hello");
+    // Map field must be converted to IndexedHashMap even though the original had a regular HashMap
+    Object mapValue = copy.get("m");
+    Assert.assertTrue(
+        mapValue instanceof com.linkedin.davinci.utils.IndexedHashMap,
+        "Regular HashMap should be converted to IndexedHashMap, got: " + mapValue.getClass().getName());
+    @SuppressWarnings("unchecked")
+    java.util.Map<String, String> copiedMap = (java.util.Map<String, String>) mapValue;
+    Assert.assertEquals(copiedMap.size(), 2);
+    Assert.assertEquals(String.valueOf(copiedMap.get("k1")), "v1");
+    Assert.assertEquals(String.valueOf(copiedMap.get("k2")), "v2");
+  }
+
 }
