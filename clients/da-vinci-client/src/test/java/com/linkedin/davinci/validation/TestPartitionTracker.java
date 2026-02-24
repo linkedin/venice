@@ -732,7 +732,7 @@ public class TestPartitionTracker {
     List<GUID> guids = createGuids(NUM_PRODUCERS);
     List<GUID> oldGuids = Collections.singletonList(guids.get(0));
     VeniceConcurrentHashMap<GUID, Segment> srcVtSegments = partitionTracker.getVtSegmentsForTesting();
-    createTestSegments(System.currentTimeMillis(), srcVtSegments, guids);
+    createTestSegments(srcVtSegments, guids);
     Map<GUID, Segment> destVtSegments = destTracker.getVtSegmentsForTesting();
     List<Map<GUID, Segment>> allSegments = Arrays.asList(srcVtSegments, destVtSegments);
     PubSubPosition testPosition = ApacheKafkaOffsetPosition.of(12345L);
@@ -773,7 +773,7 @@ public class TestPartitionTracker {
     VeniceConcurrentHashMap<GUID, Segment> srcRtSegments = new VeniceConcurrentHashMap<>();
     allSrcRtSegments.computeIfAbsent(brokerUrl, k -> srcRtSegments);
 
-    createTestSegments(System.currentTimeMillis(), srcRtSegments, guids);
+    createTestSegments(srcRtSegments, guids);
     Segment oldSegment = srcRtSegments.get(guids.get(0));
     allSrcRtSegments.computeIfAbsent(expiredBrokerUrl, k -> new VeniceConcurrentHashMap<>());
     guids.forEach(guid -> allSrcRtSegments.get(expiredBrokerUrl).put(guid, oldSegment));
@@ -805,22 +805,23 @@ public class TestPartitionTracker {
     return guids;
   }
 
-  private void createTestSegments(long t, VeniceConcurrentHashMap<GUID, Segment> segments, List<GUID> guids) {
+  private void createTestSegments(VeniceConcurrentHashMap<GUID, Segment> segments, List<GUID> guids) {
     assertTrue(guids.size() >= 3, "Need at least 3 GUIDs to create test segments");
+    final long t = System.currentTimeMillis();
 
     // Segment 1: Very old (should be removed)
     Segment oldSegment = new Segment(partitionId, 0, CheckSumType.NONE);
-    oldSegment.setLastRecordTimestamp(t - MAX_AGE_IN_MS - 2000); // Expired by 2 seconds
+    oldSegment.setLastRecordProducerTimestamp(t - MAX_AGE_IN_MS - 2000); // Expired by 2 seconds
     segments.put(guids.get(0), oldSegment);
 
     // Segment 2: Recent (should be retained)
     Segment recentSegment = new Segment(partitionId, 1, CheckSumType.NONE);
-    recentSegment.setLastRecordTimestamp(t - 1000); // Only 1 second old
+    recentSegment.setLastRecordProducerTimestamp(t - 1000); // Only 1 second old
     segments.put(guids.get(1), recentSegment);
 
     // Segment 3: Recent but older than Segment 2 (should be retained)
     Segment borderlineSegment = new Segment(partitionId, 2, CheckSumType.NONE);
-    borderlineSegment.setLastRecordTimestamp(t - MAX_AGE_IN_MS + (MAX_AGE_IN_MS / 2)); // Well within threshold
+    borderlineSegment.setLastRecordProducerTimestamp(t - MAX_AGE_IN_MS / 2); // Well within threshold
     segments.put(guids.get(2), borderlineSegment);
   }
 }
