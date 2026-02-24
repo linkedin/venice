@@ -37,7 +37,7 @@ public class StoreBackupVersionCleanupServiceStats extends AbstractVeniceStats {
         BackupVersionCleanupOtelMetricEntity.BACKUP_VERSION_CLEANUP_MISMATCH_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
-        BackupVersionCleanupTehutiMetricNameEnum.VERSION_MISMATCH,
+        BackupVersionCleanupTehutiMetricNameEnum.BACKUP_VERSION_CLEANUP_VERSION_MISMATCH,
         Arrays.asList(new OccurrenceRate()),
         baseDimensionsMap,
         baseAttributes);
@@ -48,18 +48,7 @@ public class StoreBackupVersionCleanupServiceStats extends AbstractVeniceStats {
   }
 
   enum BackupVersionCleanupTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    VERSION_MISMATCH("backup_version_cleanup_version_mismatch");
-
-    private final String metricName;
-
-    BackupVersionCleanupTehutiMetricNameEnum(String metricName) {
-      this.metricName = metricName;
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    BACKUP_VERSION_CLEANUP_VERSION_MISMATCH
   }
 
   public enum BackupVersionCleanupOtelMetricEntity implements ModuleMetricEntityInterface {

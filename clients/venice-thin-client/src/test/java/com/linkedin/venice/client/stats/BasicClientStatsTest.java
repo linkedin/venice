@@ -641,4 +641,29 @@ public class BasicClientStatsTest {
         && Objects.equals(actual.getDescription(), expected.getDescription())
         && Objects.equals(actual.getDimensionsList(), expected.getDimensionsList());
   }
+
+  @Test
+  public void testBasicClientTehutiMetricNameEnum() {
+    Map<BasicClientStats.BasicClientTehutiMetricName, String> expectedNames = new HashMap<>();
+    expectedNames.put(BasicClientStats.BasicClientTehutiMetricName.HEALTHY_REQUEST, "healthy_request");
+    expectedNames.put(BasicClientStats.BasicClientTehutiMetricName.UNHEALTHY_REQUEST, "unhealthy_request");
+    expectedNames.put(BasicClientStats.BasicClientTehutiMetricName.HEALTHY_REQUEST_LATENCY, "healthy_request_latency");
+    expectedNames
+        .put(BasicClientStats.BasicClientTehutiMetricName.UNHEALTHY_REQUEST_LATENCY, "unhealthy_request_latency");
+    expectedNames.put(BasicClientStats.BasicClientTehutiMetricName.REQUEST_KEY_COUNT, "request_key_count");
+    expectedNames
+        .put(BasicClientStats.BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT, "success_request_key_count");
+
+    assertEquals(
+        BasicClientStats.BasicClientTehutiMetricName.values().length,
+        expectedNames.size(),
+        "New BasicClientTehutiMetricName values were added but not included in this test");
+
+    for (BasicClientStats.BasicClientTehutiMetricName enumValue: BasicClientStats.BasicClientTehutiMetricName
+        .values()) {
+      String expectedName = expectedNames.get(enumValue);
+      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
+      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
+    }
+  }
 }

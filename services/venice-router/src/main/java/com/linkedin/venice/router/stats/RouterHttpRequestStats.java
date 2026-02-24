@@ -844,17 +844,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     KEY_SIZE_IN_BYTE,
     /** for {@link RouterMetricEntity#ABORTED_RETRY_COUNT} */
     DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST, SLOW_ROUTE_ABORTED_RETRY_REQUEST, RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST,
-    NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST;
-
-    private final String metricName;
-
-    RouterTehutiMetricNameEnum() {
-      this.metricName = name().toLowerCase();
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST
   }
 }

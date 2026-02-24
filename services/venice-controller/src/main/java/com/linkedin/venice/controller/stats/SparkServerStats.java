@@ -176,18 +176,7 @@ public class SparkServerStats extends AbstractVeniceStats {
 
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {
     REQUEST, FINISHED_REQUEST, CURRENT_IN_FLIGHT_REQUEST, SUCCESSFUL_REQUEST, FAILED_REQUEST,
-    SUCCESSFUL_REQUEST_LATENCY, FAILED_REQUEST_LATENCY;
-
-    private final String metricName;
-
-    ControllerTehutiMetricNameEnum() {
-      this.metricName = name().toLowerCase();
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    SUCCESSFUL_REQUEST_LATENCY, FAILED_REQUEST_LATENCY
   }
 
   public enum SparkServerOtelMetricEntity implements ModuleMetricEntityInterface {

@@ -80,19 +80,7 @@ public class TopicCleanupServiceStats extends AbstractVeniceStats {
   }
 
   enum TopicCleanupTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    DELETABLE_TOPICS_COUNT("deletable_topics_count"), TOPICS_DELETED_RATE("topics_deleted_rate"),
-    TOPIC_DELETION_ERROR_RATE("topic_deletion_error_rate");
-
-    private final String metricName;
-
-    TopicCleanupTehutiMetricNameEnum(String metricName) {
-      this.metricName = metricName;
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    DELETABLE_TOPICS_COUNT, TOPICS_DELETED_RATE, TOPIC_DELETION_ERROR_RATE
   }
 
   public enum TopicCleanupOtelMetricEntity implements ModuleMetricEntityInterface {

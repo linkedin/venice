@@ -92,7 +92,7 @@ public class StoreBackupVersionCleanupServiceStatsOtelTest {
     Map<StoreBackupVersionCleanupServiceStats.BackupVersionCleanupTehutiMetricNameEnum, String> expectedNames =
         new HashMap<>();
     expectedNames.put(
-        StoreBackupVersionCleanupServiceStats.BackupVersionCleanupTehutiMetricNameEnum.VERSION_MISMATCH,
+        StoreBackupVersionCleanupServiceStats.BackupVersionCleanupTehutiMetricNameEnum.BACKUP_VERSION_CLEANUP_VERSION_MISMATCH,
         "backup_version_cleanup_version_mismatch");
 
     assertEquals(
