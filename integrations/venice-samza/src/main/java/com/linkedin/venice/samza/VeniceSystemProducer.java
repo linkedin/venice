@@ -800,14 +800,16 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   /**
    * Validates the key schema, resolves the value schema ID, handles {@link VeniceObjectWithTimestamp}
-   * unwrapping, applies write-compute conversion when necessary, and serializes both key and value
-   * into a {@link SerializedRecord}.
+   * unwrapping for real-time topics, applies write-compute conversion when necessary, and serializes
+   * both key and value into a {@link SerializedRecord}.
    *
    * This method is intentionally protected so Venice internal subclasses can customize behavior while
    * keeping the public Samza producer API unchanged.
    *
    * @param keyObject the key; must conform to the store's registered key schema
-   * @param valueObject the value, a {@link VeniceObjectWithTimestamp} wrapping a value, or {@code null} for a delete
+   * @param valueObject the value; for real-time topics, this may be a {@link VeniceObjectWithTimestamp}
+   *                    wrapping a value, and for non-real-time topics it must be the raw value object,
+   *                    or {@code null} for a delete
    * @return a {@link SerializedRecord} ready to be passed to {@link #send(SerializedRecord)}
    */
   protected SerializedRecord prepareRecord(Object keyObject, Object valueObject) {
