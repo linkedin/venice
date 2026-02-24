@@ -103,8 +103,18 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     private final byte[] rmd;
 
+    /**
+     * Per-record value schema ID extracted from the source Kafka message. Used during KIF repush to preserve
+     * schema. A value of -1 indicates the per-record ID is not available,
+     * in which case {@link AbstractPartitionWriter#extract} falls back to the global value schema ID
+     */
     private final int valueSchemaId;
 
+    /**
+     * Per-record RMD (replication metadata) version ID extracted from the source Kafka message. A value of -1
+     * indicates the per-record ID is not available, in which case {@link AbstractPartitionWriter#extract}
+     * falls back to the global RMD schema ID configured at job start.
+     */
     private final int rmdVersionId;
 
     public VeniceRecordWithMetadata(byte[] value, byte[] rmd) {
@@ -348,13 +358,6 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     byte[] rmdBytes = valueRecord.getRmd();
     ByteBuffer rmd = (rmdBytes == null || rmdBytes.length == 0) ? null : ByteBuffer.wrap(rmdBytes);
 
-    // Convert empty byte[] to null so VeniceWriterMessage calls writer.delete().
-    // SparkPubSubInputPartitionReader emits null for DELETEs, but this guards against any
-    // code path that might inadvertently produce empty byte arrays.
-    if (valueBytes != null && valueBytes.length == 0) {
-      valueBytes = null;
-    }
-
     // Drop the record entirely if both value and RMD are null since it doesn't carry any information.
     // This can happen when the input is from Kafka and the record is a tombstone (null value) without replication
     // metadata.
@@ -370,6 +373,13 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     // Use per-record schema IDs if available, otherwise fall back to global IDs
     int effectiveValueSchemaId = valueRecord.getValueSchemaId() > 0 ? valueRecord.getValueSchemaId() : valueSchemaId;
     int effectiveRmdVersionId = valueRecord.getRmdVersionId() > 0 ? valueRecord.getRmdVersionId() : rmdSchemaId;
+
+    if (effectiveValueSchemaId <= 0) {
+      throw new VeniceException(
+          "Invalid effective value schema ID: " + effectiveValueSchemaId + " (per-record: "
+              + valueRecord.getValueSchemaId() + ", global: " + valueSchemaId
+              + "). Ensure VALUE_SCHEMA_ID_PROP is configured or records carry valid schema IDs.");
+    }
 
     return new VeniceWriterMessage(
         keyBytes,

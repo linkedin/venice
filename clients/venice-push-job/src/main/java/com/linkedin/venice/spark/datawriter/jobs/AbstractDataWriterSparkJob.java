@@ -139,6 +139,10 @@ import org.apache.spark.util.LongAccumulator;
 public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   private static final Logger LOGGER = LogManager.getLogger(AbstractDataWriterSparkJob.class);
 
+  // Column indices in RAW_PUBSUB_INPUT_TABLE_SCHEMA (used by applyTTLFilter)
+  private static final int RAW_SCHEMA_MESSAGE_TYPE_IDX = 3;
+  private static final int RAW_SCHEMA_SCHEMA_ID_IDX = 4;
+
   private VeniceProperties props;
   private PushJobSetting pushJobSetting;
   private String jobGroupId;
@@ -454,8 +458,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       try {
         // Filter rows in this partition
         return Iterators.filter(iterator, row -> {
-          int messageType = row.getInt(3); // message_type is at index 3 in RAW_PUBSUB_INPUT_TABLE_SCHEMA
-          int schemaId = row.getInt(4); // schema_id is at index 4 in RAW_PUBSUB_INPUT_TABLE_SCHEMA
+          int messageType = row.getInt(RAW_SCHEMA_MESSAGE_TYPE_IDX);
+          int schemaId = row.getInt(RAW_SCHEMA_SCHEMA_ID_IDX);
 
           // Skip DELETE records — they are tombstones with no value payload and may lack RMD.
           // TTL filtering only applies to PUT records (matching MR behavior where DELETEs are

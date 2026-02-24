@@ -29,6 +29,7 @@ public class SparkCompressionReEncoder implements Serializable {
   private final int valueColumnIndex;
   private final int keyColumnIndex;
   private final boolean compressionMetricCollectionEnabled;
+  private final boolean isSameCompression;
   private final DataWriterAccumulators accumulators;
 
   private transient CompressorFactory compressorFactory;
@@ -56,6 +57,7 @@ public class SparkCompressionReEncoder implements Serializable {
     this.valueColumnIndex = valueColumnIndex;
     this.keyColumnIndex = keyColumnIndex;
     this.compressionMetricCollectionEnabled = compressionMetricCollectionEnabled;
+    this.isSameCompression = sourceStrategy == destStrategy && Arrays.equals(sourceDict, destDict);
     this.accumulators = accumulators;
   }
 
@@ -68,15 +70,15 @@ public class SparkCompressionReEncoder implements Serializable {
 
     SparkDataWriterTaskTracker tracker = getTaskTracker();
 
-    // Optimization: if source and dest use the same strategy and dictionary, the source bytes
+    // If source and dest use the same strategy and dictionary, the source bytes
     // are already in the correct target format — skip decompression and recompression entirely.
-    if (sourceStrategy == destStrategy && Arrays.equals(sourceDict, destDict)) {
+    if (isSameCompression) {
       if (tracker != null) {
         byte[] keyBytes = row.getAs(keyColumnIndex);
         if (keyBytes != null) {
           tracker.trackKeySize(keyBytes.length);
+          tracker.trackCompressedValueSize(sourceValueBytes.length);
         }
-        tracker.trackCompressedValueSize(sourceValueBytes.length);
       }
       return row;
     }
@@ -86,23 +88,20 @@ public class SparkCompressionReEncoder implements Serializable {
     byte[] uncompressedBytes = ByteUtils.extractByteArray(decompressed);
     int uncompressedSize = uncompressedBytes.length;
 
-    // Basic metrics (always tracked, matching AbstractInputRecordProcessor behavior)
+    ByteBuffer recompressed = getDestCompressor().compress(ByteBuffer.wrap(uncompressedBytes), 0);
+    byte[] recompressedBytes = ByteUtils.extractByteArray(recompressed);
+
+    // Track metrics only for valid records (non-null key)
     if (tracker != null) {
       byte[] keyBytes = row.getAs(keyColumnIndex);
       if (keyBytes != null) {
         tracker.trackKeySize(keyBytes.length);
-      }
-      tracker.trackUncompressedValueSize(uncompressedSize);
-      tracker.trackLargestUncompressedValueSize(uncompressedSize);
-    }
-
-    ByteBuffer recompressed = getDestCompressor().compress(ByteBuffer.wrap(uncompressedBytes), 0);
-    byte[] recompressedBytes = ByteUtils.extractByteArray(recompressed);
-
-    if (tracker != null) {
-      tracker.trackCompressedValueSize(recompressedBytes.length);
-      if (compressionMetricCollectionEnabled) {
-        trackAlternativeCompressionMetrics(tracker, uncompressedBytes, recompressedBytes);
+        tracker.trackUncompressedValueSize(uncompressedSize);
+        tracker.trackLargestUncompressedValueSize(uncompressedSize);
+        tracker.trackCompressedValueSize(recompressedBytes.length);
+        if (compressionMetricCollectionEnabled) {
+          trackAlternativeCompressionMetrics(tracker, uncompressedBytes, recompressedBytes);
+        }
       }
     }
 

@@ -40,8 +40,7 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
   public SparkPubSubPartitionReaderFactory(final VeniceProperties jobConfig) {
     this.jobConfig = jobConfig;
 
-    this.isChunkingEnabled =
-        jobConfig.getBoolean(VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, false);
+    this.isChunkingEnabled = jobConfig.getBoolean(VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED);
     LOGGER.info("Chunking is {} for Spark PubSub input", isChunkingEnabled ? "enabled" : "disabled");
   }
 

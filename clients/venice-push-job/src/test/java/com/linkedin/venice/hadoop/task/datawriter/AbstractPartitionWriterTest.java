@@ -93,24 +93,6 @@ public class AbstractPartitionWriterTest {
   }
 
   @Test
-  public void testExtractEmptyValueConvertedToNullThenDropped() throws Exception {
-    // Empty byte[] value with null RMD → value becomes null → both null → dropped
-    TestablePartitionWriter writer = createConfiguredWriter(10, 5);
-
-    byte[] keyBytes = "test-key".getBytes();
-    byte[] emptyValue = new byte[0];
-
-    AbstractPartitionWriter.VeniceRecordWithMetadata record =
-        new AbstractPartitionWriter.VeniceRecordWithMetadata(emptyValue, null);
-    Iterator<AbstractPartitionWriter.VeniceRecordWithMetadata> values = Collections.singletonList(record).iterator();
-
-    AbstractPartitionWriter.VeniceWriterMessage message =
-        writer.testExtract(keyBytes, values, mock(DataWriterTaskTracker.class));
-
-    assertNull(message);
-  }
-
-  @Test
   public void testExtractNullValueNullRmdDropped() throws Exception {
     TestablePartitionWriter writer = createConfiguredWriter(10, 5);
 

@@ -30,6 +30,7 @@ public class SparkPubSubInputFormatTest {
   public void setUp() {
     Properties p = new Properties();
     p.setProperty(VenicePushJobConstants.KAFKA_INPUT_TOPIC, "test-topic");
+    p.setProperty(VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, "false");
     props = new VeniceProperties(p);
   }
 
