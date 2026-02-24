@@ -297,9 +297,9 @@ public class VeniceSystemFactoryTest {
               new UpdateStoreQueryParams().setHybridRewindSeconds(10)
                   .setHybridOffsetLagThreshold(10)
                   .setWriteComputationEnabled(true)));
-      VersionCreationResponse response = controllerClient.emptyPush(storeName, "test_push_id", 1000);
+      VersionCreationResponse response =
+          TestUtils.assertCommand(controllerClient.emptyPush(storeName, "test_push_id", 1000));
       assertEquals(response.getVersion(), 1);
-      assertTrue(!response.isError(), "Empty push to create v1 should succeed");
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           controllerClient,
@@ -332,7 +332,11 @@ public class VeniceSystemFactoryTest {
       assertEquals(record.getValueSchemaId(), 1);
       assertEquals(record.getDerivedSchemaId(), -1);
 
-      producer.send(record);
+      try {
+        producer.send(record).get(10, TimeUnit.SECONDS);
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to publish put record", e);
+      }
       producer.flush(storeName);
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -381,7 +385,11 @@ public class VeniceSystemFactoryTest {
       assertNotNull(deleteRecord.getSerializedKey());
       assertNull(deleteRecord.getSerializedValue(), "Delete record should have null serializedValue");
 
-      producer.send(deleteRecord);
+      try {
+        producer.send(deleteRecord).get(10, TimeUnit.SECONDS);
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to publish delete record", e);
+      }
       producer.flush(storeName);
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {

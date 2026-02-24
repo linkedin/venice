@@ -803,6 +803,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    * unwrapping, applies write-compute conversion when necessary, and serializes both key and value
    * into a {@link SerializedRecord}.
    *
+   * This method is intentionally protected so Venice internal subclasses can customize behavior while
+   * keeping the public Samza producer API unchanged.
+   *
    * @param keyObject the key; must conform to the store's registered key schema
    * @param valueObject the value, a {@link VeniceObjectWithTimestamp} wrapping a value, or {@code null} for a delete
    * @return a {@link SerializedRecord} ready to be passed to {@link #send(SerializedRecord)}
@@ -867,10 +870,14 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   /**
    * Writes a {@link SerializedRecord} to Venice.
    *
+   * This method is intentionally protected so Venice internal subclasses can dispatch pre-serialized
+   * records while keeping the public Samza producer API unchanged.
+   *
    * @param record a {@link SerializedRecord} obtained from {@link #prepareRecord(Object, Object)}
    * @return a {@link CompletableFuture} that completes when the write is acknowledged
    */
   protected CompletableFuture<Void> send(SerializedRecord record) {
+    validateSerializedRecord(record);
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
     if (record.getSerializedValue() == null) {
       getInternalWriter().delete(
@@ -899,6 +906,33 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
           new CompletableFutureCallback(completableFuture));
     }
     return completableFuture;
+  }
+
+  private void validateSerializedRecord(SerializedRecord record) {
+    if (record == null) {
+      throw new SamzaException("SerializedRecord must not be null.");
+    }
+    if (record.getSerializedKey() == null) {
+      throw new SamzaException("SerializedRecord must contain a non-null serialized key.");
+    }
+
+    byte[] serializedValue = record.getSerializedValue();
+    int valueSchemaId = record.getValueSchemaId();
+    int derivedSchemaId = record.getDerivedSchemaId();
+
+    if (serializedValue == null) {
+      if (valueSchemaId != -1 || derivedSchemaId != -1) {
+        throw new SamzaException("Delete SerializedRecord must use valueSchemaId=-1 and derivedSchemaId=-1.");
+      }
+      return;
+    }
+
+    if (valueSchemaId <= 0) {
+      throw new SamzaException("Non-delete SerializedRecord must use a positive value schema ID.");
+    }
+    if (derivedSchemaId == 0 || derivedSchemaId < -1) {
+      throw new SamzaException("Non-delete SerializedRecord must use derivedSchemaId=-1 or a positive ID.");
+    }
   }
 
   protected CompletableFuture<Void> send(Object keyObject, Object valueObject) {

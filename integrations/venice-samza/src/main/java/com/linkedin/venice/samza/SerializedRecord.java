@@ -4,6 +4,9 @@ package com.linkedin.venice.samza;
  * A value object holding the Avro-serialized key and value bytes along with the resolved schema IDs
  * and logical timestamp needed to write a record to Venice. Obtain an instance via
  * {@link VeniceSystemProducer#prepareRecord(Object, Object)}.
+ *
+ * This class does not defensively copy byte arrays for performance.
+ * Callers must treat the provided key/value byte arrays as immutable for the lifetime of the async send operation.
  */
 public class SerializedRecord {
   private final byte[] serializedKey;

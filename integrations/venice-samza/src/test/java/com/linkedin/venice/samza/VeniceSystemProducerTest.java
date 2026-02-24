@@ -567,6 +567,52 @@ public class VeniceSystemProducerTest {
   }
 
   @Test
+  public void testSendSerializedRecordThrowsWhenRecordIsNull() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    Assert.assertThrows(() -> producerSpy.send((SerializedRecord) null));
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testSendSerializedRecordThrowsWhenKeyIsNull() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    SerializedRecord record = new SerializedRecord(null, new byte[] { 2 }, 1, -1, 0L);
+    Assert.assertThrows(() -> producerSpy.send(record));
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testSendSerializedRecordThrowsWhenDeleteRecordHasSchemaIds() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    SerializedRecord record = new SerializedRecord(new byte[] { 1 }, null, 1, -1, 0L);
+    Assert.assertThrows(() -> producerSpy.send(record));
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testSendSerializedRecordThrowsWhenNonDeleteRecordHasInvalidSchemaIds() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    SerializedRecord invalidValueSchemaRecord = new SerializedRecord(new byte[] { 1 }, new byte[] { 2 }, -1, -1, 0L);
+    Assert.assertThrows(() -> producerSpy.send(invalidValueSchemaRecord));
+
+    SerializedRecord invalidDerivedSchemaRecord = new SerializedRecord(new byte[] { 1 }, new byte[] { 2 }, 1, 0, 0L);
+    Assert.assertThrows(() -> producerSpy.send(invalidDerivedSchemaRecord));
+    producerSpy.stop();
+  }
+
+  @Test
   public void testSendSerializedRecordCallsWriterUpdateWhenWriteComputeEnabled() {
     VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
     ControllerClient mockControllerClient = buildMockControllerClient(1, 1, true, "test_store_rt");
