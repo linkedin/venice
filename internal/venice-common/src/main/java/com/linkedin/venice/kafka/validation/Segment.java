@@ -138,7 +138,7 @@ public class Segment {
     this.debugInfo = segment.debugInfo;
     this.aggregates = segment.aggregates;
     this.registered = segment.registered;
-    this.lastRecordProducerTimestamp = segment.lastRecordTimestamp;
+    this.lastRecordProducerTimestamp = segment.lastRecordProducerTimestamp;
   }
 
   public int getSegmentNumber() {
