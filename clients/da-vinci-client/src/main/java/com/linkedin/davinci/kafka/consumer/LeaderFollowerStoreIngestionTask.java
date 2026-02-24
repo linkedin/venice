@@ -2833,7 +2833,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     } else if (isNonSegmentControlMessage(consumerRecord, null)) {
       return true; // sync when processing most control messages
-    } else if (pcs == null) {
+    }
+
+    if (pcs == null) {
       LOGGER.warn("event=globalRtDiv No PCS found for: {} Will not sync VT DIV", consumerRecord.getTopicPartition());
       return false;
     }
