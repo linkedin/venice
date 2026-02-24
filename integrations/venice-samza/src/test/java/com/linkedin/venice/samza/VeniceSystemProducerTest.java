@@ -16,6 +16,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -27,6 +28,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.meta.StoreInfo;
@@ -416,5 +418,155 @@ public class VeniceSystemProducerTest {
 
     assertNotNull(result2);
     assertEquals(result2, mockProducer2);
+  }
+
+  private VeniceSystemProducer buildStartedProducerSpy(
+      ControllerClient mockControllerClient,
+      VeniceWriter<byte[], byte[], byte[]> mockWriter) {
+    VeniceSystemProducer producer = new VeniceSystemProducer(
+        "discoveryUrl",
+        "test_store",
+        Version.PushType.STREAM,
+        "push-job-id-1",
+        "dc-0",
+        true,
+        null,
+        Optional.empty(),
+        Optional.empty(),
+        SystemTime.INSTANCE);
+    VeniceSystemProducer producerSpy = spy(producer);
+    doNothing().when(producerSpy).setupClientsAndReInitProvider();
+    doNothing().when(producerSpy).refreshSchemaCache();
+    producerSpy.setControllerClient(mockControllerClient);
+    doReturn(mockWriter).when(producerSpy).getVeniceWriter(any());
+    producerSpy.start();
+    return producerSpy;
+  }
+
+  private ControllerClient buildMockControllerClient(int valueSchemaId, int derivedSchemaId) {
+    ControllerClient mockControllerClient = mock(ControllerClient.class);
+
+    SchemaResponse keySchemaResponse = new SchemaResponse();
+    keySchemaResponse.setSchemaStr("\"string\"");
+    when(mockControllerClient.getKeySchema(anyString())).thenReturn(keySchemaResponse);
+
+    VersionCreationResponse vcr = new VersionCreationResponse();
+    vcr.setKafkaTopic("test_store_rt");
+    vcr.setKafkaBootstrapServers("kafka:9092");
+    when(
+        mockControllerClient.requestTopicForWrites(
+            anyString(),
+            anyLong(),
+            any(),
+            anyString(),
+            anyBoolean(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            anyBoolean(),
+            anyLong())).thenReturn(vcr);
+
+    StoreResponse storeResponse = new StoreResponse();
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setVersions(new ArrayList<>());
+    storeResponse.setStore(storeInfo);
+    when(mockControllerClient.getStore(anyString())).thenReturn(storeResponse);
+
+    SchemaResponse valueSchemaResponse = new SchemaResponse();
+    valueSchemaResponse.setId(valueSchemaId);
+    valueSchemaResponse.setDerivedSchemaId(derivedSchemaId);
+    when(mockControllerClient.getValueOrDerivedSchemaId(anyString(), anyString())).thenReturn(valueSchemaResponse);
+
+    return mockControllerClient;
+  }
+
+  @Test
+  public void testPrepareRecordForPut() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    SerializedRecord record = producerSpy.prepareRecord("myKey", "myValue");
+
+    assertNotNull(record.getSerializedKey());
+    assertTrue(record.getSerializedKey().length > 0);
+    assertNotNull(record.getSerializedValue());
+    assertTrue(record.getSerializedValue().length > 0);
+    assertEquals(record.getValueSchemaId(), 1);
+    assertEquals(record.getDerivedSchemaId(), -1);
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testPrepareRecordForDelete() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    SerializedRecord record = producerSpy.prepareRecord("myKey", null);
+
+    assertNotNull(record.getSerializedKey());
+    assertTrue(record.getSerializedKey().length > 0);
+    assertNull(record.getSerializedValue());
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testPrepareRecordWithTimestamp() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    long expectedTimestamp = 12345L;
+    SerializedRecord record =
+        producerSpy.prepareRecord("myKey", new VeniceObjectWithTimestamp("myValue", expectedTimestamp));
+
+    assertEquals(record.getLogicalTimestamp(), expectedTimestamp);
+    assertNotNull(record.getSerializedValue());
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testSendSerializedRecordCallsWriterPut() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    byte[] key = new byte[] { 1 };
+    byte[] value = new byte[] { 2 };
+    SerializedRecord record = new SerializedRecord(key, value, 1, -1, 0L);
+    producerSpy.send(record);
+
+    verify(mockWriter).put(eq(key), eq(value), eq(1), anyLong(), any());
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testSendSerializedRecordCallsWriterDelete() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    byte[] key = new byte[] { 1 };
+    SerializedRecord record = new SerializedRecord(key, null, -1, -1, 0L);
+    producerSpy.send(record);
+
+    verify(mockWriter).delete(eq(key), anyLong(), any());
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testSendObjectDelegatesToPrepareRecordAndSendSerializedRecord() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    producerSpy.send("myKey", "myValue");
+
+    verify(producerSpy).prepareRecord(eq("myKey"), eq("myValue"));
+    verify(mockWriter).put(any(), any(), eq(1), anyLong(), any());
+    producerSpy.stop();
   }
 }

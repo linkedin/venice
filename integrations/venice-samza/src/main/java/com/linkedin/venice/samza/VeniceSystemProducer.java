@@ -798,7 +798,16 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     send(outgoingMessageEnvelope.getKey(), outgoingMessageEnvelope.getMessage());
   }
 
-  protected CompletableFuture<Void> send(Object keyObject, Object valueObject) {
+  /**
+   * Validates the key schema, resolves the value schema ID, handles {@link VeniceObjectWithTimestamp}
+   * unwrapping, applies write-compute conversion when necessary, and serializes both key and value
+   * into a {@link SerializedRecord}.
+   *
+   * @param keyObject the key; must conform to the store's registered key schema
+   * @param valueObject the value, a {@link VeniceObjectWithTimestamp} wrapping a value, or {@code null} for a delete
+   * @return a {@link SerializedRecord} ready to be passed to {@link #send(SerializedRecord)}
+   */
+  protected SerializedRecord prepareRecord(Object keyObject, Object valueObject) {
     Schema keyObjectSchema = getSchemaFromObject(keyObject);
     String canonicalSchemaStr = canonicalSchemaStrCache.get(keyObjectSchema);
 
@@ -809,7 +818,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     byte[] key = serializeObject(keyObject);
-    final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
 
     long logicalTimestamp = VeniceWriter.APP_DEFAULT_LOGICAL_TS;
     // Only transmit the timestamp if this is a realtime topic.
@@ -825,53 +833,76 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     if (valueObject == null) {
-      getInternalWriter().delete(key, logicalTimestamp, new CompletableFutureCallback(completableFuture));
+      return new SerializedRecord(key, null, -1, -1, logicalTimestamp);
+    }
+
+    Schema valueObjectSchema = getSchemaFromObject(valueObject);
+
+    Pair<Integer, Integer> valueSchemaIdPair = valueSchemaToIdsMap.computeIfAbsent(valueObjectSchema, valueSchema -> {
+      SchemaResponse valueSchemaResponse = (SchemaResponse) controllerRequestWithRetry(
+          () -> controllerClient.getValueOrDerivedSchemaId(storeName, valueSchema.toString()),
+          2);
+      LOGGER.info("Got [store: {}] SchemaResponse for schema: {}", storeName, valueSchema);
+      return new Pair<>(valueSchemaResponse.getId(), valueSchemaResponse.getDerivedSchemaId());
+    });
+
+    if (Version.isATopicThatIsVersioned(topicName) && valueSchemaIdPair.getSecond() != -1) {
+      // This is a write compute request getting published to a version topic or reprocessing topic. We don't
+      // support partial records in the Venice version topic, so we will convert this request
+      // to a full put with default fields applied
+      int baseSchemaId = valueSchemaIdPair.getFirst();
+      valueObject = convertPartialUpdateToFullPut(valueSchemaIdPair, valueObject);
+      valueSchemaIdPair = new Pair<>(baseSchemaId, -1);
+    }
+
+    byte[] value = serializeObject(valueObject);
+    return new SerializedRecord(
+        key,
+        value,
+        valueSchemaIdPair.getFirst(),
+        valueSchemaIdPair.getSecond(),
+        logicalTimestamp);
+  }
+
+  /**
+   * Writes a {@link SerializedRecord} to Venice.
+   *
+   * @param record a {@link SerializedRecord} obtained from {@link #prepareRecord(Object, Object)}
+   * @return a {@link CompletableFuture} that completes when the write is acknowledged
+   */
+  protected CompletableFuture<Void> send(SerializedRecord record) {
+    final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
+    if (record.getSerializedValue() == null) {
+      getInternalWriter().delete(
+          record.getSerializedKey(),
+          record.getLogicalTimestamp(),
+          new CompletableFutureCallback(completableFuture));
+    } else if (record.getDerivedSchemaId() == -1) {
+      getInternalWriter().put(
+          record.getSerializedKey(),
+          record.getSerializedValue(),
+          record.getValueSchemaId(),
+          record.getLogicalTimestamp(),
+          new CompletableFutureCallback(completableFuture));
     } else {
-      Schema valueObjectSchema = getSchemaFromObject(valueObject);
-
-      Pair<Integer, Integer> valueSchemaIdPair = valueSchemaToIdsMap.computeIfAbsent(valueObjectSchema, valueSchema -> {
-        SchemaResponse valueSchemaResponse = (SchemaResponse) controllerRequestWithRetry(
-            () -> controllerClient.getValueOrDerivedSchemaId(storeName, valueSchema.toString()),
-            2);
-        LOGGER.info("Got [store: {}] SchemaResponse for schema: {}", storeName, valueSchema);
-        return new Pair<>(valueSchemaResponse.getId(), valueSchemaResponse.getDerivedSchemaId());
-      });
-
-      if (Version.isATopicThatIsVersioned(topicName) && valueSchemaIdPair.getSecond() != -1) {
-        // This is a write compute request getting published to a version topic or reprocessing topic. We don't
-        // support partial records in the Venice version topic, so we will convert this request
-        // to a full put with default fields applied
-
-        int baseSchemaId = valueSchemaIdPair.getFirst();
-        valueObject = convertPartialUpdateToFullPut(valueSchemaIdPair, valueObject);
-        valueSchemaIdPair = new Pair<>(baseSchemaId, -1);
+      if (!isWriteComputeEnabled) {
+        throw new SamzaException(
+            "Cannot write partial update record to Venice store " + storeName + " "
+                + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
       }
-
-      byte[] value = serializeObject(valueObject);
-
-      if (valueSchemaIdPair.getSecond() == -1) {
-        getInternalWriter().put(
-            key,
-            value,
-            valueSchemaIdPair.getFirst(),
-            logicalTimestamp,
-            new CompletableFutureCallback(completableFuture));
-      } else {
-        if (!isWriteComputeEnabled) {
-          throw new SamzaException(
-              "Cannot write partial update record to Venice store " + storeName + " "
-                  + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
-        }
-        getInternalWriter().update(
-            key,
-            value,
-            valueSchemaIdPair.getFirst(),
-            valueSchemaIdPair.getSecond(),
-            logicalTimestamp,
-            new CompletableFutureCallback(completableFuture));
-      }
+      getInternalWriter().update(
+          record.getSerializedKey(),
+          record.getSerializedValue(),
+          record.getValueSchemaId(),
+          record.getDerivedSchemaId(),
+          record.getLogicalTimestamp(),
+          new CompletableFutureCallback(completableFuture));
     }
     return completableFuture;
+  }
+
+  protected CompletableFuture<Void> send(Object keyObject, Object valueObject) {
+    return send(prepareRecord(keyObject, valueObject));
   }
 
   public CompletableFuture<Void> put(Object keyObject, Object valueObject) {
