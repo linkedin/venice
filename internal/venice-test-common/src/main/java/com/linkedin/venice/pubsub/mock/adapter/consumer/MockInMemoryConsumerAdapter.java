@@ -282,6 +282,20 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
+  public synchronized PubSubPosition advancePosition(
+      PubSubTopicPartition tp,
+      PubSubPosition startInclusive,
+      long n) {
+    java.util.Objects.requireNonNull(tp, "tp");
+    java.util.Objects.requireNonNull(startInclusive, "startInclusive");
+    if (n < 0) {
+      throw new IllegalArgumentException("n must be >= 0");
+    }
+    long targetOffset = Math.addExact(startInclusive.getNumericOffset(), n);
+    return PubSubUtil.fromKafkaOffset(targetOffset);
+  }
+
+  @Override
   public synchronized PubSubPosition decodePosition(
       PubSubTopicPartition partition,
       int positionTypeId,

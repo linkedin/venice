@@ -432,6 +432,14 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
+  public synchronized PubSubPosition advancePosition(
+      PubSubTopicPartition tp,
+      PubSubPosition startInclusive,
+      long n) {
+    return delegate.advancePosition(tp, startInclusive, n);
+  }
+
+  @Override
   public String toString() {
     return toString;
   }
