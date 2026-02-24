@@ -24,6 +24,7 @@ import static com.linkedin.venice.meta.VersionStatus.NOT_CREATED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_USE_ALTERNATIVE_BACKEND;
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
@@ -3003,6 +3004,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .getTopic(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
       topicNamesToCreate.add(streamReprocessingTopic);
     }
+    Map<String, String> additionalProperties = Collections.emptyMap();
+    if (clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false)) {
+      additionalProperties = Collections.singletonMap(PUBSUB_TOPIC_USE_ALTERNATIVE_BACKEND, "true");
+    }
+    final Map<String, String> batchTopicProps = additionalProperties;
     topicNamesToCreate.forEach(
         topicNameToCreate -> topicManager.createTopic(
             topicNameToCreate,
@@ -3011,7 +3017,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             true,
             false,
             clusterConfig.getMinInSyncReplicas(),
-            useFastKafkaOperationTimeout));
+            useFastKafkaOperationTimeout,
+            batchTopicProps));
   }
 
   private Pair<Boolean, Version> addVersion(
@@ -3610,6 +3617,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       validateAndUpdateTopic(realTimeTopic, store, version, expectedNumOfPartitions, topicManager);
     } else {
       VeniceControllerClusterConfig clusterConfig = getControllerConfig(clusterName);
+      Map<String, String> additionalProperties = Collections.emptyMap();
+      if (clusterConfig.shouldUseAlternativePubSubBackend(store.getName(), true)) {
+        additionalProperties = Collections.singletonMap(PUBSUB_TOPIC_USE_ALTERNATIVE_BACKEND, "true");
+      }
       topicManager.createTopic(
           realTimeTopic,
           expectedNumOfPartitions,
@@ -3618,7 +3629,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           false,
           // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
           clusterConfig.getMinInSyncReplicasRealTimeTopics(),
-          false);
+          false,
+          additionalProperties);
     }
     LOGGER.info(
         "Completed setup for real-time topic: {} for store: {} with reference hybrid version: {} and partition count: {}",

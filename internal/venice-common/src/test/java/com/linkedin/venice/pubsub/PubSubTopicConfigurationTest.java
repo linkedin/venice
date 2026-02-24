@@ -5,7 +5,10 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.Test;
 
@@ -117,5 +120,32 @@ public class PubSubTopicConfigurationTest {
     assertFalse(emptyConfig.minInSyncReplicas().isPresent(), "Min in-sync replicas should be empty.");
     assertNull(emptyConfig.minLogCompactionLagMs(), "Min log compaction lag ms should be null.");
     assertFalse(emptyConfig.getMaxLogCompactionLagMs().isPresent(), "Max log compaction lag ms should be empty.");
+  }
+
+  @Test
+  public void testAdditionalProperties_EmptyByDefault() {
+    PubSubTopicConfiguration config =
+        new PubSubTopicConfiguration(Optional.of(1000L), true, Optional.of(1), 0L, Optional.empty());
+    assertTrue(config.getAdditionalProperties().isEmpty());
+  }
+
+  @Test
+  public void testAdditionalProperties_PassedThroughConstructor() {
+    Map<String, String> props = new HashMap<>();
+    props.put("key1", "value1");
+    props.put("key2", "value2");
+    PubSubTopicConfiguration config =
+        new PubSubTopicConfiguration(Optional.of(1000L), true, Optional.of(1), 0L, Optional.empty(), props);
+    assertEquals(config.getAdditionalProperties().size(), 2);
+    assertEquals(config.getAdditionalProperties().get("key1"), "value1");
+  }
+
+  @Test(expectedExceptions = UnsupportedOperationException.class)
+  public void testAdditionalProperties_Immutable() {
+    Map<String, String> props = new HashMap<>();
+    props.put("key1", "value1");
+    PubSubTopicConfiguration config =
+        new PubSubTopicConfiguration(Optional.of(1000L), true, Optional.of(1), 0L, Optional.empty(), props);
+    config.getAdditionalProperties().put("key2", "value2"); // Should throw
   }
 }

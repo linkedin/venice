@@ -150,6 +150,26 @@ public class TopicManager implements Closeable {
       boolean logCompaction,
       Optional<Integer> minIsr,
       boolean useFastPubSubOperationTimeout) {
+    createTopic(
+        topicName,
+        numPartitions,
+        replication,
+        eternal,
+        logCompaction,
+        minIsr,
+        useFastPubSubOperationTimeout,
+        Collections.emptyMap());
+  }
+
+  public void createTopic(
+      PubSubTopic topicName,
+      int numPartitions,
+      int replication,
+      boolean eternal,
+      boolean logCompaction,
+      Optional<Integer> minIsr,
+      boolean useFastPubSubOperationTimeout,
+      Map<String, String> additionalProperties) {
     long retentionTimeMs;
     if (eternal) {
       retentionTimeMs = ETERNAL_TOPIC_RETENTION_POLICY_MS;
@@ -163,7 +183,8 @@ public class TopicManager implements Closeable {
         retentionTimeMs,
         logCompaction,
         minIsr,
-        useFastPubSubOperationTimeout);
+        useFastPubSubOperationTimeout,
+        additionalProperties);
   }
 
   /**
@@ -188,6 +209,26 @@ public class TopicManager implements Closeable {
       boolean logCompaction,
       Optional<Integer> minIsr,
       boolean useFastPubSubOperationTimeout) {
+    createTopic(
+        topicName,
+        numPartitions,
+        replication,
+        retentionTimeMs,
+        logCompaction,
+        minIsr,
+        useFastPubSubOperationTimeout,
+        Collections.emptyMap());
+  }
+
+  public void createTopic(
+      PubSubTopic topicName,
+      int numPartitions,
+      int replication,
+      long retentionTimeMs,
+      boolean logCompaction,
+      Optional<Integer> minIsr,
+      boolean useFastPubSubOperationTimeout,
+      Map<String, String> additionalProperties) {
     long startTimeMs = System.currentTimeMillis();
     long deadlineMs = startTimeMs + (useFastPubSubOperationTimeout
         ? PUBSUB_FAST_OPERATION_TIMEOUT_MS
@@ -197,7 +238,8 @@ public class TopicManager implements Closeable {
         logCompaction,
         minIsr,
         topicManagerContext.getTopicMinLogCompactionLagMs(),
-        Optional.empty());
+        Optional.empty(),
+        additionalProperties);
     logger.info(
         "Creating topic: {} partitions: {} replication: {}, configuration: {}",
         topicName,

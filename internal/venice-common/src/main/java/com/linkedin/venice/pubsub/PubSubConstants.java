@@ -124,4 +124,7 @@ public class PubSubConstants {
   public static final long BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN = 2 * Time.MS_PER_DAY;
 
   public static final int DEFAULT_KAFKA_REPLICATION_FACTOR = 3;
+
+  /** Signal to create a topic using an alternative pubsub backend (e.g., NorthGuard). */
+  public static final String PUBSUB_TOPIC_USE_ALTERNATIVE_BACKEND = "pubsub.topic.use.alternative.backend";
 }
