@@ -15,6 +15,7 @@ public class MergeConflictResult {
   private ByteBuffer newValue;
   private Optional<GenericRecord> deserializedValue;
   private int valueSchemaId;
+  private int deserializedValueSchemaId = -1;
   private final boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
   private boolean resultReusesInput;
   private GenericRecord rmdRecord;
@@ -24,7 +25,7 @@ public class MergeConflictResult {
       int valueSchemaID,
       boolean resultReusesInput,
       GenericRecord rmdRecord) {
-    this(newValue, Optional.empty(), valueSchemaID, resultReusesInput, rmdRecord);
+    this(newValue, Optional.empty(), -1, valueSchemaID, resultReusesInput, rmdRecord);
   }
 
   public MergeConflictResult(
@@ -33,9 +34,20 @@ public class MergeConflictResult {
       int valueSchemaID,
       boolean resultReusesInput,
       GenericRecord rmdRecord) {
+    this(newValue, deserializedValue, -1, valueSchemaID, resultReusesInput, rmdRecord);
+  }
+
+  public MergeConflictResult(
+      ByteBuffer newValue,
+      Optional<GenericRecord> deserializedValue,
+      int deserializedValueSchemaId,
+      int valueSchemaID,
+      boolean resultReusesInput,
+      GenericRecord rmdRecord) {
     this.updateIgnored = false;
     this.newValue = newValue;
     this.deserializedValue = deserializedValue;
+    this.deserializedValueSchemaId = deserializedValueSchemaId;
     this.valueSchemaId = valueSchemaID;
     this.resultReusesInput = resultReusesInput;
     this.rmdRecord = rmdRecord;
@@ -77,5 +89,14 @@ public class MergeConflictResult {
    */
   public Optional<GenericRecord> getDeserializedValue() {
     return deserializedValue;
+  }
+
+  /**
+   * @return The schema ID of the deserialized GenericRecord in {@link #deserializedValue}, or -1 if not available.
+   *         This may differ from {@link #valueSchemaId} in the PUT field-level path where valueSchemaId is the
+   *         new value's schema ID but the merged record uses the merge result value schema.
+   */
+  public int getDeserializedValueSchemaId() {
+    return deserializedValueSchemaId;
   }
 }

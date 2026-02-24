@@ -157,7 +157,9 @@ public class MergeConflictResolver {
           newValueColoID,
           newValueSourcePosition,
           newValueSourceBrokerID,
-          newValueSchemaID);
+          newValueSchemaID,
+          rmdWithValueSchemaID.getCachedOldValue(),
+          rmdWithValueSchemaID.getCachedOldValueSchemaId());
     }
     return mergePutWithValueLevelTimestamp(
         oldValueBytesProvider,
@@ -218,7 +220,9 @@ public class MergeConflictResolver {
           deleteOperationColoID,
           deleteOperationTimestamp,
           deleteOperationSourcePosition,
-          deleteOperationSourceBrokerID);
+          deleteOperationSourceBrokerID,
+          rmdWithValueSchemaID.getCachedOldValue(),
+          rmdWithValueSchemaID.getCachedOldValueSchemaId());
     }
     return mergeDeleteWithValueLevelTimestamp(
         oldValueSchemaID,
@@ -282,6 +286,7 @@ public class MergeConflictResolver {
         updatedValueBytes,
         Optional.of(updatedValueAndRmd.getValue()),
         oldValueSchemaID,
+        oldValueSchemaID,
         false,
         updatedValueAndRmd.getRmd());
   }
@@ -323,7 +328,9 @@ public class MergeConflictResolver {
       int newValueColoID,
       PubSubPosition newValueSourcePubSubPosition,
       int newValueSourceBrokerID,
-      int newValueSchemaID) {
+      int newValueSchemaID,
+      GenericRecord cachedOldValue,
+      int cachedOldValueSchemaId) {
 
     if (oldTimestampObject instanceof GenericRecord) {
       final GenericRecord oldValueFieldTimestampsRecord = (GenericRecord) oldTimestampObject;
@@ -348,7 +355,9 @@ public class MergeConflictResolver {
         mergeResultValueSchemaEntry.getId(),
         oldValueSchemaID,
         oldValueBytesProvider,
-        oldRmdRecord);
+        oldRmdRecord,
+        cachedOldValue,
+        cachedOldValueSchemaId);
     // Actual merge happens here!
     ValueAndRmd<GenericRecord> mergedValueAndRmd = mergeGenericRecord.put(
         oldValueAndRmd,
@@ -362,7 +371,13 @@ public class MergeConflictResolver {
     }
     ByteBuffer mergedValueBytes =
         serializeMergedValueRecord(mergeResultValueSchemaEntry.getId(), mergedValueAndRmd.getValue());
-    return new MergeConflictResult(mergedValueBytes, newValueSchemaID, false, mergedValueAndRmd.getRmd());
+    return new MergeConflictResult(
+        mergedValueBytes,
+        Optional.of(mergedValueAndRmd.getValue()),
+        mergeResultValueSchemaEntry.getId(),
+        newValueSchemaID,
+        false,
+        mergedValueAndRmd.getRmd());
   }
 
   private MergeConflictResult mergeDeleteWithValueLevelTimestamp(
@@ -397,7 +412,9 @@ public class MergeConflictResolver {
       int deleteOperationColoID,
       long deleteOperationTimestamp,
       PubSubPosition deleteOperationSourcePosition,
-      int deleteOperationSourceBrokerID) {
+      int deleteOperationSourceBrokerID,
+      GenericRecord cachedOldValue,
+      int cachedOldValueSchemaId) {
 
     if (oldTimestampObject instanceof GenericRecord) {
       final GenericRecord oldValueFieldTimestampsRecord = (GenericRecord) oldTimestampObject;
@@ -407,8 +424,14 @@ public class MergeConflictResolver {
     }
     // In this case, the writer and reader schemas are the same because deletion does not introduce any new schema.
     final Schema oldValueSchema = getValueSchema(oldValueSchemaID);
-    ValueAndRmd<GenericRecord> oldValueAndRmd =
-        createOldValueAndRmd(oldValueSchema, oldValueSchemaID, oldValueSchemaID, oldValueBytesProvider, oldRmdRecord);
+    ValueAndRmd<GenericRecord> oldValueAndRmd = createOldValueAndRmd(
+        oldValueSchema,
+        oldValueSchemaID,
+        oldValueSchemaID,
+        oldValueBytesProvider,
+        oldRmdRecord,
+        cachedOldValue,
+        cachedOldValueSchemaId);
     ValueAndRmd<GenericRecord> mergedValueAndRmd = mergeGenericRecord.delete(
         oldValueAndRmd,
         deleteOperationTimestamp,
@@ -421,7 +444,13 @@ public class MergeConflictResolver {
     final ByteBuffer mergedValueBytes = mergedValueAndRmd.getValue() == null
         ? null
         : serializeMergedValueRecord(oldValueSchemaID, mergedValueAndRmd.getValue());
-    return new MergeConflictResult(mergedValueBytes, oldValueSchemaID, false, mergedValueAndRmd.getRmd());
+    return new MergeConflictResult(
+        mergedValueBytes,
+        Optional.ofNullable(mergedValueAndRmd.getValue()),
+        oldValueSchemaID,
+        oldValueSchemaID,
+        false,
+        mergedValueAndRmd.getRmd());
   }
 
   /**
@@ -442,11 +471,44 @@ public class MergeConflictResolver {
       int oldValueWriterSchemaID,
       Lazy<ByteBuffer> oldValueBytesProvider,
       GenericRecord oldRmdRecord) {
-    final GenericRecord oldValueRecord = createValueRecordFromByteBuffer(
+    return createOldValueAndRmd(
         readerValueSchema,
         readerValueSchemaID,
         oldValueWriterSchemaID,
-        oldValueBytesProvider.get());
+        oldValueBytesProvider,
+        oldRmdRecord,
+        null,
+        -1);
+  }
+
+  /**
+   * Overload that accepts a cached GenericRecord from the transient cache. When the cached record's schema matches
+   * the reader schema, deserialization is skipped entirely — eliminating the serialize-then-deserialize round-trip
+   * in the AA/WC merge path.
+   *
+   * @param cachedOldValue      The cached merged GenericRecord from a previous merge, or null if not available.
+   * @param cachedOldValueSchemaId The schema ID of the cached record, or -1 if not available.
+   */
+  ValueAndRmd<GenericRecord> createOldValueAndRmd(
+      Schema readerValueSchema,
+      int readerValueSchemaID,
+      int oldValueWriterSchemaID,
+      Lazy<ByteBuffer> oldValueBytesProvider,
+      GenericRecord oldRmdRecord,
+      GenericRecord cachedOldValue,
+      int cachedOldValueSchemaId) {
+    final GenericRecord oldValueRecord;
+    if (cachedOldValue != null && cachedOldValueSchemaId == readerValueSchemaID) {
+      // Schema matches — reuse cached record, skip deserialization
+      oldValueRecord = cachedOldValue;
+    } else {
+      // Fall back to byte deserialization with schema evolution
+      oldValueRecord = createValueRecordFromByteBuffer(
+          readerValueSchema,
+          readerValueSchemaID,
+          oldValueWriterSchemaID,
+          oldValueBytesProvider.get());
+    }
 
     // RMD record should contain a per-field timestamp and it should use the RMD schema generated from
     // mergeResultValueSchema.
@@ -671,7 +733,9 @@ public class MergeConflictResolver {
         readerValueSchemaSchemaEntry.getId(),
         oldValueWriterSchemaId,
         Lazy.of(() -> oldValueBytes),
-        rmdWithValueSchemaId.getRmdRecord());
+        rmdWithValueSchemaId.getRmdRecord(),
+        rmdWithValueSchemaId.getCachedOldValue(),
+        rmdWithValueSchemaId.getCachedOldValueSchemaId());
   }
 
   private GenericRecord convertToPerFieldTimestampRmd(GenericRecord rmd, GenericRecord oldValueRecord) {
