@@ -370,7 +370,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     });
 
     // Verify error recording was not called
-    verify(stats, never()).recordDeferredVersionSwapErrorSensor();
+    verify(stats, never()).recordDeferredVersionSwapErrorMetric(anyString());
   }
 
   /**
@@ -504,7 +504,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     });
 
     // Verify error was not recorded since this is an expected validation failure
-    verify(stats, never()).recordDeferredVersionSwapErrorSensor();
+    verify(stats, never()).recordDeferredVersionSwapErrorMetric(anyString());
   }
 
   /**
@@ -615,7 +615,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     });
 
     // Verify error recording was not called
-    verify(stats, never()).recordDeferredVersionSwapErrorSensor();
+    verify(stats, never()).recordDeferredVersionSwapErrorMetric(anyString());
   }
 
   /**
@@ -711,7 +711,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     // Wait for the service to process the store and record stalled metric
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       // Verify stalled swap metric was emitted - this happens when condition at L523 is true
-      verify(stats, atLeastOnce()).recordDeferredVersionSwapStalledVersionSwapSensor(anyDouble());
+      verify(stats, atLeastOnce()).recordDeferredVersionSwapStalledVersionSwapMetric(anyDouble(), anyString());
     });
   }
 

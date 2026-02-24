@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -409,7 +410,8 @@ public class TestDeferredVersionSwapService {
     deferredVersionSwapService.startInner();
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      verify(mockDeferredVersionSwapStats, atLeast(1)).recordDeferredVersionSwapStalledVersionSwapSensor(1.0);
+      verify(mockDeferredVersionSwapStats, atLeast(1))
+          .recordDeferredVersionSwapStalledVersionSwapMetric(eq(1.0), anyString());
     });
   }
 
@@ -467,7 +469,8 @@ public class TestDeferredVersionSwapService {
     deferredVersionSwapService.startInner();
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      verify(deferredVersionSwapStats, atLeast(1)).recordDeferredVersionSwapParentChildStatusMismatchSensor();
+      verify(deferredVersionSwapStats, atLeast(1))
+          .recordDeferredVersionSwapParentChildStatusMismatchMetric(anyString(), anyString());
     });
   }
 
@@ -588,7 +591,8 @@ public class TestDeferredVersionSwapService {
     deferredVersionSwapService.startInner();
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      verify(deferredVersionSwapStats, atLeast(1)).recordDeferredVersionSwapParentChildStatusMismatchSensor();
+      verify(deferredVersionSwapStats, atLeast(1))
+          .recordDeferredVersionSwapParentChildStatusMismatchMetric(anyString(), anyString());
     });
   }
 
