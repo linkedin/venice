@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
@@ -94,7 +95,7 @@ public class OfflinePushMonitorAccessorTest {
     Mockito.verify(mockPartitionStatusAccessor, Mockito.times(1)).update(anyString(), any(), anyInt());
   }
 
-  @Test
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Push status does not exist for topic test_topic_v1.*")
   public void testUpdatePartitionStatusWhenPushStatusDoesNotExist() {
     ZkBaseDataAccessor<OfflinePushStatus> mockOfflinePushStatusAccessor = mock(ZkBaseDataAccessor.class);
     ZkBaseDataAccessor<PartitionStatus> mockPartitionStatusAccessor = mock(ZkBaseDataAccessor.class);
@@ -111,11 +112,8 @@ public class OfflinePushMonitorAccessorTest {
     // Create a partition status to update
     PartitionStatus partitionStatus = new PartitionStatus(0);
 
-    // Update partition status - should be skipped because push status doesn't exist
+    // Update partition status - should throw VeniceException because push status doesn't exist
     accessor.updatePartitionStatus("test_topic_v1", partitionStatus);
-
-    // Verify that the partition status was NOT updated in ZK
-    Mockito.verify(mockPartitionStatusAccessor, Mockito.times(0)).update(anyString(), any(), anyInt());
   }
 
   @Test
