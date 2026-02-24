@@ -742,6 +742,14 @@ public class PartitionConsumptionState {
     return transientRecordMap.size();
   }
 
+  /**
+   * Clears all entries from the transient record map. This is used defensively when transitioning out of data recovery
+   * in AA stores to avoid stale compressed transient records being interpreted as uncompressed by the AA merge path.
+   */
+  public void clearTransientRecordMap() {
+    transientRecordMap.clear();
+  }
+
   public boolean skipKafkaMessage() {
     return this.skipKafkaMessage;
   }

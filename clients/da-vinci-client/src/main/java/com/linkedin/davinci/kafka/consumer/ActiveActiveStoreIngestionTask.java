@@ -50,6 +50,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -856,12 +857,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       return null;
     }
     // AA transient records contain uncompressed bytes — use NoopCompressor to skip decompression.
-    GenericRecord currValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(
-        transientRecord.getValue(),
-        transientRecord.getValueOffset(),
-        transientRecord.getValueLen(),
-        storeDeserializerCache.getDeserializer(transientRecord.getValueSchemaId(), readerValueSchemaID),
-        NOOP_COMPRESSOR);
+    GenericRecord currValue;
+    try {
+      currValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(
+          transientRecord.getValue(),
+          transientRecord.getValueOffset(),
+          transientRecord.getValueLen(),
+          storeDeserializerCache.getDeserializer(transientRecord.getValueSchemaId(), readerValueSchemaID),
+          NOOP_COMPRESSOR);
+    } catch (Exception e) {
+      setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
+      throw e;
+    }
     if (manifestContainer != null) {
       manifestContainer.setManifest(transientRecord.getValueManifest());
     }
@@ -1344,6 +1351,25 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   public boolean isTransientRecordBufferUsed(PartitionConsumptionState partitionConsumptionState) {
     return partitionConsumptionState.isEndOfPushReceived();
+  }
+
+  /**
+   * Overrides the parent to defensively clear transient record maps when transitioning out of data recovery.
+   * During data recovery, the L/F parent path may populate transient records with compressed bytes (via
+   * {@code maybeCompressData}). When data recovery ends and the AA merge path takes over, those stale
+   * compressed records would be misinterpreted as uncompressed, causing deserialization failures. Clearing
+   * the transient maps on this transition prevents that edge case.
+   */
+  @Override
+  protected void refreshIngestionContextIfChanged(Store store) throws InterruptedException {
+    boolean wasDataRecovery = this.isDataRecovery;
+    super.refreshIngestionContextIfChanged(store);
+    if (wasDataRecovery && !this.isDataRecovery) {
+      LOGGER.info(
+          "Data recovery ended for store: {}. Clearing transient record maps to avoid stale compressed records.",
+          storeName);
+      partitionConsumptionStateMap.values().forEach(PartitionConsumptionState::clearTransientRecordMap);
+    }
   }
 
   /**
