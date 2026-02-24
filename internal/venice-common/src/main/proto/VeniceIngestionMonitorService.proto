@@ -22,8 +22,8 @@ message IngestionMonitorResponse {
   double records_polled_per_sec = 4;
   double bytes_polled_per_sec = 5;
 
-  // Per-source breakdown
-  repeated SourceIngestionInfo source_ingestion_info = 6;
+  // Reserved for future per-source breakdown
+  reserved 6;
 
   // Processing latency
   double consumed_record_e2e_processing_latency_avg_ms = 7;
@@ -49,10 +49,3 @@ message IngestionMonitorResponse {
   int64 elapsed_time_since_last_record_ms = 17;
 }
 
-message SourceIngestionInfo {
-  string region_name = 1;
-  string consumer_id = 2;
-  double msg_rate = 3;
-  double byte_rate = 4;
-  int64 elapsed_time_since_last_poll_ms = 5;
-}
