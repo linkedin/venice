@@ -4,7 +4,6 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import java.util.Collections;
 import org.apache.avro.generic.GenericRecord;
 
@@ -19,8 +18,6 @@ abstract class AbstractMerge<T> implements Merge<T> {
       final long oldTimestamp,
       ValueAndRmd<T> oldValueAndRmd,
       final long putOperationTimestamp,
-      final PubSubPosition newValueSourcePosition,
-      final int newValueSourceBrokerID,
       T newValue) {
     final GenericRecord oldRmd = oldValueAndRmd.getRmd();
 
@@ -51,8 +48,6 @@ abstract class AbstractMerge<T> implements Merge<T> {
   protected ValueAndRmd<T> deleteWithValueLevelTimestamp(
       final long oldTimestamp,
       final long deleteOperationTimestamp,
-      final PubSubPosition newValueSourcePosition,
-      final int newValueSourceBrokerID,
       ValueAndRmd<T> oldValueAndRmd) {
     // Delete wins when old and new write operation timestamps are equal.
     if (oldTimestamp <= deleteOperationTimestamp) {

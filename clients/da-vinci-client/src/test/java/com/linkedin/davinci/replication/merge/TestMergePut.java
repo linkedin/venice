@@ -51,8 +51,6 @@ public class TestMergePut extends TestMergeBase {
         serializeValueRecord(newValueRecord),
         1L,
         schemaSet.getValueSchemaId(),
-        P1,
-        0,
         0);
 
     Assert.assertFalse(result.isUpdateIgnored());
@@ -108,8 +106,6 @@ public class TestMergePut extends TestMergeBase {
         serializeValueRecord(newValueRecord),
         1L,
         schemaSet.getValueSchemaId(),
-        P1,
-        0,
         0);
     Assert.assertTrue(result.isUpdateIgnored());
 
@@ -120,8 +116,6 @@ public class TestMergePut extends TestMergeBase {
         serializeValueRecord(newValueRecord),
         2L,
         schemaSet.getValueSchemaId(),
-        P1,
-        0,
         -2);
     Assert.assertTrue(result.isUpdateIgnored());
   }
@@ -158,8 +152,6 @@ public class TestMergePut extends TestMergeBase {
         serializeValueRecord(newValueRecord),
         1L,
         schemaSet.getValueSchemaId(),
-        P1,
-        0,
         -1);
 
     Assert.assertFalse(result.isUpdateIgnored());
@@ -192,8 +184,6 @@ public class TestMergePut extends TestMergeBase {
         serializeValueRecord(newValueRecord),
         2L,
         schemaSet.getValueSchemaId(),
-        P1,
-        0,
         -2);
     Assert.assertFalse(result.isUpdateIgnored());
     updatedValueRecord = deserializeValueRecord(result.getNewValue());
@@ -248,8 +238,6 @@ public class TestMergePut extends TestMergeBase {
         serializeValueRecord(newValueRecord),
         2L,
         schemaSet.getValueSchemaId(),
-        P1,
-        0,
         -2);
     Assert.assertFalse(result.isUpdateIgnored());
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
@@ -281,8 +269,6 @@ public class TestMergePut extends TestMergeBase {
         serializeValueRecord(newValueRecord),
         3L,
         schemaSet.getValueSchemaId(),
-        P1,
-        0,
         0);
     Assert.assertFalse(result.isUpdateIgnored());
     updatedValueRecord = deserializeValueRecord(result.getNewValue());

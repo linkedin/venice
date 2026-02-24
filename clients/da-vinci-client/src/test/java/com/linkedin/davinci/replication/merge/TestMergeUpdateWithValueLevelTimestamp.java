@@ -77,8 +77,6 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
-        P1,
-        1,
         1,
         null);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
@@ -131,8 +129,6 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
-        P1,
-        1,
         1,
         null);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
@@ -201,8 +197,6 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
-        P1,
-        1,
         1,
         null);
 
@@ -314,8 +308,6 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
-        P1,
-        1,
         newColoID,
         null);
 
@@ -394,8 +386,6 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 2,
-        P1,
-        1,
         newColoID,
         null);
     ByteBuffer updatedValueBytes2 = mergeConflictResult2.getNewValue();
@@ -479,8 +469,6 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
-        P1,
-        1,
         newValueColoID,
         null);
 
@@ -627,8 +615,6 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
-        P1,
-        1,
         newValueColoID,
         null);
 

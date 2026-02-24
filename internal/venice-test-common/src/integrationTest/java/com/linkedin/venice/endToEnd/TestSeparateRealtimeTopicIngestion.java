@@ -54,6 +54,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
@@ -208,11 +209,20 @@ public class TestSeparateRealtimeTopicIngestion {
       validateData(storeName, veniceClusterWrapper);
       validateRmdData(rmdSerDe, Version.composeKafkaTopic(storeName, 2), String.valueOf(99), rmdWithValueSchemaId -> {
         GenericRecord rmdRecord = rmdWithValueSchemaId.getRmdRecord();
-        // Verify RMD exists and has valid structure - offset vector is no longer populated
+        // Verify RMD exists and has valid structure
         Assert.assertNotNull(rmdRecord, "RMD record should exist");
-        // Timestamp field should be populated
-        Object timestamp = rmdRecord.get(0); // TIMESTAMP_FIELD_POS = 0
+        // Timestamp field should be populated with a positive value
+        Object timestamp = rmdRecord.get(RmdConstants.TIMESTAMP_FIELD_POS);
         Assert.assertNotNull(timestamp, "RMD timestamp should be present");
+        Assert.assertTrue(timestamp instanceof Long, "RMD timestamp should be a Long");
+        Assert.assertTrue((Long) timestamp > 0, "RMD timestamp should be > 0");
+        // replication_checkpoint_vector should be present and empty (no longer populated)
+        Object checkpointVector = rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
+        Assert.assertNotNull(checkpointVector, "replication_checkpoint_vector should be present");
+        Assert.assertTrue(checkpointVector instanceof java.util.List, "replication_checkpoint_vector should be a List");
+        Assert.assertTrue(
+            ((java.util.List<?>) checkpointVector).isEmpty(),
+            "replication_checkpoint_vector should be empty");
       });
       PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.getRealTimeTopicName(storeInfo));
       PubSubTopic separateRealtimeTopic =

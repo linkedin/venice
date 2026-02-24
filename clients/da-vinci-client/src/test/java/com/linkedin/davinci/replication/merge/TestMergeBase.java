@@ -7,8 +7,6 @@ import com.linkedin.davinci.replication.merge.helper.utils.ValueAndDerivedSchema
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -25,7 +23,6 @@ import org.testng.annotations.BeforeClass;
 
 public class TestMergeBase {
   protected static final int UPDATE_SCHEMA_PROTOCOL_VERSION = 1;
-  protected static final PubSubPosition P1 = new ApacheKafkaOffsetPosition(1L);
   protected static final int RMD_SCHEMA_PROTOCOL_VERSION = RmdSchemaGenerator.getLatestVersion();
   protected static final String REGULAR_FIELD_NAME = "regularField";
   protected static final String STRING_ARRAY_FIELD_NAME = "stringArrayField";

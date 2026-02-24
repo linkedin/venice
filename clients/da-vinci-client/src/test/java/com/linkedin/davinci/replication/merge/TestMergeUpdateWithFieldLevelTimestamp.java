@@ -88,8 +88,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
-        P1,
-        1,
         1,
         null);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
@@ -146,8 +144,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
-        P1,
-        1,
         1,
         null);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
@@ -210,8 +206,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         1,
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update should be applied.
-        P1,
-        1,
         1,
         null);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
@@ -278,8 +272,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 1,
-        P1,
-        1,
         1,
         null);
 
@@ -296,8 +288,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 2,
-        P2,
-        0,
         0,
         null);
 
@@ -402,8 +392,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
-        P1,
-        1,
         newColoID,
         null);
 

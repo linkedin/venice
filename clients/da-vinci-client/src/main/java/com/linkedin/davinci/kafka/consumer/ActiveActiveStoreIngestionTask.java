@@ -489,8 +489,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
 
-    // get the source offset and the id
-    PubSubPosition sourcePosition = consumerRecord.getPosition();
     final MergeConflictResult mergeConflictResult;
 
     aggVersionedIngestionStats.recordTotalDCR(storeName, versionNumber);
@@ -506,8 +504,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             ((Put) kafkaValue.payloadUnion).putValue,
             writeTimestamp,
             incomingValueSchemaId,
-            sourcePosition,
-            kafkaClusterId,
             kafkaClusterId // Use the kafka cluster ID as the colo ID for now because one colo/fabric has only one
         // Kafka cluster. TODO: evaluate whether it is enough this way, or we need to add a new
         // config to represent the mapping from Kafka server URLs to colo ID.
@@ -517,13 +513,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         break;
 
       case DELETE:
-        mergeConflictResult = mergeConflictResolver.delete(
-            oldValueByteBufferProvider,
-            rmdWithValueSchemaID,
-            writeTimestamp,
-            sourcePosition,
-            kafkaClusterId,
-            kafkaClusterId);
+        mergeConflictResult = mergeConflictResolver
+            .delete(oldValueByteBufferProvider, rmdWithValueSchemaID, writeTimestamp, kafkaClusterId);
         getHostLevelIngestionStats()
             .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
@@ -536,8 +527,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             incomingValueSchemaId,
             incomingWriteComputeSchemaId,
             writeTimestamp,
-            sourcePosition,
-            kafkaClusterId,
             kafkaClusterId,
             valueManifestContainer);
         getHostLevelIngestionStats()

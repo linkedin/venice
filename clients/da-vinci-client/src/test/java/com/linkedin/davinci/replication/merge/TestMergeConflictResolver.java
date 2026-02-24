@@ -11,8 +11,6 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.davinci.replication.merge.helper.utils.ValueAndDerivedSchemas;
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -33,8 +31,6 @@ import org.testng.annotations.BeforeClass;
 
 public class TestMergeConflictResolver {
   protected static final int RMD_VERSION_ID = 1;
-  protected static final PubSubPosition P1 = new ApacheKafkaOffsetPosition(1L);
-  protected static final PubSubPosition P2 = new ApacheKafkaOffsetPosition(2L);
 
   protected String storeName;
   protected ReadOnlySchemaRepository schemaRepository;
