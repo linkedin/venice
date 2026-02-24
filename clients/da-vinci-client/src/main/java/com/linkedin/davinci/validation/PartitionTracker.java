@@ -216,7 +216,7 @@ public class PartitionTracker {
     long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
     List<GUID> staleGuids = new ArrayList<>();
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
-      if (entry.getValue().getLastRecordTimestamp() >= earliestAllowableTimestamp) {
+      if (entry.getValue().getLastRecordProducerTimestamp() >= earliestAllowableTimestamp) {
         destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
       } else {
         staleGuids.add(entry.getKey()); // Collect stale GUIDs for removal
@@ -253,7 +253,7 @@ public class PartitionTracker {
       final VeniceConcurrentHashMap<GUID, Segment> rtEntries = broker2Segment.getValue();
       List<GUID> guidsToRemove = new ArrayList<>();
       for (Map.Entry<GUID, Segment> rtEntry: rtEntries.entrySet()) {
-        if (rtEntry.getValue().getLastRecordTimestamp() >= earliestAllowableTimestamp) {
+        if (rtEntry.getValue().getLastRecordProducerTimestamp() >= earliestAllowableTimestamp) {
           TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, broker2Segment.getKey());
           destProducerTracker.setSegment(realTimeTopicType, rtEntry.getKey(), new Segment(rtEntry.getValue()));
         } else {
