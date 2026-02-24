@@ -444,6 +444,14 @@ public class VeniceSystemProducerTest {
   }
 
   private ControllerClient buildMockControllerClient(int valueSchemaId, int derivedSchemaId) {
+    return buildMockControllerClient(valueSchemaId, derivedSchemaId, false, "test_store_rt");
+  }
+
+  private ControllerClient buildMockControllerClient(
+      int valueSchemaId,
+      int derivedSchemaId,
+      boolean writeComputationEnabled,
+      String kafkaTopic) {
     ControllerClient mockControllerClient = mock(ControllerClient.class);
 
     SchemaResponse keySchemaResponse = new SchemaResponse();
@@ -451,7 +459,7 @@ public class VeniceSystemProducerTest {
     when(mockControllerClient.getKeySchema(anyString())).thenReturn(keySchemaResponse);
 
     VersionCreationResponse vcr = new VersionCreationResponse();
-    vcr.setKafkaTopic("test_store_rt");
+    vcr.setKafkaTopic(kafkaTopic);
     vcr.setKafkaBootstrapServers("kafka:9092");
     when(
         mockControllerClient.requestTopicForWrites(
@@ -471,6 +479,7 @@ public class VeniceSystemProducerTest {
     StoreResponse storeResponse = new StoreResponse();
     StoreInfo storeInfo = new StoreInfo();
     storeInfo.setVersions(new ArrayList<>());
+    storeInfo.setWriteComputationEnabled(writeComputationEnabled);
     storeResponse.setStore(storeInfo);
     when(mockControllerClient.getStore(anyString())).thenReturn(storeResponse);
 
@@ -554,6 +563,50 @@ public class VeniceSystemProducerTest {
     producerSpy.send(record);
 
     verify(mockWriter).delete(eq(key), anyLong(), any());
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testSendSerializedRecordCallsWriterUpdateWhenWriteComputeEnabled() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, 1, true, "test_store_rt");
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    byte[] key = new byte[] { 1 };
+    byte[] value = new byte[] { 2 };
+    SerializedRecord record = new SerializedRecord(key, value, 1, 1, 123L);
+    producerSpy.send(record);
+
+    verify(mockWriter).update(eq(key), eq(value), eq(1), eq(1), eq(123L), any());
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testSendSerializedRecordThrowsForWriteComputeWhenDisabled() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, 1, false, "test_store_rt");
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    byte[] key = new byte[] { 1 };
+    byte[] value = new byte[] { 2 };
+    SerializedRecord record = new SerializedRecord(key, value, 1, 1, 123L);
+
+    Assert.assertThrows(() -> producerSpy.send(record));
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testPrepareRecordConvertsWriteComputeForVersionedTopic() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, 1, true, "test_store_v1");
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+    doReturn("convertedValue").when(producerSpy).convertPartialUpdateToFullPut(any(), eq("partialUpdateCandidate"));
+
+    SerializedRecord record = producerSpy.prepareRecord("myKey", "partialUpdateCandidate");
+
+    assertEquals(record.getValueSchemaId(), 1);
+    assertEquals(record.getDerivedSchemaId(), -1);
+    verify(producerSpy).convertPartialUpdateToFullPut(any(), eq("partialUpdateCandidate"));
     producerSpy.stop();
   }
 
