@@ -140,10 +140,16 @@ public class JobRoutes extends AbstractRoute {
         responseObject.setCluster(cluster);
         responseObject.setName(Version.parseStoreFromKafkaTopicName(topic));
 
-        PushJobKillTrigger trigger =
-            triggerStr != null ? PushJobKillTrigger.fromString(triggerStr) : PushJobKillTrigger.USER_REQUEST;
-        if (trigger == null) {
-          trigger = PushJobKillTrigger.UNKNOWN;
+        PushJobKillTrigger trigger;
+        if (triggerStr != null) {
+          trigger = PushJobKillTrigger.fromString(triggerStr);
+          if (trigger == null) {
+            responseObject.setError("Invalid push job kill trigger: " + triggerStr);
+            responseObject.setErrorType(ErrorType.BAD_REQUEST);
+            return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+          }
+        } else {
+          trigger = PushJobKillTrigger.USER_REQUEST;
         }
         admin.killOfflinePush(cluster, topic, trigger, details, false);
       } catch (Throwable e) {

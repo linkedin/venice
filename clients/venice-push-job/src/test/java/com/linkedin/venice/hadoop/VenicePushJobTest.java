@@ -519,7 +519,7 @@ public class VenicePushJobTest {
     JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
     doReturn("UNKNOWN").when(response).getStatus();
     doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
-    doReturn(response).when(client).killOfflinePushJob(anyString());
+    doReturn(response).when(client).killOfflinePushJob(anyString(), any(), any());
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
@@ -560,7 +560,7 @@ public class VenicePushJobTest {
     JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
     doReturn("SUCCESS").when(response).getStatus();
     doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
-    doReturn(response).when(client).killOfflinePushJob(anyString());
+    doReturn(response).when(client).killOfflinePushJob(anyString(), any(), any());
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       StoreInfo storeInfo = new StoreInfo();

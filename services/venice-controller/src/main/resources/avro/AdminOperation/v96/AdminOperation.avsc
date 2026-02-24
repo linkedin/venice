@@ -723,7 +723,7 @@
             },
             {
               "name": "enumSchemaEvolutionAllowed",
-              "doct": "Flag to control whether a certain store is allowed to evolve enum schema since the readers need to use Avro-1.9+",
+              "doc": "Flag to control whether a certain store is allowed to evolve enum schema since the readers need to use Avro-1.9+",
               "type": "boolean",
               "default": false
             },

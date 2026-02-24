@@ -1,6 +1,7 @@
 package com.linkedin.venice.participant.protocol.enums;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 
@@ -35,7 +36,7 @@ public enum PushJobKillTrigger {
   static {
     for (PushJobKillTrigger trigger: values()) {
       CODE_MAP.put(trigger.code, trigger);
-      NAME_MAP.put(trigger.name().toLowerCase(), trigger);
+      NAME_MAP.put(trigger.name().toLowerCase(Locale.ROOT), trigger);
     }
   }
 
@@ -51,7 +52,7 @@ public enum PushJobKillTrigger {
    * Returns the enum constant for the given code.
    *
    * @param code the integer code
-   * @return the corresponding KillPushJobTrigger, or null if not found
+   * @return the corresponding PushJobKillTrigger, or null if not found
    */
   public static PushJobKillTrigger fromCode(int code) {
     return CODE_MAP.get(code);
@@ -61,12 +62,12 @@ public enum PushJobKillTrigger {
    * Returns the enum constant for the given name (case-insensitive).
    *
    * @param name the name of the enum constant
-   * @return the corresponding KillPushJobTrigger, or null if not found
+   * @return the corresponding PushJobKillTrigger, or null if not found
    */
   public static PushJobKillTrigger fromString(String name) {
     if (name == null) {
       return null;
     }
-    return NAME_MAP.get(name.toLowerCase());
+    return NAME_MAP.get(name.toLowerCase(Locale.ROOT));
   }
 }
