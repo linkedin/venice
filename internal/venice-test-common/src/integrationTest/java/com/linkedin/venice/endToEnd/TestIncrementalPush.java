@@ -13,6 +13,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -421,8 +422,9 @@ public class TestIncrementalPush {
   public void testIncrementalPushWithThrottling() throws IOException {
     final String storeName = Utils.getUniqueString("inc_push_throttle");
     String parentControllerUrl = parentController.getControllerUrl();
+    int recordCount = 5;
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
+    Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir, recordCount);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
 
@@ -453,21 +455,21 @@ public class TestIncrementalPush {
           TimeUnit.SECONDS);
 
       // Run incremental push with throttling enabled (writing to regular RT topic).
+      // Quota of 1 rec/s ensures the throttler blocks ~1s between each record.
       Properties vpjProperties =
           IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
       vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
       vpjProperties.put(INCREMENTAL_PUSH, true);
-      vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, 50000);
+      vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, 1);
 
       String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
       try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
         String jobName = Utils.getUniqueString("venice-push-job-throttle-rt");
         try (VenicePushJob vpj = new VenicePushJob(jobName, vpjProperties)) {
           vpj.run();
-          // Verify throttle counter is accessible and non-negative
           Assert.assertTrue(
-              vpj.getIncrementalPushThrottledTimeMs() >= 0,
-              "Incremental push throttle time counter should be non-negative");
+              vpj.getIncrementalPushThrottledTimeMs() > 0,
+              "Incremental push throttle time should be positive when quota is 1 rec/s");
         }
         TestUtils.waitForNonDeterministicCompletion(
             5,
@@ -483,7 +485,7 @@ public class TestIncrementalPush {
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           try {
-            for (int i = 1; i < 100; i++) {
+            for (int i = 1; i <= recordCount; i++) {
               String key = String.valueOf(i);
               GenericRecord value = readValue(storeReader, key);
               assertNotNull(value, "Key " + key + " should not be missing!");
@@ -538,12 +540,13 @@ public class TestIncrementalPush {
           60,
           TimeUnit.SECONDS);
 
-      // Run incremental push with throttling config set, but pushing to separate RT topic
-      // Throttling should be automatically skipped since PUSH_TO_SEPARATE_REALTIME_TOPIC is detected
+      // Run incremental push with throttling config set, but pushing to separate RT topic.
+      // Throttling should be automatically skipped since PUSH_TO_SEPARATE_REALTIME_TOPIC is set.
       Properties vpjProperties =
           IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
       vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
       vpjProperties.put(INCREMENTAL_PUSH, true);
+      vpjProperties.put(PUSH_TO_SEPARATE_REALTIME_TOPIC, true);
       // Set a very low quota - if throttling were applied, the push would be very slow
       vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, 1);
 

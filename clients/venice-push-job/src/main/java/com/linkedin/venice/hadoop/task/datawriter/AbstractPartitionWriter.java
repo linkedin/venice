@@ -461,14 +461,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
 
     long startNanos = System.nanoTime();
-    while (!recordsThrottler.tryAcquirePermit(1)) {
-      try {
-        Thread.sleep(10);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        break;
-      }
-    }
+    recordsThrottler.acquirePermit(1);
     long throttleTimeMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
     if (throttleTimeMs <= 0) {
       return;
@@ -835,15 +828,18 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     switch (rateLimiterType) {
       case EVENT_THROTTLER_WITH_SILENT_REJECTION:
-        this.recordsThrottler = new EventThrottler(recordsPerSecond);
+        this.recordsThrottler = new EventThrottler(
+            recordsPerSecond,
+            storeName + "_incremental_push_records_throttler",
+            true,
+            EventThrottler.REJECT_STRATEGY);
         break;
       case TOKEN_BUCKET_INCREMENTAL_REFILL:
       case TOKEN_BUCKET_GREEDY_REFILL:
         long timeWindowMs = props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, 1000);
-        // capacity = max(one second's worth, one window's worth) to allow reasonable burst capacity
-        long capacity = Math.max(recordsPerSecond, recordsPerSecond * timeWindowMs / 1000);
-        this.recordsThrottler =
-            new TokenBucket(capacity, capacity, timeWindowMs, TimeUnit.MILLISECONDS, Clock.systemUTC());
+        int capacityMultiple = rateLimiterType == VeniceRateLimiter.RateLimiterType.TOKEN_BUCKET_GREEDY_REFILL ? 5 : 2;
+        this.recordsThrottler = TokenBucket
+            .tokenBucketFromRcuPerSecond(recordsPerSecond, 1.0, timeWindowMs, capacityMultiple, Clock.systemUTC());
         break;
       case GUAVA_RATE_LIMITER:
       default:
