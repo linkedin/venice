@@ -348,8 +348,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   @Override
   public void updatePartitionStatus(String kafkaTopic, PartitionStatus partitionStatus) {
     if (!pushStatusExists(kafkaTopic)) {
-      LOGGER.warn("Push status does not exist for topic {}, skipping partition status update", kafkaTopic);
-      return;
+      String msg = "Push status does not exist for topic " + kafkaTopic + " skipping partition status update";
+      throw new VeniceException(msg);
     }
     int partitionId = partitionStatus.getPartitionId();
     String partitionStatusPath = getPartitionStatusPath(kafkaTopic, partitionId);
