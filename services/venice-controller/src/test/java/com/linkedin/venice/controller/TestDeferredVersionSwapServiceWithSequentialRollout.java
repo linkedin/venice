@@ -370,7 +370,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     });
 
     // Verify error recording was not called
-    verify(stats, never()).recordDeferredVersionSwapErrorMetric(anyString());
+    verify(stats, never()).recordDeferredVersionSwapExceptionMetric(anyString());
   }
 
   /**
@@ -504,7 +504,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     });
 
     // Verify error was not recorded since this is an expected validation failure
-    verify(stats, never()).recordDeferredVersionSwapErrorMetric(anyString());
+    verify(stats, never()).recordDeferredVersionSwapExceptionMetric(anyString());
   }
 
   /**
@@ -615,7 +615,7 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     });
 
     // Verify error recording was not called
-    verify(stats, never()).recordDeferredVersionSwapErrorMetric(anyString());
+    verify(stats, never()).recordDeferredVersionSwapExceptionMetric(anyString());
   }
 
   /**

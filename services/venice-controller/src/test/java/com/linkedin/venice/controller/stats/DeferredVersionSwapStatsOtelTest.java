@@ -45,22 +45,14 @@ public class DeferredVersionSwapStatsOtelTest {
   }
 
   @Test
-  public void testRecordDeferredVersionSwapError() {
-    stats.recordDeferredVersionSwapErrorMetric(TEST_CLUSTER_NAME);
-    validateCounter(
-        DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_EXCEPTION_COUNT
-            .getMetricName(),
-        1,
-        clusterAttributes());
-  }
-
-  @Test
-  public void testRecordDeferredVersionSwapThrowable() {
+  public void testRecordDeferredVersionSwapProcessingError() {
+    // Both error and throwable flow to the same OTel metric
+    stats.recordDeferredVersionSwapExceptionMetric(TEST_CLUSTER_NAME);
     stats.recordDeferredVersionSwapThrowableMetric(TEST_CLUSTER_NAME);
     validateCounter(
-        DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_THROWABLE_COUNT
+        DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_PROCESSING_ERROR_COUNT
             .getMetricName(),
-        1,
+        2,
         clusterAttributes());
   }
 
@@ -105,12 +97,12 @@ public class DeferredVersionSwapStatsOtelTest {
   }
 
   @Test
-  public void testRecordMultipleErrors() {
-    stats.recordDeferredVersionSwapErrorMetric(TEST_CLUSTER_NAME);
-    stats.recordDeferredVersionSwapErrorMetric(TEST_CLUSTER_NAME);
-    stats.recordDeferredVersionSwapErrorMetric(TEST_CLUSTER_NAME);
+  public void testRecordMultipleProcessingErrors() {
+    stats.recordDeferredVersionSwapExceptionMetric(TEST_CLUSTER_NAME);
+    stats.recordDeferredVersionSwapExceptionMetric(TEST_CLUSTER_NAME);
+    stats.recordDeferredVersionSwapThrowableMetric(TEST_CLUSTER_NAME);
     validateCounter(
-        DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_EXCEPTION_COUNT
+        DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_PROCESSING_ERROR_COUNT
             .getMetricName(),
         3,
         clusterAttributes());
@@ -123,7 +115,7 @@ public class DeferredVersionSwapStatsOtelTest {
     DeferredVersionSwapStats disabledStats = new DeferredVersionSwapStats(disabledRepo);
 
     // Should execute without NPE
-    disabledStats.recordDeferredVersionSwapErrorMetric(TEST_CLUSTER_NAME);
+    disabledStats.recordDeferredVersionSwapExceptionMetric(TEST_CLUSTER_NAME);
     disabledStats.recordDeferredVersionSwapThrowableMetric(TEST_CLUSTER_NAME);
     disabledStats.recordDeferredVersionSwapFailedRollForwardMetric(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     disabledStats.recordDeferredVersionSwapStalledVersionSwapMetric(3, TEST_CLUSTER_NAME);
@@ -137,7 +129,7 @@ public class DeferredVersionSwapStatsOtelTest {
     DeferredVersionSwapStats plainStats = new DeferredVersionSwapStats(plainRepo);
 
     // Should execute without NPE
-    plainStats.recordDeferredVersionSwapErrorMetric(TEST_CLUSTER_NAME);
+    plainStats.recordDeferredVersionSwapExceptionMetric(TEST_CLUSTER_NAME);
     plainStats.recordDeferredVersionSwapThrowableMetric(TEST_CLUSTER_NAME);
     plainStats.recordDeferredVersionSwapFailedRollForwardMetric(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     plainStats.recordDeferredVersionSwapStalledVersionSwapMetric(3, TEST_CLUSTER_NAME);
@@ -184,20 +176,12 @@ public class DeferredVersionSwapStatsOtelTest {
   public void testDeferredVersionSwapOtelMetricEntity() {
     Map<DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
     expectedMetrics.put(
-        DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_EXCEPTION_COUNT,
+        DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_PROCESSING_ERROR_COUNT,
         new MetricEntity(
-            "deferred_version_swap.exception_count",
+            "deferred_version_swap.processing_error_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Count of deferred version swap exceptions",
-            Utils.setOf(VENICE_CLUSTER_NAME)));
-    expectedMetrics.put(
-        DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_THROWABLE_COUNT,
-        new MetricEntity(
-            "deferred_version_swap.throwable_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Count of deferred version swap throwables",
+            "Count of unexpected failures in the deferred version swap processing loop",
             Utils.setOf(VENICE_CLUSTER_NAME)));
     expectedMetrics.put(
         DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_ROLL_FORWARD_FAILURE_COUNT,

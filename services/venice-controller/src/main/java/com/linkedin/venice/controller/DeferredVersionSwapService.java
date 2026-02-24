@@ -1010,7 +1010,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           clusterThreadPoolStats.recordQueuedTasksCount(clusterExecutorService.getQueue().size());
         } catch (Exception e) {
           LOGGER.warn("Caught exception while performing deferred version swap for cluster: {}", cluster, e);
-          deferredVersionSwapStats.recordDeferredVersionSwapErrorMetric(cluster);
+          deferredVersionSwapStats.recordDeferredVersionSwapExceptionMetric(cluster);
         } catch (Throwable throwable) {
           LOGGER.warn("Caught a throwable while performing deferred version swap for cluster: {}", cluster, throwable);
           deferredVersionSwapStats.recordDeferredVersionSwapThrowableMetric(cluster);
