@@ -3499,19 +3499,14 @@ public class AdminTool {
 
     io.grpc.ManagedChannel channel = null;
     try {
-      io.grpc.ManagedChannelBuilder<?> channelBuilder = io.grpc.ManagedChannelBuilder.forAddress(host, grpcPort);
-
-      String sslConfigPath = getOptionalArgument(cmd, Arg.SSL_CONFIG_PATH);
-      if (sslConfigPath == null && sslFactory.isPresent()) {
-        // Use TLS via the existing sslFactory
-        channelBuilder.useTransportSecurity();
-      } else if (sslConfigPath == null) {
-        channelBuilder.usePlaintext();
+      String serverAddress = host + ":" + grpcPort;
+      if (sslFactory.isPresent()) {
+        io.grpc.ChannelCredentials credentials =
+            com.linkedin.venice.grpc.GrpcUtils.buildChannelCredentials(sslFactory.get());
+        channel = io.grpc.Grpc.newChannelBuilder(serverAddress, credentials).build();
       } else {
-        channelBuilder.useTransportSecurity();
+        channel = io.grpc.ManagedChannelBuilder.forTarget(serverAddress).usePlaintext().build();
       }
-
-      channel = channelBuilder.build();
 
       com.linkedin.venice.protocols.IngestionMonitorRequest request =
           com.linkedin.venice.protocols.IngestionMonitorRequest.newBuilder()
