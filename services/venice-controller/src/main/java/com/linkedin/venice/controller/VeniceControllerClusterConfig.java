@@ -153,6 +153,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPIC
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
@@ -562,6 +563,7 @@ public class VeniceControllerClusterConfig {
   private final Optional<Integer> minInSyncReplicas;
   private final Optional<Integer> minInSyncReplicasRealTimeTopics;
   private final Optional<Integer> minInSyncReplicasAdminTopics;
+  private final Optional<Boolean> uncleanLeaderElectionEnableRTTopics;
   private final boolean kafkaLogCompactionForHybridStores;
 
   /**
@@ -700,6 +702,9 @@ public class VeniceControllerClusterConfig {
     this.minInSyncReplicas = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS);
     this.minInSyncReplicasRealTimeTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
     this.minInSyncReplicasAdminTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS);
+    this.uncleanLeaderElectionEnableRTTopics = props.containsKey(KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS)
+        ? Optional.of(props.getBoolean(KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS))
+        : Optional.empty();
     this.kafkaLogCompactionForHybridStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES, true);
     this.replicationFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
     this.minNumberOfPartitions = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
@@ -1507,6 +1512,10 @@ public class VeniceControllerClusterConfig {
 
   public Optional<Integer> getMinInSyncReplicasAdminTopics() {
     return minInSyncReplicasAdminTopics;
+  }
+
+  public Optional<Boolean> getUncleanLeaderElectionEnableRTTopics() {
+    return uncleanLeaderElectionEnableRTTopics;
   }
 
   public boolean isKafkaLogCompactionForHybridStoresEnabled() {

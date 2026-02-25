@@ -24,6 +24,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -220,6 +221,8 @@ public class RealTimeTopicSwitcherTest {
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
     doReturn(true).when(mockStore).isHybrid();
+    doReturn(ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name()).when(mockStore)
+        .getUncleanLeaderElectionEnabledForRTTopics();
 
     Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
     // Mock version-level hybrid store config with a different rewind time
@@ -243,6 +246,161 @@ public class RealTimeTopicSwitcherTest {
         eq(retentionTime),
         eq(false),
         eq(Optional.of(KAFKA_MIN_ISR_FOR_RT_TOPICS)),
+        any(),
+        eq(false));
+  }
+
+  @Test
+  public void testUncleanLeaderElectionConfigForRTTopics() {
+    // Test that unclean leader election config is properly passed when creating RT topics
+    // with store-level NOT_SPECIFIED (should use cluster-level fallback)
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "dummy");
+    properties.put(ConfigKeys.KAFKA_REPLICATION_FACTOR, "3");
+    properties.put(ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS, Integer.toString(KAFKA_RF_FOR_RT_TOPICS));
+    properties.put(ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS, Integer.toString(KAFKA_MIN_ISR_FOR_RT_TOPICS));
+    properties.put(ConfigKeys.KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS, "false");
+
+    RealTimeTopicSwitcher replicatorWithUncleanConfig = new RealTimeTopicSwitcher(
+        mockTopicManager,
+        mockVeniceWriterFactory,
+        new VeniceProperties(properties),
+        pubSubTopicRepository);
+
+    PubSubTopic srcTopic = pubSubTopicRepository.getTopic("testTopic_rt");
+    PubSubTopic destTopic = pubSubTopicRepository.getTopic("testTopic_v1");
+    Store mockStore = mock(Store.class);
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+
+    doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
+    doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
+    doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
+    doReturn(true).when(mockStore).isHybrid();
+    doReturn(ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name()).when(mockStore)
+        .getUncleanLeaderElectionEnabledForRTTopics();
+
+    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
+    doReturn(version).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
+
+    doReturn(false).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
+    doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
+
+    replicatorWithUncleanConfig.ensurePreconditions(srcTopic, destTopic, mockStore);
+
+    long retentionTime = StoreUtils.getExpectedRetentionTimeInMs(mockStore, mockStore.getHybridStoreConfig());
+
+    // Verify that createTopic is called with uncleanLeaderElectionEnable set to false for RT topics
+    // (from cluster-level config since store is NOT_SPECIFIED)
+    verify(mockTopicManager).createTopic(
+        eq(srcTopic),
+        anyInt(),
+        eq(KAFKA_RF_FOR_RT_TOPICS),
+        eq(retentionTime),
+        eq(false),
+        eq(Optional.of(KAFKA_MIN_ISR_FOR_RT_TOPICS)),
+        eq(Optional.of(false)),
+        eq(false));
+  }
+
+  @Test
+  public void testStoreLevelUncleanLeaderElectionOverridesClusterConfig() {
+    // Cluster config says false, but store-level says ENABLED -> should use true
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "dummy");
+    properties.put(ConfigKeys.KAFKA_REPLICATION_FACTOR, "3");
+    properties.put(ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS, Integer.toString(KAFKA_RF_FOR_RT_TOPICS));
+    properties.put(ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS, Integer.toString(KAFKA_MIN_ISR_FOR_RT_TOPICS));
+    properties.put(ConfigKeys.KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS, "false");
+
+    RealTimeTopicSwitcher replicatorWithUncleanConfig = new RealTimeTopicSwitcher(
+        mockTopicManager,
+        mockVeniceWriterFactory,
+        new VeniceProperties(properties),
+        pubSubTopicRepository);
+
+    PubSubTopic srcTopic = pubSubTopicRepository.getTopic("testTopic2_rt");
+    PubSubTopic destTopic = pubSubTopicRepository.getTopic("testTopic2_v1");
+    Store mockStore = mock(Store.class);
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+
+    doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
+    doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
+    doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
+    doReturn(true).when(mockStore).isHybrid();
+    // Store-level config says ENABLED, overriding cluster-level false
+    doReturn(ConfigCommonUtils.ActivationState.ENABLED.name()).when(mockStore)
+        .getUncleanLeaderElectionEnabledForRTTopics();
+
+    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
+    doReturn(version).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
+
+    doReturn(false).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
+    doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
+
+    replicatorWithUncleanConfig.ensurePreconditions(srcTopic, destTopic, mockStore);
+
+    long retentionTime = StoreUtils.getExpectedRetentionTimeInMs(mockStore, mockStore.getHybridStoreConfig());
+
+    // Store-level ENABLED should override cluster-level false
+    verify(mockTopicManager).createTopic(
+        eq(srcTopic),
+        anyInt(),
+        eq(KAFKA_RF_FOR_RT_TOPICS),
+        eq(retentionTime),
+        eq(false),
+        eq(Optional.of(KAFKA_MIN_ISR_FOR_RT_TOPICS)),
+        eq(Optional.of(true)),
+        eq(false));
+  }
+
+  @Test
+  public void testStoreLevelDisabledOverridesClusterConfig() {
+    // Cluster config says true (enabled), but store-level says DISABLED -> should use false
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "dummy");
+    properties.put(ConfigKeys.KAFKA_REPLICATION_FACTOR, "3");
+    properties.put(ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS, Integer.toString(KAFKA_RF_FOR_RT_TOPICS));
+    properties.put(ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS, Integer.toString(KAFKA_MIN_ISR_FOR_RT_TOPICS));
+    properties.put(ConfigKeys.KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS, "true");
+
+    RealTimeTopicSwitcher replicatorWithUncleanConfig = new RealTimeTopicSwitcher(
+        mockTopicManager,
+        mockVeniceWriterFactory,
+        new VeniceProperties(properties),
+        pubSubTopicRepository);
+
+    PubSubTopic srcTopic = pubSubTopicRepository.getTopic("testTopic3_rt");
+    PubSubTopic destTopic = pubSubTopicRepository.getTopic("testTopic3_v1");
+    Store mockStore = mock(Store.class);
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+
+    doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
+    doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
+    doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
+    doReturn(true).when(mockStore).isHybrid();
+    // Store-level config says DISABLED, overriding cluster-level true
+    doReturn(ConfigCommonUtils.ActivationState.DISABLED.name()).when(mockStore)
+        .getUncleanLeaderElectionEnabledForRTTopics();
+
+    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
+    doReturn(version).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
+
+    doReturn(false).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
+    doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
+
+    replicatorWithUncleanConfig.ensurePreconditions(srcTopic, destTopic, mockStore);
+
+    long retentionTime = StoreUtils.getExpectedRetentionTimeInMs(mockStore, mockStore.getHybridStoreConfig());
+
+    // Store-level DISABLED should override cluster-level true
+    verify(mockTopicManager).createTopic(
+        eq(srcTopic),
+        anyInt(),
+        eq(KAFKA_RF_FOR_RT_TOPICS),
+        eq(retentionTime),
+        eq(false),
+        eq(Optional.of(KAFKA_MIN_ISR_FOR_RT_TOPICS)),
+        eq(Optional.of(false)),
         eq(false));
   }
 }

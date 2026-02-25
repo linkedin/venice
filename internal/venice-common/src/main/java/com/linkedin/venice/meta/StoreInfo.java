@@ -81,6 +81,7 @@ public class StoreInfo {
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
     storeInfo.setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
+    storeInfo.setUncleanLeaderElectionEnabledForRTTopics(store.getUncleanLeaderElectionEnabledForRTTopics());
     storeInfo.setBlobDbEnabled(store.getBlobDbEnabled());
     storeInfo.setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     storeInfo.setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
@@ -363,6 +364,7 @@ public class StoreInfo {
 
   private boolean blobTransferEnabled;
   private String blobTransferInServerEnable = ActivationState.NOT_SPECIFIED.name();
+  private String uncleanLeaderElectionEnabledForRTTopics = ActivationState.NOT_SPECIFIED.name();
   private String blobDbEnabled = ActivationState.NOT_SPECIFIED.name();
 
   private boolean nearlineProducerCompressionEnabled;
@@ -902,6 +904,14 @@ public class StoreInfo {
 
   public String getBlobTransferInServerEnabled() {
     return this.blobTransferInServerEnable;
+  }
+
+  public void setUncleanLeaderElectionEnabledForRTTopics(String uncleanLeaderElectionEnabledForRTTopics) {
+    this.uncleanLeaderElectionEnabledForRTTopics = uncleanLeaderElectionEnabledForRTTopics;
+  }
+
+  public String getUncleanLeaderElectionEnabledForRTTopics() {
+    return this.uncleanLeaderElectionEnabledForRTTopics;
   }
 
   public void setBlobDbEnabled(String blobDbEnabled) {

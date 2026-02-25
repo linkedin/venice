@@ -340,6 +340,10 @@ public interface Store {
 
   String getBlobTransferInServerEnabled();
 
+  String getUncleanLeaderElectionEnabledForRTTopics();
+
+  void setUncleanLeaderElectionEnabledForRTTopics(String uncleanLeaderElectionEnabledForRTTopics);
+
   void setBlobDbEnabled(String blobDbEnabled);
 
   String getBlobDbEnabled();

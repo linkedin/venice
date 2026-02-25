@@ -16,6 +16,7 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
@@ -38,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -494,6 +496,100 @@ public class TopicManagerE2ETest {
     topicManager.close();
     // call close again and it should not throw an exception
     topicManager.close();
+  }
+
+  @Test
+  public void testUncleanLeaderElectionConfigForRealtimeTopic() {
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("testStore") + "_rt");
+    int numPartitions = 3;
+    int replicationFactor = 1;
+    long retentionTimeMs = 24 * 60 * 60 * 1000L; // 24 hours
+    boolean logCompaction = false;
+    Optional<Integer> minIsr = Optional.of(1);
+    Optional<Boolean> uncleanLeaderElection = Optional.of(false);
+
+    // Create RT topic with unclean leader election disabled
+    topicManager.createTopic(
+        rtTopic,
+        numPartitions,
+        replicationFactor,
+        retentionTimeMs,
+        logCompaction,
+        minIsr,
+        uncleanLeaderElection,
+        false);
+
+    // Verify the topic was created
+    waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      assertTrue(topicManager.containsTopic(rtTopic), "RT topic should be created");
+    });
+
+    // Retrieve the topic configuration and verify unclean leader election is set to false
+    PubSubTopicConfiguration topicConfig = topicManager.getTopicConfig(rtTopic);
+    assertNotNull(topicConfig, "Topic configuration should not be null");
+    assertTrue(
+        topicConfig.getUncleanLeaderElectionEnable().isPresent(),
+        "Unclean leader election config should be present");
+    assertFalse(
+        topicConfig.getUncleanLeaderElectionEnable().get(),
+        "Unclean leader election should be disabled for RT topics");
+
+    // Also verify other configs are set correctly
+    assertTrue(topicConfig.retentionInMs().isPresent(), "Retention should be set");
+    assertEquals(topicConfig.retentionInMs().get().longValue(), retentionTimeMs, "Retention time should match");
+    assertFalse(topicConfig.isLogCompacted(), "Log compaction should be disabled");
+    assertTrue(topicConfig.minInSyncReplicas().isPresent(), "Min ISR should be set");
+    assertEquals(topicConfig.minInSyncReplicas().get().intValue(), 1, "Min ISR should be 1");
+
+    // Test creating another RT topic with unclean leader election explicitly disabled (same as first test)
+    // to verify consistency
+    PubSubTopic rtTopic2 = pubSubTopicRepository.getTopic(Utils.getUniqueString("testStore") + "_rt");
+    topicManager.createTopic(
+        rtTopic2,
+        numPartitions,
+        replicationFactor,
+        retentionTimeMs,
+        logCompaction,
+        minIsr,
+        Optional.of(false),
+        false);
+
+    waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      assertTrue(topicManager.containsTopic(rtTopic2), "Second RT topic should be created");
+    });
+
+    PubSubTopicConfiguration rtTopic2Config = topicManager.getTopicConfig(rtTopic2);
+    assertNotNull(rtTopic2Config, "Second RT topic configuration should not be null");
+    assertTrue(
+        rtTopic2Config.getUncleanLeaderElectionEnable().isPresent(),
+        "Unclean leader election config should be present for second RT topic");
+    assertFalse(
+        rtTopic2Config.getUncleanLeaderElectionEnable().get(),
+        "Unclean leader election should be disabled for second RT topic");
+
+    // Test creating RT topic with unclean leader election enabled
+    PubSubTopic rtTopicWithUncleanEnabled = pubSubTopicRepository.getTopic(Utils.getUniqueString("testStore2") + "_rt");
+    topicManager.createTopic(
+        rtTopicWithUncleanEnabled,
+        numPartitions,
+        replicationFactor,
+        retentionTimeMs,
+        logCompaction,
+        minIsr,
+        Optional.of(true),
+        false);
+
+    waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      assertTrue(topicManager.containsTopic(rtTopicWithUncleanEnabled), "RT topic should be created");
+    });
+
+    PubSubTopicConfiguration rtConfigWithUncleanEnabled = topicManager.getTopicConfig(rtTopicWithUncleanEnabled);
+    assertTrue(
+        rtConfigWithUncleanEnabled.getUncleanLeaderElectionEnable().isPresent(),
+        "Unclean leader election config should be present");
+    assertTrue(
+        rtConfigWithUncleanEnabled.getUncleanLeaderElectionEnable().get(),
+        "Unclean leader election should be enabled");
   }
 
 }

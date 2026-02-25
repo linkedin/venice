@@ -75,6 +75,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNCLEAN_LEADER_ELECTION_ENABLED_FOR_RT_TOPICS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
@@ -3080,6 +3081,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.blobTransferInServerEnabled = params.getBlobTransferInServerEnabled()
           .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_IN_SERVER_ENABLED))
           .orElseGet(currStore::getBlobTransferInServerEnabled);
+
+      setStore.uncleanLeaderElectionEnabledForRTTopics = params.getUncleanLeaderElectionEnabledForRTTopics()
+          .map(addToUpdatedConfigList(updatedConfigsList, UNCLEAN_LEADER_ELECTION_ENABLED_FOR_RT_TOPICS))
+          .orElseGet(currStore::getUncleanLeaderElectionEnabledForRTTopics);
 
       setStore.blobDbEnabled = params.getBlobDbEnabled()
           .map(addToUpdatedConfigList(updatedConfigsList, BLOB_DB_ENABLED))
