@@ -21,11 +21,11 @@ import java.util.function.Consumer;
 import org.testng.Assert;
 
 
-public class ChunkingTestUtils {
+public class IntegrationTestChunkingUtils {
   private static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);
 
-  private ChunkingTestUtils() {
+  private IntegrationTestChunkingUtils() {
   }
 
   public static void validateValueChunks(

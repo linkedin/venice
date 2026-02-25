@@ -59,7 +59,6 @@ import org.testng.annotations.Test;
  * schema evolution with RMD, consumer pool transitions, and RMD type conversion.
  */
 public class PartialUpdateAAMetadataTest extends AbstractMultiRegionTest {
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int TEST_TIMEOUT_MS = 180_000;
   private static final int ASSERTION_TIMEOUT_MS = 30_000;
 
@@ -308,7 +307,7 @@ public class PartialUpdateAAMetadataTest extends AbstractMultiRegionTest {
             storeVersionTopicV2,
             realTimeTopicPartition,
             ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
-            NUMBER_OF_CHILD_DATACENTERS,
+            childDatacenters.size(),
             1);
         verifyConsumerThreadPoolFor(
             multiRegionMultiClusterWrapper,
@@ -334,7 +333,7 @@ public class PartialUpdateAAMetadataTest extends AbstractMultiRegionTest {
       sendStreamingRecord(veniceProducer, storeName, key1, record, 10000L);
     }
 
-    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+    for (int i = 0; i < childDatacenters.size(); i++) {
       VeniceClusterWrapper cluster = getCluster(i);
       try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
@@ -387,7 +386,7 @@ public class PartialUpdateAAMetadataTest extends AbstractMultiRegionTest {
           storeVersionTopicV2,
           realTimeTopicPartition,
           ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
-          NUMBER_OF_CHILD_DATACENTERS,
+          childDatacenters.size(),
           1);
       verifyConsumerThreadPoolFor(
           multiRegionMultiClusterWrapper,
@@ -403,7 +402,7 @@ public class PartialUpdateAAMetadataTest extends AbstractMultiRegionTest {
           storeVersionTopicV3,
           realTimeTopicPartition,
           ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
-          NUMBER_OF_CHILD_DATACENTERS,
+          childDatacenters.size(),
           1);
       verifyConsumerThreadPoolFor(
           multiRegionMultiClusterWrapper,
@@ -421,7 +420,7 @@ public class PartialUpdateAAMetadataTest extends AbstractMultiRegionTest {
       sendStreamingRecord(veniceProducer, storeName, key1, builder.build(), 10001L);
     }
 
-    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+    for (int i = 0; i < childDatacenters.size(); i++) {
       VeniceClusterWrapper cluster = getCluster(i);
       try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
@@ -488,7 +487,7 @@ public class PartialUpdateAAMetadataTest extends AbstractMultiRegionTest {
       sendStreamingRecord(veniceProducer, storeName, key3, record, 10000L);
     }
 
-    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+    for (int i = 0; i < childDatacenters.size(); i++) {
       VeniceClusterWrapper cluster = getCluster(i);
       try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
@@ -532,7 +531,7 @@ public class PartialUpdateAAMetadataTest extends AbstractMultiRegionTest {
       sendStreamingDeleteRecord(veniceProducer, storeName, key2, 10001L);
       sendStreamingRecord(veniceProducer, storeName, key3, builder.build(), 10001L);
     }
-    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+    for (int i = 0; i < childDatacenters.size(); i++) {
       VeniceClusterWrapper cluster = getCluster(i);
       try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {

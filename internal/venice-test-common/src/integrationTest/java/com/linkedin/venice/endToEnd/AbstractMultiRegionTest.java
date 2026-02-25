@@ -61,6 +61,22 @@ public abstract class AbstractMultiRegionTest {
     return new Properties();
   }
 
+  /**
+   * Override to provide properties applied only to parent controllers.
+   * By default, returns the same as {@link #getExtraControllerProperties()}.
+   */
+  protected Properties getExtraParentControllerProperties() {
+    return getExtraControllerProperties();
+  }
+
+  /**
+   * Override to provide properties applied only to child controllers.
+   * By default, returns the same as {@link #getExtraControllerProperties()}.
+   */
+  protected Properties getExtraChildControllerProperties() {
+    return getExtraControllerProperties();
+  }
+
   protected boolean shouldCreateD2Client() {
     return false;
   }
@@ -69,9 +85,12 @@ public abstract class AbstractMultiRegionTest {
   public void setUp() {
     Properties serverProperties = new Properties();
     serverProperties.putAll(getExtraServerProperties());
-    Properties controllerProps = new Properties();
-    controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, true);
-    controllerProps.putAll(getExtraControllerProperties());
+    Properties parentControllerProps = new Properties();
+    parentControllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, true);
+    parentControllerProps.putAll(getExtraParentControllerProperties());
+    Properties childControllerProps = new Properties();
+    childControllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, true);
+    childControllerProps.putAll(getExtraChildControllerProperties());
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(getNumberOfRegions())
             .numberOfClusters(getNumberOfClusters())
@@ -81,8 +100,8 @@ public abstract class AbstractMultiRegionTest {
             .numberOfRouters(DEFAULT_NUMBER_OF_ROUTERS)
             .replicationFactor(getReplicationFactor())
             .forkServer(isForkServer())
-            .parentControllerProperties(controllerProps)
-            .childControllerProperties(controllerProps)
+            .parentControllerProperties(parentControllerProps)
+            .childControllerProperties(childControllerProps)
             .serverProperties(serverProperties);
     this.multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());

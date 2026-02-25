@@ -234,10 +234,10 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
       }
 
       Map<VeniceMultiClusterWrapper, VeniceSystemProducer> childDatacenterToSystemProducer =
-          new HashMap<>(DEFAULT_NUMBER_OF_REGIONS);
+          new HashMap<>(childDatacenters.size());
       int streamingRecordCount = 10;
       try {
-        for (int dataCenterIndex = 0; dataCenterIndex < DEFAULT_NUMBER_OF_REGIONS; dataCenterIndex++) {
+        for (int dataCenterIndex = 0; dataCenterIndex < childDatacenters.size(); dataCenterIndex++) {
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(dataCenterIndex);
 
           VeniceSystemProducer veniceProducer = IntegrationTestPushUtils
@@ -256,7 +256,7 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
         try (AvroGenericStoreClient<String, Object> client = ClientFactory
             .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
           waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-            for (int dataCenterIndex = 0; dataCenterIndex < DEFAULT_NUMBER_OF_REGIONS; dataCenterIndex++) {
+            for (int dataCenterIndex = 0; dataCenterIndex < childDatacenters.size(); dataCenterIndex++) {
               // Verify the data sent by Samza producer from different regions
               String keyPrefix = "dc-" + dataCenterIndex + "_key_";
               for (int i = 0; i < streamingRecordCount; i++) {
@@ -277,7 +277,7 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
           });
 
           // Send DELETE from all child datacenter for existing and new records
-          for (int dataCenterIndex = 0; dataCenterIndex < DEFAULT_NUMBER_OF_REGIONS; dataCenterIndex++) {
+          for (int dataCenterIndex = 0; dataCenterIndex < childDatacenters.size(); dataCenterIndex++) {
             String keyPrefix = "dc-" + dataCenterIndex + "_key_";
             sendStreamingDeleteRecord(
                 childDatacenterToSystemProducer.get(childDatacenters.get(dataCenterIndex)),
@@ -291,7 +291,7 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
 
           // Verify both DELETEs can be processed
           waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-            for (int dataCenterIndex = 0; dataCenterIndex < DEFAULT_NUMBER_OF_REGIONS; dataCenterIndex++) {
+            for (int dataCenterIndex = 0; dataCenterIndex < childDatacenters.size(); dataCenterIndex++) {
               // Verify the data sent by Samza producer from different regions
               String keyPrefix = "dc-" + dataCenterIndex + "_key_";
               assertNull(
@@ -304,7 +304,7 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
           });
 
           // Send PUT from all child datacenter for new records
-          for (int dataCenterIndex = 0; dataCenterIndex < DEFAULT_NUMBER_OF_REGIONS; dataCenterIndex++) {
+          for (int dataCenterIndex = 0; dataCenterIndex < childDatacenters.size(); dataCenterIndex++) {
             String keyPrefix = "dc-" + dataCenterIndex + "_key_";
             sendStreamingRecordWithKeyPrefix(
                 childDatacenterToSystemProducer.get(childDatacenters.get(dataCenterIndex)),
@@ -314,7 +314,7 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
           }
 
           waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-            for (int dataCenterIndex = 0; dataCenterIndex < DEFAULT_NUMBER_OF_REGIONS; dataCenterIndex++) {
+            for (int dataCenterIndex = 0; dataCenterIndex < childDatacenters.size(); dataCenterIndex++) {
               // Verify the data sent by Samza producer from different regions
               String keyPrefix = "dc-" + dataCenterIndex + "_key_";
               assertNull(
@@ -358,7 +358,7 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
               factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
         daVinciClient.subscribeAll().get();
         waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-          for (int dataCenterIndex = 0; dataCenterIndex < DEFAULT_NUMBER_OF_REGIONS; dataCenterIndex++) {
+          for (int dataCenterIndex = 0; dataCenterIndex < childDatacenters.size(); dataCenterIndex++) {
             // Verify the data sent by Samza producer from different regions
             String keyPrefix = "dc-" + dataCenterIndex + "_key_";
             assertNull(

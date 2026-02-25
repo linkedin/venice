@@ -1,8 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.utils.ChunkingTestUtils.getChunkValueManifest;
-import static com.linkedin.venice.utils.ChunkingTestUtils.validateChunksFromManifests;
-import static com.linkedin.venice.utils.ChunkingTestUtils.validateValueChunks;
+import static com.linkedin.venice.utils.IntegrationTestChunkingUtils.getChunkValueManifest;
+import static com.linkedin.venice.utils.IntegrationTestChunkingUtils.validateChunksFromManifests;
+import static com.linkedin.venice.utils.IntegrationTestChunkingUtils.validateValueChunks;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.IntegrationTestReadUtils.readValue;

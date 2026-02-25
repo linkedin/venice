@@ -37,7 +37,7 @@ public class TestStoreGraveyardCleanupService extends AbstractMultiRegionTest {
   }
 
   @Override
-  protected Properties getExtraControllerProperties() {
+  protected Properties getExtraParentControllerProperties() {
     Properties controllerProps = new Properties();
     controllerProps.put(CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED, "true");
     controllerProps.put(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 0);
