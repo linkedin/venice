@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.stats;
 
+import static com.linkedin.venice.controller.stats.ControllerStatsDimensionUtils.dimensionMapBuilder;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
@@ -98,11 +99,11 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
   }
 
   public void recordErrorPartitionResetAttempt(double value, String storeName) {
-    resetAttemptMetric.record(value, storeDimensions(storeName));
+    resetAttemptMetric.record(value, dimensionMapBuilder().store(storeName).build());
   }
 
   public void recordErrorPartitionResetAttemptErrored(String storeName) {
-    resetErrorMetric.record(1, storeDimensions(storeName));
+    resetErrorMetric.record(1, dimensionMapBuilder().store(storeName).build());
   }
 
   public void recordErrorPartitionProcessingError() {
@@ -110,19 +111,15 @@ public class ErrorPartitionStats extends AbstractVeniceStats {
   }
 
   public void recordErrorPartitionRecoveredFromReset(String storeName) {
-    recoveredMetric.record(1, storeDimensions(storeName));
+    recoveredMetric.record(1, dimensionMapBuilder().store(storeName).build());
   }
 
   public void recordErrorPartitionUnrecoverableFromReset(String storeName) {
-    unrecoverableMetric.record(1, storeDimensions(storeName));
+    unrecoverableMetric.record(1, dimensionMapBuilder().store(storeName).build());
   }
 
   public void recordErrorPartitionProcessingTime(double value) {
     processingTimeMetric.record(value);
-  }
-
-  private static Map<VeniceMetricsDimensions, String> storeDimensions(String storeName) {
-    return Collections.singletonMap(VENICE_STORE_NAME, storeName);
   }
 
   enum ErrorPartitionTehutiMetricNameEnum implements TehutiMetricNameEnum {

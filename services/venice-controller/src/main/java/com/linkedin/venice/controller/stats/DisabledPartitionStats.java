@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.stats;
 
+import static com.linkedin.venice.controller.stats.ControllerStatsDimensionUtils.dimensionMapBuilder;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
@@ -41,15 +42,11 @@ public class DisabledPartitionStats extends AbstractVeniceStats {
   }
 
   public void recordDisabledPartition(String storeName) {
-    disabledPartitionCountMetric.record(1, storeDimensions(storeName));
+    disabledPartitionCountMetric.record(1, dimensionMapBuilder().store(storeName).build());
   }
 
   public void recordClearDisabledPartition(int count, String storeName) {
-    disabledPartitionCountMetric.record(-count, storeDimensions(storeName));
-  }
-
-  private static Map<VeniceMetricsDimensions, String> storeDimensions(String storeName) {
-    return Collections.singletonMap(VENICE_STORE_NAME, storeName);
+    disabledPartitionCountMetric.record(-count, dimensionMapBuilder().store(storeName).build());
   }
 
   enum DisabledPartitionTehutiMetricNameEnum implements TehutiMetricNameEnum {
