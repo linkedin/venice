@@ -89,6 +89,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -176,6 +177,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
   public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
   static final long VIEW_WRITER_CLOSE_TIMEOUT_IN_MS = 60000; // 60s
+  private static final String UNKNOWN_REGION = "unknown";
 
   /**
    * The new leader will stay inactive (not switch to any new topic or produce anything) for
@@ -203,6 +205,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
   protected final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterForRealTime;
   protected final Int2ObjectMap<String> kafkaClusterIdToUrlMap;
+  private final Int2ObjectMap<String> kafkaClusterIdToAliasMap;
+  private final String localRegionName;
+  private final int localKafkaClusterId;
   protected final Map<String, byte[]> globalRtDivKeyBytesCache;
   private volatile long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
@@ -300,6 +305,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
+    this.kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
+    this.localRegionName = serverConfig.getRegionName();
+    this.localKafkaClusterId = computeLocalKafkaClusterId(kafkaClusterIdToAliasMap, localRegionName);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()
         && !store.isFlinkVeniceViewsEnabled()) {
       viewWriters = builder.getVeniceViewWriterFactory().buildStoreViewWriters(store, version.getNumber());
@@ -2350,10 +2358,39 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private void recordRegionHybridConsumptionStats(int kafkaClusterId, int producedRecordSize, long currentTimeMs) {
     if (kafkaClusterId >= 0) {
-      versionedIngestionStats
-          .recordRegionHybridConsumption(storeName, versionNumber, kafkaClusterId, producedRecordSize, currentTimeMs);
+      String sourceRegion = kafkaClusterIdToAliasMap.getOrDefault(kafkaClusterId, UNKNOWN_REGION);
+      VeniceRegionLocality regionLocality =
+          localKafkaClusterId == kafkaClusterId ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
+
+      versionedIngestionStats.recordRegionHybridConsumption(
+          storeName,
+          versionNumber,
+          kafkaClusterId,
+          producedRecordSize,
+          currentTimeMs,
+          sourceRegion,
+          regionLocality);
       hostLevelIngestionStats.recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize, currentTimeMs);
     }
+  }
+
+  /**
+   * Finds the Kafka cluster ID for the local region. Each region has exactly one primary Kafka
+   * cluster whose alias matches the region name. Separate RT topic clusters for incremental pushes
+   * use a "{region}_sep" alias convention and are treated as distinct regions, so they won't match.
+   *
+   * @return the local cluster ID, or -1 if not found
+   */
+  static int computeLocalKafkaClusterId(Int2ObjectMap<String> clusterIdToAlias, String localRegionName) {
+    if (localRegionName == null || localRegionName.isEmpty()) {
+      return -1;
+    }
+    for (Int2ObjectMap.Entry<String> entry: clusterIdToAlias.int2ObjectEntrySet()) {
+      if (localRegionName.equals(entry.getValue())) {
+        return entry.getIntKey();
+      }
+    }
+    return -1;
   }
 
   @Override

@@ -5,6 +5,7 @@ import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 
 
 /**
@@ -126,5 +127,17 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
       VeniceIngestionSourceComponent sourceComponent,
       VeniceIngestionDestinationComponent destComponent,
       double latencyMs) {
+  }
+
+  @Override
+  public void recordRtRecordsConsumed(
+      int version,
+      String sourceRegion,
+      VeniceRegionLocality regionLocality,
+      long count) {
+  }
+
+  @Override
+  public void recordRtBytesConsumed(int version, String sourceRegion, VeniceRegionLocality regionLocality, long bytes) {
   }
 }
