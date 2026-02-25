@@ -1332,7 +1332,7 @@ public class VeniceControllerClusterConfig {
     String exclusionListStr = props.getString(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "");
     this.alternativeBackendExclusionList = exclusionListStr.isEmpty()
         ? Collections.emptySet()
-        : new HashSet<>(Arrays.asList(exclusionListStr.split("\\s*,\\s*")));
+        : Collections.unmodifiableSet(new HashSet<>(Arrays.asList(exclusionListStr.split("\\s*,\\s*"))));
 
     this.logClusterConfig();
   }

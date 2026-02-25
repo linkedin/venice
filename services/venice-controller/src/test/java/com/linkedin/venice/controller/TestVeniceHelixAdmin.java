@@ -301,7 +301,8 @@ public class TestVeniceHelixAdmin {
         anyLong(),
         anyBoolean(),
         any(Optional.class),
-        anyBoolean());
+        anyBoolean(),
+        any(Map.class));
 
     // Case 2: Real-time topic does not exist
     VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
@@ -315,7 +316,8 @@ public class TestVeniceHelixAdmin {
         anyLong(),
         anyBoolean(),
         any(Optional.class),
-        anyBoolean());
+        anyBoolean(),
+        any(Map.class));
   }
 
   @Test
