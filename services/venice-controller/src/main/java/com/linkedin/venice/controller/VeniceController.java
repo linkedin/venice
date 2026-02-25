@@ -22,6 +22,8 @@ import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
 import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
+import com.linkedin.venice.controller.stats.DisabledPartitionStats;
+import com.linkedin.venice.controller.stats.ErrorPartitionStats;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controller.stats.SparkServerStats;
@@ -85,7 +87,9 @@ public class VeniceController {
           VeniceAdminStats.VeniceAdminOtelMetricEntity.class,
           AdminConsumptionStats.AdminConsumptionOtelMetricEntity.class,
           AddVersionLatencyStats.AddVersionLatencyOtelMetricEntity.class,
-          DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.class);
+          DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.class,
+          DisabledPartitionStats.DisabledPartitionOtelMetricEntity.class,
+          ErrorPartitionStats.ErrorPartitionOtelMetricEntity.class);
 
   // services
   private final VeniceControllerService controllerService;
