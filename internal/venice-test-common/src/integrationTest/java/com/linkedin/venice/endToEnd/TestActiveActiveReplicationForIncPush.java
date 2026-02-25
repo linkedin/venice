@@ -1,12 +1,9 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
-import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
@@ -27,10 +24,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
-import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
@@ -57,71 +51,53 @@ import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestActiveActiveReplicationForIncPush {
+public class TestActiveActiveReplicationForIncPush extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(TestActiveActiveReplicationForIncPush.class);
 
   private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
 
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
-  private static final int NUMBER_OF_CLUSTERS = 1;
+  private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
   private String[] clusterNames;
   private String parentRegionName;
   private String[] dcNames;
   private String clusterName;
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-  private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   PubSubBrokerWrapper veniceParentDefaultKafka;
 
-  @BeforeClass(alwaysRun = true)
-  public void setUp() {
-    /**
-     * Reduce leader promotion delay to 3 seconds;
-     * Create a testing environment with 1 parent fabric and 3 child fabrics;
-     * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
-     */
-    Properties serverProperties = new Properties();
-    serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
-    serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
-    serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
-    serverProperties.put(SERVER_DEDICATED_CONSUMER_POOL_FOR_AA_WC_LEADER_ENABLED, "true");
+  @Override
+  protected int getNumberOfRegions() {
+    return 3;
+  }
 
+  @Override
+  protected Properties getExtraServerProperties() {
+    Properties serverProperties = new Properties();
+    serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+    return serverProperties;
+  }
+
+  @Override
+  protected Properties getExtraControllerProperties() {
     Properties controllerProps = new Properties();
     controllerProps.put(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "true");
     controllerProps.put(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, true);
     controllerProps.put(ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, true);
+    return controllerProps;
+  }
 
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
-            .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(2)
-            .numberOfRouters(1)
-            .replicationFactor(2)
-            .forkServer(false)
-            .parentControllerProperties(controllerProps)
-            .childControllerProperties(controllerProps)
-            .serverProperties(serverProperties);
-    multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+  @Override
+  @BeforeClass(alwaysRun = true)
+  public void setUp() {
+    super.setUp();
     clusterNames = multiRegionMultiClusterWrapper.getClusterNames();
-    clusterName = this.clusterNames[0];
+    clusterName = clusterNames[0];
     parentRegionName = multiRegionMultiClusterWrapper.getParentRegionName();
     dcNames = multiRegionMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
     veniceParentDefaultKafka = multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper();
-  }
-
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    multiRegionMultiClusterWrapper.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -18,12 +18,9 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.HelixState;
-import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.Version;
@@ -44,8 +41,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
@@ -53,11 +48,9 @@ import org.testng.annotations.Test;
  * This test class is used to test the deferred version swap feature without targeted region push enabled.
  * These are for the manual deferred swaps which will be deprecated once automatic swap service is rolled out.
  */
-public class TestDeferredVersionSwapWithoutTargetedRegionPush {
+public class TestDeferredVersionSwapWithoutTargetedRegionPush extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(TestDeferredVersionSwapWithoutTargetedRegionPush.class);
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   private static final int NUMBER_OF_CLUSTERS = 1;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   private static final int TEST_TIMEOUT = 180_000;
@@ -66,36 +59,16 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush {
   private static final int testPartition = 0;
   private static final String clusterName = CLUSTER_NAMES[0];
 
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-
-  @BeforeClass
-  public void setUp() {
-    Properties controllerProps = new Properties();
-    // set delay rebalance to 0
-    controllerProps.put(DELAY_TO_REBALANCE_MS, 0);
-    Properties serverProperties = new Properties();
-
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
-            .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(2)
-            .numberOfRouters(1)
-            .replicationFactor(2)
-            .forkServer(false)
-            .parentControllerProperties(controllerProps)
-            .childControllerProperties(controllerProps)
-            .serverProperties(serverProperties);
-
-    multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+  @Override
+  protected int getNumberOfRegions() {
+    return 3;
   }
 
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+  @Override
+  protected Properties getExtraControllerProperties() {
+    Properties controllerProps = new Properties();
+    controllerProps.put(DELAY_TO_REBALANCE_MS, 0);
+    return controllerProps;
   }
 
   /**
@@ -110,7 +83,7 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush {
     String storeName = Utils.getUniqueString("testDeferredVersionSwap");
     ControllerClient parentClient =
         new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString());
-    VeniceClusterWrapper cluster = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(clusterName);
+    VeniceClusterWrapper cluster = childDatacenters.get(childDatacenters.size() - 1).getClusters().get(clusterName);
 
     // setup and validation
     prepareAndPushWithDeferredSwap(storeName, 100, 100, parentClient);
@@ -158,7 +131,7 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush {
     String storeName = Utils.getUniqueString("testDeferredVersionSwap");
     ControllerClient parentClient =
         new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString());
-    VeniceClusterWrapper cluster = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(clusterName);
+    VeniceClusterWrapper cluster = childDatacenters.get(childDatacenters.size() - 1).getClusters().get(clusterName);
 
     // setup and validation
     prepareAndPushWithDeferredSwap(storeName, 100000, 100, parentClient);
