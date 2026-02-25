@@ -94,6 +94,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -177,7 +178,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
   public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
   static final long VIEW_WRITER_CLOSE_TIMEOUT_IN_MS = 60000; // 60s
-  private static final String UNKNOWN_REGION = "unknown";
 
   /**
    * The new leader will stay inactive (not switch to any new topic or produce anything) for
@@ -207,7 +207,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected final Int2ObjectMap<String> kafkaClusterIdToUrlMap;
   private final Int2ObjectMap<String> kafkaClusterIdToAliasMap;
   private final String localRegionName;
-  private final int localKafkaClusterId;
+  private final int localRegionKafkaClusterId;
   protected final Map<String, byte[]> globalRtDivKeyBytesCache;
   private volatile long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
@@ -307,7 +307,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
     this.localRegionName = serverConfig.getRegionName();
-    this.localKafkaClusterId = computeLocalKafkaClusterId(kafkaClusterIdToAliasMap, localRegionName);
+    this.localRegionKafkaClusterId = computeLocalKafkaClusterId(kafkaClusterIdToAliasMap, localRegionName);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()
         && !store.isFlinkVeniceViewsEnabled()) {
       viewWriters = builder.getVeniceViewWriterFactory().buildStoreViewWriters(store, version.getNumber());
@@ -2358,9 +2358,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   private void recordRegionHybridConsumptionStats(int kafkaClusterId, int producedRecordSize, long currentTimeMs) {
     if (kafkaClusterId >= 0) {
-      String sourceRegion = kafkaClusterIdToAliasMap.getOrDefault(kafkaClusterId, UNKNOWN_REGION);
+      String sourceRegion = RegionUtils.normalizeRegionName(kafkaClusterIdToAliasMap.get(kafkaClusterId));
       VeniceRegionLocality regionLocality =
-          localKafkaClusterId == kafkaClusterId ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
+          localRegionKafkaClusterId == kafkaClusterId ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
 
       versionedIngestionStats.recordRegionHybridConsumption(
           storeName,

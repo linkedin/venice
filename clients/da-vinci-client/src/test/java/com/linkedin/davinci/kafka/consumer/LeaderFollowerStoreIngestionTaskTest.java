@@ -87,6 +87,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ReferenceCounted;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -1449,16 +1450,21 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
   @Test
   public void testUnknownRegionFallback() {
-    // Verify the getOrDefault pattern returns "unknown" for unmapped cluster IDs
+    // Verify normalizeRegionName returns UNKNOWN_REGION for unmapped cluster IDs
     Int2ObjectMap<String> clusterIdToAlias = new Int2ObjectOpenHashMap<>();
     clusterIdToAlias.put(0, "dc-1");
 
-    // Cluster ID 99 is not in the map
-    String result = clusterIdToAlias.getOrDefault(99, "unknown");
-    assertEquals(result, "unknown", "Unknown kafkaClusterId should map to 'unknown' region");
+    // Cluster ID 99 is not in the map — get() returns null, normalizeRegionName returns UNKNOWN_REGION
+    String result = RegionUtils.normalizeRegionName(clusterIdToAlias.get(99));
+    assertEquals(result, RegionUtils.UNKNOWN_REGION, "Unknown kafkaClusterId should map to 'unknown' region");
 
-    // Cluster ID 0 is in the map
-    String known = clusterIdToAlias.getOrDefault(0, "unknown");
+    // Cluster ID 0 is in the map — get() returns "dc-1", normalizeRegionName passes through
+    String known = RegionUtils.normalizeRegionName(clusterIdToAlias.get(0));
     assertEquals(known, "dc-1", "Known kafkaClusterId should map to its alias");
+
+    // Empty alias — normalizeRegionName returns UNKNOWN_REGION
+    clusterIdToAlias.put(2, "");
+    String empty = RegionUtils.normalizeRegionName(clusterIdToAlias.get(2));
+    assertEquals(empty, RegionUtils.UNKNOWN_REGION, "Empty alias should normalize to 'unknown' region");
   }
 }

@@ -11,6 +11,7 @@ import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.VeniceView;
 import io.tehuti.metrics.MetricsRepository;
@@ -49,7 +50,7 @@ public class AggVersionedIngestionStats
         IngestionStatsReporter::new,
         serverConfig.isUnregisterMetricForDeletedStoreEnabled());
     this.clusterName = serverConfig.getClusterName();
-    this.localRegionName = serverConfig.getRegionName();
+    this.localRegionName = RegionUtils.normalizeRegionName(serverConfig.getRegionName());
     this.emitOtelIngestionStats = serverConfig.isIngestionOtelStatsEnabled();
   }
 
