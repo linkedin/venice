@@ -215,11 +215,9 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
 
         // Attempt to fetch the blob from the current peer asynchronously
         LOGGER.info(
-            "Attempting to connect to host: {} for store {} version {} partition {} table format {}",
+            "Attempting to connect to host: {} for replica {} table format {}",
             chosenHost,
-            storeName,
-            version,
-            partition,
+            replicaId,
             tableFormat);
 
         CompletionStage<InputStream> perHostTransferFuture =
@@ -315,10 +313,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       aggVersionedBlobTransferStats.recordBlobTransferFileReceiveThroughput(storeName, version, throughput);
     } catch (Exception e) {
       LOGGER.error(
-          "Failed to update updateBlobTransferFileReceiveStats for store {} version {} partition {}",
-          storeName,
-          version,
-          partition,
+          "Failed to update updateBlobTransferFileReceiveStats for replica {}",
+          Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition),
           e);
     }
   }
@@ -334,25 +330,18 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
   private List<String> getConnectableHosts(List<String> discoverPeers, String storeName, int version, int partition) {
     // Extract unique hosts from the discovered peers
     Set<String> uniquePeers = discoverPeers.stream().map(peer -> peer.split("_")[0]).collect(Collectors.toSet());
+    String replicaId = Utils.getReplicaId(Version.composeKafkaTopic(storeName, version), partition);
 
-    LOGGER.info(
-        "Discovered {} unique peers store {} version {} partition {}, peers are {}",
-        uniquePeers.size(),
-        storeName,
-        version,
-        partition,
-        uniquePeers);
+    LOGGER.info("Discovered {} unique peers for replica {}, peers are {}", uniquePeers.size(), replicaId, uniquePeers);
 
     // Get the connectable hosts for this store, version, and partition
     Set<String> connectablePeers =
         nettyClient.getConnectableHosts((HashSet<String>) uniquePeers, storeName, version, partition);
 
     LOGGER.info(
-        "Total {} unique connectable peers for store {} version {} partition {}, peers are {}",
+        "Total {} unique connectable peers for replica {}, peers are {}",
         connectablePeers.size(),
-        storeName,
-        version,
-        partition,
+        replicaId,
         connectablePeers);
 
     // Change to list and shuffle the list

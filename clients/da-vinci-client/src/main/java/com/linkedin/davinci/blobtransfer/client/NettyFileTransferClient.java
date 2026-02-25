@@ -161,6 +161,7 @@ public class NettyFileTransferClient {
       int version,
       int partition) {
     List<CompletableFuture<String>> futures = new ArrayList<>();
+    String replicaId = Utils.getReplicaId(storeName, version, partition);
 
     // 1. Purge the host connectivity records that are stale
     purgeStaleConnectivityRecords(unconnectableHostsToTimestamp);
@@ -200,23 +201,12 @@ public class NettyFileTransferClient {
             });
             return host;
           } else {
-            LOGGER.warn(
-                "Failed to connect to host: {} for store {} version {} partition {}",
-                host,
-                storeName,
-                version,
-                partition);
+            LOGGER.warn("Failed to connect to host: {} for replica {}", host, replicaId);
             unconnectableHostsToTimestamp.put(host, System.currentTimeMillis());
             return null;
           }
         } catch (Exception e) {
-          LOGGER.warn(
-              "Failed to connect to host: {} for store {} version {} partition {}",
-              host,
-              storeName,
-              version,
-              partition,
-              e);
+          LOGGER.warn("Failed to connect to host: {} for replica {}", host, replicaId, e);
           unconnectableHostsToTimestamp.put(host, System.currentTimeMillis());
           return null;
         }
@@ -311,9 +301,8 @@ public class NettyFileTransferClient {
             .completeExceptionally(
                 new VenicePeersConnectionException(
                     "The host " + host
-                        + " channel already have P2PFileTransferClientHandler/P2PMetadataTransferHandler for "
-                        + storeName + " version " + version + " partition " + partition + " table format "
-                        + requestedTableFormat));
+                        + " channel already have P2PFileTransferClientHandler/P2PMetadataTransferHandler for replica "
+                        + replicaId + " table format " + requestedTableFormat));
         return perHostTransferFuture;
       }
 
@@ -358,10 +347,8 @@ public class NettyFileTransferClient {
       connectTimeoutScheduler.schedule(() -> {
         if (!perHostTransferFuture.toCompletableFuture().isDone()) {
           String errorMsg = String.format(
-              "Request timed out for store %s version %d partition %d table format %s from host %s after %d minutes",
-              storeName,
-              version,
-              partition,
+              "Request timed out for replica %s table format %s from host %s after %d minutes",
+              replicaId,
               requestedTableFormat,
               host,
               blobReceiveTimeoutInMin);
