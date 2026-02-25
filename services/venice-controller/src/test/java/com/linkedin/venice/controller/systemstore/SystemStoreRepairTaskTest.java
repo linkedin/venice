@@ -177,15 +177,18 @@ public class SystemStoreRepairTaskTest {
     SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
     String cluster = "venice";
 
-    Set<String> candidates = new HashSet<>(Arrays.asList("store_a", "store_b", "store_c"));
+    String storeA = VeniceSystemStoreType.META_STORE.getSystemStoreName("testStoreA");
+    String storeB = VeniceSystemStoreType.META_STORE.getSystemStoreName("testStoreB");
+    String storeC = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("testStoreC");
+    Set<String> candidates = new HashSet<>(Arrays.asList(storeA, storeB, storeC));
     doCallRealMethod().when(task).checkSystemStoresHealth(anyString(), anySet());
     doReturn(candidates).when(task).preFilterSystemStores(anyString(), anySet());
 
     SystemStoreHealthChecker checker = mock(SystemStoreHealthChecker.class);
     Map<String, HealthCheckResult> results = new HashMap<>();
-    results.put("store_a", HealthCheckResult.HEALTHY);
-    results.put("store_b", HealthCheckResult.UNHEALTHY);
-    results.put("store_c", HealthCheckResult.UNKNOWN);
+    results.put(storeA, HealthCheckResult.HEALTHY);
+    results.put(storeB, HealthCheckResult.UNHEALTHY);
+    results.put(storeC, HealthCheckResult.UNKNOWN);
     doReturn(results).when(checker).checkHealth(eq(cluster), anySet());
     doReturn(checker).when(task).getHealthChecker();
 
@@ -198,9 +201,9 @@ public class SystemStoreRepairTaskTest {
     task.checkSystemStoresHealth(cluster, unhealthySet);
 
     Assert.assertEquals(unhealthySet.size(), 2);
-    Assert.assertFalse(unhealthySet.contains("store_a"));
-    Assert.assertTrue(unhealthySet.contains("store_b"));
-    Assert.assertTrue(unhealthySet.contains("store_c"));
+    Assert.assertFalse(unhealthySet.contains(storeA));
+    Assert.assertTrue(unhealthySet.contains(storeB));
+    Assert.assertTrue(unhealthySet.contains(storeC));
   }
 
   @Test
@@ -208,14 +211,16 @@ public class SystemStoreRepairTaskTest {
     SystemStoreRepairTask task = mock(SystemStoreRepairTask.class);
     String cluster = "venice";
 
-    Set<String> candidates = new HashSet<>(Arrays.asList("store_a", "store_b"));
+    String storeA = VeniceSystemStoreType.META_STORE.getSystemStoreName("testStoreA");
+    String storeB = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("testStoreB");
+    Set<String> candidates = new HashSet<>(Arrays.asList(storeA, storeB));
     doCallRealMethod().when(task).checkSystemStoresHealth(anyString(), anySet());
     doReturn(candidates).when(task).preFilterSystemStores(anyString(), anySet());
 
     SystemStoreHealthChecker checker = mock(SystemStoreHealthChecker.class);
     Map<String, HealthCheckResult> results = new HashMap<>();
-    results.put("store_a", HealthCheckResult.HEALTHY);
-    results.put("store_b", HealthCheckResult.HEALTHY);
+    results.put(storeA, HealthCheckResult.HEALTHY);
+    results.put(storeB, HealthCheckResult.HEALTHY);
     doReturn(results).when(checker).checkHealth(eq(cluster), anySet());
     doReturn(checker).when(task).getHealthChecker();
 

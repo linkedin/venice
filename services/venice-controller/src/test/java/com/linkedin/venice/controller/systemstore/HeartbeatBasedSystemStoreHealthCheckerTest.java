@@ -79,7 +79,7 @@ public class HeartbeatBasedSystemStoreHealthCheckerTest {
             ArgumentMatchers.<Map<String, Long>>any(),
             ArgumentMatchers.<Map<String, HealthCheckResult>>any());
     when(checker.shouldContinue(anyString())).thenReturn(true);
-    when(checker.getHeartbeatCheckIntervalInSeconds()).thenReturn(1);
+    when(checker.getHeartbeatCheckIntervalInSeconds()).thenReturn(0);
     doCallRealMethod().when(checker)
         .periodicCheckTask(anyString(), ArgumentMatchers.anyInt(), ArgumentMatchers.anyInt(), ArgumentMatchers.any());
 
