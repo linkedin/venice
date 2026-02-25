@@ -51,6 +51,7 @@ import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ByteArrayKey;
+import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.davinci.utils.InMemoryChunkAssembler;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -125,6 +126,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.DiskUsage;
@@ -168,6 +170,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -294,7 +297,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * to local VT. This will also be used to send DIV snapshots to the drainer to persist the VT + RT DIV on-disk.
    */
   protected final DataIntegrityValidator consumerDiv;
-  /** Map of broker URL to the total bytes consumed by ConsumptionTask since the last Global RT DIV sync */
+  /** Map of (RT broker URL | VT name) to the total bytes consumed by ConsumptionTask since the last Global RT DIV sync */
   // TODO: clear it out when the sync is done
   protected final VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync;
   protected final HostLevelIngestionStats hostLevelIngestionStats;
@@ -335,6 +338,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected int writeComputeFailureCode = 0;
 
+  void setWriteComputeFailureCode(int code) {
+    this.writeComputeFailureCode = code;
+  }
+
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
   // Do not convert it to a local variable because it is used in test.
@@ -363,8 +370,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   // Push timeout threshold for the store
   protected final long bootstrapTimeoutInMs;
-
-  protected final boolean isIsolatedIngestion;
 
   protected final IngestionNotificationDispatcher ingestionNotificationDispatcher;
 
@@ -433,7 +438,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       BooleanSupplier isCurrentVersion,
       VeniceStoreVersionConfig storeVersionConfig,
       int errorPartitionId,
-      boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Queue<VeniceNotifier> notifiers,
@@ -494,7 +498,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         DISABLED,
         producerStateMaxAgeMs);
     // Could be accessed from multiple threads since there are multiple worker threads.
-    this.consumerDiv = new DataIntegrityValidator(kafkaVersionTopic, pubSubContext.getPubSubPositionDeserializer());
+    this.consumerDiv = new DataIntegrityValidator(
+        kafkaVersionTopic,
+        pubSubContext.getPubSubPositionDeserializer(),
+        DISABLED,
+        producerStateMaxAgeMs);
     this.consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.readOnlyForBatchOnlyStoreEnabled = storeVersionConfig.isReadOnlyForBatchOnlyStoreEnabled();
@@ -570,7 +578,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       pushTimeoutInMs = HOURS.toMillis(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
     }
     this.bootstrapTimeoutInMs = pushTimeoutInMs;
-    this.isIsolatedIngestion = isIsolatedIngestion;
     this.partitionCount = storeVersionPartitionCount;
     this.ingestionNotificationDispatcher = new IngestionNotificationDispatcher(
         notifiers,
@@ -1124,6 +1131,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
 
+    // Set blob-db config from version level config
+    Store store = storeRepository.getStore(storeName);
+    if (store != null) {
+      Version version = store.getVersion(versionNumber);
+      if (version != null) {
+        String blobDbEnabledStr = version.getBlobDbEnabled();
+        if (blobDbEnabledStr != null) {
+          try {
+            storagePartitionConfig.setBlobDbEnabled(ActivationState.valueOf(blobDbEnabledStr));
+          } catch (IllegalArgumentException e) {
+            // Invalid value, fall back to NOT_SPECIFIED which uses cluster-level config
+            storagePartitionConfig.setBlobDbEnabled(ActivationState.NOT_SPECIFIED);
+          }
+        }
+      }
+    }
+    // If store or version not found, or blobDbEnabled is invalid, leave default NOT_SPECIFIED which falls back to
+    // cluster-level config
+
     return storagePartitionConfig;
   }
 
@@ -1439,7 +1465,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
       if (isGlobalRtDivEnabled()) {
-        consumedBytesSinceLastSync.compute(kafkaUrl, (k, v) -> (v == null) ? recordSize : v + recordSize);
+        // Key by version topic name when consuming from VT, else by RT broker URL
+        PubSubTopic topic = topicPartition.getPubSubTopic();
+        String consumedBytesKey = versionTopic.equals(topic) ? versionTopic.getName() : kafkaUrl;
+        consumedBytesSinceLastSync.compute(consumedBytesKey, (k, v) -> (v == null) ? recordSize : v + recordSize);
       }
     }
 
@@ -1816,38 +1845,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Thread.sleep(this.readCycleDelayMs);
       }
 
-      List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
-
-      /**
-       * Speed shutdown by closing partitions concurrently. For Server it is controlled by server config, for DaVinci
-       * client it is always enabled.
-       */
-      boolean enableParallelShutdown = serverConfig.isParallelResourceShutdownEnabled() || isDaVinciClient;
-      ExecutorService shutdownExecutor =
-          enableParallelShutdown ? Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2) : null;
-
-      for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
-        /**
-         * Now, there are two threads, which could potentially trigger {@link #syncOffset(String, PartitionConsumptionState)}:
-         * 1. {@link #processConsumerRecord} that will sync offset based on the consumed byte size.
-         * 2. The main thread of ingestion task here, which will checkpoint when gracefully shutting down;
-         *
-         * We would like to make sure the syncOffset invocation is sequential with the message processing, so here
-         * will try to drain all the messages before checkpointing.
-         * Here is the detail::
-         * If the checkpointing happens in different threads concurrently, there is no guarantee the atomicity of
-         * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
-         * hasn't been applied yet, when checkpointing happens in current thread.
-         */
-        executeShutdownRunnable(entry.getValue(), shutdownFutures, shutdownExecutor);
-      }
-      if (enableParallelShutdown) {
-        /**
-         * Shutdown shouldn't take that long because of high concurrency, and it is fine to specify a high timeout here
-         * to avoid infinite wait in case there is some regression.
-         */
-        CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
-      }
+      shutdownPartitionConsumptionStates();
       // Release the latch after all the shutdown completes in DVC/Server.
       shutdownLatch.countDown();
     } catch (VeniceIngestionTaskKilledException e) {
@@ -1896,6 +1894,54 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       handleIngestionThrowable(t);
     } finally {
       internalClose(doFlush);
+    }
+  }
+
+  /**
+   * Shuts down all partition consumption states, optionally in parallel. Creates a thread pool if parallel shutdown is
+   * enabled and ensures it is always terminated via a finally block.
+   */
+  void shutdownPartitionConsumptionStates() throws InterruptedException, ExecutionException, TimeoutException {
+    List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(getPartitionConsumptionStateMap().size());
+
+    /**
+     * Speed shutdown by closing partitions concurrently. For Server it is controlled by server config, for DaVinci
+     * client it is always enabled.
+     */
+    boolean enableParallelShutdown = getServerConfig().isParallelResourceShutdownEnabled() || isDaVinciClient();
+    ExecutorService shutdownExecutor = enableParallelShutdown
+        ? Executors.newFixedThreadPool(
+            getServerConfig().getParallelShutdownThreadPoolSize(),
+            new DaemonThreadFactory("StoreIngestionTask-shutdown"))
+        : null;
+
+    try {
+      for (Map.Entry<Integer, PartitionConsumptionState> entry: getPartitionConsumptionStateMap().entrySet()) {
+        /**
+         * Now, there are two threads, which could potentially trigger {@link #syncOffset(String, PartitionConsumptionState)}:
+         * 1. {@link #processConsumerRecord} that will sync offset based on the consumed byte size.
+         * 2. The main thread of ingestion task here, which will checkpoint when gracefully shutting down;
+         *
+         * We would like to make sure the syncOffset invocation is sequential with the message processing, so here
+         * will try to drain all the messages before checkpointing.
+         * Here is the detail::
+         * If the checkpointing happens in different threads concurrently, there is no guarantee the atomicity of
+         * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
+         * hasn't been applied yet, when checkpointing happens in current thread.
+         */
+        executeShutdownRunnable(entry.getValue(), shutdownFutures, shutdownExecutor);
+      }
+      if (enableParallelShutdown) {
+        /**
+         * Shutdown shouldn't take that long because of high concurrency, and it is fine to specify a high timeout here
+         * to avoid infinite wait in case there is some regression.
+         */
+        CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture[0])).get(60, SECONDS);
+      }
+    } finally {
+      if (shutdownExecutor != null) {
+        shutdownExecutor.shutdownNow();
+      }
     }
   }
 
@@ -1956,6 +2002,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void updateOffsetMetadataAndSyncOffset(DataIntegrityValidator div, @Nonnull PartitionConsumptionState pcs) {
+    if (isGlobalRtDivEnabled()) {
+      LOGGER.info("Skipping updateOffsetMetadataAndSyncOffset() because Global RT DIV is enabled.");
+      return;
+    }
     /**
      * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
      * could be ahead of the other.
@@ -2710,21 +2760,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return false;
     }
 
-    /*
-     * If ingestion isolation is enabled, when completion is reported for a partition, we don't need to persist the remaining
-     * records in the drainer queue, as per ingestion isolation design, we will unsubscribe topic partition in child process
-     * and re-subscribe it in main process, thus these records can be processed in main process instead without slowing down
-     * the unsubscribe action.
-     */
-    if (this.isIsolatedIngestion && partitionConsumptionState.isCompletionReported()) {
-      String msg = "Skipping message as it is using ingestion isolation and replica: " + replicaId
-          + " is already ready to serve, these are buffered records in the queue. Incoming record with topic-partition: {} and offset: {}";
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-        LOGGER.info(msg, record.getTopicPartition(), record.getPosition());
-      }
-      return false;
-    }
-
     return true;
   }
 
@@ -2955,7 +2990,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtPosition: {} progress: {}";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-      final PubSubPosition position = offsetRecord.getCheckpointedLocalVtPosition();
+      final PubSubPosition position = (isGlobalRtDivEnabled())
+          ? offsetRecord.getLatestConsumedVtPosition()
+          : offsetRecord.getCheckpointedLocalVtPosition();
       int percentage = -1;
       if (getServerConfig().isIngestionProgressLoggingEnabled()) {
         final PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
@@ -4132,7 +4169,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
           Lazy<Object> lazyValue = Lazy.of(() -> {
             try {
-              ByteBuffer decompressedAssembledObject = compressor.get().decompress(assembledObject);
+              ByteBuffer decompressedAssembledObject =
+                  ChunkAssembler.decompressValueIfNeeded(assembledObject, put.getSchemaId(), compressor.get());
               Schema valueSchema = this.schemaIdToSchemaMap.computeIfAbsent(
                   readerSchemaId,
                   i -> schemaRepository.getValueSchema(storeName, readerSchemaId).getSchema());
@@ -4455,7 +4493,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *
    * 1. Value is chunked. A single piece of value cannot be deserialized. In this case, the schema id is not added in
    *    availableSchemaIds by {@link StoreIngestionTask#waitUntilValueSchemaAvailable}.
-   * 2. Ingestion isolation is enabled, in which case ingestion happens on forked process instead of this main process.
    */
   private void deserializeValue(int schemaId, ByteBuffer value, DefaultPubSubMessage record) throws IOException {
     if (schemaId < 0 || deserializedSchemaIds.get(schemaId) != null || availableSchemaIds.get(schemaId) == null) {
@@ -4478,7 +4515,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void maybeCloseInactiveIngestionTask() {
-    if (serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds() > 0 && !isIsolatedIngestion) {
+    if (serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds() > 0) {
       // Ingestion task will not close by itself
       return;
     }

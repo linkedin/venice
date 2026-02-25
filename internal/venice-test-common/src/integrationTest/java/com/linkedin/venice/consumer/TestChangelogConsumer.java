@@ -380,8 +380,7 @@ public class TestChangelogConsumer {
         .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
     ChangelogClientConfig globalAfterImageClientConfig =
         ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 1)
-            .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
-            .setIsBeforeImageView(true);
+            .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()));
 
     VeniceChangelogConsumerClientFactory veniceAfterImageConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalAfterImageClientConfig, metricsRepository);

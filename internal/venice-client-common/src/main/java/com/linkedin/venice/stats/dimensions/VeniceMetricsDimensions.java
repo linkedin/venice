@@ -92,7 +92,7 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceIngestionDestinationComponent} destination component */
   VENICE_INGESTION_DESTINATION_COMPONENT("venice.ingestion.destination.component"),
 
-  /** {@link VenicePushType} */
+  /** Venice push job type (e.g. batch, incremental). See Version.PushType */
   VENICE_PUSH_JOB_TYPE("venice.push_job.type"),
 
   /** {@link VenicePushJobStatus} */
@@ -101,8 +101,8 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceSystemStoreType} */
   VENICE_SYSTEM_STORE_TYPE("venice.system_store.type"),
 
-  /** {@link AdminMessageProcessingPhase} */
-  VENICE_ADMIN_MESSAGE_PROCESSING_PHASE("venice.admin_message.processing_phase"),
+  /** {@link AdminMessageProcessingComponent} */
+  VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT("venice.admin_message.processing.component"),
 
   /** AdminMessageType */
   VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type");

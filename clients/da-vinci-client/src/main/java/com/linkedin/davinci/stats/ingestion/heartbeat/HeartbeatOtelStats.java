@@ -1,6 +1,6 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
-import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_HEARTBEAT_DELAY;
+import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelMetricEntity.INGESTION_HEARTBEAT_DELAY;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -124,4 +124,5 @@ public class HeartbeatOtelStats {
   public void close() {
     metricsByRegion.clear();
   }
+
 }

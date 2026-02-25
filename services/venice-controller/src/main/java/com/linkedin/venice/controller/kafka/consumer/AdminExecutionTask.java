@@ -131,21 +131,21 @@ public class AdminExecutionTask implements Callable<Void> {
                   + ". The consumption task should unsubscribe soon");
         }
         AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
+        AdminMessageType adminMessageType = AdminMessageType.valueOf(adminOperationWrapper.getAdminOperation());
         if (adminOperationWrapper.getStartProcessingTimestamp() == null) {
           adminOperationWrapper.setStartProcessingTimestamp(System.currentTimeMillis());
-          stats.recordAdminMessageStartProcessingLatency(
-              Math.max(
-                  0,
-                  adminOperationWrapper.getStartProcessingTimestamp() - adminOperationWrapper.getDelegateTimestamp()));
+          stats
+              .recordAdminMessageStartProcessingLatency(
+                  Math.max(
+                      0,
+                      adminOperationWrapper.getStartProcessingTimestamp()
+                          - adminOperationWrapper.getDelegateTimestamp()),
+                  adminMessageType);
         }
         processMessage(adminOperationWrapper.getAdminOperation());
         long completionTimestamp = System.currentTimeMillis();
         long processLatency = Math.max(0, completionTimestamp - adminOperationWrapper.getStartProcessingTimestamp());
-        if (AdminMessageType.valueOf(adminOperationWrapper.getAdminOperation()) == AdminMessageType.ADD_VERSION) {
-          stats.recordAdminMessageAddVersionProcessLatency(processLatency);
-        } else {
-          stats.recordAdminMessageProcessLatency(processLatency);
-        }
+        stats.recordAdminMessageProcessLatency(processLatency, adminMessageType);
         stats.recordAdminMessageTotalLatency(
             Math.max(0, completionTimestamp - adminOperationWrapper.getProducerTimestamp()));
         internalTopic.remove();
@@ -573,6 +573,10 @@ public class AdminExecutionTask implements Callable<Void> {
             message.uncleanLeaderElectionEnabledForRTTopics == null
                 ? ActivationState.NOT_SPECIFIED
                 : ActivationState.valueOf(message.uncleanLeaderElectionEnabledForRTTopics.toString()))
+        .setBlobDbEnabled(
+            message.blobDbEnabled == null
+                ? ActivationState.NOT_SPECIFIED
+                : ActivationState.valueOf(message.blobDbEnabled.toString()))
         .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
         .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)

@@ -718,6 +718,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public void setBlobDbEnabled(String blobDbEnabled) {
+    throwUnsupportedOperationException("setBlobDbEnabled is not supported in SystemStore");
+  }
+
+  @Override
+  public String getBlobDbEnabled() {
+    return zkSharedStore.getBlobDbEnabled();
+  }
+
+  @Override
   public void setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
     throwUnsupportedOperationException("setMaxCompactionLagSeconds");
   }

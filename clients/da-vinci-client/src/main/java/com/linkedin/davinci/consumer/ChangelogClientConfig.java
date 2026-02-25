@@ -27,7 +27,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   private SchemaReader schemaReader;
   private String viewName;
-  private Boolean isBeforeImageView = false;
 
   private String consumerName = "";
 
@@ -402,7 +401,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setConsumerName(config.consumerName)
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
-        .setIsBeforeImageView(config.isBeforeImageView())
         .setIsNewStatelessClientEnabled(config.isNewStatelessClientEnabled())
         .setMaxBufferSize(config.getMaxBufferSize())
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
@@ -419,15 +417,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setTotalRegionCount(config.getTotalRegionCount())
         .setVersionSwapTimeoutInMs(config.getVersionSwapTimeoutInMs());
     return newConfig;
-  }
-
-  protected Boolean isBeforeImageView() {
-    return isBeforeImageView;
-  }
-
-  public ChangelogClientConfig setIsBeforeImageView(Boolean beforeImageView) {
-    isBeforeImageView = beforeImageView;
-    return this;
   }
 
   protected Boolean isNewStatelessClientEnabled() {

@@ -12,12 +12,6 @@ public enum VeniceRegionLocality implements VeniceDimensionInterface {
   /** The region is different from the current server's region */
   REMOTE;
 
-  private final String locality;
-
-  VeniceRegionLocality() {
-    this.locality = name().toLowerCase();
-  }
-
   /**
    * All the instances of this Enum should have the same dimension name.
    * Refer {@link VeniceDimensionInterface#getDimensionName()} for more details.
@@ -25,10 +19,5 @@ public enum VeniceRegionLocality implements VeniceDimensionInterface {
   @Override
   public VeniceMetricsDimensions getDimensionName() {
     return VENICE_REGION_LOCALITY;
-  }
-
-  @Override
-  public String getDimensionValue() {
-    return locality;
   }
 }

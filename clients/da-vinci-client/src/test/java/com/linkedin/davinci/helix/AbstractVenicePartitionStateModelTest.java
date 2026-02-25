@@ -68,8 +68,10 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     mockStoreIngestionService = Mockito.mock(KafkaStoreIngestionService.class);
     mockIngestionBackend = Mockito.mock(IngestionBackend.class);
     when(mockIngestionBackend.getStoreIngestionService()).thenReturn(mockStoreIngestionService);
-    when(mockIngestionBackend.dropStoragePartitionGracefully(Mockito.any(), Mockito.anyInt(), Mockito.anyInt()))
-        .thenReturn(CompletableFuture.completedFuture(null));
+    when(
+        mockIngestionBackend
+            .dropStoragePartitionGracefully(Mockito.any(), Mockito.anyInt(), Mockito.anyInt(), Mockito.anyString()))
+                .thenReturn(CompletableFuture.completedFuture(null));
     mockStoreConfig = Mockito.mock(VeniceStoreVersionConfig.class);
     when(mockStoreConfig.getPartitionGracefulDropDelaySeconds()).thenReturn(1); // 1 second.
     when(mockStoreConfig.getStoreVersionName()).thenReturn(resourceName);

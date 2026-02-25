@@ -7,6 +7,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_DB_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
@@ -166,6 +167,7 @@ public class UpdateStoreQueryParams extends QueryParams {
                 ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobTransferInServerEnabled()))
             .setUncleanLeaderElectionEnabledForRTTopics(
                 ConfigCommonUtils.ActivationState.valueOf(srcStore.getUncleanLeaderElectionEnabledForRTTopics()))
+            .setBlobDbEnabled(ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobDbEnabled()))
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
@@ -824,6 +826,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<String> getUncleanLeaderElectionEnabledForRTTopics() {
     return getString(UNCLEAN_LEADER_ELECTION_ENABLED_FOR_RT_TOPICS);
+  }
+
+  public UpdateStoreQueryParams setBlobDbEnabled(ConfigCommonUtils.ActivationState blobDbEnabled) {
+    return putString(BLOB_DB_ENABLED, blobDbEnabled.name());
+  }
+
+  public Optional<String> getBlobDbEnabled() {
+    return getString(BLOB_DB_ENABLED);
   }
 
   public UpdateStoreQueryParams setNearlineProducerCompressionEnabled(boolean compressionEnabled) {

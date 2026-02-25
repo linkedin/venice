@@ -55,6 +55,7 @@ import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.atLeast;
@@ -267,6 +268,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -986,7 +988,6 @@ public abstract class StoreIngestionTaskTest {
             isCurrentVersion,
             storeConfig,
             PARTITION_FOO,
-            false,
             Optional.empty(),
             internalDaVinciRecordTransformerConfig,
             Lazy.of(() -> zkHelixAdmin)));
@@ -3193,7 +3194,6 @@ public abstract class StoreIngestionTaskTest {
             isCurrentVersion,
             storeConfig,
             PARTITION_FOO,
-            false,
             Optional.empty(),
             null,
             null));
@@ -3419,7 +3419,6 @@ public abstract class StoreIngestionTaskTest {
         isCurrentVersion,
         storeConfig,
         PARTITION_FOO,
-        false,
         Optional.empty(),
         null,
         null);
@@ -3567,7 +3566,6 @@ public abstract class StoreIngestionTaskTest {
         isCurrentVersion,
         storeConfig,
         PARTITION_FOO,
-        false,
         Optional.empty(),
         null,
         null);
@@ -3799,7 +3797,6 @@ public abstract class StoreIngestionTaskTest {
         isCurrentVersion,
         storeConfig,
         PARTITION_FOO,
-        false,
         Optional.empty(),
         null,
         null);
@@ -3950,7 +3947,6 @@ public abstract class StoreIngestionTaskTest {
         isCurrentVersion,
         storeConfig,
         PARTITION_FOO,
-        false,
         Optional.empty(),
         null,
         null);
@@ -4094,7 +4090,6 @@ public abstract class StoreIngestionTaskTest {
             isCurrentVersion,
             storeConfig,
             PARTITION_FOO,
-            false,
             Optional.empty(),
             null,
             null);
@@ -4196,7 +4191,6 @@ public abstract class StoreIngestionTaskTest {
         isCurrentVersion,
         storeConfig,
         PARTITION_FOO,
-        false,
         Optional.empty(),
         null,
         null);
@@ -4270,7 +4264,6 @@ public abstract class StoreIngestionTaskTest {
             () -> true,
             mockVeniceStoreVersionConfig,
             0,
-            false,
             Optional.empty(),
             null,
             null);
@@ -4392,7 +4385,6 @@ public abstract class StoreIngestionTaskTest {
             mock(BooleanSupplier.class),
             storeConfig,
             -1,
-            false,
             Optional.empty(),
             null,
             null));
@@ -4691,7 +4683,6 @@ public abstract class StoreIngestionTaskTest {
             mock(BooleanSupplier.class),
             storeConfig,
             -1,
-            false,
             Optional.empty(),
             null,
             null));
@@ -5108,7 +5099,6 @@ public abstract class StoreIngestionTaskTest {
         isCurrentVersion,
         storeConfig,
         1,
-        false,
         Optional.empty(),
         null,
         null);
@@ -5233,7 +5223,6 @@ public abstract class StoreIngestionTaskTest {
             () -> true,
             mockVeniceStoreVersionConfig,
             0,
-            false,
             Optional.empty(),
             null,
             null);
@@ -5331,7 +5320,6 @@ public abstract class StoreIngestionTaskTest {
             () -> true,
             mockVeniceStoreVersionConfig,
             0,
-            false,
             Optional.empty(),
             null,
             null);
@@ -6047,7 +6035,6 @@ public abstract class StoreIngestionTaskTest {
             mock(BooleanSupplier.class),
             storeConfig,
             -1,
-            false,
             Optional.empty(),
             null,
             null));
@@ -6482,6 +6469,116 @@ public abstract class StoreIngestionTaskTest {
 
     // Clean up
     shutdownExecutor.shutdown();
+  }
+
+  @Test
+  public void testShutdownPartitionConsumptionStatesUsesConfiguredPoolSize() throws Exception {
+    int configuredPoolSize = 4;
+
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(task.getServerConfig()).thenReturn(serverConfig);
+    when(serverConfig.isParallelResourceShutdownEnabled()).thenReturn(true);
+    when(serverConfig.getParallelShutdownThreadPoolSize()).thenReturn(configuredPoolSize);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(false);
+    when(task.isDaVinciClient()).thenReturn(false);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_topic_v1"), 0);
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    pcsMap.put(0, pcs);
+    when(task.getPartitionConsumptionStateMap()).thenReturn(pcsMap);
+
+    // Capture the executor passed to executeShutdownRunnable to inspect its properties
+    doAnswer(invocation -> {
+      ExecutorService executor = invocation.getArgument(2);
+      assertNotNull(executor, "Executor should not be null when parallel shutdown is enabled");
+      ThreadPoolExecutor threadPool = (ThreadPoolExecutor) executor;
+      assertEquals(threadPool.getCorePoolSize(), configuredPoolSize, "Pool size should match configured value");
+
+      // Submit a task to verify daemon threads and naming
+      CompletableFuture<Thread> threadCapture = CompletableFuture.supplyAsync(Thread::currentThread, executor);
+      Thread poolThread = threadCapture.get(5, TimeUnit.SECONDS);
+      assertTrue(poolThread.isDaemon(), "Shutdown executor threads should be daemon threads");
+      assertTrue(
+          poolThread.getName().startsWith("StoreIngestionTask-shutdown"),
+          "Thread name should start with 'StoreIngestionTask-shutdown'");
+      return null;
+    }).when(task).executeShutdownRunnable(any(), anyList(), any());
+
+    doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
+    task.shutdownPartitionConsumptionStates();
+
+    verify(task).executeShutdownRunnable(eq(pcs), anyList(), any(ExecutorService.class));
+    verify(serverConfig).getParallelShutdownThreadPoolSize();
+  }
+
+  @Test
+  public void testShutdownPartitionConsumptionStatesWithoutParallelShutdown() throws Exception {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(task.getServerConfig()).thenReturn(serverConfig);
+    when(serverConfig.isParallelResourceShutdownEnabled()).thenReturn(false);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(false);
+    when(task.isDaVinciClient()).thenReturn(false);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    pcsMap.put(0, pcs);
+    when(task.getPartitionConsumptionStateMap()).thenReturn(pcsMap);
+
+    doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
+    task.shutdownPartitionConsumptionStates();
+
+    // When parallel shutdown is disabled, executor should be null
+    verify(task).executeShutdownRunnable(eq(pcs), anyList(), isNull());
+    // Should not attempt to read pool size when parallel shutdown is disabled
+    verify(serverConfig, never()).getParallelShutdownThreadPoolSize();
+  }
+
+  @Test
+  public void testShutdownPartitionConsumptionStatesExecutorCleanedUpOnException() throws Exception {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(task.getServerConfig()).thenReturn(serverConfig);
+    when(serverConfig.isParallelResourceShutdownEnabled()).thenReturn(true);
+    when(serverConfig.getParallelShutdownThreadPoolSize()).thenReturn(2);
+    when(task.isDaVinciClient()).thenReturn(false);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    pcsMap.put(0, pcs);
+    when(task.getPartitionConsumptionStateMap()).thenReturn(pcsMap);
+
+    // Capture the executor so we can verify it was shut down after the exception
+    AtomicReference<ExecutorService> capturedExecutor = new AtomicReference<>();
+    doAnswer(invocation -> {
+      ExecutorService executor = invocation.getArgument(2);
+      capturedExecutor.set(executor);
+      List<CompletableFuture<Void>> futures = invocation.getArgument(1);
+      futures.add(CompletableFuture.runAsync(() -> {
+        throw new RuntimeException("simulated failure");
+      }, executor));
+      return null;
+    }).when(task).executeShutdownRunnable(any(), anyList(), any());
+
+    doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
+    try {
+      task.shutdownPartitionConsumptionStates();
+      fail("Expected ExecutionException from failing future");
+    } catch (ExecutionException e) {
+      // Expected
+    }
+
+    // Verify the executor was shut down despite the exception
+    ExecutorService executor = capturedExecutor.get();
+    assertNotNull(executor, "Executor should have been created");
+    assertTrue(executor.isShutdown(), "Executor should be shut down even after exception");
+    assertTrue(
+        executor.awaitTermination(5, TimeUnit.SECONDS),
+        "Executor should terminate promptly after shutdownNow()");
   }
 
   @Test

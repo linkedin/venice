@@ -12,6 +12,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
+import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
@@ -188,5 +189,18 @@ public class VeniceServerConfigTest {
     config = new VeniceServerConfig(new VeniceProperties(props));
     assertFalse(config.isLeaderHandoverUseDoLMechanismEnabledForSystemStores());
     assertFalse(config.isLeaderHandoverUseDoLMechanismEnabledForUserStores());
+  }
+
+  @Test
+  public void testParallelShutdownThreadPoolSizeConfig() {
+    // Test default value
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(config.getParallelShutdownThreadPoolSize(), 16);
+
+    // Test custom value
+    props.put(SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE, "4");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(config.getParallelShutdownThreadPoolSize(), 4);
   }
 }

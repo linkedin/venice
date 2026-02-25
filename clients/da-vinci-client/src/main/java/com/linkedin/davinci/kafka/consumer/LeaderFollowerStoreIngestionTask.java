@@ -36,7 +36,6 @@ import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
@@ -208,7 +207,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private volatile long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
   protected final Map<String, VeniceViewWriter> viewWriters;
-  protected final boolean hasChangeCaptureView;
   protected final boolean hasComplexVenicePartitionerMaterializedView;
 
   protected final InternalAvroSpecificSerializer<GlobalRtDivState> globalRtDivStateSerializer =
@@ -232,7 +230,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       BooleanSupplier isCurrentVersion,
       VeniceStoreVersionConfig storeConfig,
       int errorPartitionId,
-      boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
@@ -245,7 +242,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         isCurrentVersion,
         storeConfig,
         errorPartitionId,
-        isIsolatedIngestion,
         cacheBackend,
         internalRecordTransformerConfig,
         builder.getLeaderFollowerNotifiers(),
@@ -306,27 +302,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()
         && !store.isFlinkVeniceViewsEnabled()) {
-      viewWriters = builder.getVeniceViewWriterFactory()
-          .buildStoreViewWriters(
-              store,
-              version.getNumber(),
-              schemaRepository.getKeySchema(store.getName()).getSchema());
-      boolean tmpValueForHasChangeCaptureViewWriter = false;
+      viewWriters = builder.getVeniceViewWriterFactory().buildStoreViewWriters(store, version.getNumber());
       boolean tmpValueForHasComplexVenicePartitioner = false;
       for (Map.Entry<String, VeniceViewWriter> viewWriter: viewWriters.entrySet()) {
-        if (viewWriter.getValue() instanceof ChangeCaptureViewWriter) {
-          tmpValueForHasChangeCaptureViewWriter = true;
-        } else if (viewWriter.getValue().getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
+        if (viewWriter.getValue().getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
           if (((MaterializedViewWriter) viewWriter.getValue()).isComplexVenicePartitioner()) {
             tmpValueForHasComplexVenicePartitioner = true;
           }
         }
       }
-      hasChangeCaptureView = tmpValueForHasChangeCaptureViewWriter;
       hasComplexVenicePartitionerMaterializedView = tmpValueForHasComplexVenicePartitioner;
     } else {
       viewWriters = Collections.emptyMap();
-      hasChangeCaptureView = false;
       hasComplexVenicePartitionerMaterializedView = false;
     }
     this.storeDeserializerCache = new AvroStoreDeserializerCache(
@@ -3031,6 +3018,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
       CompletableFuture<Void> lastFuture = pcs.getLastQueuedRecordPersistedFuture();
       storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
+      // Reset consumer-side VT bytes so the size-based condition in shouldSyncOffsetFromSnapshot does not keep
+      // firing for every subsequent record.
+      getConsumedBytesSinceLastSync().put(getVersionTopic().getName(), 0L);
 
       // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
       LOGGER.info(
@@ -3055,8 +3045,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (payloadUnion instanceof Put && ((Put) payloadUnion).getSchemaId() != CHUNK_SCHEMA_ID) {
         return true; // Global RT DIV message can be multiple chunks + deletes, only sync on one Put (manifest or value)
       }
+    } else if (isNonSegmentControlMessage(consumerRecord, null)) {
+      return true; // sync when processing most control messages
     }
-    return isNonSegmentControlMessage(consumerRecord, null);
+
+    if (pcs == null) {
+      LOGGER.warn("event=globalRtDiv No PCS found for: {} Will not sync VT DIV", consumerRecord.getTopicPartition());
+      return false;
+    }
+
+    // must be greater than the interval in shouldSendGlobalRtDiv() to not interfere
+    final long syncBytesInterval = getSyncBytesInterval(pcs); // size-based sync condition
+    long vtConsumedBytesSinceLastSync = getConsumedBytesSinceLastSync().getOrDefault(getVersionTopic().getName(), 0L);
+    return syncBytesInterval > 0 && (vtConsumedBytesSinceLastSync >= 2 * syncBytesInterval);
   }
 
   /**
@@ -3424,7 +3425,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           hostLevelIngestionStats
               .recordWriteComputeUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS));
         } catch (Exception e) {
-          writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code;
+          setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
           throw new RuntimeException(e);
         }
 
@@ -3940,7 +3941,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         hostLevelIngestionStats
             .recordWriteComputeLookUpLatency(LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS));
       } catch (Exception e) {
-        writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+        setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
         throw e;
       }
     } else {
@@ -3955,7 +3956,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               storeDeserializerCache.getDeserializer(transientRecord.getValueSchemaId(), readerValueSchemaID),
               compressor.get());
         } catch (Exception e) {
-          writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
+          setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
           throw e;
         }
         if (manifestContainer != null) {

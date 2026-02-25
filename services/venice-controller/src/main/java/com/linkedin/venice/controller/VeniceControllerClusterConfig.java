@@ -194,6 +194,7 @@ import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
 import static com.linkedin.venice.ConfigKeys.REPUSH_CANDIDATE_FILTER_CLASS_NAMES;
+import static com.linkedin.venice.ConfigKeys.REPUSH_CANDIDATE_TRIGGER_CLASS_NAMES;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
 import static com.linkedin.venice.ConfigKeys.SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED;
@@ -632,6 +633,7 @@ public class VeniceControllerClusterConfig {
    */
   private String repushOrchestratorClassName;
   private Set<String> repushCandidateFilterClassNames;
+  private Set<String> repushCandidateTriggerClassNames;
   private final VeniceProperties repushOrchestratorConfigs;
 
   /**
@@ -1179,6 +1181,11 @@ public class VeniceControllerClusterConfig {
         } else {
           this.repushCandidateFilterClassNames = Collections.emptySet();
         }
+        if (props.containsKey(REPUSH_CANDIDATE_TRIGGER_CLASS_NAMES)) {
+          this.repushCandidateTriggerClassNames = new HashSet<>(props.getList(REPUSH_CANDIDATE_TRIGGER_CLASS_NAMES));
+        } else {
+          this.repushCandidateTriggerClassNames = Collections.emptySet();
+        }
       } catch (Exception e) {
         throw new VeniceException(
             "Log compaction enabled but missing controller.repush.orchestrator.class.name config value. Unable to set up log compaction service",
@@ -1310,6 +1317,7 @@ public class VeniceControllerClusterConfig {
     // Repush
     LOGGER.info("\trepushOrchestratorClassName: {}", repushOrchestratorClassName);
     LOGGER.info("\trepushCandidateFilterClassNames: {}", repushCandidateFilterClassNames);
+    LOGGER.info("\trepushCandidateTriggerClassNames: {}", repushCandidateTriggerClassNames);
 
     // Log compaction
     LOGGER.info("\tisLogCompactionEnabled: {}", isLogCompactionEnabled);
@@ -2309,6 +2317,10 @@ public class VeniceControllerClusterConfig {
 
   public Set<String> getRepushCandidateFilterClassNames() {
     return repushCandidateFilterClassNames;
+  }
+
+  public Set<String> getRepushCandidateTriggerClassNames() {
+    return repushCandidateTriggerClassNames;
   }
 
   public VeniceProperties getRepushOrchestratorConfigs() {

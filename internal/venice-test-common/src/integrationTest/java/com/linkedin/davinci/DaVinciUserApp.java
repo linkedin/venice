@@ -18,10 +18,6 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PO
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
-import static com.linkedin.venice.meta.IngestionMode.BUILT_IN;
-import static com.linkedin.venice.meta.IngestionMode.ISOLATED;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_PASSWORD;
 
@@ -70,8 +66,6 @@ public class DaVinciUserApp {
     String baseDataPath = props.getProperty("base.data.path");
     String storeName = props.getProperty("store.name");
     int sleepSeconds = Integer.parseInt(props.getProperty("sleep.seconds"));
-    int heartbeatTimeoutSeconds = Integer.parseInt(props.getProperty("heartbeat.timeout.seconds"));
-    boolean ingestionIsolation = Boolean.parseBoolean(props.getProperty("ingestion.isolation"));
     int blobTransferServerPort = Integer.parseInt(props.getProperty("blob.transfer.server.port"));
     int blobTransferClientPort = Integer.parseInt(props.getProperty("blob.transfer.client.port"));
     String storageClass = props.getProperty("storage.class");
@@ -87,8 +81,6 @@ public class DaVinciUserApp {
     D2ClientUtils.startClient(d2Client);
 
     Map<String, Object> extraBackendConfig = new HashMap<>();
-    extraBackendConfig.put(SERVER_INGESTION_MODE, ingestionIsolation ? ISOLATED : BUILT_IN);
-    extraBackendConfig.put(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, heartbeatTimeoutSeconds);
     extraBackendConfig.put(DATA_BASE_PATH, baseDataPath);
     extraBackendConfig.put(PUSH_STATUS_STORE_ENABLED, true);
 

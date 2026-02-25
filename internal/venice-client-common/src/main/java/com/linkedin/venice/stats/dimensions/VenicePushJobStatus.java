@@ -15,34 +15,23 @@ package com.linkedin.venice.stats.dimensions;
  */
 public enum VenicePushJobStatus implements VeniceDimensionInterface {
   /** The push job completed successfully and data is available for serving. */
-  SUCCESS("success"),
+  SUCCESS,
 
   /**
    * The push job failed due to a user-caused error, such as quota exceeded, write ACL failure,
    * duplicate keys with different values, schema validation failure, record too large, concurrent
    * batch push, dataset changed, invalid input file, DaVinci disk full, or DaVinci memory limit.
    */
-  USER_ERROR("user_error"),
+  USER_ERROR,
 
   /**
    * The push job failed due to a system-caused error, such as infrastructure failures, internal
    * service errors, or any failure checkpoint not classified as a user error.
    */
-  SYSTEM_ERROR("system_error");
-
-  private final String dimensionValue;
-
-  VenicePushJobStatus(String dimensionValue) {
-    this.dimensionValue = dimensionValue;
-  }
+  SYSTEM_ERROR;
 
   @Override
   public VeniceMetricsDimensions getDimensionName() {
     return VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS;
-  }
-
-  @Override
-  public String getDimensionValue() {
-    return dimensionValue;
   }
 }

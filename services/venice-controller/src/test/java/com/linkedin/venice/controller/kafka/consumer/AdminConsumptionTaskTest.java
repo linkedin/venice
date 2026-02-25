@@ -516,7 +516,8 @@ public class AdminConsumptionTaskTest {
                 AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
             .get()).getPubSubPosition();
     AdminConsumptionStats mockStats = mock(AdminConsumptionStats.class);
-    doThrow(StringIndexOutOfBoundsException.class).when(mockStats).recordAdminMessageDelegateLatency(anyDouble());
+    doThrow(StringIndexOutOfBoundsException.class).when(mockStats)
+        .recordAdminMessageDelegateLatency(anyDouble(), any(AdminMessageType.class));
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, mockStats, 10000);
     executor.submit(task);
 
@@ -1105,8 +1106,8 @@ public class AdminConsumptionTaskTest {
     setStore.storeLifecycleHooks = Collections.emptyList();
     setStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.ENABLED.name();
     setStore.uncleanLeaderElectionEnabledForRTTopics = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
+    setStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     setStore.keyUrnFields = Collections.emptyList();
-    setStore.blobDbEnabled = "NOT_SPECIFIED";
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;

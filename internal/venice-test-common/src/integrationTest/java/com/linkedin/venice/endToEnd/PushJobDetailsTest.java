@@ -9,7 +9,7 @@ import static com.linkedin.venice.PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE;
 import static com.linkedin.venice.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED;
 import static com.linkedin.venice.PushJobCheckpoints.START_DATA_WRITER_JOB;
 import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_PREFIX;
-import static com.linkedin.venice.controller.stats.ControllerMetricEntity.PUSH_JOB_COUNT;
+import static com.linkedin.venice.controller.stats.PushJobStatusStats.PushJobOtelMetricEntity.PUSH_JOB_COUNT;
 import static com.linkedin.venice.status.PushJobDetailsStatus.COMPLETED;
 import static com.linkedin.venice.status.PushJobDetailsStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
@@ -44,10 +44,10 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VenicePushJobStatus;
-import com.linkedin.venice.stats.dimensions.VenicePushType;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
@@ -193,7 +193,7 @@ public class PushJobDetailsTest {
     // create a map for expected metrics for CountSinceLastMeasurement type which will be reset after each measurement
     HashMap<String, Double> metricsExpectedCountSinceLastMeasurement = new HashMap<>();
 
-    VenicePushType expectedPushType = isIncrementalPush ? VenicePushType.INCREMENTAL : VenicePushType.BATCH;
+    PushType expectedPushType = isIncrementalPush ? PushType.INCREMENTAL : PushType.BATCH;
     VenicePushJobStatus expectedPushStatus;
 
     if (isSucceeded) {

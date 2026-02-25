@@ -10,6 +10,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_DB_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
@@ -3085,8 +3086,9 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, UNCLEAN_LEADER_ELECTION_ENABLED_FOR_RT_TOPICS))
           .orElseGet(currStore::getUncleanLeaderElectionEnabledForRTTopics);
 
-      // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Store interface
-      setStore.blobDbEnabled = "NOT_SPECIFIED";
+      setStore.blobDbEnabled = params.getBlobDbEnabled()
+          .map(addToUpdatedConfigList(updatedConfigsList, BLOB_DB_ENABLED))
+          .orElseGet(currStore::getBlobDbEnabled);
 
       setStore.previousCurrentVersion = params.getPreviousCurrentVersion()
           .map(addToUpdatedConfigList(updatedConfigsList, PREVIOUS_CURRENT_VERSION))

@@ -344,6 +344,10 @@ public interface Store {
 
   void setUncleanLeaderElectionEnabledForRTTopics(String uncleanLeaderElectionEnabledForRTTopics);
 
+  void setBlobDbEnabled(String blobDbEnabled);
+
+  String getBlobDbEnabled();
+
   boolean isNearlineProducerCompressionEnabled();
 
   void setNearlineProducerCompressionEnabled(boolean compressionEnabled);
