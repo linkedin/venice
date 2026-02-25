@@ -71,6 +71,14 @@ public class TestRegionUtils {
   }
 
   @Test
+  public void testNormalizeRegionName() {
+    Assert.assertEquals(RegionUtils.normalizeRegionName("dc-0"), "dc-0");
+    Assert.assertEquals(RegionUtils.normalizeRegionName(null), RegionUtils.UNKNOWN_REGION);
+    Assert.assertEquals(RegionUtils.normalizeRegionName(""), RegionUtils.UNKNOWN_REGION);
+    Assert.assertEquals(RegionUtils.normalizeRegionName(RegionUtils.UNKNOWN_REGION), RegionUtils.UNKNOWN_REGION);
+  }
+
+  @Test
   public void testIsRegionPartOfRegionsFilterList() {
     String regionFilter = "dc-0,dc-1,dc-2";
 
