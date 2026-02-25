@@ -302,8 +302,8 @@ public class TestMultiDataCenterAdminOperations {
     updateStore.storeLifecycleHooks = Collections.emptyList();
     updateStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     updateStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
+    updateStore.uncleanLeaderElectionEnabledForRTTopics = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     updateStore.keyUrnFields = Collections.emptyList();
-    updateStore.blobDbEnabled = "NOT_SPECIFIED";
     return adminOperationSerializer
         .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
