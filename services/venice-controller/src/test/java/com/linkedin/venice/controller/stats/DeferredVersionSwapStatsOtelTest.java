@@ -68,12 +68,12 @@ public class DeferredVersionSwapStatsOtelTest {
 
   @Test
   public void testRecordDeferredVersionSwapStalledVersionSwap() {
-    stats.recordDeferredVersionSwapStalledVersionSwapMetric(5, TEST_CLUSTER_NAME);
+    stats.recordDeferredVersionSwapStalledVersionSwapMetric(5);
     validateGauge(
         DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_STALLED_COUNT
             .getMetricName(),
         5,
-        clusterAttributes());
+        Attributes.empty());
   }
 
   @Test
@@ -118,7 +118,7 @@ public class DeferredVersionSwapStatsOtelTest {
     disabledStats.recordDeferredVersionSwapExceptionMetric(TEST_CLUSTER_NAME);
     disabledStats.recordDeferredVersionSwapThrowableMetric(TEST_CLUSTER_NAME);
     disabledStats.recordDeferredVersionSwapFailedRollForwardMetric(TEST_CLUSTER_NAME, TEST_STORE_NAME);
-    disabledStats.recordDeferredVersionSwapStalledVersionSwapMetric(3, TEST_CLUSTER_NAME);
+    disabledStats.recordDeferredVersionSwapStalledVersionSwapMetric(3);
     disabledStats.recordDeferredVersionSwapParentChildStatusMismatchMetric(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     disabledStats.recordDeferredVersionSwapChildStatusMismatchMetric(TEST_CLUSTER_NAME, TEST_STORE_NAME);
   }
@@ -132,7 +132,7 @@ public class DeferredVersionSwapStatsOtelTest {
     plainStats.recordDeferredVersionSwapExceptionMetric(TEST_CLUSTER_NAME);
     plainStats.recordDeferredVersionSwapThrowableMetric(TEST_CLUSTER_NAME);
     plainStats.recordDeferredVersionSwapFailedRollForwardMetric(TEST_CLUSTER_NAME, TEST_STORE_NAME);
-    plainStats.recordDeferredVersionSwapStalledVersionSwapMetric(3, TEST_CLUSTER_NAME);
+    plainStats.recordDeferredVersionSwapStalledVersionSwapMetric(3);
     plainStats.recordDeferredVersionSwapParentChildStatusMismatchMetric(TEST_CLUSTER_NAME, TEST_STORE_NAME);
     plainStats.recordDeferredVersionSwapChildStatusMismatchMetric(TEST_CLUSTER_NAME, TEST_STORE_NAME);
   }
@@ -193,12 +193,11 @@ public class DeferredVersionSwapStatsOtelTest {
             Utils.setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME)));
     expectedMetrics.put(
         DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_STALLED_COUNT,
-        new MetricEntity(
+        MetricEntity.createWithNoDimensions(
             "deferred_version_swap.stalled_count",
             MetricType.GAUGE,
             MetricUnit.NUMBER,
-            "Count of stalled deferred version swaps",
-            Utils.setOf(VENICE_CLUSTER_NAME)));
+            "Count of stalled deferred version swaps across all clusters"));
     expectedMetrics.put(
         DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_PARENT_STATUS_MISMATCH_COUNT,
         new MetricEntity(

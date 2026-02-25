@@ -10,11 +10,13 @@ import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
+import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Gauge;
@@ -28,7 +30,7 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
   private final MetricEntityStateGeneric deferredVersionSwapExceptionMetric;
 
   private final MetricEntityStateGeneric deferredVersionSwapFailedRollForwardMetric;
-  private final MetricEntityStateGeneric deferredVersionSwapStalledVersionSwapMetric;
+  private final MetricEntityStateBase deferredVersionSwapStalledVersionSwapMetric;
   private final MetricEntityStateGeneric deferredVersionSwapParentChildStatusMismatchMetric;
   private final MetricEntityStateGeneric deferredVersionSwapChildStatusMismatchMetric;
 
@@ -39,6 +41,7 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
         OpenTelemetryMetricsSetup.builder(metricsRepository).build();
     VeniceOpenTelemetryMetricsRepository otelRepository = otelData.getOtelRepository();
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
+    Attributes baseAttributes = otelData.getBaseAttributes();
 
     deferredVersionSwapExceptionMetric = MetricEntityStateGeneric.create(
         DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_PROCESSING_ERROR_COUNT.getMetricEntity(),
@@ -64,13 +67,14 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
         Collections.singletonList(new Count()),
         baseDimensionsMap);
 
-    deferredVersionSwapStalledVersionSwapMetric = MetricEntityStateGeneric.create(
+    deferredVersionSwapStalledVersionSwapMetric = MetricEntityStateBase.create(
         DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_STALLED_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorIfAbsent,
         DeferredVersionSwapTehutiMetricNameEnum.DEFERRED_VERSION_SWAP_STALLED_VERSION_SWAP,
         Collections.singletonList(new Gauge()),
-        baseDimensionsMap);
+        baseDimensionsMap,
+        baseAttributes);
 
     deferredVersionSwapParentChildStatusMismatchMetric = MetricEntityStateGeneric.create(
         DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_PARENT_STATUS_MISMATCH_COUNT.getMetricEntity(),
@@ -101,8 +105,8 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
     deferredVersionSwapFailedRollForwardMetric.record(1, clusterAndStoreDimensions(clusterName, storeName));
   }
 
-  public void recordDeferredVersionSwapStalledVersionSwapMetric(double value, String clusterName) {
-    deferredVersionSwapStalledVersionSwapMetric.record(value, clusterDimensions(clusterName));
+  public void recordDeferredVersionSwapStalledVersionSwapMetric(double value) {
+    deferredVersionSwapStalledVersionSwapMetric.record(value);
   }
 
   public void recordDeferredVersionSwapParentChildStatusMismatchMetric(String clusterName, String storeName) {
@@ -138,10 +142,13 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
         "deferred_version_swap.roll_forward.failure_count", MetricType.COUNTER, MetricUnit.NUMBER,
         "Count of deferred version swap roll forward failures", setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME)
     ),
-    /** Gauge of stalled deferred version swaps */
+    /** Gauge of stalled deferred version swaps (global — stalledVersionSwapSet is shared across all clusters) */
     DEFERRED_VERSION_SWAP_STALLED_COUNT(
-        "deferred_version_swap.stalled_count", MetricType.GAUGE, MetricUnit.NUMBER,
-        "Count of stalled deferred version swaps", setOf(VENICE_CLUSTER_NAME)
+        MetricEntity.createWithNoDimensions(
+            "deferred_version_swap.stalled_count",
+            MetricType.GAUGE,
+            MetricUnit.NUMBER,
+            "Count of stalled deferred version swaps across all clusters")
     ),
     /** Count of deferred version swap parent-child status mismatches */
     DEFERRED_VERSION_SWAP_PARENT_STATUS_MISMATCH_COUNT(
@@ -163,6 +170,10 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
         String description,
         Set<VeniceMetricsDimensions> dimensionsList) {
       this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
+    }
+
+    DeferredVersionSwapOtelMetricEntity(MetricEntity metricEntity) {
+      this.metricEntity = metricEntity;
     }
 
     @Override

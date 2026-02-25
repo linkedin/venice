@@ -287,7 +287,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
     if (stalledVersionSwapSet.contains(storeName)) {
       stalledVersionSwapSet.remove(storeName);
-      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size(), cluster);
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
     }
 
     // Update parent version status after roll forward, so we don't check this store version again
@@ -375,8 +375,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           VERSION_SWAP_COMPLETION_STATUSES);
       if (didPushCompleteInNonTargetRegions) {
         stalledVersionSwapSet.remove(storeName);
-        deferredVersionSwapStats
-            .recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size(), clusterName);
+        deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
       }
     }
 
@@ -527,8 +526,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           + targetRegion;
       logMessageIfNotRedundant(message);
       stalledVersionSwapSet.add(store.getName());
-      deferredVersionSwapStats
-          .recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size(), clusterName);
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
     }
   }
 
@@ -570,8 +568,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           + " and the wait time: " + parentStore.getTargetSwapRegionWaitTime() + " has passed in region " + region;
       logMessageIfNotRedundant(message);
       stalledVersionSwapSet.add(parentStore.getName());
-      deferredVersionSwapStats
-          .recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size(), clusterName);
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
     }
   }
 

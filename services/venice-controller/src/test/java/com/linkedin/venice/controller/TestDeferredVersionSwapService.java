@@ -410,8 +410,7 @@ public class TestDeferredVersionSwapService {
     deferredVersionSwapService.startInner();
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      verify(mockDeferredVersionSwapStats, atLeast(1))
-          .recordDeferredVersionSwapStalledVersionSwapMetric(eq(1.0), anyString());
+      verify(mockDeferredVersionSwapStats, atLeast(1)).recordDeferredVersionSwapStalledVersionSwapMetric(eq(1.0));
     });
   }
 
