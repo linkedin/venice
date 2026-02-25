@@ -88,8 +88,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
-        P1,
-        1,
         1,
         null);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
@@ -146,8 +144,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp - 1, // Slightly lower than existing timestamp. Thus update should be ignored.
-        P1,
-        1,
         1,
         null);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
@@ -210,8 +206,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         1,
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update should be applied.
-        P1,
-        1,
         1,
         null);
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
@@ -278,8 +272,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 1,
-        P1,
-        1,
         1,
         null);
 
@@ -296,8 +288,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 2,
-        P2,
-        0,
         0,
         null);
 
@@ -306,7 +296,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
         (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
-        Arrays.asList(2L, 1L));
+        Collections.emptyList());
 
     GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(rmdTimestamp.get("age"), 11L);
@@ -402,8 +392,6 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
         valueLevelTimestamp + 1, // Slightly higher than existing timestamp. Thus update is NOT ignored.
-        P1,
-        1,
         newColoID,
         null);
 
@@ -412,7 +400,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
         (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
-        Arrays.asList(0L, 1L));
+        Collections.emptyList());
 
     GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(rmdTimestamp.get("age"), 11L);

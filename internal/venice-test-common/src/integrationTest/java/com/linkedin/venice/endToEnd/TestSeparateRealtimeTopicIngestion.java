@@ -54,9 +54,9 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
-import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -209,14 +209,21 @@ public class TestSeparateRealtimeTopicIngestion {
       validateData(storeName, veniceClusterWrapper);
       validateRmdData(rmdSerDe, Version.composeKafkaTopic(storeName, 2), String.valueOf(99), rmdWithValueSchemaId -> {
         GenericRecord rmdRecord = rmdWithValueSchemaId.getRmdRecord();
-        List<Long> offsetVector = RmdUtils.extractOffsetVectorFromRmd(rmdRecord);
-        Assert.assertEquals(offsetVector.size(), 4);
-        // No msg is written to RT regions.
-        Assert.assertEquals(offsetVector.get(0).longValue(), 0L);
-        Assert.assertEquals(offsetVector.get(1).longValue(), 0L);
-        // Since we only have 1 partition and push to 1 region, the last key's offset should be greater or equal to the
-        // total key count.
-        Assert.assertTrue(offsetVector.get(3) >= 100);
+        // Verify RMD exists and has valid structure
+        Assert.assertNotNull(rmdRecord, "RMD record should exist");
+        // Timestamp field should be populated (per-field GenericRecord since write-compute is enabled)
+        Object timestamp = rmdRecord.get(RmdConstants.TIMESTAMP_FIELD_POS);
+        Assert.assertNotNull(timestamp, "RMD timestamp should be present");
+        Assert.assertTrue(
+            timestamp instanceof Long || timestamp instanceof GenericRecord,
+            "RMD timestamp should be a Long or GenericRecord, but got: " + timestamp.getClass().getName());
+        // replication_checkpoint_vector should be present and empty (no longer populated)
+        Object checkpointVector = rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
+        Assert.assertNotNull(checkpointVector, "replication_checkpoint_vector should be present");
+        Assert.assertTrue(checkpointVector instanceof java.util.List, "replication_checkpoint_vector should be a List");
+        Assert.assertTrue(
+            ((java.util.List<?>) checkpointVector).isEmpty(),
+            "replication_checkpoint_vector should be empty");
       });
       PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.getRealTimeTopicName(storeInfo));
       PubSubTopic separateRealtimeTopic =

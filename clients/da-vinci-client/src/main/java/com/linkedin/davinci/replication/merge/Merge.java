@@ -2,7 +2,6 @@ package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
 import com.linkedin.venice.annotation.Threadsafe;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -48,41 +47,21 @@ public interface Merge<T> {
    * @param newValue a record with all fields populated and with one of the registered value schemas
    * @param putOperationTimestamp the timestamp of the incoming write operation
    * @param putOperationColoID ID of the colo/fabric where this PUT request was originally received.
-   * @param newValueSourcePosition The position from which the new value originates in the realtime stream.  Used to build
-   *                               the ReplicationMetadata for the newly inserted record.
-   * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
-   *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
-   *                                 the ReplicationMetadata for the newly inserted record.
    * @return the resulting {@link ValueAndRmd} after merging the old one with the incoming write operation.
    *         The returned object is guaranteed to be "==" to the input oldValueAndReplicationMetadata object and the internal
    *         members of the object are possibly mutated.
    */
-  ValueAndRmd<T> put(
-      ValueAndRmd<T> oldValueAndRmd,
-      T newValue,
-      long putOperationTimestamp,
-      int putOperationColoID,
-      PubSubPosition newValueSourcePosition,
-      int newValueSourceBrokerID);
+  ValueAndRmd<T> put(ValueAndRmd<T> oldValueAndRmd, T newValue, long putOperationTimestamp, int putOperationColoID);
 
   /**
    * @param oldValueAndRmd the old value and replication metadata which are persisted in the server prior to the write operation
-   * @param newValueSourcePosition The position from which the new value originates in the realtime stream.  Used to build
-   *                               the ReplicationMetadata for the newly inserted record.
+   * @param deleteOperationTimestamp the timestamp of the incoming delete operation
    * @param deleteOperationColoID ID of the colo/fabric where this DELETE request was originally received.
-   * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
-   *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
-   *                                 the ReplicationMetadata for the newly inserted record.
    * @return the resulting {@link ValueAndRmd} after merging the old one with the incoming delete operation.
    *         The returned object is guaranteed to be "==" to the input oldValueAndReplicationMetadata object and the internal
    *         members of the object are possibly mutated.
    */
-  ValueAndRmd<T> delete(
-      ValueAndRmd<T> oldValueAndRmd,
-      long deleteOperationTimestamp,
-      int deleteOperationColoID,
-      PubSubPosition newValueSourcePosition,
-      int newValueSourceBrokerID);
+  ValueAndRmd<T> delete(ValueAndRmd<T> oldValueAndRmd, long deleteOperationTimestamp, int deleteOperationColoID);
 
   /**
    * @param oldValueAndRmd the old value and replication metadata which are persisted in the server prior to the write operation
@@ -90,11 +69,6 @@ public interface Merge<T> {
    * @param currValueSchema Schema of the current value that is to-be-updated here.
    * @param updateOperationTimestamp the timestamp of the incoming write operation
    * @param updateOperationColoID ID of the colo/fabric where this UPDATE request was originally received.
-   * @param newValueSourcePosition The position from which the new value originates in the realtime stream.  Used to build
-   *                               the ReplicationMetadata for the newly inserted record.
-   * @param newValueSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
-   *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
-   *                                 the ReplicationMetadata for the newly inserted record.
    * @return the resulting {@link ValueAndRmd} after merging the old one with the incoming write operation.
    *         The returned object is guaranteed to be "==" to the input oldValueAndReplicationMetadata object and the internal
    *         members of the object are possibly mutated.
@@ -104,7 +78,5 @@ public interface Merge<T> {
       Lazy<GenericRecord> writeOperation,
       Schema currValueSchema,
       long updateOperationTimestamp,
-      int updateOperationColoID,
-      PubSubPosition newValueSourcePosition,
-      int newValueSourceBrokerID);
+      int updateOperationColoID);
 }
