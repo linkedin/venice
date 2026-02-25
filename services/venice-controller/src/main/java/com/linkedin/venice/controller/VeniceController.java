@@ -84,7 +84,8 @@ public class VeniceController {
           TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.class,
           VeniceAdminStats.VeniceAdminOtelMetricEntity.class,
           AdminConsumptionStats.AdminConsumptionOtelMetricEntity.class,
-          AddVersionLatencyStats.AddVersionLatencyOtelMetricEntity.class);
+          AddVersionLatencyStats.AddVersionLatencyOtelMetricEntity.class,
+          DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.class);
 
   // services
   private final VeniceControllerService controllerService;
