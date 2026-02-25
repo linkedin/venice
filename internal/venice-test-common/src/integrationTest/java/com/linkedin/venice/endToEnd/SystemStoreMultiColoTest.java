@@ -28,6 +28,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -36,9 +37,13 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -46,6 +51,7 @@ import org.testng.annotations.Test;
 
 
 public class SystemStoreMultiColoTest {
+  private static final Logger LOGGER = LogManager.getLogger(SystemStoreMultiColoTest.class);
   private static final int TEST_TIMEOUT_MS = 90_000;
   private static final int NUMBER_OF_SERVERS = 2;
   private static final int REPLICATION_FACTOR = 2;
@@ -150,6 +156,54 @@ public class SystemStoreMultiColoTest {
       }
     }
 
+    // Verify that heartbeat delay metrics are registered in the server's MetricsRepository for system stores.
+    String metaStoreName = VeniceSystemStoreUtils.getMetaStoreName(userStoreName);
+    String pushStatusStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(userStoreName);
+    // The versioned stats reporter creates metrics with the "_current" suffix
+    String metaStoreMetricPrefix = "." + metaStoreName + "_current--heartbeat_delay_ms_leader-";
+    String pushStatusStoreMetricPrefix = "." + pushStatusStoreName + "_current--heartbeat_delay_ms_leader-";
+
+    for (VeniceServerWrapper serverWrapper: cluster.getVeniceServers()) {
+      MetricsRepository serverMetrics = serverWrapper.getMetricsRepository();
+      Map<String, ?> allMetrics = serverMetrics.metrics();
+
+      LOGGER.info(
+          "Server {} has {} total metrics. Checking for system store heartbeat metrics...",
+          serverWrapper.getAddress(),
+          allMetrics.size());
+
+      boolean foundMetaStoreHeartbeat = false;
+      boolean foundPushStatusStoreHeartbeat = false;
+      for (String metricName: allMetrics.keySet()) {
+        if (metricName.contains(metaStoreMetricPrefix)) {
+          LOGGER.info("Found meta store heartbeat metric: {}", metricName);
+          foundMetaStoreHeartbeat = true;
+        }
+        if (metricName.contains(pushStatusStoreMetricPrefix)) {
+          LOGGER.info("Found push status store heartbeat metric: {}", metricName);
+          foundPushStatusStoreHeartbeat = true;
+        }
+      }
+
+      // Log all system store metrics for debugging if not found
+      if (!foundMetaStoreHeartbeat || !foundPushStatusStoreHeartbeat) {
+        LOGGER.warn("Missing expected heartbeat metrics. Listing all system store related metrics:");
+        for (String metricName: allMetrics.keySet()) {
+          if (metricName.contains("venice_system_store") || metricName.contains("heartbeat")) {
+            LOGGER.warn("  Metric: {}", metricName);
+          }
+        }
+      }
+
+      Assert.assertTrue(
+          foundMetaStoreHeartbeat,
+          "Expected heartbeat delay metric for meta system store " + metaStoreName
+              + " in server MetricsRepository, but not found. Looked for prefix: " + metaStoreMetricPrefix);
+      Assert.assertTrue(
+          foundPushStatusStoreHeartbeat,
+          "Expected heartbeat delay metric for push status system store " + pushStatusStoreName
+              + " in server MetricsRepository, but not found. Looked for prefix: " + pushStatusStoreMetricPrefix);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
