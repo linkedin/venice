@@ -1,15 +1,20 @@
 package com.linkedin.venice.samza;
 
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -18,6 +23,8 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.writer.update.UpdateBuilder;
+import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.nio.ByteBuffer;
 import java.util.AbstractMap;
 import java.util.Collections;
@@ -267,6 +274,133 @@ public class VeniceSystemFactoryTest {
     SystemProducer producer4 = factory.getProducer("venice", new MapConfig(samzaConfig), null);
     if (producer4 instanceof VeniceSystemProducer) {
       assertEquals(((VeniceSystemProducer) producer4).getRunningFabric(), "dc-parent");
+    }
+  }
+
+  /**
+   * Verifies e2e that {@link VeniceSystemProducer#prepareRecord(Object, Object)} followed by
+   * {@link VeniceSystemProducer#send(SerializedRecord)} correctly writes, partially updates, and deletes records.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testPrepareRecordAndSendSerializedRecord() {
+    String keySchema = "\"string\"";
+    String valueSchema = NAME_RECORD_V1_SCHEMA.toString();
+    Schema writeComputeSchema =
+        WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(NAME_RECORD_V2_SCHEMA);
+    String storeName = Utils.getUniqueString("serialized-record-test-store");
+
+    cluster.useControllerClient(controllerClient -> {
+      TestUtils.assertCommand(controllerClient.createNewStore(storeName, "owner", keySchema, valueSchema));
+      TestUtils.assertCommand(
+          controllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setHybridRewindSeconds(10)
+                  .setHybridOffsetLagThreshold(10)
+                  .setWriteComputationEnabled(true)));
+      VersionCreationResponse response =
+          TestUtils.assertCommand(controllerClient.emptyPush(storeName, "test_push_id", 1000));
+      assertEquals(response.getVersion(), 1);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          controllerClient,
+          30,
+          TimeUnit.SECONDS);
+      SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, NAME_RECORD_V2_SCHEMA.toString());
+      TestUtils.assertCommand(schemaResponse);
+      TestUtils.assertCommand(
+          controllerClient
+              .updateStore(storeName, new UpdateStoreQueryParams().setLatestSupersetSchemaId(schemaResponse.getId())));
+      TestUtils.assertCommand(
+          controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString()));
+    });
+
+    ClientConfig config = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL());
+
+    VeniceSystemProducer producer =
+        IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+
+    try (AvroGenericStoreClient<String, GenericRecord> client = ClientFactory.getAndStartGenericAvroClient(config)) {
+      String key = "myKey";
+      GenericRecord value = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
+      value.put("firstName", "myFirst");
+      value.put("lastName", "myLast");
+
+      // Phase 1: write a full record using prepareRecord + send(SerializedRecord).
+      SerializedRecord record = producer.prepareRecord(key, new VeniceObjectWithTimestamp(value, 1L));
+      assertTrue(record.getSerializedKey().length > 0, "Serialized key should be non-empty");
+      assertTrue(record.getSerializedValue().length > 0, "Serialized value should be non-empty");
+      assertEquals(record.getValueSchemaId(), 1);
+      assertEquals(record.getDerivedSchemaId(), -1);
+
+      try {
+        producer.send(record).get(10, TimeUnit.SECONDS);
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to publish put record", e);
+      }
+      producer.flush(storeName);
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        try {
+          GenericRecord result = client.get(key).get();
+          assertNotNull(result, "Record written via prepareRecord+send(SerializedRecord) should be readable");
+          assertEquals(result.get("firstName").toString(), "myFirst");
+          assertEquals(result.get("lastName").toString(), "myLast");
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      });
+
+      // Phase 2: apply a partial update via write-compute.
+      UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
+      updateBuilder.setNewFieldValue("firstName", "updatedFirst");
+      GenericRecord partialUpdateRecord = updateBuilder.build();
+
+      SerializedRecord partialUpdateSerializedRecord =
+          producer.prepareRecord(key, new VeniceObjectWithTimestamp(partialUpdateRecord, 2L));
+      assertEquals(partialUpdateSerializedRecord.getValueSchemaId(), 2);
+      assertTrue(
+          partialUpdateSerializedRecord.getDerivedSchemaId() != -1,
+          "Partial update should be encoded as a write-compute request");
+
+      try {
+        producer.send(partialUpdateSerializedRecord).get(10, TimeUnit.SECONDS);
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to publish partial update record", e);
+      }
+      producer.flush(storeName);
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        try {
+          GenericRecord result = client.get(key).get();
+          assertNotNull(result, "Record should still exist after partial update");
+          assertEquals(result.get("firstName").toString(), "updatedFirst");
+          assertEquals(result.get("lastName").toString(), "myLast");
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      });
+
+      // Phase 3: delete using a serialized record with null value.
+      SerializedRecord deleteRecord = producer.prepareRecord(key, null);
+      assertNotNull(deleteRecord.getSerializedKey());
+      assertNull(deleteRecord.getSerializedValue(), "Delete record should have null serializedValue");
+
+      try {
+        producer.send(deleteRecord).get(10, TimeUnit.SECONDS);
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to publish delete record", e);
+      }
+      producer.flush(storeName);
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        try {
+          assertNull(client.get(key).get(), "Record should be deleted after send(SerializedRecord) with null value");
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      });
+    } finally {
+      producer.stop();
     }
   }
 }
