@@ -7,6 +7,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithSt
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
@@ -149,6 +150,9 @@ public class TestSeparateRealtimeTopicIngestion {
     vpjProperties.put(INCREMENTAL_PUSH, true);
     // Set source region to dc-1.
     vpjProperties.put(SOURCE_GRID_FABRIC, "dc-1");
+
+    // Set quota to a small value to ensure no throttling is applied for sep RT
+    vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, 1);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
@@ -391,6 +395,12 @@ public class TestSeparateRealtimeTopicIngestion {
           () -> controllerClient.getStore((String) vpjProperties.get(VENICE_STORE_NAME_PROP))
               .getStore()
               .getCurrentVersion() == expectedVersionNumber);
+
+      // Verify no throttle time was recorded, confirming throttling was skipped for separate RT
+      Assert.assertEquals(
+          job.getIncrementalPushThrottledTimeMs(),
+          0L,
+          "Incremental push to separate RT topic should not have any throttle time");
     }
   }
 }

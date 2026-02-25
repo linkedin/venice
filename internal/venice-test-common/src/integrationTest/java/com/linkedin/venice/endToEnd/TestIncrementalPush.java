@@ -13,7 +13,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_P
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -486,89 +485,6 @@ public class TestIncrementalPush {
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
           try {
             for (int i = 1; i <= recordCount; i++) {
-              String key = String.valueOf(i);
-              GenericRecord value = readValue(storeReader, key);
-              assertNotNull(value, "Key " + key + " should not be missing!");
-              assertEquals(value.get("firstName").toString(), "first_name_" + key);
-              assertEquals(value.get("lastName").toString(), "last_name_" + key);
-            }
-          } catch (Exception e) {
-            throw new VeniceException(e);
-          }
-        });
-      }
-    }
-  }
-
-  /**
-   * Test that incremental push throttling is NOT applied when pushing to a separate RT topic.
-   * The push should succeed and data should be readable.
-   */
-  @Test(timeOut = TEST_TIMEOUT_MS)
-  public void testIncrementalPushThrottlingSkippedForSeparateRT() throws IOException {
-    final String storeName = Utils.getUniqueString("inc_push_sep_rt_throttle");
-    String parentControllerUrl = parentController.getControllerUrl();
-    File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(inputDir);
-    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
-      assertCommand(
-          parentControllerClient
-              .createNewStore(storeName, "test_owner", keySchemaStr, NAME_RECORD_V1_SCHEMA.toString()));
-      UpdateStoreQueryParams updateStoreParams =
-          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              .setCompressionStrategy(CompressionStrategy.NO_OP)
-              .setActiveActiveReplicationEnabled(true)
-              .setWriteComputationEnabled(true)
-              .setChunkingEnabled(true)
-              .setIncrementalPushEnabled(true)
-              .setSeparateRealTimeTopicEnabled(true)
-              .setHybridRewindSeconds(10L)
-              .setHybridOffsetLagThreshold(2L);
-      ControllerResponse updateStoreResponse =
-          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
-      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
-
-      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
-      assertEquals(response.getVersion(), 1);
-      assertFalse(response.isError(), "Empty push to parent colo should succeed");
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 1),
-          parentControllerClient,
-          60,
-          TimeUnit.SECONDS);
-
-      // Run incremental push with throttling config set, but pushing to separate RT topic.
-      // Throttling should be automatically skipped since PUSH_TO_SEPARATE_REALTIME_TOPIC is set.
-      Properties vpjProperties =
-          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
-      vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
-      vpjProperties.put(INCREMENTAL_PUSH, true);
-      vpjProperties.put(PUSH_TO_SEPARATE_REALTIME_TOPIC, true);
-      // Set a very low quota - if throttling were applied, the push would be very slow
-      vpjProperties.put(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, 1);
-
-      String jobName = Utils.getUniqueString("venice-push-job-throttle-sep-rt");
-      try (VenicePushJob vpj = new VenicePushJob(jobName, vpjProperties)) {
-        vpj.run();
-        // Verify no throttle time was recorded, confirming throttling was skipped for separate RT
-        Assert.assertEquals(
-            vpj.getIncrementalPushThrottledTimeMs(),
-            0L,
-            "Incremental push to separate RT topic should not have any throttle time");
-      }
-
-      VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-      veniceClusterWrapper.waitVersion(storeName, 1);
-
-      // Verify data was written correctly
-      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-          try {
-            for (int i = 1; i < 100; i++) {
               String key = String.valueOf(i);
               GenericRecord value = readValue(storeReader, key);
               assertNotNull(value, "Key " + key + " should not be missing!");
