@@ -1,0 +1,12 @@
+{
+  "_comment": "Manual timing overrides for split test classes. Original timing divided proportionally by test count.",
+  "com.linkedin.venice.controller.TestAdminToolEndToEnd": 437,
+  "com.linkedin.venice.controller.TestAdminToolClusterConfig": 437,
+  "com.linkedin.venice.controller.TestAdminToolDataOperations": 437,
+  "com.linkedin.venice.consumer.TestVersionSpecificChangelogConsumer": 522,
+  "com.linkedin.venice.consumer.TestVersionSpecificChangelogConsumerReplicationMetadata": 522,
+  "com.linkedin.venice.endToEnd.TestDeferredVersionSwapWithFailingRegions": 432,
+  "com.linkedin.venice.endToEnd.TestDeferredVersionSwapWithFailingRegionsDvcIngestion": 432,
+  "com.linkedin.venice.endToEnd.DaVinciClientSubscribeTest": 345,
+  "com.linkedin.venice.endToEnd.DaVinciClientSubscribeConcurrencyTest": 258
+}

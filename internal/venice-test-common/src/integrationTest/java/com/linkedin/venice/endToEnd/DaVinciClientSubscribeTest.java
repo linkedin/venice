@@ -10,25 +10,18 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -40,12 +33,9 @@ import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
@@ -73,7 +63,6 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
-import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -81,16 +70,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -98,7 +81,6 @@ import org.testng.annotations.Test;
 
 
 public class DaVinciClientSubscribeTest {
-  private static final Logger LOGGER = LogManager.getLogger(DaVinciClientSubscribeTest.class);
   private static final int KEY_COUNT = 10;
   private static final int TEST_TIMEOUT = 120_000;
   private VeniceClusterWrapper cluster;
@@ -469,173 +451,6 @@ public class DaVinciClientSubscribeTest {
       client.subscribe(Collections.singleton(0)).get();
       assertThrows(() -> client.batchGet(keySet).get());
     }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testSubscribeAndUnsubscribe() throws Exception {
-    // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing.
-    String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
-    DaVinciConfig daVinciConfig = new DaVinciConfig();
-
-    Map<String, Object> extraConfigMap = new HashMap<>();
-    DaVinciTestContext<String, GenericRecord> daVinciTestContext =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
-            d2Client,
-            new MetricsRepository(),
-            Optional.empty(),
-            cluster,
-            storeName,
-            daVinciConfig,
-            extraConfigMap);
-
-    try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory()) {
-      DaVinciClient<String, GenericRecord> client = daVinciTestContext.getDaVinciClient();
-      client.subscribeAll().get();
-      client.unsubscribeAll();
-    }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testUnsubscribeBeforeFutureGet() throws Exception {
-    // Verify DaVinci client doesn't hang in a deadlock when calling unsubscribe right after subscribing and before the
-    // future is complete. The future should also return exceptionally.
-    String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(10000); // A large amount of keys to give
-    // window for potential
-    // race conditions
-    DaVinciConfig daVinciConfig = new DaVinciConfig();
-    Map<String, Object> extraConfigMap = new HashMap<>();
-    DaVinciTestContext<String, GenericRecord> daVinciTestContext =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
-            d2Client,
-            new MetricsRepository(),
-            Optional.empty(),
-            cluster,
-            storeName,
-            daVinciConfig,
-            extraConfigMap);
-
-    try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory()) {
-      DaVinciClient<String, GenericRecord> client = daVinciTestContext.getDaVinciClient();
-      CompletableFuture<Void> future = client.subscribeAll();
-      client.unsubscribeAll();
-      future.get(); // Expecting exception here if we unsubscribed before subscribe was completed.
-    } catch (ExecutionException e) {
-      assertTrue(e.getCause() instanceof CancellationException);
-    }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testDavinciSubscribeFailureWithFullDisk() throws Exception {
-    String storeName = Utils.getUniqueString("test-davinci-store");
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
-    setUpStore(storeName, paramsConsumer, properties -> {});
-
-    Map<String, Object> backendConfigMap = new HashMap<>(cluster.getPubSubClientProperties());
-    backendConfigMap.put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true);
-    backendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10);
-    backendConfigMap.put(SERVER_DISK_FULL_THRESHOLD, 0.01); // force it to fail
-
-    try (DaVinciClient<Integer, Integer> daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithRetries(
-        storeName,
-        cluster.getZk().getAddress(),
-        new DaVinciConfig(),
-        backendConfigMap)) {
-      daVinciClient.subscribeAll().get();
-      fail("should fail with disk full exception");
-    } catch (Exception e) {
-      assertTrue(e.getCause() instanceof DiskLimitExhaustedException);
-    }
-  }
-
-  /*
-   * Batch data schema:
-   * Key: Integer
-   * Value: String
-   */
-  private void setUpStore(
-      String storeName,
-      Consumer<UpdateStoreQueryParams> paramsConsumer,
-      Consumer<Properties> propertiesConsumer) throws Exception {
-    setUpStore(storeName, paramsConsumer, propertiesConsumer, false);
-  }
-
-  /*
-   * Batch data schema:
-   * Key: Integer
-   * Value: String
-   */
-  private void setUpStore(
-      String storeName,
-      Consumer<UpdateStoreQueryParams> paramsConsumer,
-      Consumer<Properties> propertiesConsumer,
-      boolean useDVCPushStatusStore) {
-    boolean chunkingEnabled = false;
-    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
-
-    File inputDir = getTempDataDirectory();
-
-    Runnable writeAvroFileRunnable = () -> {
-      try {
-        writeSimpleAvroFileWithIntToStringSchema(inputDir);
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
-    };
-    String valueSchema = "\"string\"";
-    setUpStore(
-        storeName,
-        paramsConsumer,
-        propertiesConsumer,
-        useDVCPushStatusStore,
-        chunkingEnabled,
-        compressionStrategy,
-        writeAvroFileRunnable,
-        valueSchema,
-        inputDir);
-  }
-
-  private void setUpStore(
-      String storeName,
-      Consumer<UpdateStoreQueryParams> paramsConsumer,
-      Consumer<Properties> propertiesConsumer,
-      boolean useDVCPushStatusStore,
-      boolean chunkingEnabled,
-      CompressionStrategy compressionStrategy,
-      Runnable writeAvroFileRunnable,
-      String valueSchema,
-      File inputDir) {
-    // Produce input data.
-    writeAvroFileRunnable.run();
-
-    // Setup VPJ job properties.
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);
-    propertiesConsumer.accept(vpjProperties);
-    // Create & update store for test.
-    final int numPartitions = 3;
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(numPartitions)
-        .setChunkingEnabled(chunkingEnabled)
-        .setCompressionStrategy(compressionStrategy);
-
-    paramsConsumer.accept(params);
-
-    try (ControllerClient controllerClient =
-        createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, valueSchema, vpjProperties)) {
-      cluster.createMetaSystemStore(storeName);
-      if (useDVCPushStatusStore) {
-        cluster.createPushStatusSystemStore(storeName);
-      }
-      TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
-      runVPJ(vpjProperties, 1, cluster);
-    }
-  }
-
-  private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
-    long vpjStart = System.currentTimeMillis();
-    IntegrationTestPushUtils.runVPJ(vpjProperties);
-    String storeName = (String) vpjProperties.get(VENICE_STORE_NAME_PROP);
-    cluster.waitVersion(storeName, expectedVersionNumber);
-    LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
   }
 
   private String createStoreWithMetaSystemStoreAndPushStatusSystemStore(int keyCount) throws Exception {

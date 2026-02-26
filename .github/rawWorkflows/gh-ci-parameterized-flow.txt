@@ -85,6 +85,14 @@
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
+      - name: Upload Test Timing Data
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-timing-$FlowName
+          path: internal/venice-test-common/build/test-timings/
+          retention-days: 30
+          if-no-files-found: ignore
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
