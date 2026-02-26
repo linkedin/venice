@@ -125,6 +125,6 @@ public class PubSubConstants {
 
   public static final int DEFAULT_KAFKA_REPLICATION_FACTOR = 3;
 
-  /** Signal to create a topic using an alternative pubsub backend (e.g., NorthGuard). */
+  /** Signal to create a topic using an alternative pubsub backend. */
   public static final String PUBSUB_TOPIC_USE_ALTERNATIVE_BACKEND = "pubsub.topic.use.alternative.backend";
 }

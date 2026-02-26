@@ -1358,15 +1358,15 @@ public class VeniceControllerClusterConfig {
 
   /**
    * Whether to use alternative pubsub backend for this store/topic combination.
-   * Checks store name against exclusion list, then looks up the appropriate flag
-   * based on system store type and topic type (RT vs VT).
+   * Checks the exact store name against the exclusion list, then looks up the appropriate flag
+   * based on system store type and topic type (RT vs VT). Excluding a user store does not
+   * affect its system stores; each must be excluded independently if needed.
    */
   public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime) {
-    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-    String baseStoreName = systemStoreType != null ? systemStoreType.extractRegularStoreName(storeName) : storeName;
-    if (alternativeBackendExclusionList.contains(baseStoreName)) {
+    if (alternativeBackendExclusionList.contains(storeName)) {
       return false;
     }
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (systemStoreType == VeniceSystemStoreType.META_STORE) {
       return isRealTime ? alternativeBackendMetaSystemStoreRT : alternativeBackendMetaSystemStoreVT;
     } else if (systemStoreType == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {

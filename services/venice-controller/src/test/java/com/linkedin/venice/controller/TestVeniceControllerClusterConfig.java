@@ -615,15 +615,18 @@ public class TestVeniceControllerClusterConfig {
     // Non-excluded store should still work
     assertTrue(config.shouldUseAlternativePubSubBackend("notExcluded", true));
 
-    // Also test that system store with excluded base name is excluded
+    // Excluding a user store should NOT affect its system stores
     Properties baseProps2 = getBaseSingleRegionProperties(false);
     baseProps2.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT, "true");
     baseProps2.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "excludedStore");
     VeniceControllerClusterConfig config2 = new VeniceControllerClusterConfig(new VeniceProperties(baseProps2));
 
-    String excludedMetaStore = VeniceSystemStoreType.META_STORE.getSystemStoreName("excludedStore");
-    String allowedMetaStore = VeniceSystemStoreType.META_STORE.getSystemStoreName("allowedStore");
-    assertFalse(config2.shouldUseAlternativePubSubBackend(excludedMetaStore, false));
-    assertTrue(config2.shouldUseAlternativePubSubBackend(allowedMetaStore, false));
+    String metaStoreOfExcluded = VeniceSystemStoreType.META_STORE.getSystemStoreName("excludedStore");
+    String metaStoreOfAllowed = VeniceSystemStoreType.META_STORE.getSystemStoreName("allowedStore");
+    // System store is not in the exclusion list, so it should still use alternative backend
+    assertTrue(config2.shouldUseAlternativePubSubBackend(metaStoreOfExcluded, false));
+    assertTrue(config2.shouldUseAlternativePubSubBackend(metaStoreOfAllowed, false));
+    // The user store itself should be excluded
+    assertFalse(config2.shouldUseAlternativePubSubBackend("excludedStore", false));
   }
 }
