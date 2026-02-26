@@ -68,7 +68,6 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
@@ -151,7 +150,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         Optional.empty(),
         null,
-        false,
         compressorFactory,
         Optional.empty(),
         false,
@@ -455,8 +453,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService.close();
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testStoreIngestionTaskShutdownLastPartition(boolean isIsolatedIngestion) {
+  @Test
+  public void testStoreIngestionTaskShutdownLastPartition() {
     HeartbeatMonitoringService mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageService,
@@ -472,7 +470,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         Optional.empty(),
         null,
-        isIsolatedIngestion,
         compressorFactory,
         Optional.empty(),
         false,
@@ -505,11 +502,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
     kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1, true);
     StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
-    if (isIsolatedIngestion) {
-      Assert.assertNotNull(storeIngestionTask);
-    } else {
-      assertNull(storeIngestionTask);
-    }
+    assertNull(storeIngestionTask);
     kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
     storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     storeIngestionTask.setPartitionConsumptionState(1, mock(PartitionConsumptionState.class));
@@ -921,7 +914,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         Optional.empty(),
         null,
-        false,
         compressorFactory,
         Optional.empty(),
         false,

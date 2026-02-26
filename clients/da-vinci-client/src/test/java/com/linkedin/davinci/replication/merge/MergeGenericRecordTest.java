@@ -11,8 +11,6 @@ import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
 import com.linkedin.davinci.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -42,8 +40,6 @@ public class MergeGenericRecordTest {
       + "    },\n" + "    \"default\" : [ ]\n" + "  }, {\n" + "    \"name\" : \"hasNext\",\n"
       + "    \"type\" : \"boolean\",\n" + "    \"default\" : false\n" + "  } ]\n" + "}";
 
-  private static final PubSubPosition P1 = new ApacheKafkaOffsetPosition(1L);
-
   @Test
   public void testDelete() {
     Schema schema = AvroCompatibilityHelper.parse(RECORD_SCHEMA_STR);
@@ -62,7 +58,7 @@ public class MergeGenericRecordTest {
     ValueAndRmd<GenericRecord> valueAndRmd = new ValueAndRmd<>(Lazy.of(() -> valueRecord), timestampRecord);
 
     Merge<GenericRecord> genericRecordMerge = createMergeGenericRecord();
-    ValueAndRmd<GenericRecord> deletedValueAndRmd1 = genericRecordMerge.delete(valueAndRmd, 20, -1, P1, 0);
+    ValueAndRmd<GenericRecord> deletedValueAndRmd1 = genericRecordMerge.delete(valueAndRmd, 20, -1);
     // verify id and name fields are default (deleted)
     Assert.assertEquals(deletedValueAndRmd1.getValue().get("id").toString(), "id");
     Assert.assertEquals(deletedValueAndRmd1.getValue().get("name").toString(), "name");
@@ -77,7 +73,7 @@ public class MergeGenericRecordTest {
     // full delete. expect null value
     timestampRecord.put(0, 20L);
     valueAndRmd.setRmd(timestampRecord);
-    ValueAndRmd<GenericRecord> deletedValueAndRmd2 = genericRecordMerge.delete(valueAndRmd, 30, -1, P1, 0);
+    ValueAndRmd<GenericRecord> deletedValueAndRmd2 = genericRecordMerge.delete(valueAndRmd, 30, -1);
     Assert.assertNull(deletedValueAndRmd2.getValue());
     // Verify that the same object is returned
     Assert.assertSame(deletedValueAndRmd2, valueAndRmd);
@@ -89,7 +85,7 @@ public class MergeGenericRecordTest {
     timestampRecord.put(0, ts);
     valueAndRmd.setRmd(timestampRecord);
     valueAndRmd.setValue(valueRecord);
-    valueAndRmd = genericRecordMerge.delete(valueAndRmd, 30, 1, P1, 0);
+    valueAndRmd = genericRecordMerge.delete(valueAndRmd, 30, 1);
     Assert.assertNull(valueAndRmd.getValue());
     Assert.assertTrue(valueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME) instanceof GenericRecord);
     GenericRecord newTimestampRecord = (GenericRecord) valueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME);
@@ -101,12 +97,12 @@ public class MergeGenericRecordTest {
     timestampRecord.put(0, ts);
     valueAndRmd.setRmd(timestampRecord);
     valueAndRmd.setValue(valueRecord);
-    ValueAndRmd<GenericRecord> deletedValueAndRmd3 = genericRecordMerge.delete(valueAndRmd, 5, -1, P1, 0);
+    ValueAndRmd<GenericRecord> deletedValueAndRmd3 = genericRecordMerge.delete(valueAndRmd, 5, -1);
 
     Assert.assertEquals(deletedValueAndRmd3.getValue(), valueAndRmd.getValue());
     Assert.assertEquals(
         (List<Long>) deletedValueAndRmd3.getRmd().get(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
-        Collections.singletonList(1L));
+        Collections.emptyList());
     // Verify that the same object is returned
     Assert.assertSame(deletedValueAndRmd3, valueAndRmd);
   }
@@ -133,7 +129,7 @@ public class MergeGenericRecordTest {
     newRecord.put("name", "name10");
     newRecord.put("age", 20);
     Merge<GenericRecord> genericRecordMerge = createMergeGenericRecord();
-    ValueAndRmd<GenericRecord> mergedValueAndRmd1 = genericRecordMerge.put(valueAndRmd, newRecord, 30, -1, P1, 0);
+    ValueAndRmd<GenericRecord> mergedValueAndRmd1 = genericRecordMerge.put(valueAndRmd, newRecord, 30, -1);
 
     // verify id and name fields are from new record
     Assert.assertEquals(mergedValueAndRmd1.getValue().get("id"), newRecord.get(0));
@@ -143,7 +139,7 @@ public class MergeGenericRecordTest {
     Assert.assertSame(mergedValueAndRmd1, valueAndRmd);
 
     // verify we reuse the same instance when nothings changed.
-    ValueAndRmd<GenericRecord> mergedValueAndRmd2 = genericRecordMerge.put(valueAndRmd, newRecord, 10, -1, P1, 0);
+    ValueAndRmd<GenericRecord> mergedValueAndRmd2 = genericRecordMerge.put(valueAndRmd, newRecord, 10, -1);
     Assert.assertEquals(mergedValueAndRmd2.getValue(), valueAndRmd.getValue());
     // Verify that the same object is returned
     Assert.assertSame(mergedValueAndRmd2, valueAndRmd);
@@ -155,8 +151,7 @@ public class MergeGenericRecordTest {
             + "   ]," + " \"name\": \"testObject\", \"type\": \"record\"" + "}");
     newRecord = new GenericData.Record(schema2);
     GenericRecord finalNewRecord = newRecord;
-    Assert
-        .assertThrows(VeniceException.class, () -> genericRecordMerge.put(valueAndRmd, finalNewRecord, 10, -1, P1, 0));
+    Assert.assertThrows(VeniceException.class, () -> genericRecordMerge.put(valueAndRmd, finalNewRecord, 10, -1));
   }
 
   @Test
@@ -187,7 +182,7 @@ public class MergeGenericRecordTest {
     wcRecord.put("name", noOpRecord);
     wcRecord.put("age", 20);
     Merge<GenericRecord> genericRecordMerge = createMergeGenericRecord();
-    valueAndRmd = genericRecordMerge.update(valueAndRmd, Lazy.of(() -> wcRecord), wcRecord.getSchema(), 30, -1, P1, 0);
+    valueAndRmd = genericRecordMerge.update(valueAndRmd, Lazy.of(() -> wcRecord), wcRecord.getSchema(), 30, -1);
 
     // verify id and name fields are from new record
     Assert.assertEquals(valueAndRmd.getValue().get("id"), wcRecord.get(0));
@@ -200,12 +195,12 @@ public class MergeGenericRecordTest {
 
     // verify we reuse the same instance when nothing changed.
     ValueAndRmd<GenericRecord> valueAndRmd1 =
-        genericRecordMerge.update(valueAndRmd, Lazy.of(() -> wcRecord), wcRecord.getSchema(), 10, -1, P1, 0);
+        genericRecordMerge.update(valueAndRmd, Lazy.of(() -> wcRecord), wcRecord.getSchema(), 10, -1);
     Assert.assertTrue(valueAndRmd1.getValue() == valueAndRmd.getValue());
 
     // validate ts record change from LONG to GenericRecord.
     // timeStampRecord.put(0, 10L); // N.B. The test fails when this is uncommented. TODO: Figure out if it's important?
-    valueAndRmd = genericRecordMerge.update(valueAndRmd, Lazy.of(() -> wcRecord), wcRecord.getSchema(), 30, -1, P1, 0);
+    valueAndRmd = genericRecordMerge.update(valueAndRmd, Lazy.of(() -> wcRecord), wcRecord.getSchema(), 30, -1);
     ts = (GenericRecord) valueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(ts.get("id"), 30L);
     Assert.assertEquals(ts.get("name"), 10L);
@@ -222,8 +217,7 @@ public class MergeGenericRecordTest {
     ValueAndRmd finalValueAndRmd = valueAndRmd;
     Assert.assertThrows(
         IllegalStateException.class,
-        () -> genericRecordMerge
-            .update(finalValueAndRmd, Lazy.of(() -> wcRecord), wcRecord.getSchema(), 10, -1, P1, 0));
+        () -> genericRecordMerge.update(finalValueAndRmd, Lazy.of(() -> wcRecord), wcRecord.getSchema(), 10, -1));
   }
 
   @Test
@@ -257,8 +251,8 @@ public class MergeGenericRecordTest {
 
     for (int i = 0; i < 100; i++) {
       for (int j = 0; j < 100; j++) {
-        valueAndRmd = genericRecordMerge
-            .put(valueAndRmd, GenericData.get().deepCopy(schema, payload.get(j)), writeTs.get(i), -1, P1, 0);
+        valueAndRmd =
+            genericRecordMerge.put(valueAndRmd, GenericData.get().deepCopy(schema, payload.get(j)), writeTs.get(i), -1);
       }
     }
     // timestamp record should always contain the latest value
@@ -275,8 +269,8 @@ public class MergeGenericRecordTest {
     // swap timestamp and record order
     for (int i = 0; i < 100; i++) {
       for (int j = 0; j < 100; j++) {
-        valueAndRmd = genericRecordMerge
-            .put(valueAndRmd, GenericData.get().deepCopy(schema, payload.get(i)), writeTs.get(j), -1, P1, 0);
+        valueAndRmd =
+            genericRecordMerge.put(valueAndRmd, GenericData.get().deepCopy(schema, payload.get(i)), writeTs.get(j), -1);
       }
     }
     // timestamp record should always contain the latest value

@@ -287,7 +287,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
     if (stalledVersionSwapSet.contains(storeName)) {
       stalledVersionSwapSet.remove(storeName);
-      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
     }
 
     // Update parent version status after roll forward, so we don't check this store version again
@@ -375,7 +375,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           VERSION_SWAP_COMPLETION_STATUSES);
       if (didPushCompleteInNonTargetRegions) {
         stalledVersionSwapSet.remove(storeName);
-        deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
+        deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
       }
     }
 
@@ -390,7 +390,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             targetVersion.getNumber(),
             TERMINAL_PUSH_VERSION_STATUSES);
         if (didPushCompleteInTargetRegions) {
-          deferredVersionSwapStats.recordDeferredVersionSwapParentChildStatusMismatchSensor();
+          deferredVersionSwapStats.recordDeferredVersionSwapParentChildStatusMismatchMetric(clusterName, storeName);
           String message =
               "Push completed in target regions, parent status is still STARTED. Continuing with deferred swap for store: "
                   + storeName + " for version: " + targetVersionNum;
@@ -412,7 +412,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             VERSION_SWAP_COMPLETION_STATUSES);
 
         if (!didVersionSwapCompleteInNonTargetRegions) {
-          deferredVersionSwapStats.recordDeferredVersionSwapParentChildStatusMismatchSensor();
+          deferredVersionSwapStats.recordDeferredVersionSwapParentChildStatusMismatchMetric(clusterName, storeName);
           String message =
               "Parent status is already ONLINE, but version swap has not happened in the non target regions. "
                   + "Continuing with deferred swap for store: " + storeName + " for version: " + targetVersionNum;
@@ -498,7 +498,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String targetRegion,
       Store store,
       int targetVersionNum,
-      Version parentVersion) {
+      Version parentVersion,
+      String clusterName) {
     if (parentVersion.getStatus().equals(ONLINE) || parentVersion.getStatus().equals(ERROR)
         || parentVersion.getStatus().equals(PARTIALLY_ONLINE)) {
       return;
@@ -525,7 +526,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           + targetRegion;
       logMessageIfNotRedundant(message);
       stalledVersionSwapSet.add(store.getName());
-      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
     }
   }
 
@@ -567,7 +568,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           + " and the wait time: " + parentStore.getTargetSwapRegionWaitTime() + " has passed in region " + region;
       logMessageIfNotRedundant(message);
       stalledVersionSwapSet.add(parentStore.getName());
-      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapMetric(stalledVersionSwapSet.size());
     }
   }
 
@@ -759,7 +760,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               + childStore.getCurrentVersion() + " for store " + parentStore.getName() + " in region "
               + nonTargetRegion;
           logMessageIfNotRedundant(message);
-          deferredVersionSwapStats.recordDeferredVersionSwapChildStatusMismatchSensor();
+          deferredVersionSwapStats
+              .recordDeferredVersionSwapChildStatusMismatchMetric(clusterName, parentStore.getName());
         } else {
           onlineNonTargetRegions.add(nonTargetRegion);
         }
@@ -882,7 +884,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     });
 
     if (attemptedRetries == MAX_ROLL_FORWARD_RETRY_LIMIT) {
-      deferredVersionSwapStats.recordDeferredVersionSwapFailedRollForwardSensor();
+      deferredVersionSwapStats.recordDeferredVersionSwapFailedRollForwardMetric(clusterName, parentStore.getName());
       updateStore(clusterName, parentStore.getName(), PARTIALLY_ONLINE, targetVersionNum);
       failedRollforwardRetryCountMap.remove(kafkaTopicName);
       LOGGER.info(
@@ -937,8 +939,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         return;
       }
 
-      try {
-        for (String cluster: veniceParentHelixAdmin.getClustersLeaderOf()) {
+      for (String cluster: veniceParentHelixAdmin.getClustersLeaderOf()) {
+        try {
           if (!veniceParentHelixAdmin.isLeaderControllerFor(cluster)) {
             continue;
           }
@@ -1003,13 +1005,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             });
           }
           clusterThreadPoolStats.recordQueuedTasksCount(clusterExecutorService.getQueue().size());
+        } catch (Exception e) {
+          LOGGER.warn("Caught exception while performing deferred version swap for cluster: {}", cluster, e);
+          deferredVersionSwapStats.recordDeferredVersionSwapExceptionMetric(cluster);
+        } catch (Throwable throwable) {
+          LOGGER.warn("Caught a throwable while performing deferred version swap for cluster: {}", cluster, throwable);
+          deferredVersionSwapStats.recordDeferredVersionSwapThrowableMetric(cluster);
         }
-      } catch (Exception e) {
-        LOGGER.warn("Caught exception while performing deferred version swap", e);
-        deferredVersionSwapStats.recordDeferredVersionSwapErrorSensor();
-      } catch (Throwable throwable) {
-        LOGGER.warn("Caught a throwable while performing deferred version swap", throwable);
-        deferredVersionSwapStats.recordDeferredVersionSwapThrowableSensor();
       }
     };
   }
@@ -1192,7 +1194,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         targetRegion,
         parentStore,
         targetVersionNum,
-        targetVersion);
+        targetVersion,
+        cluster);
 
     if (!didPostVersionSwapValidationsPass(
         parentStore,

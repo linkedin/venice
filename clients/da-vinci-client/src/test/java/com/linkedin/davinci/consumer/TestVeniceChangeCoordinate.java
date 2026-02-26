@@ -22,7 +22,7 @@ import org.testng.annotations.Test;
 public class TestVeniceChangeCoordinate {
   static final long TEST_OFFSET = 1000L;
   static final String TEST_STORE_NAME = "datastax_test_store";
-  static final String TEST_STORE_TOPIC = TEST_STORE_NAME + "_v1_cc";
+  static final String TEST_STORE_TOPIC = TEST_STORE_NAME + "_v1";
 
   static final Integer TEST_PARTITION = 1337;
 

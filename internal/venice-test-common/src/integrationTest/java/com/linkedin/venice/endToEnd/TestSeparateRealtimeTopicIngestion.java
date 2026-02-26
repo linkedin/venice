@@ -19,7 +19,6 @@ import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.kafka.consumer.ConsumerPoolType;
-import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.davinci.kafka.consumer.ReplicaHeartbeatInfo;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
@@ -28,7 +27,6 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -39,13 +37,8 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -55,9 +48,9 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
-import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -67,7 +60,6 @@ import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -80,65 +72,18 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestSeparateRealtimeTopicIngestion {
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
-  private static final int NUMBER_OF_CLUSTERS = 1;
+public class TestSeparateRealtimeTopicIngestion extends AbstractMultiRegionTest {
   private static final long TEST_TIMEOUT_MS = 60_000;
   private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
-  private static final int REPLICATION_FACTOR = 2;
-  private static final String CLUSTER_NAME = "venice-cluster0";
   private static final int ASSERTION_TIMEOUT_MS = 30_000;
 
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-  private VeniceControllerWrapper parentController;
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-
-  @BeforeClass(alwaysRun = true)
-  public void setUp() {
-    Properties serverProperties = new Properties();
-    serverProperties.put(ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true);
-    serverProperties.put(
-        ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY,
-        KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION.name());
-    serverProperties.put(ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, Boolean.toString(false));
-    Properties controllerProps = new Properties();
-    controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
-            .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(2)
-            .numberOfRouters(1)
-            .replicationFactor(REPLICATION_FACTOR)
-            .forkServer(false)
-            .parentControllerProperties(controllerProps)
-            .childControllerProperties(controllerProps)
-            .serverProperties(serverProperties);
-    this.multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-    this.childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-    if (parentControllers.size() != 1) {
-      throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
-    }
-    this.parentController = parentControllers.get(0);
-  }
-
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
-  }
-
-  @Test(timeOut = TEST_TIMEOUT_MS * 2)
+  @Test(timeOut = TEST_TIMEOUT_MS * 3)
   public void testIncrementalPushPartialUpdate() throws IOException {
     final String storeName = Utils.getUniqueString("sepRT_ingestion");
-    String parentControllerUrl = parentController.getControllerUrl();
+    String parentControllerUrl = getParentControllerUrl();
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(inputDir);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
@@ -213,14 +158,21 @@ public class TestSeparateRealtimeTopicIngestion {
       validateData(storeName, veniceClusterWrapper);
       validateRmdData(rmdSerDe, Version.composeKafkaTopic(storeName, 2), String.valueOf(99), rmdWithValueSchemaId -> {
         GenericRecord rmdRecord = rmdWithValueSchemaId.getRmdRecord();
-        List<Long> offsetVector = RmdUtils.extractOffsetVectorFromRmd(rmdRecord);
-        Assert.assertEquals(offsetVector.size(), 4);
-        // No msg is written to RT regions.
-        Assert.assertEquals(offsetVector.get(0).longValue(), 0L);
-        Assert.assertEquals(offsetVector.get(1).longValue(), 0L);
-        // Since we only have 1 partition and push to 1 region, the last key's offset should be greater or equal to the
-        // total key count.
-        Assert.assertTrue(offsetVector.get(3) >= 100);
+        // Verify RMD exists and has valid structure
+        Assert.assertNotNull(rmdRecord, "RMD record should exist");
+        // Timestamp field should be populated (per-field GenericRecord since write-compute is enabled)
+        Object timestamp = rmdRecord.get(RmdConstants.TIMESTAMP_FIELD_POS);
+        Assert.assertNotNull(timestamp, "RMD timestamp should be present");
+        Assert.assertTrue(
+            timestamp instanceof Long || timestamp instanceof GenericRecord,
+            "RMD timestamp should be a Long or GenericRecord, but got: " + timestamp.getClass().getName());
+        // replication_checkpoint_vector should be present and empty (no longer populated)
+        Object checkpointVector = rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
+        Assert.assertNotNull(checkpointVector, "replication_checkpoint_vector should be present");
+        Assert.assertTrue(checkpointVector instanceof java.util.List, "replication_checkpoint_vector should be a List");
+        Assert.assertTrue(
+            ((java.util.List<?>) checkpointVector).isEmpty(),
+            "replication_checkpoint_vector should be empty");
       });
       PubSubTopic realTimeTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.getRealTimeTopicName(storeInfo));
       PubSubTopic separateRealtimeTopic =
@@ -240,7 +192,7 @@ public class TestSeparateRealtimeTopicIngestion {
             versionV2TopicPartition,
             ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
             1,
-            REPLICATION_FACTOR - 1);
+            getReplicationFactor() - 1);
 
         verifyConsumerThreadPoolFor(
             multiRegionMultiClusterWrapper,
@@ -248,7 +200,7 @@ public class TestSeparateRealtimeTopicIngestion {
             versionTopicV2,
             realtimeTopicPartition,
             ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL,
-            NUMBER_OF_CHILD_DATACENTERS,
+            childDatacenters.size(),
             1);
 
         verifyConsumerThreadPoolFor(
@@ -257,7 +209,7 @@ public class TestSeparateRealtimeTopicIngestion {
             versionTopicV2,
             separateRealtimeTopicPartition,
             ConsumerPoolType.CURRENT_VERSION_SEP_RT_LEADER_POOL,
-            NUMBER_OF_CHILD_DATACENTERS,
+            childDatacenters.size(),
             1);
 
         verifyConsumerThreadPoolFor(
@@ -266,7 +218,7 @@ public class TestSeparateRealtimeTopicIngestion {
             versionTopicV1,
             realtimeTopicPartition,
             ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
-            NUMBER_OF_CHILD_DATACENTERS,
+            childDatacenters.size(),
             1);
 
         verifyConsumerThreadPoolFor(
@@ -276,7 +228,7 @@ public class TestSeparateRealtimeTopicIngestion {
             versionV1TopicPartition,
             ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
             1,
-            REPLICATION_FACTOR - 1);
+            getReplicationFactor() - 1);
 
         verifyConsumerThreadPoolFor(
             multiRegionMultiClusterWrapper,
@@ -284,7 +236,7 @@ public class TestSeparateRealtimeTopicIngestion {
             versionTopicV1,
             separateRealtimeTopicPartition,
             ConsumerPoolType.NON_CURRENT_VERSION_AA_WC_LEADER_POOL,
-            NUMBER_OF_CHILD_DATACENTERS,
+            childDatacenters.size(),
             1);
       });
 
@@ -363,7 +315,7 @@ public class TestSeparateRealtimeTopicIngestion {
           heartbeatMonitoringService.getHeartbeatInfo(topicName, partition, false);
       leaderSepRTTopicCount += heartbeatInfoMap.keySet().stream().filter(x -> x.endsWith("_sep")).count();
     }
-    Assert.assertEquals(leaderSepRTTopicCount, NUMBER_OF_CHILD_DATACENTERS);
+    Assert.assertEquals(leaderSepRTTopicCount, (long) getNumberOfRegions() * getReplicationFactor());
   }
 
   private byte[] serializeStringKeyToByteArray(String key) {

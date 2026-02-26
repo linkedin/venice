@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.views.VeniceView;
 import java.time.Duration;
@@ -55,7 +57,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   /**
    * Producer type for writing data to Venice
    */
-  enum PushType {
+  enum PushType implements VeniceDimensionInterface {
     BATCH(0), // Batch jobs will create a new version topic and write to it in a batch manner.
     STREAM_REPROCESSING(1), // Reprocessing jobs will create a new version topic and a reprocessing topic.
     STREAM(2), // Stream jobs will write to a buffer or RT topic.
@@ -129,6 +131,11 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
                 String.join(", ", NAME_TO_TYPE_MAP.keySet())));
       }
       return pushType;
+    }
+
+    @Override
+    public VeniceMetricsDimensions getDimensionName() {
+      return VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE;
     }
   }
 
@@ -226,6 +233,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setBlobTransferInServerEnabled(String blobTransferInServerEnabled);
 
+  String getBlobDbEnabled();
+
+  void setBlobDbEnabled(String blobDbEnabled);
+
   boolean isUseVersionLevelIncrementalPushEnabled();
 
   void setUseVersionLevelIncrementalPushEnabled(boolean versionLevelIncrementalPushEnabled);
@@ -313,6 +324,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   void setKeyUrnFields(List<String> keyUrnFields);
 
   List<String> getKeyUrnFields();
+
+  int getPreviousCurrentVersion();
+
+  void setPreviousCurrentVersion(int previousCurrentVersion);
 
   /**
    * Kafka topic name is composed by store name and version.

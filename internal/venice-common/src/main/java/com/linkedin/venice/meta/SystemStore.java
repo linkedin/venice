@@ -708,6 +708,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public void setBlobDbEnabled(String blobDbEnabled) {
+    throwUnsupportedOperationException("setBlobDbEnabled is not supported in SystemStore");
+  }
+
+  @Override
+  public String getBlobDbEnabled() {
+    return zkSharedStore.getBlobDbEnabled();
+  }
+
+  @Override
   public void setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
     throwUnsupportedOperationException("setMaxCompactionLagSeconds");
   }
@@ -835,6 +845,16 @@ public class SystemStore extends AbstractStore {
   @Override
   public List<String> getKeyUrnFields() {
     return Collections.emptyList();
+  }
+
+  @Override
+  public int getPreviousCurrentVersion() {
+    return zkSharedStore.getPreviousCurrentVersion();
+  }
+
+  @Override
+  public void setPreviousCurrentVersion(int previousCurrentVersion) {
+    throwUnsupportedOperationException("setPreviousCurrentVersion");
   }
 
   @Override

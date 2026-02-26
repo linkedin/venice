@@ -12,11 +12,6 @@ public class TestActiveActiveIngestionWithReadWriteLeaderCompactionTuningAndPara
   }
 
   @Override
-  protected boolean isAAWCParallelProcessingEnabled() {
-    return true;
-  }
-
-  @Override
   protected boolean whetherToEnableNearlineProducerThroughputOptimizationInServer() {
     return true;
   }

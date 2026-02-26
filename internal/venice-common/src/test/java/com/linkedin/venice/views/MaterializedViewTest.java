@@ -199,8 +199,6 @@ public class MaterializedViewTest {
 
   private Store getMockStore(String storeName, int partitionCount) {
     Store testStore = mock(Store.class);
-    // We can remove this requirement from VeniceView into ChangeCaptureView once we refactor the ingestion path to
-    // perform view related actions in L/F instead of A/A SIT.
     doReturn(true).when(testStore).isActiveActiveReplicationEnabled();
     doReturn(storeName).when(testStore).getName();
     doReturn(partitionCount).when(testStore).getPartitionCount();

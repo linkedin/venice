@@ -19,9 +19,17 @@ import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentControll
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
-import com.linkedin.venice.controller.stats.ControllerMetricEntity;
+import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
+import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
+import com.linkedin.venice.controller.stats.DisabledPartitionStats;
+import com.linkedin.venice.controller.stats.ErrorPartitionStats;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
+import com.linkedin.venice.controller.stats.PushJobStatusStats;
+import com.linkedin.venice.controller.stats.SparkServerStats;
+import com.linkedin.venice.controller.stats.StoreBackupVersionCleanupServiceStats;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
+import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.d2.D2ClientFactory;
@@ -70,7 +78,18 @@ public class VeniceController {
   public static final String CONTROLLER_SERVICE_NAME = "venice-controller";
   public static final String CONTROLLER_SERVICE_METRIC_PREFIX = "controller";
   public static final Collection<MetricEntity> CONTROLLER_SERVICE_METRIC_ENTITIES =
-      ModuleMetricEntityInterface.getUniqueMetricEntities(ControllerMetricEntity.class);
+      ModuleMetricEntityInterface.getUniqueMetricEntities(
+          SparkServerStats.SparkServerOtelMetricEntity.class,
+          LogCompactionStats.LogCompactionOtelMetricEntity.class,
+          PushJobStatusStats.PushJobOtelMetricEntity.class,
+          StoreBackupVersionCleanupServiceStats.BackupVersionCleanupOtelMetricEntity.class,
+          TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.class,
+          VeniceAdminStats.VeniceAdminOtelMetricEntity.class,
+          AdminConsumptionStats.AdminConsumptionOtelMetricEntity.class,
+          AddVersionLatencyStats.AddVersionLatencyOtelMetricEntity.class,
+          DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.class,
+          DisabledPartitionStats.DisabledPartitionOtelMetricEntity.class,
+          ErrorPartitionStats.ErrorPartitionOtelMetricEntity.class);
 
   // services
   private final VeniceControllerService controllerService;
@@ -110,6 +129,7 @@ public class VeniceController {
   private final LogContext logContext;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners;
+  private final Optional<ExternalETLService> externalETLService;
 
   /**
    * Allocates a new {@code VeniceController} object.
@@ -178,6 +198,7 @@ public class VeniceController {
         new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
     this.pubSubTopicRepository = multiClusterConfigs.getPubSubTopicRepository();
     this.versionLifecycleEventListeners = Optional.ofNullable(ctx.getVersionLifecycleEventListeners());
+    this.externalETLService = Optional.ofNullable(ctx.getExternalETLService());
     this.controllerService = createControllerService();
     this.adminServer = createAdminServer(false);
     this.secureAdminServer = sslEnabled ? createAdminServer(true) : null;
@@ -212,7 +233,8 @@ public class VeniceController {
         pubSubTopicRepository,
         pubSubClientsFactory,
         pubSubPositionTypeRegistry,
-        versionLifecycleEventListeners);
+        versionLifecycleEventListeners,
+        externalETLService);
     Admin admin = veniceControllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent() && !(admin instanceof VeniceParentHelixAdmin)) {
       throw new VeniceException(

@@ -46,7 +46,6 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
@@ -62,7 +61,6 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,7 +104,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       BooleanSupplier isCurrentVersion,
       VeniceStoreVersionConfig storeConfig,
       int errorPartitionId,
-      boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
@@ -119,7 +116,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         isCurrentVersion,
         storeConfig,
         errorPartitionId,
-        isIsolatedIngestion,
         cacheBackend,
         internalRecordTransformerConfig,
         zkHelixAdmin);
@@ -479,12 +475,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             consumerRecord.getTopicPartition(),
             valueManifestContainer,
             beforeProcessingBatchRecordsTimestampMs));
-    if (hasChangeCaptureView || (hasComplexVenicePartitionerMaterializedView && msgType == MessageType.DELETE)) {
-      /**
-       * Since this function will update the transient cache before writing the view, and if there is
-       * a change capture view writer, we need to lookup first, otherwise the transient cache will be populated
-       * when writing to the view after this function.
-       */
+    if (hasComplexVenicePartitionerMaterializedView && msgType == MessageType.DELETE) {
+      // We need to lookup first because this function updates the transient cache before writing the view.
+      // Otherwise, the transient cache will be populated when writing to the view after this function.
       oldValueProvider.get();
     }
 
@@ -495,14 +488,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         beforeProcessingBatchRecordsTimestampMs);
 
     final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
-    final long offsetSumPreOperation =
-        rmdWithValueSchemaID != null ? RmdUtils.extractOffsetVectorSumFromRmd(rmdWithValueSchemaID.getRmdRecord()) : 0;
-    List<Long> recordTimestampsPreOperation = rmdWithValueSchemaID != null
-        ? RmdUtils.extractTimestampFromRmd(rmdWithValueSchemaID.getRmdRecord())
-        : Collections.singletonList(0L);
 
-    // get the source offset and the id
-    PubSubPosition sourcePosition = consumerRecord.getPosition();
     final MergeConflictResult mergeConflictResult;
 
     aggVersionedIngestionStats.recordTotalDCR(storeName, versionNumber);
@@ -518,8 +504,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             ((Put) kafkaValue.payloadUnion).putValue,
             writeTimestamp,
             incomingValueSchemaId,
-            sourcePosition,
-            kafkaClusterId,
             kafkaClusterId // Use the kafka cluster ID as the colo ID for now because one colo/fabric has only one
         // Kafka cluster. TODO: evaluate whether it is enough this way, or we need to add a new
         // config to represent the mapping from Kafka server URLs to colo ID.
@@ -529,13 +513,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         break;
 
       case DELETE:
-        mergeConflictResult = mergeConflictResolver.delete(
-            oldValueByteBufferProvider,
-            rmdWithValueSchemaID,
-            writeTimestamp,
-            sourcePosition,
-            kafkaClusterId,
-            kafkaClusterId);
+        mergeConflictResult = mergeConflictResolver
+            .delete(oldValueByteBufferProvider, rmdWithValueSchemaID, writeTimestamp, kafkaClusterId);
         getHostLevelIngestionStats()
             .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
         break;
@@ -548,8 +527,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             incomingValueSchemaId,
             incomingWriteComputeSchemaId,
             writeTimestamp,
-            sourcePosition,
-            kafkaClusterId,
             kafkaClusterId,
             valueManifestContainer);
         getHostLevelIngestionStats()
@@ -562,6 +539,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
+      aggVersionedIngestionStats.recordUpdateIgnoredDCR(storeName, versionNumber);
       return new PubSubMessageProcessedResult(
           new MergeConflictResultWrapper(
               mergeConflictResult,
@@ -578,7 +556,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (rmdWithValueSchemaID != null) {
         aggVersionedIngestionStats.recordTotalDuplicateKeyUpdate(storeName, versionNumber);
       }
-      validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
 
       final ByteBuffer updatedValueBytes = maybeCompressData(
           consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -736,27 +713,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       return kme.producerMetadata.logicalTimestamp;
     } else {
       return kme.producerMetadata.messageTimestamp;
-    }
-  }
-
-  private void validatePostOperationResultsAndRecord(
-      MergeConflictResult mergeConflictResult,
-      Long offsetSumPreOperation,
-      List<Long> timestampsPreOperation) {
-    // Nothing was applied, no harm no foul
-    if (mergeConflictResult.isUpdateIgnored()) {
-      return;
-    }
-    // Post Validation checks on resolution
-    GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
-    if (offsetSumPreOperation > RmdUtils.extractOffsetVectorSumFromRmd(rmdRecord)) {
-      // offsets went backwards, raise an alert!
-      hostLevelIngestionStats.recordOffsetRegressionDCRError();
-      aggVersionedIngestionStats.recordOffsetRegressionDCRError(storeName, versionNumber);
-      LOGGER.error(
-          "Offset vector found to have gone backwards for {}!! New invalid replication metadata result: {}",
-          storeVersionName,
-          rmdRecord);
     }
   }
 
@@ -971,7 +927,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               pubSubAddress,
               sourceTopicPartition);
           PubSubTopicPartition newSourceTopicPartition =
-              resolveRtTopicPartitionWithPubSubBrokerAddress(newSourceTopic, pcs, pubSubAddress);
+              resolveTopicPartitionWithPubSubBrokerAddress(newSourceTopic, pcs, pubSubAddress);
           try {
             rtStartPosition =
                 getRewindStartPositionForRealTimeTopic(pubSubAddress, newSourceTopicPartition, rewindStartTimestamp);
@@ -1355,7 +1311,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return () -> {
       PubSubTopic pubSubTopic = sourceTopicPartition.getPubSubTopic();
       PubSubTopicPartition resolvedTopicPartition =
-          resolveRtTopicPartitionWithPubSubBrokerAddress(pubSubTopic, pcs, sourceKafkaUrl);
+          resolveTopicPartitionWithPubSubBrokerAddress(pubSubTopic, pcs, sourceKafkaUrl);
       // Calculate upstream offset
       PubSubPosition upstreamOffset =
           getRewindStartPositionForRealTimeTopic(sourceKafkaUrl, resolvedTopicPartition, rewindStartTimestamp);

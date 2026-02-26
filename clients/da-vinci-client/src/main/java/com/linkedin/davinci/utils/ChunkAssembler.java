@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.ByteUtils;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -108,5 +109,15 @@ public abstract class ChunkAssembler {
   public static boolean isChunkedRecord(int schemaId) {
     return schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
         || schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+  }
+
+  /**
+   * For chunked records, the chunk assembler already decompresses the assembled value via
+   * RawBytesChunkingAdapter's decompressingInputStreamDecoder. For non-chunked records, the
+   * value is still compressed and needs explicit decompression here.
+   */
+  public static ByteBuffer decompressValueIfNeeded(ByteBuffer value, int schemaId, VeniceCompressor compressor)
+      throws IOException {
+    return isChunkedRecord(schemaId) ? value : compressor.decompress(value);
   }
 }

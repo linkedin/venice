@@ -140,8 +140,7 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
   void putStoreVersionState(StoreVersionState versionState);
 
   /**
-   * Used in ingestion isolation mode update the storage engine's cache in sync with the updates to the state in
-   * {@link com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService}
+   * Update the storage engine's store version state cache.
    */
   void updateStoreVersionStateCache(StoreVersionState versionState);
 

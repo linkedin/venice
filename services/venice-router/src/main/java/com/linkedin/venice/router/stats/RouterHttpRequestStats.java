@@ -124,6 +124,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor scatterLatencySensor;
   private final Sensor queueLatencySensor;
   private final Sensor dispatchLatencySensor;
+  private final Sensor bodyAggregationLatencySensor;
   private final Sensor unAvailableRequestSensor;
   private final Sensor readQuotaUsageSensor;
   private final Sensor inFlightRequestSensor;
@@ -457,6 +458,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     dispatchLatencySensor = registerSensor(
         "dispatch_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("dispatch_latency")));
+    bodyAggregationLatencySensor = registerSensor(
+        "body_aggregation_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("body_aggregation_latency")));
 
     unAvailableRequestSensor = registerSensor("unavailable_request", new Count());
 
@@ -749,6 +753,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     dispatchLatencySensor.record(latency);
   }
 
+  public void recordBodyAggregationLatency(double latency) {
+    bodyAggregationLatencySensor.record(latency);
+  }
+
   public void recordUnavailableRequest() {
     unAvailableRequestSensor.record();
   }
@@ -836,17 +844,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     KEY_SIZE_IN_BYTE,
     /** for {@link RouterMetricEntity#ABORTED_RETRY_COUNT} */
     DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST, SLOW_ROUTE_ABORTED_RETRY_REQUEST, RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST,
-    NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST;
-
-    private final String metricName;
-
-    RouterTehutiMetricNameEnum() {
-      this.metricName = name().toLowerCase();
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST
   }
 }

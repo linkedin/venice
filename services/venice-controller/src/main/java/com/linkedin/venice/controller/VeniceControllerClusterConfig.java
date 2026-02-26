@@ -193,6 +193,7 @@ import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
 import static com.linkedin.venice.ConfigKeys.REPUSH_CANDIDATE_FILTER_CLASS_NAMES;
+import static com.linkedin.venice.ConfigKeys.REPUSH_CANDIDATE_TRIGGER_CLASS_NAMES;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
 import static com.linkedin.venice.ConfigKeys.SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED;
@@ -609,7 +610,6 @@ public class VeniceControllerClusterConfig {
 
   private final Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
   private final boolean isRealTimeTopicVersioningEnabled;
-  private final boolean useV2AdminTopicMetadata;
   private final boolean isHybridStorePartitionCountUpdateEnabled;
 
   /**
@@ -631,6 +631,7 @@ public class VeniceControllerClusterConfig {
    */
   private String repushOrchestratorClassName;
   private Set<String> repushCandidateFilterClassNames;
+  private Set<String> repushCandidateTriggerClassNames;
   private final VeniceProperties repushOrchestratorConfigs;
 
   /**
@@ -1175,6 +1176,11 @@ public class VeniceControllerClusterConfig {
         } else {
           this.repushCandidateFilterClassNames = Collections.emptySet();
         }
+        if (props.containsKey(REPUSH_CANDIDATE_TRIGGER_CLASS_NAMES)) {
+          this.repushCandidateTriggerClassNames = new HashSet<>(props.getList(REPUSH_CANDIDATE_TRIGGER_CLASS_NAMES));
+        } else {
+          this.repushCandidateTriggerClassNames = Collections.emptySet();
+        }
       } catch (Exception e) {
         throw new VeniceException(
             "Log compaction enabled but missing controller.repush.orchestrator.class.name config value. Unable to set up log compaction service",
@@ -1200,7 +1206,6 @@ public class VeniceControllerClusterConfig {
     this.isRealTimeTopicVersioningEnabled = props.getBoolean(
         ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
         DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING);
-    this.useV2AdminTopicMetadata = props.getBoolean(ConfigKeys.USE_V2_ADMIN_TOPIC_METADATA, false);
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
 
@@ -1307,6 +1312,7 @@ public class VeniceControllerClusterConfig {
     // Repush
     LOGGER.info("\trepushOrchestratorClassName: {}", repushOrchestratorClassName);
     LOGGER.info("\trepushCandidateFilterClassNames: {}", repushCandidateFilterClassNames);
+    LOGGER.info("\trepushCandidateTriggerClassNames: {}", repushCandidateTriggerClassNames);
 
     // Log compaction
     LOGGER.info("\tisLogCompactionEnabled: {}", isLogCompactionEnabled);
@@ -2247,10 +2253,6 @@ public class VeniceControllerClusterConfig {
     return isDarkCluster;
   }
 
-  public boolean useV2AdminTopicMetadata() {
-    return useV2AdminTopicMetadata;
-  }
-
   public boolean isProtocolVersionAutoDetectionServiceEnabled() {
     return isProtocolVersionAutoDetectionServiceEnabled;
   }
@@ -2306,6 +2308,10 @@ public class VeniceControllerClusterConfig {
 
   public Set<String> getRepushCandidateFilterClassNames() {
     return repushCandidateFilterClassNames;
+  }
+
+  public Set<String> getRepushCandidateTriggerClassNames() {
+    return repushCandidateTriggerClassNames;
   }
 
   public VeniceProperties getRepushOrchestratorConfigs() {

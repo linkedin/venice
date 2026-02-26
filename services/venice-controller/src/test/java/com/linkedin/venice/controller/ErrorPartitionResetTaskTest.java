@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static org.mockito.Mockito.anyList;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
@@ -9,6 +12,7 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.controller.stats.ErrorPartitionStats;
 import com.linkedin.venice.helix.CachedReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixState;
@@ -21,10 +25,14 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import io.tehuti.metrics.MetricsRepository;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
@@ -37,6 +45,7 @@ import org.testng.annotations.Test;
 
 
 public class ErrorPartitionResetTaskTest {
+  private static final String TEST_METRIC_PREFIX = "controller";
   private static long PROCESSING_CYCLE_DELAY = 100;
   private static int ERROR_PARTITION_RESET_LIMIT = 1;
   private static int PARTITION_COUNT = 3;
@@ -50,7 +59,8 @@ public class ErrorPartitionResetTaskTest {
   private CachedReadOnlyStoreRepository readOnlyStoreRepository;
   private HelixExternalViewRepository routingDataRepository;
   private PushMonitor pushMonitor;
-  private MetricsRepository metricsRepository;
+  private InMemoryMetricReader inMemoryMetricReader;
+  private VeniceMetricsRepository metricsRepository;
 
   @BeforeMethod
   public void setUp() {
@@ -58,7 +68,13 @@ public class ErrorPartitionResetTaskTest {
     readOnlyStoreRepository = mock(CachedReadOnlyStoreRepository.class);
     routingDataRepository = mock(HelixExternalViewRepository.class);
     pushMonitor = mock(PushMonitor.class);
-    metricsRepository = new MetricsRepository();
+    inMemoryMetricReader = InMemoryMetricReader.create();
+    metricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setMetricEntities(CONTROLLER_SERVICE_METRIC_ENTITIES)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .build());
   }
 
   @AfterClass
@@ -143,6 +159,32 @@ public class ErrorPartitionResetTaskTest {
                 String.format(".%s--current_version_error_partition_unrecoverable_from_reset.Total", clusterName))
             .value(),
         1.);
+
+    // OTel validations
+    Attributes storeAttributes = Attributes.builder()
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), store.getName())
+        .build();
+    OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        2,
+        storeAttributes,
+        ErrorPartitionStats.ErrorPartitionOtelMetricEntity.ERROR_PARTITION_RESET_ATTEMPT_COUNT.getMetricName(),
+        TEST_METRIC_PREFIX);
+    OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        storeAttributes,
+        ErrorPartitionStats.ErrorPartitionOtelMetricEntity.ERROR_PARTITION_RESET_RECOVERED_PARTITION_COUNT
+            .getMetricName(),
+        TEST_METRIC_PREFIX);
+    OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        storeAttributes,
+        ErrorPartitionStats.ErrorPartitionOtelMetricEntity.ERROR_PARTITION_RESET_UNRECOVERABLE_PARTITION_COUNT
+            .getMetricName(),
+        TEST_METRIC_PREFIX);
 
     errorPartitionResetTask.close();
   }

@@ -1,5 +1,7 @@
 package com.linkedin.venice.spark.input.pubsub;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
+
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.spark.sql.connector.read.InputPartition;
@@ -9,10 +11,16 @@ import org.testng.annotations.Test;
 
 
 public class SparkPubSubInputPartitionReaderV1FactoryTest {
+  private static VeniceProperties createMinimalConfig() {
+    Properties props = new Properties();
+    props.setProperty(KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, "false");
+    return new VeniceProperties(props);
+  }
+
   @Test
   public void testCreateReaderWithNonMatchingInputPartitionType() {
     // Arrange
-    VeniceProperties jobConfig = new VeniceProperties(new Properties());
+    VeniceProperties jobConfig = createMinimalConfig();
     SparkPubSubPartitionReaderFactory factory = new SparkPubSubPartitionReaderFactory(jobConfig);
 
     // Create a mock that does not implement VeniceBasicPubsubInputPartition
@@ -31,7 +39,7 @@ public class SparkPubSubInputPartitionReaderV1FactoryTest {
   @Test
   public void testSupportColumnarReads() {
     // Arrange
-    VeniceProperties jobConfig = new VeniceProperties(new Properties());
+    VeniceProperties jobConfig = createMinimalConfig();
     SparkPubSubPartitionReaderFactory factory = new SparkPubSubPartitionReaderFactory(jobConfig);
     InputPartition mockInputPartition = Mockito.mock(InputPartition.class);
 

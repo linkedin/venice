@@ -415,9 +415,25 @@ public class ConfigKeys {
   public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "controller.repush.orchestrator.class.name";
 
   /**
-   * Class names of the implementation of interface {@link com.linkedin.venice.controller.logcompaction.CandidateFilter} in {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
+   * Class names of the implementation of interface
+   * {@link com.linkedin.venice.controller.logcompaction.RepushCandidateFilter} used by
+   * {@link com.linkedin.venice.controller.logcompaction.CompactionManager}.
+   *
+   * <p>Filters are chained with AND logic: <b>all</b> filters must pass for a store to remain a candidate.
+   * They enforce exclusion criteria such as cluster config, store eligibility, and migration status.</p>
    */
   public static final String REPUSH_CANDIDATE_FILTER_CLASS_NAMES = "controller.repush.candidate.filter.class.names";
+
+  /**
+   * Class names of the implementation of interface
+   * {@link com.linkedin.venice.controller.logcompaction.RepushCandidateTrigger} used by
+   * {@link com.linkedin.venice.controller.logcompaction.CompactionManager}.
+   *
+   * <p>Triggers are chained with OR logic: at least <b>one</b> trigger must pass for a store to be scheduled.
+   * They represent conditions that independently justify compaction (e.g., version staleness,
+   * high duplicate key ratio). A store is scheduled when all filters pass AND any trigger passes.</p>
+   */
+  public static final String REPUSH_CANDIDATE_TRIGGER_CLASS_NAMES = "controller.repush.candidate.trigger.class.names";
 
   /**
    * Prefix of configs to configure RepushOrchestrator
@@ -765,6 +781,51 @@ public class ConfigKeys {
    */
   public static final String SERVER_USE_CHECKPOINTED_PUBSUB_POSITIONS = "server.use.checkpointed.pubsub.positions";
 
+  /**
+   * Controls whether to use the Declaration of Leadership (DoL) mechanism for leader handover
+   * of system stores (meta stores, push status stores, etc.).
+   *
+   * <p>When enabled, the new leader replica will:
+   * 1. Produce a Declaration of Leadership message to the local version topic (VT)
+   * 2. Wait until it consumes this message back from VT (loopback confirmation)
+   * 3. Only then switch to consuming from the leader source topic (remote VT during batch push,
+   *    or RT topic for hybrid stores post-EOP)
+   *
+   * <p>This provides a deterministic guarantee that the leader has successfully written to
+   * and consumed from the local VT before transitioning to the leader source topic, eliminating
+   * the need for time-based waits.
+   *
+   * <p>System stores typically benefit more from fast handover due to their critical role in
+   * cluster operations. Having a separate config allows independent rollout strategy.
+   *
+   * Default: true (DoL mechanism enabled for system stores)
+   */
+  public static final String SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES =
+      "server.leader.handover.use.dol.mechanism.for.system.stores";
+
+  /**
+   * Controls whether to use the Declaration of Leadership (DoL) mechanism for leader handover
+   * of user stores (regular application data stores).
+   *
+   * <p>When enabled, the new leader replica will:
+   * 1. Produce a Declaration of Leadership message to the local version topic (VT)
+   * 2. Wait until it consumes this message back from VT (loopback confirmation)
+   * 3. Only then switch to consuming from the leader source topic (remote VT during batch push,
+   *    or RT topic for hybrid stores post-EOP)
+   *
+   * <p>This provides a deterministic guarantee that the leader has successfully written to
+   * and consumed from the local VT before transitioning to the leader source topic, eliminating
+   * the need for time-based waits.
+   *
+   * <p>Having a separate config from system stores allows independent rollout - typically you
+   * would enable DoL for system stores first, validate it works correctly, then roll out to
+   * user stores.
+   *
+   * Default: true (DoL mechanism enabled for user stores)
+   */
+  public static final String SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES =
+      "server.leader.handover.use.dol.mechanism.for.user.stores";
+
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
@@ -1016,12 +1077,6 @@ public class ConfigKeys {
   public static final String SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED = "server.leaked.resource.cleanup.enabled";
 
   /**
-   * Ingestion mode in target storage instance.
-   * This will be applied to Da Vinci and Storage Node.
-   */
-  public static final String SERVER_INGESTION_MODE = "server.ingestion.mode";
-
-  /**
    * Unsubscribe from kakfa topic once a batch-store push finishes
    */
   public static final String SERVER_UNSUB_AFTER_BATCHPUSH = "server.unsub.after.batch.push";
@@ -1042,17 +1097,6 @@ public class ConfigKeys {
    * Number of retries allowed for stopConsumptionAndWait() API in StoreIngestionService.
    */
   public static final String SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS = "server.stop.consumption.timeout.in.seconds";
-
-  /**
-   * Service listening port number for main ingestion service.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_SERVICE_PORT = "server.ingestion.isolation.service.port";
-
-  /**
-   * Service listening port number for forked ingestion process.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT =
-      "server.ingestion.isolation.application.port";
 
   public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED =
       "server.db.read.only.for.batch.only.store.enabled";
@@ -1091,49 +1135,21 @@ public class ConfigKeys {
   public static final String SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED = "server.parallel.resource.shutdown.enabled";
 
   /**
+   * Config to control the thread pool size used for parallel ingestion task shutdown.
+   * Default is 16 to avoid creating too many threads.
+   */
+  public static final String SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE = "server.parallel.shutdown.thread.pool.size";
+
+  /**
    * Config for adaptive throttler signal refresh interval in seconds.
    */
   public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS =
       "server.adaptive.throttler.signal.refresh.interval.in.seconds";
 
   /**
-   * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
-   * separated by comma. This config will help isolated ingestion process to register extra stats needed for monitoring,
-   * for example: JVM GC/Memory stats. All the classes defined here will be extending {@link com.linkedin.venice.stats.AbstractVeniceStats},
-   * and will take {@link io.tehuti.metrics.MetricsRepository} as the only parameter in their constructor.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST =
-      "server.ingestion.isolation.stats.class.list";
-
-  public static final String SERVER_INGESTION_ISOLATION_SSL_ENABLED = "server.ingestion.isolation.ssl.enabled";
-
-  public static final String SERVER_INGESTION_ISOLATION_ACL_ENABLED = "server.ingestion.isolation.acl.enabled";
-
-  public static final String SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME = "server.ingestion.isolation.principal.name";
-
-  /**
    * A list of JVM arguments for forked child process, separated by semicolon.
    */
   public static final String SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST = "server.forked.process.jvm.arg.list";
-
-  /**
-   * Timeout for connection between main process and forked ingestion process. If heartbeat is not refreshed within this
-   * timeout, both processes should act to reconstruct the state in order to restore connection and service.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS =
-      "server.ingestion.isolation.connection.timeout.seconds";
-
-  /**
-   * Timeout for single ingestion command request sent from main process to forked ingestion process.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS =
-      "server.ingestion.isolation.request.timeout.seconds";
-
-  /**
-   * Timeout for single heartbeat request sent from main process to forked ingestion process.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS =
-      "server.ingestion.isolation.heartbeat.request.timeout.seconds";
 
   public static final String SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED =
       "server.batch.report.end.of.incremental.push.status.enabled";
@@ -2388,6 +2404,15 @@ public class ConfigKeys {
       "server.ingestion.checkpoint.during.graceful.shutdown.enabled";
 
   /**
+   * Whether to emit OTel metrics for ingestion stats. When enabled (and the global OTel flag is also enabled),
+   * per-store ingestion OTel metrics are recorded. Enabled by default so that turning on OTel for servers
+   * automatically includes ingestion stats. Can be set to {@code false} to disable ingestion OTel stats
+   * independently — useful because ingestion stats are high-frequency hot-path metrics and may need to be
+   * turned off separately without affecting other server/DaVinci OTel metrics.
+   */
+  public static final String SERVER_INGESTION_OTEL_STATS_ENABLED = "server.ingestion.otel.stats.enabled";
+
+  /**
    * A config to control which status store to use for fetching incremental push job status from the controller. This config
    * should be removed once the migration of push status to push status system store is complete.
    * True: use push system status store
@@ -2547,6 +2572,23 @@ public class ConfigKeys {
    * with SOS, EOS or skipped records.
    */
   public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
+
+  /**
+   * Enable record-level timestamp tracking in heartbeat monitoring service.
+   * When enabled, the monitoring service will track timestamps for all records processed during
+   * ingestion, not just heartbeat control messages. This provides more granular visibility into
+   * ingestion progress and lag at the expense of additional memory and CPU overhead.
+   */
+  public static final String SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED = "server.record.level.timestamp.enabled";
+
+  /**
+   * Enable per-record OTel metrics emission for record-level delay tracking.
+   * When enabled, OTel metrics are emitted for every record processed during ingestion,
+   * providing real-time visibility into ingestion delays. When disabled (default), OTel metrics
+   * are only emitted periodically (every 60 seconds) with aggregated max/avg values.
+   * Requires SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED to be true.
+   */
+  public static final String SERVER_PER_RECORD_OTEL_METRICS_ENABLED = "server.per.record.otel.metrics.enabled";
 
   /**
    * Follower replicas and DavinciClient will only consider heartbeats received within
@@ -2912,7 +2954,6 @@ public class ConfigKeys {
       "controller.enable.realtime.topic.versioning";
 
   public static final boolean DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING = false;
-  public final static String USE_V2_ADMIN_TOPIC_METADATA = "controller.use.v2.admin.topic.metadata";
   public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
       "controller.enable.hybrid.store.partition.count.update";
   public static final String PUSH_JOB_VIEW_CONFIGS = "push.job.view.configs";
@@ -3146,9 +3187,6 @@ public class ConfigKeys {
    * Default is false (i.e. not a dark cluster).
    */
   public static final String IS_DARK_CLUSTER = "is.dark.cluster";
-
-  public static final String SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED =
-      "server.ingestion.isolation.d2.client.enabled";
 
   /**
    * When dumping topic partition info for each consumer, there will be one line for each partition. This limit will
