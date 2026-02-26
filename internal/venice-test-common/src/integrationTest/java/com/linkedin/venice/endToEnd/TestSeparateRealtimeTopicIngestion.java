@@ -59,7 +59,6 @@ import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -312,7 +311,7 @@ public class TestSeparateRealtimeTopicIngestion extends AbstractMultiRegionTest 
           heartbeatMonitoringService.getHeartbeatInfo(topicName, partition, false);
       leaderSepRTTopicCount += heartbeatInfoMap.keySet().stream().filter(x -> x.endsWith("_sep")).count();
     }
-    Assert.assertEquals(leaderSepRTTopicCount, childDatacenters.size() * REPLICATION_FACTOR);
+    Assert.assertEquals(leaderSepRTTopicCount, (long) getNumberOfRegions() * getReplicationFactor());
   }
 
   private byte[] serializeStringKeyToByteArray(String key) {
