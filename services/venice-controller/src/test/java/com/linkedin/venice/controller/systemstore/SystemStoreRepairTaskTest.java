@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller.systemstore;
 
+import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_SYSTEM_STORE_TYPE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -25,8 +28,14 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.LogContext;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -301,6 +310,27 @@ public class SystemStoreRepairTaskTest {
     doReturn(1).when(systemStoreRepairTask).getHeartbeatWaitTimeInSeconds();
     doReturn(3).when(systemStoreRepairTask).getRepairJobCheckTimeoutInSeconds();
 
+    // Real stats for metric verification
+    String metricPrefix = "controller";
+    InMemoryMetricReader metricReader = InMemoryMetricReader.create();
+    VeniceMetricsRepository metricsRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(metricPrefix)
+            .setMetricEntities(CONTROLLER_SERVICE_METRIC_ENTITIES)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(metricReader)
+            .build());
+    SystemStoreHealthCheckStats realStats = new SystemStoreHealthCheckStats(metricsRepo, clusterName);
+    Map<String, SystemStoreHealthCheckStats> statsMap = new HashMap<>();
+    statsMap.put(clusterName, realStats);
+
+    doCallRealMethod().when(systemStoreRepairTask).updateBadSystemStoreCount(anyString(), anySet());
+    doCallRealMethod().when(systemStoreRepairTask).updateNotRepairableSystemStoreCount(anyString(), anySet());
+    doCallRealMethod().when(systemStoreRepairTask).getBadMetaStoreCount(anyString());
+    doCallRealMethod().when(systemStoreRepairTask).getBadPushStatusStoreCount(anyString());
+    doCallRealMethod().when(systemStoreRepairTask).getNotRepairableSystemStoreCounter(anyString());
+    doCallRealMethod().when(systemStoreRepairTask).getClusterSystemStoreHealthCheckStats(anyString());
+    doReturn(statsMap).when(systemStoreRepairTask).getClusterToSystemStoreHealthCheckStatsMap();
+
     String systemStore = VeniceSystemStoreUtils.getMetaStoreName("testStore");
     Set<String> unhealthySystemStoreSet = new HashSet<>();
     unhealthySystemStoreSet.add(systemStore);
@@ -336,6 +366,9 @@ public class SystemStoreRepairTaskTest {
     systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
     Assert.assertTrue(unhealthySystemStoreSet.isEmpty());
 
+    // After Push Completed: all counts should be 0
+    verifySystemStoreMetrics(metricsRepo, metricReader, clusterName, metricPrefix, 0, 0, 0);
+
     // Poll throws exception, should be caught inside.
     unhealthySystemStoreSet.add(systemStore);
     doThrow(VeniceException.class).when(parentHelixAdmin)
@@ -343,5 +376,81 @@ public class SystemStoreRepairTaskTest {
     systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
     Assert.assertFalse(unhealthySystemStoreSet.isEmpty());
 
+    // After Poll throws: systemStore is a meta store, so badMeta=1, badPushStatus=0, notRepairable=1
+    verifySystemStoreMetrics(metricsRepo, metricReader, clusterName, metricPrefix, 1, 0, 1);
+  }
+
+  /**
+   * Verify both Tehuti and OTel metrics report consistent expected values for SystemStoreHealthCheckStats.
+   */
+  private static void verifySystemStoreMetrics(
+      VeniceMetricsRepository metricsRepo,
+      InMemoryMetricReader metricReader,
+      String clusterName,
+      String metricPrefix,
+      long expectedBadMeta,
+      long expectedBadPushStatus,
+      long expectedNotRepairable) {
+    String tehutiResourceName = "." + clusterName;
+
+    // Tehuti verification
+    String badMetaName =
+        AbstractVeniceStats.getSensorFullName(tehutiResourceName, "bad_meta_system_store_count") + ".Gauge";
+    Assert.assertNotNull(metricsRepo.getMetric(badMetaName), "Tehuti bad meta metric should exist");
+    Assert.assertEquals(
+        metricsRepo.getMetric(badMetaName).value(),
+        (double) expectedBadMeta,
+        "Tehuti bad meta count mismatch");
+
+    String badPushStatusName =
+        AbstractVeniceStats.getSensorFullName(tehutiResourceName, "bad_push_status_system_store_count") + ".Gauge";
+    Assert.assertNotNull(metricsRepo.getMetric(badPushStatusName), "Tehuti bad push status metric should exist");
+    Assert.assertEquals(
+        metricsRepo.getMetric(badPushStatusName).value(),
+        (double) expectedBadPushStatus,
+        "Tehuti bad push status count mismatch");
+
+    String notRepairableName =
+        AbstractVeniceStats.getSensorFullName(tehutiResourceName, "not_repairable_system_store_count") + ".Gauge";
+    Assert.assertNotNull(metricsRepo.getMetric(notRepairableName), "Tehuti not repairable metric should exist");
+    Assert.assertEquals(
+        metricsRepo.getMetric(notRepairableName).value(),
+        (double) expectedNotRepairable,
+        "Tehuti not repairable count mismatch");
+
+    // OTel verification
+    Attributes metaStoreAttrs = Attributes.builder()
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
+        .put(
+            VENICE_SYSTEM_STORE_TYPE.getDimensionNameInDefaultFormat(),
+            com.linkedin.venice.stats.dimensions.VeniceSystemStoreType.META_STORE.getDimensionValue())
+        .build();
+    Attributes pushStatusStoreAttrs = Attributes.builder()
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
+        .put(
+            VENICE_SYSTEM_STORE_TYPE.getDimensionNameInDefaultFormat(),
+            com.linkedin.venice.stats.dimensions.VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getDimensionValue())
+        .build();
+    Attributes clusterAttrs =
+        Attributes.builder().put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName).build();
+
+    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
+        metricReader,
+        expectedBadMeta,
+        metaStoreAttrs,
+        "system_store.health_check.unhealthy_count",
+        metricPrefix);
+    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
+        metricReader,
+        expectedBadPushStatus,
+        pushStatusStoreAttrs,
+        "system_store.health_check.unhealthy_count",
+        metricPrefix);
+    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
+        metricReader,
+        expectedNotRepairable,
+        clusterAttrs,
+        "system_store.health_check.unrepairable_count",
+        metricPrefix);
   }
 }
