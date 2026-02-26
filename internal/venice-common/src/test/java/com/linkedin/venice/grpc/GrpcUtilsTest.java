@@ -211,21 +211,21 @@ public class GrpcUtilsTest {
   }
 
   @Test
-  public void testToByteStringFromByteArray() {
+  public void testToByteStringNoCopyFromByteArray() {
     byte[] data = new byte[] { 1, 2, 3, 4, 5 };
-    ByteString result = GrpcUtils.toByteString(data);
+    ByteString result = GrpcUtils.toByteStringNoCopy(data);
     assertEquals(result.size(), 5);
     assertEquals(result.toByteArray(), data);
   }
 
   @Test
-  public void testToByteStringFromNullByteArray() {
-    assertSame(GrpcUtils.toByteString((byte[]) null), ByteString.EMPTY);
+  public void testToByteStringNoCopyFromNullByteArray() {
+    assertSame(GrpcUtils.toByteStringNoCopy(null), ByteString.EMPTY);
   }
 
   @Test
-  public void testToByteStringFromEmptyByteArray() {
-    assertSame(GrpcUtils.toByteString(new byte[0]), ByteString.EMPTY);
+  public void testToByteStringNoCopyFromEmptyByteArray() {
+    assertSame(GrpcUtils.toByteStringNoCopy(new byte[0]), ByteString.EMPTY);
   }
 
   @Test

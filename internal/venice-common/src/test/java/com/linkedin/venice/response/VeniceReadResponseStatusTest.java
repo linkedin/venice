@@ -15,9 +15,6 @@ public class VeniceReadResponseStatusTest {
     assertEquals(VeniceReadResponseStatus.KEY_NOT_FOUND.getCode(), -420);
     assertEquals(VeniceReadResponseStatus.OK.getCode(), 200);
     assertEquals(VeniceReadResponseStatus.BAD_REQUEST.getCode(), 400);
-    assertEquals(VeniceReadResponseStatus.METHOD_NOT_ALLOWED.getCode(), 405);
-    assertEquals(VeniceReadResponseStatus.REQUEST_TIMEOUT.getCode(), 408);
-    assertEquals(VeniceReadResponseStatus.MISROUTED_STORE_VERSION.getCode(), 410);
     assertEquals(VeniceReadResponseStatus.TOO_MANY_REQUESTS.getCode(), 429);
     assertEquals(VeniceReadResponseStatus.INTERNAL_ERROR.getCode(), 500);
     assertEquals(VeniceReadResponseStatus.SERVICE_UNAVAILABLE.getCode(), 503);

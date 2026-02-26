@@ -106,10 +106,14 @@ public final class GrpcUtils {
   }
 
   /**
-   * Wraps a byte array into a {@link ByteString} without copying. The caller must not modify the byte array after
-   * calling this method, as the returned {@link ByteString} directly references the same array.
+   * Wraps a byte array into a {@link ByteString} <b>without copying</b>. The returned {@code ByteString} directly
+   * aliases the provided array, so the caller <b>must not</b> modify the array after calling this method.
+   * Violating this contract can cause silent data corruption in serialized gRPC payloads.
+   *
+   * <p>If the caller cannot guarantee immutability of the input array, use {@link ByteString#copyFrom(byte[])}
+   * instead.
    */
-  public static ByteString toByteString(byte[] bytes) {
+  public static ByteString toByteStringNoCopy(byte[] bytes) {
     if (bytes == null || bytes.length == 0) {
       return ByteString.EMPTY;
     }
@@ -123,7 +127,7 @@ public final class GrpcUtils {
     }
     byte[] bytes = new byte[buf.readableBytes()];
     buf.getBytes(buf.readerIndex(), bytes);
-    return UnsafeByteOperations.unsafeWrap(bytes);
+    return ByteString.copyFrom(bytes);
   }
 
   public static ChannelCredentials buildChannelCredentials(SSLFactory sslFactory) {

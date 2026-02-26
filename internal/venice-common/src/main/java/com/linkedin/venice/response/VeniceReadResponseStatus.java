@@ -10,10 +10,13 @@ import java.util.Map;
  * <p>
  * Positive values correspond to standard HTTP status codes and can be used directly in HTTP responses.
  * Negative values represent custom Venice-specific error codes.
+ * <p>
+ * {@link #UNKNOWN} is a sentinel value (code {@code -1}) returned by {@link #fromCode(int)} when no matching status
+ * is found. The code {@code -1} is reserved and must never be used as a real status code.
  */
 public enum VeniceReadResponseStatus {
-  UNKNOWN(-1), KEY_NOT_FOUND(-420), OK(200), BAD_REQUEST(400), METHOD_NOT_ALLOWED(405), REQUEST_TIMEOUT(408),
-  MISROUTED_STORE_VERSION(410), TOO_MANY_REQUESTS(429), INTERNAL_ERROR(500), SERVICE_UNAVAILABLE(503);
+  UNKNOWN(-1), KEY_NOT_FOUND(-420), OK(200), BAD_REQUEST(400), TOO_MANY_REQUESTS(429), INTERNAL_ERROR(500),
+  SERVICE_UNAVAILABLE(503);
 
   private final int code;
 
