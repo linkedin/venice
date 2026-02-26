@@ -1453,6 +1453,109 @@ public class PartialUpdateTest {
     }
   }
 
+  /**
+   * This integration test verifies that in A/A + partial update enabled store with merged value-RMD column family,
+   * batch push followed by streaming partial updates produces correct results. The merged CF stores both value and
+   * RMD in a single RocksDB column family, reducing read amplification during A/A ingestion.
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testPartialUpdateWithMergedValueRmdColumnFamily() throws IOException {
+    final String storeName = Utils.getUniqueString("mergedCF");
+    String parentControllerUrl = parentController.getControllerUrl();
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties vpjProperties =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+
+    Schema valueSchema = AvroCompatibilityHelper.parse(valueSchemaStr);
+    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema);
+
+    ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+    when(schemaRepo.getReplicationMetadataSchema(storeName, 1, 1)).thenReturn(new RmdSchemaEntry(1, 1, rmdSchema));
+    when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepo);
+    RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, 1);
+
+    VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setActiveActiveReplicationEnabled(true)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
+              .setMergedValueRmdColumnFamilyEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      // Verify the store-level config was set
+      StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
+      assertTrue(storeInfo.isMergedValueRmdColumnFamilyEnabled());
+
+      // VPJ push
+      String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
+      try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
+        IntegrationTestPushUtils.runVPJ(vpjProperties, 1, childControllerClient);
+      }
+      veniceClusterWrapper.waitVersion(storeName, 1);
+
+      // Verify the version-level config was propagated
+      storeInfo = parentControllerClient.getStore(storeName).getStore();
+      assertTrue(storeInfo.getVersion(1).get().isMergedValueRmdColumnFamilyEnabled());
+
+      // Produce partial updates on batch pushed keys
+      try (VeniceSystemProducer veniceProducer =
+          getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM)) {
+        for (int i = 1; i < 100; i++) {
+          GenericRecord partialUpdateRecord =
+              new UpdateBuilderImpl(writeComputeSchema).setNewFieldValue("firstName", "merged_name_" + i).build();
+          sendStreamingRecord(veniceProducer, storeName, String.valueOf(i), partialUpdateRecord);
+        }
+      }
+
+      // Verify that partial updates are applied correctly via client reads
+      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          try {
+            for (int i = 1; i < 100; i++) {
+              String key = String.valueOf(i);
+              GenericRecord value = readValue(storeReader, key);
+              assertNotNull(value, "Key " + key + " should not be missing!");
+              assertEquals(value.get("firstName").toString(), "merged_name_" + key);
+              assertEquals(value.get("lastName").toString(), "last_name_" + key);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+
+      // Validate RMD data is correctly stored and retrievable from the merged column family.
+      String kafkaTopic_v1 = Version.composeKafkaTopic(storeName, 1);
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        validateRmdData(rmdSerDe, kafkaTopic_v1, "1", rmdWithValueSchemaId -> {
+          assertNotNull(rmdWithValueSchemaId.getRmdRecord());
+          assertEquals(rmdWithValueSchemaId.getValueSchemaId(), 1);
+          GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
+          assertNotNull(timestampRecord, "RMD timestamp record should not be null for merged CF");
+        });
+      });
+    }
+  }
+
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     D2ClientUtils.shutdownClient(d2ClientDC0);

@@ -393,8 +393,11 @@ public class StorageService extends AbstractVeniceService {
 
     LOGGER.info("Creating/Opening Storage Engine {} with type: {}", topicName, storeConfig.getStorePersistenceType());
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
+    PersistenceType persistenceType = factory.getPersistenceType();
+    boolean replicationMetadataEnabled = isReplicationMetadataEnabled(topicName, persistenceType);
+    boolean mergedCfEnabled = isMergedValueRmdColumnFamilyEnabled(topicName, persistenceType);
     StorageEngine newEngine =
-        factory.getStorageEngine(storeConfig, isReplicationMetadataEnabled(topicName, factory.getPersistenceType()));
+        factory.getStorageEngine(storeConfig, replicationMetadataEnabled, mergedCfEnabled);
     newEngine.updateStoreVersionStateCache(initialStoreVersionStateSupplier.get());
 
     // Let's check if a previous incarnation of the storage engine existed earlier
@@ -675,6 +678,32 @@ public class StorageService extends AbstractVeniceService {
 
     if (lastException != null) {
       throw lastException;
+    }
+  }
+
+  private boolean isMergedValueRmdColumnFamilyEnabled(String topicName, PersistenceType persistenceType) {
+    if (serverConfig.isDaVinciClient() || !Objects.equals(persistenceType, ROCKS_DB)) {
+      return false;
+    }
+    String storeName;
+    int versionNum;
+    try {
+      storeName = Version.parseStoreFromVersionTopic(topicName);
+      versionNum = Version.parseVersionFromKafkaTopicName(topicName);
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
+    try {
+      Version version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNum);
+      if (version != null) {
+        return version.isActiveActiveReplicationEnabled() && version.isMergedValueRmdColumnFamilyEnabled();
+      } else {
+        LOGGER.warn("Version {} of store {} does not exist in storeRepository.", versionNum, storeName);
+        return false;
+      }
+    } catch (VeniceNoStoreException e) {
+      LOGGER.warn("Store {} does not exist in storeRepository.", storeName);
+      return false;
     }
   }
 

@@ -5524,6 +5524,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  private void setMergedValueRmdColumnFamilyEnabled(
+      String clusterName,
+      String storeName,
+      boolean mergedValueRmdColumnFamilyEnabled) {
+    storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+      store.setMergedValueRmdColumnFamilyEnabled(mergedValueRmdColumnFamilyEnabled);
+      return store;
+    });
+  }
+
   void setIncrementalPushEnabled(String clusterName, String storeName, boolean incrementalPushEnabled) {
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
@@ -5858,6 +5868,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
     Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
     Optional<Boolean> rmdChunkingEnabled = params.getRmdChunkingEnabled();
+    Optional<Boolean> mergedValueRmdColumnFamilyEnabled = params.getMergedValueRmdColumnFamilyEnabled();
     Optional<Integer> batchGetLimit = params.getBatchGetLimit();
     Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
     Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -6056,6 +6067,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (rmdChunkingEnabled.isPresent()) {
         setRmdChunkingEnabled(clusterName, storeName, rmdChunkingEnabled.get());
+      }
+
+      if (mergedValueRmdColumnFamilyEnabled.isPresent()) {
+        setMergedValueRmdColumnFamilyEnabled(clusterName, storeName, mergedValueRmdColumnFamilyEnabled.get());
       }
 
       if (batchGetLimit.isPresent()) {
