@@ -9,6 +9,8 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -19,6 +21,8 @@ import org.testng.annotations.Test;
 public class SplitRequestTest {
   private PubSubTopicPartition partition;
   private TopicManager topicManager;
+  private PubSubPosition startPos;
+  private PubSubPosition endPos;
 
   @BeforeMethod
   public void setUp() {
@@ -26,6 +30,8 @@ public class SplitRequestTest {
     PubSubTopic topic = topicRepository.getTopic("test-topic");
     partition = new PubSubTopicPartitionImpl(topic, 0);
     topicManager = mock(TopicManager.class);
+    startPos = ApacheKafkaOffsetPosition.of(0);
+    endPos = ApacheKafkaOffsetPosition.of(1000);
   }
 
   @Test
@@ -34,12 +40,18 @@ public class SplitRequestTest {
         .topicManager(topicManager)
         .splitType(PartitionSplitStrategy.FIXED_RECORD_COUNT)
         .recordsPerSplit(1000L)
+        .startPosition(startPos)
+        .endPosition(endPos)
+        .numberOfRecords(1000L)
         .build();
 
     assertEquals(request.getPubSubTopicPartition(), partition);
     assertEquals(request.getTopicManager(), topicManager);
     assertEquals(request.getSplitType(), PartitionSplitStrategy.FIXED_RECORD_COUNT);
     assertEquals(request.getRecordsPerSplit(), 1000L);
+    assertEquals(request.getStartPosition(), startPos);
+    assertEquals(request.getEndPosition(), endPos);
+    assertEquals(request.getNumberOfRecords(), 1000L);
   }
 
   @Test
@@ -48,6 +60,9 @@ public class SplitRequestTest {
     SplitRequest cappedRequest = new SplitRequest.Builder().pubSubTopicPartition(partition)
         .topicManager(topicManager)
         .splitType(PartitionSplitStrategy.CAPPED_SPLIT_COUNT)
+        .startPosition(startPos)
+        .endPosition(endPos)
+        .numberOfRecords(1000L)
         .build();
     assertEquals((int) cappedRequest.getMaxSplits(), DEFAULT_MAX_SPLITS);
 
@@ -55,12 +70,19 @@ public class SplitRequestTest {
     SplitRequest fixedRequest = new SplitRequest.Builder().pubSubTopicPartition(partition)
         .topicManager(topicManager)
         .splitType(PartitionSplitStrategy.FIXED_RECORD_COUNT)
+        .startPosition(startPos)
+        .endPosition(endPos)
+        .numberOfRecords(1000L)
         .build();
     assertEquals(fixedRequest.getRecordsPerSplit(), DEFAULT_RECORDS_PER_SPLIT);
 
     // Case 3: No PartitionSplitStrategy specified
-    SplitRequest defaultRequest =
-        new SplitRequest.Builder().pubSubTopicPartition(partition).topicManager(topicManager).build();
+    SplitRequest defaultRequest = new SplitRequest.Builder().pubSubTopicPartition(partition)
+        .topicManager(topicManager)
+        .startPosition(startPos)
+        .endPosition(endPos)
+        .numberOfRecords(1000L)
+        .build();
     assertEquals(defaultRequest.getSplitType(), PartitionSplitStrategy.FIXED_RECORD_COUNT);
   }
 
@@ -71,6 +93,9 @@ public class SplitRequestTest {
         .topicManager(topicManager)
         .splitType(PartitionSplitStrategy.CAPPED_SPLIT_COUNT)
         .maxSplits(-1)
+        .startPosition(startPos)
+        .endPosition(endPos)
+        .numberOfRecords(1000L)
         .build();
     assertEquals((int) cappedRequest.getMaxSplits(), DEFAULT_MAX_SPLITS);
 
@@ -79,6 +104,9 @@ public class SplitRequestTest {
         .topicManager(topicManager)
         .splitType(PartitionSplitStrategy.FIXED_RECORD_COUNT)
         .recordsPerSplit(0L)
+        .startPosition(startPos)
+        .endPosition(endPos)
+        .numberOfRecords(1000L)
         .build();
     assertEquals(fixedRequest.getRecordsPerSplit(), DEFAULT_RECORDS_PER_SPLIT);
   }
@@ -88,6 +116,9 @@ public class SplitRequestTest {
     SplitRequest request = new SplitRequest.Builder().pubSubTopicPartition(partition)
         .topicManager(topicManager)
         .splitType(PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION)
+        .startPosition(startPos)
+        .endPosition(endPos)
+        .numberOfRecords(1000L)
         .build();
 
     assertEquals(request.getSplitType(), PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION);
@@ -101,6 +132,9 @@ public class SplitRequestTest {
     expectThrows(NullPointerException.class, () -> {
       new SplitRequest.Builder().topicManager(topicManager)
           .splitType(PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION)
+          .startPosition(startPos)
+          .endPosition(endPos)
+          .numberOfRecords(1000L)
           .build();
     });
 
@@ -108,6 +142,29 @@ public class SplitRequestTest {
     expectThrows(NullPointerException.class, () -> {
       new SplitRequest.Builder().pubSubTopicPartition(partition)
           .splitType(PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION)
+          .startPosition(startPos)
+          .endPosition(endPos)
+          .numberOfRecords(1000L)
+          .build();
+    });
+
+    // Case 3: Missing startPosition
+    expectThrows(NullPointerException.class, () -> {
+      new SplitRequest.Builder().pubSubTopicPartition(partition)
+          .topicManager(topicManager)
+          .splitType(PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION)
+          .endPosition(endPos)
+          .numberOfRecords(1000L)
+          .build();
+    });
+
+    // Case 4: Missing endPosition
+    expectThrows(NullPointerException.class, () -> {
+      new SplitRequest.Builder().pubSubTopicPartition(partition)
+          .topicManager(topicManager)
+          .splitType(PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION)
+          .startPosition(startPos)
+          .numberOfRecords(1000L)
           .build();
     });
   }
@@ -118,6 +175,9 @@ public class SplitRequestTest {
         .topicManager(topicManager)
         .splitType(PartitionSplitStrategy.FIXED_RECORD_COUNT)
         .recordsPerSplit(500L)
+        .startPosition(startPos)
+        .endPosition(endPos)
+        .numberOfRecords(1000L)
         .build();
 
     String toString = request.toString();
