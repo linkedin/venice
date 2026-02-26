@@ -346,40 +346,32 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   }
 
   @Override
-  public void updatePartitionStatus(String kafkaTopic, PartitionStatus partitionStatus) {
+  public void removeStaleReplicasFromPartitionStatus(String kafkaTopic, int partitionId, Set<String> staleInstanceIds) {
     if (!pushStatusExists(kafkaTopic)) {
       String msg = "Push status does not exist for topic " + kafkaTopic + " skipping partition status update";
       throw new VeniceException(msg);
     }
-    int partitionId = partitionStatus.getPartitionId();
     String partitionStatusPath = getPartitionStatusPath(kafkaTopic, partitionId);
     LOGGER.info(
-        "Updating partition status for topic {} partition {} in cluster {}",
+        "Removing stale replicas {} from topic {} partition {} in cluster {}",
+        staleInstanceIds,
         kafkaTopic,
         partitionId,
         clusterName);
 
-    // Use compareAndUpdate instead of update to handle concurrent modifications
-    // This prevents lost updates when servers are updating replica statuses concurrently
-    HelixUtils.compareAndUpdate(partitionStatusAccessor, partitionStatusPath, currentData -> {
-      // If no current data exists, just use the provided partition status
+    // Use compareAndUpdate to safely remove only the specified stale replicas from the latest ZK state.
+    // This avoids a race condition where concurrent updates (e.g., a new server joining) could be lost
+    // if we overwrote the partition status with a stale snapshot.
+    HelixUtils.compareAndUpdate(partitionStatusAccessor, partitionStatusPath, 3, currentData -> {
       if (currentData == null) {
-        return partitionStatus;
+        // Node was deleted concurrently; nothing to clean up.
+        return null;
       }
 
-      // Merge logic: preserve any replica updates that happened concurrently
-      // For stale replica cleanup: only keep replicas that are in the provided partitionStatus,
-      // but use currentData's version of those replicas to preserve concurrent updates
+      // Build a new partition status with all replicas except the stale ones
       PartitionStatus merged = new PartitionStatus(partitionId);
-      Set<String> instanceIdsToKeep = partitionStatus.getReplicaStatuses()
-          .stream()
-          .map(rs -> rs.getInstanceId())
-          .collect(java.util.stream.Collectors.toSet());
-
-      // Keep replicas from current data if they're in our keep list
       for (ReplicaStatus currentReplica: currentData.getReplicaStatuses()) {
-        if (instanceIdsToKeep.contains(currentReplica.getInstanceId())) {
-          // Use current data to preserve any concurrent updates
+        if (!staleInstanceIds.contains(currentReplica.getInstanceId())) {
           merged.updateReplicaStatus(
               currentReplica.getInstanceId(),
               currentReplica.getCurrentStatus(),
@@ -398,7 +390,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     });
 
     LOGGER
-        .info("Updated partition status for topic {} partition {} in cluster {}", kafkaTopic, partitionId, clusterName);
+        .info("Removed stale replicas from topic {} partition {} in cluster {}", kafkaTopic, partitionId, clusterName);
   }
 
   /**

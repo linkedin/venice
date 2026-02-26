@@ -192,27 +192,10 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
               staleInstanceIds,
               currentInstanceIds);
 
-          // Create a new PartitionStatus with only current replicas
-          PartitionStatus updatedPartitionStatus = new PartitionStatus(partitionId);
-          for (ReplicaStatus replicaStatus: replicaStatuses) {
-            if (currentInstanceIds.contains(replicaStatus.getInstanceId())) {
-              // Keep this replica - it's still assigned
-              updatedPartitionStatus.updateReplicaStatus(
-                  replicaStatus.getInstanceId(),
-                  replicaStatus.getCurrentStatus(),
-                  replicaStatus.getIncrementalPushVersion());
-
-              // Copy status history
-              updatedPartitionStatus.getReplicaStatuses()
-                  .stream()
-                  .filter(rs -> rs.getInstanceId().equals(replicaStatus.getInstanceId()))
-                  .findFirst()
-                  .ifPresent(rs -> rs.setStatusHistory(new ArrayList<>(replicaStatus.getStatusHistory())));
-            }
-          }
-
-          // Update the partition status in ZK with cleaned up replica statuses
-          offlinePushAccessor.updatePartitionStatus(kafkaTopic, updatedPartitionStatus);
+          // Remove only the stale replicas from the partition status in ZK.
+          // This uses compare-and-set semantics on the latest ZK state to avoid
+          // losing concurrent updates from newly-joined instances.
+          offlinePushAccessor.removeStaleReplicasFromPartitionStatus(kafkaTopic, partitionId, staleInstanceIds);
 
           totalStaleReplicasRemoved += staleInstanceIds.size();
           LOGGER.info(

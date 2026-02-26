@@ -93,13 +93,18 @@ public interface OfflinePushAccessor {
   void unsubscribePushStatusCreationChange(IZkChildListener childListener);
 
   /**
-   * Update a specific partition status in persistent storage.
-   * This is useful for bulk updates like cleaning up stale replica statuses.
+   * Remove specific stale replicas from a partition status in persistent storage.
+   * Uses compare-and-set semantics to safely remove only the specified replicas
+   * without losing concurrent updates from other instances.
    *
    * @param kafkaTopic version topic
-   * @param partitionStatus the partition status to update
+   * @param partitionId the partition to update
+   * @param staleInstanceIds the set of instance IDs to remove
    */
-  default void updatePartitionStatus(String kafkaTopic, PartitionStatus partitionStatus) {
+  default void removeStaleReplicasFromPartitionStatus(
+      String kafkaTopic,
+      int partitionId,
+      java.util.Set<String> staleInstanceIds) {
     // Default implementation is no-op for backward compatibility
   }
 }
