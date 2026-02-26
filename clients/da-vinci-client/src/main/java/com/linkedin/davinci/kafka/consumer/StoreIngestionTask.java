@@ -4161,7 +4161,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         int writerSchemaId = put.getSchemaId();
 
-        if (recordTransformer != null && messageType == MessageType.PUT) {
+        if (recordTransformer != null && messageType == MessageType.PUT && !kafkaKey.isGlobalRtDiv()) {
           long recordTransformerStartTime = System.nanoTime();
           ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
@@ -4255,7 +4255,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               LatencyUtils.getElapsedTimeFromNSToMS(recordTransformerStartTime),
               currentTimeMs);
           writeToStorageEngine(producedPartition, keyBytes, put);
-        } else if (messageType == MessageType.GLOBAL_RT_DIV) {
+        } else if (kafkaKey.isGlobalRtDiv()) {
           putGlobalRtDivStateInMetadata(producedPartition, keyBytes, put);
         } else {
           prependHeaderAndWriteToStorageEngine(

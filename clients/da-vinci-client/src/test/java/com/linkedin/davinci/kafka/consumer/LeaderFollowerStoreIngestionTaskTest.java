@@ -1585,7 +1585,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         ingestionTask.readGlobalRtDivState(nonPrefixKey, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
     Assert.assertNull(nonPrefixResult);
     // storageMetadataService.getGlobalRtDivState should NOT have been called for the non-prefix key
-    verify(mockSms, times(0)).getGlobalRtDivState(versionTopic, 0, "REGULAR_KEY.localhost:9092".substring(0));
+    verify(mockSms, times(0)).getGlobalRtDivState(versionTopic, 0, "REGULAR_KEY.localhost:9092");
   }
 
   private static void injectField(Object target, Class<?> declaringClass, String fieldName, Object value)
