@@ -989,7 +989,9 @@ public class ConfigKeys {
   public static final String SERVER_PUBSUB_HEALTH_MONITOR_ENABLED = "server.pubsub.health.monitor.enabled";
 
   /**
-   * Whether partition pausing on PubSub outage is enabled. Requires the health monitor to also be enabled.
+   * Whether partition pausing on PubSub outage is enabled. Requires
+   * {@link #SERVER_PUBSUB_HEALTH_MONITOR_ENABLED} to also be enabled — if the health monitor
+   * is disabled, this config is ignored.
    */
   public static final String SERVER_PUBSUB_PARTITION_PAUSE_ENABLED = "server.pubsub.partition.pause.enabled";
 
@@ -998,6 +1000,14 @@ public class ConfigKeys {
    */
   public static final String SERVER_PUBSUB_HEALTH_PROBE_INTERVAL_SECONDS =
       "server.pubsub.health.probe.interval.seconds";
+
+  /**
+   * The PubSub topic name used for recovery probes. The probe sends a metadata request for this
+   * topic to verify broker reachability. Must be a topic that is guaranteed to exist on the broker
+   * (e.g., a store's version topic). If empty or not set, recovery probes are skipped and paused
+   * partitions will not be automatically resumed.
+   */
+  public static final String SERVER_PUBSUB_HEALTH_PROBE_TOPIC = "server.pubsub.health.probe.topic";
 
   /**
    * Maximum duration (in milliseconds) to wait for the version information to become available in the store metadata

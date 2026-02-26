@@ -181,27 +181,39 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
     Map<PubSubHealthCategory, PubSubHealthStatus> categoryStatuses =
         healthStatuses.computeIfAbsent(pubSubAddress, k -> new ConcurrentHashMap<>());
 
-    PubSubHealthStatus currentStatus = categoryStatuses.getOrDefault(category, PubSubHealthStatus.HEALTHY);
-    if (currentStatus == PubSubHealthStatus.UNHEALTHY) {
+    // Use putIfAbsent to atomically transition from HEALTHY (absent) to UNHEALTHY,
+    // avoiding duplicate listener notifications from concurrent exception reports.
+    PubSubHealthStatus previous = categoryStatuses.putIfAbsent(category, PubSubHealthStatus.UNHEALTHY);
+    if (previous == PubSubHealthStatus.UNHEALTHY) {
       return; // Already unhealthy
     }
 
-    // Check if any provider considers this target unhealthy
+    // Verify at least one provider considers this target unhealthy
+    boolean anyUnhealthy = false;
+    String triggerName = null;
     for (PubSubHealthSignalProvider provider: signalProviders) {
       if (provider.isUnhealthy(pubSubAddress, category)) {
-        categoryStatuses.put(category, PubSubHealthStatus.UNHEALTHY);
-        LOGGER.warn(
-            "PubSub target marked UNHEALTHY: address={}, category={}, trigger={}",
-            pubSubAddress,
-            category,
-            provider.getName());
-        if (stats != null) {
-          stats.recordStateTransition(category);
-        }
-        notifyListeners(pubSubAddress, category, PubSubHealthStatus.UNHEALTHY);
-        return;
+        anyUnhealthy = true;
+        triggerName = provider.getName();
+        break;
       }
     }
+
+    if (!anyUnhealthy) {
+      // No provider considers it unhealthy — revert the optimistic put
+      categoryStatuses.remove(category);
+      return;
+    }
+
+    LOGGER.warn(
+        "PubSub target marked UNHEALTHY: address={}, category={}, trigger={}",
+        pubSubAddress,
+        category,
+        triggerName);
+    if (stats != null) {
+      stats.recordStateTransition(category);
+    }
+    notifyListeners(pubSubAddress, category, PubSubHealthStatus.UNHEALTHY);
   }
 
   /**
@@ -278,46 +290,17 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
   }
 
   /**
-   * Execute a probe for the given target.
+   * Execute a probe for the given target. Uses TopicManager to check if we can retrieve
+   * topic metadata, which sends a metadata request to the broker or metadata service.
    *
    * @return true if the probe succeeds (target is reachable)
    */
   private boolean probe(String address, PubSubHealthCategory category, PubSubTopic topic) {
-    switch (category) {
-      case BROKER:
-        return probeBroker(address, topic);
-      case METADATA_SERVICE:
-        return probeMetadataService(address, topic);
-      default:
-        LOGGER.warn("Unknown health category: {}", category);
-        return false;
-    }
-  }
-
-  /**
-   * Broker probe: uses TopicManager to check if we can retrieve partition info for the topic.
-   * This sends a metadata request to the broker.
-   */
-  private boolean probeBroker(String address, PubSubTopic topic) {
     try {
       TopicManager topicManager = topicManagerRepository.getTopicManager(address);
       return topicManager.containsTopic(topic);
     } catch (Exception e) {
-      LOGGER.debug("Broker probe failed for {}: {}", address, e.getMessage());
-      return false;
-    }
-  }
-
-  /**
-   * Metadata service probe: uses TopicManager.containsTopic() which routes through the
-   * PubSub metadata service.
-   */
-  private boolean probeMetadataService(String address, PubSubTopic topic) {
-    try {
-      TopicManager topicManager = topicManagerRepository.getTopicManager(address);
-      return topicManager.containsTopic(topic);
-    } catch (Exception e) {
-      LOGGER.debug("Metadata service probe failed for {}: {}", address, e.getMessage());
+      LOGGER.debug("Probe failed for {} (category={}): {}", address, category, e.getMessage());
       return false;
     }
   }
