@@ -25,6 +25,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SUPPRESS_END_OF_PUSH_MESSAGE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static org.testng.Assert.assertEquals;
@@ -640,6 +641,73 @@ public class TestPushJobWithNativeReplication {
       Assert.assertEquals(vcr2.getErrorType(), ErrorType.CONCURRENT_BATCH_PUSH);
       Assert.assertEquals(vcr2.getExceptionType(), ExceptionType.BAD_REQUEST);
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testConcurrentBatchPushes() throws Exception {
+    motherOfAllTests(
+        "testConcurrentBatchPushes",
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(2),
+        50,
+        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
+          // Create a second input directory with data (same schema)
+          File inputDir2 = getTempDataDirectory();
+          TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir2);
+          Properties props2 = IntegrationTestPushUtils
+              .defaultVPJProps(multiRegionMultiClusterWrapper, "file://" + inputDir2.getAbsolutePath(), storeName);
+
+          // Suppress EOP on job 1 so version 1 stays in STARTED status, giving job 2
+          // a reliable window to hit the concurrent push check in getTopicForCurrentPushJob.
+          props.setProperty(SUPPRESS_END_OF_PUSH_MESSAGE, "true");
+
+          // Run job 1 — it will write all data and return, but version 1 stays STARTED
+          try (VenicePushJob job1 = new VenicePushJob("Test push job 1", props)) {
+            job1.run();
+          }
+
+          // Verify version 1 exists and is still in progress (STARTED)
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+            Optional<Version> version = storeResponse.getStore().getVersion(1);
+            Assert.assertTrue(version.isPresent(), "Version 1 should exist");
+          });
+
+          // Start the second push job — it should fail with ConcurrentBatchPushException
+          VeniceException caughtException = Assert.expectThrows(VeniceException.class, () -> {
+            try (VenicePushJob job2 = new VenicePushJob("Test push job 2", props2)) {
+              job2.run();
+            }
+          });
+          Assert.assertTrue(
+              caughtException.getMessage().contains("CONCURRENT_BATCH_PUSH")
+                  || caughtException.getMessage().contains("Unable to start the push"),
+              "Expected concurrent batch push error but got: " + caughtException.getMessage());
+
+          // Now send EOP to let version 1 complete
+          parentControllerClient.writeEndOfPush(storeName, 1);
+
+          // Verify store current version == 1
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            for (int version: parentControllerClient.getStore(storeName)
+                .getStore()
+                .getColoToCurrentVersions()
+                .values()) {
+              Assert.assertEquals(version, 1);
+            }
+          });
+
+          // Verify data correctness from child datacenter
+          VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
+          String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+          try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              for (int i = 1; i <= 50; i++) {
+                Assert.assertNotNull(client.get(Integer.toString(i)).get());
+              }
+            });
+          }
+        });
   }
 
   /**
