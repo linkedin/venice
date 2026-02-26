@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
@@ -283,8 +284,8 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
 
   @Override
   public synchronized PubSubPosition advancePosition(PubSubTopicPartition tp, PubSubPosition startInclusive, long n) {
-    java.util.Objects.requireNonNull(tp, "tp");
-    java.util.Objects.requireNonNull(startInclusive, "startInclusive");
+    Objects.requireNonNull(tp, "tp");
+    Objects.requireNonNull(startInclusive, "startInclusive");
     if (n < 0) {
       throw new IllegalArgumentException("n must be >= 0");
     }

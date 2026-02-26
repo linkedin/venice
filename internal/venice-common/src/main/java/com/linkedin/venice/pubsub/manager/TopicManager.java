@@ -998,11 +998,6 @@ public class TopicManager implements Closeable {
    * @throws NullPointerException if {@code tp} or {@code startInclusive} is {@code null}
    */
   public PubSubPosition advancePosition(PubSubTopicPartition tp, PubSubPosition startInclusive, long n) {
-    Objects.requireNonNull(tp, "tp");
-    Objects.requireNonNull(startInclusive, "startInclusive");
-    if (n < 0) {
-      throw new IllegalArgumentException("n must be >= 0");
-    }
     return topicMetadataFetcher.advancePosition(tp, startInclusive, n);
   }
 
