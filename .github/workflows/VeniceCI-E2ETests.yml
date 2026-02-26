@@ -19,11 +19,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_1
@@ -64,34 +60,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -107,16 +75,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_2:
     name: IntegrationTests_2
@@ -124,11 +106,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_2
@@ -169,34 +147,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -212,16 +162,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_3:
     name: IntegrationTests_3
@@ -229,11 +193,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_3
@@ -274,34 +234,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -317,16 +249,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_4:
     name: IntegrationTests_4
@@ -334,11 +280,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_4
@@ -379,34 +321,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -422,16 +336,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_5:
     name: IntegrationTests_5
@@ -439,11 +367,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_5
@@ -484,34 +408,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -527,16 +423,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_6:
     name: IntegrationTests_6
@@ -544,11 +454,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_6
@@ -589,34 +495,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -632,16 +510,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_7:
     name: IntegrationTests_7
@@ -649,11 +541,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_7
@@ -694,34 +582,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -737,16 +597,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_8:
     name: IntegrationTests_8
@@ -754,11 +628,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_8
@@ -799,34 +669,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -842,16 +684,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_9:
     name: IntegrationTests_9
@@ -859,11 +715,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_9
@@ -904,34 +756,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -947,16 +771,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_10:
     name: IntegrationTests_10
@@ -964,11 +802,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_10
@@ -1009,34 +843,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1052,16 +858,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_11:
     name: IntegrationTests_11
@@ -1069,11 +889,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_11
@@ -1114,34 +930,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1157,16 +945,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_12:
     name: IntegrationTests_12
@@ -1174,11 +976,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_12
@@ -1219,34 +1017,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1262,16 +1032,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_13:
     name: IntegrationTests_13
@@ -1279,11 +1063,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_13
@@ -1324,34 +1104,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1367,16 +1119,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_14:
     name: IntegrationTests_14
@@ -1384,11 +1150,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_14
@@ -1429,34 +1191,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1472,16 +1206,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_15:
     name: IntegrationTests_15
@@ -1489,11 +1237,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_15
@@ -1534,34 +1278,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1577,16 +1293,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_16:
     name: IntegrationTests_16
@@ -1594,11 +1324,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_16
@@ -1639,34 +1365,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1682,16 +1380,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_17:
     name: IntegrationTests_17
@@ -1699,11 +1411,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_17
@@ -1744,34 +1452,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1787,16 +1467,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_18:
     name: IntegrationTests_18
@@ -1804,11 +1498,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_18
@@ -1849,34 +1539,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1892,16 +1554,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_19:
     name: IntegrationTests_19
@@ -1909,11 +1585,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_19
@@ -1954,34 +1626,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1997,16 +1641,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_20:
     name: IntegrationTests_20
@@ -2014,11 +1672,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_20
@@ -2059,34 +1713,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2102,16 +1728,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_21:
     name: IntegrationTests_21
@@ -2119,11 +1759,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_21
@@ -2164,34 +1800,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2207,16 +1815,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_22:
     name: IntegrationTests_22
@@ -2224,11 +1846,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_22
@@ -2269,34 +1887,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2312,16 +1902,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_23:
     name: IntegrationTests_23
@@ -2329,11 +1933,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_23
@@ -2374,34 +1974,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2417,16 +1989,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_24:
     name: IntegrationTests_24
@@ -2434,11 +2020,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_24
@@ -2479,34 +2061,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2522,16 +2076,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_25:
     name: IntegrationTests_25
@@ -2539,11 +2107,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_25
@@ -2584,34 +2148,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2627,16 +2163,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_26:
     name: IntegrationTests_26
@@ -2644,11 +2194,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_26
@@ -2689,34 +2235,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2732,16 +2250,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_27:
     name: IntegrationTests_27
@@ -2749,11 +2281,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_27
@@ -2794,34 +2322,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2837,16 +2337,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_28:
     name: IntegrationTests_28
@@ -2854,11 +2368,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_28
@@ -2899,34 +2409,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2942,16 +2424,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_29:
     name: IntegrationTests_29
@@ -2959,11 +2455,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_29
@@ -3004,34 +2496,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -3047,16 +2511,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_30:
     name: IntegrationTests_30
@@ -3064,11 +2542,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_30
@@ -3109,34 +2583,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -3152,16 +2598,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_31:
     name: IntegrationTests_31
@@ -3169,11 +2629,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_31
@@ -3214,34 +2670,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -3257,16 +2685,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_32:
     name: IntegrationTests_32
@@ -3274,11 +2716,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_32
@@ -3319,34 +2757,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -3362,16 +2772,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_33:
     name: IntegrationTests_33
@@ -3379,11 +2803,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_33
@@ -3424,34 +2844,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -3467,16 +2859,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_34:
     name: IntegrationTests_34
@@ -3484,11 +2890,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_34
@@ -3529,34 +2931,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -3572,16 +2946,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_35:
     name: IntegrationTests_35
@@ -3589,11 +2977,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_35
@@ -3634,34 +3018,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -3677,16 +3033,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_36:
     name: IntegrationTests_36
@@ -3694,11 +3064,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_36
@@ -3739,34 +3105,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -3782,16 +3120,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_37:
     name: IntegrationTests_37
@@ -3799,11 +3151,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_37
@@ -3844,34 +3192,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -3887,16 +3207,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_38:
     name: IntegrationTests_38
@@ -3904,11 +3238,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_38
@@ -3949,34 +3279,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -3992,16 +3294,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_39:
     name: IntegrationTests_39
@@ -4009,11 +3325,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_39
@@ -4054,34 +3366,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -4097,16 +3381,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_40:
     name: IntegrationTests_40
@@ -4114,11 +3412,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_40
@@ -4159,34 +3453,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -4202,16 +3468,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_41:
     name: IntegrationTests_41
@@ -4219,11 +3499,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_41
@@ -4264,34 +3540,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -4307,16 +3555,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_42:
     name: IntegrationTests_42
@@ -4324,11 +3586,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_42
@@ -4369,34 +3627,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -4412,16 +3642,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_43:
     name: IntegrationTests_43
@@ -4429,11 +3673,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_43
@@ -4474,34 +3714,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -4517,16 +3729,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_44:
     name: IntegrationTests_44
@@ -4534,11 +3760,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_44
@@ -4579,34 +3801,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -4622,16 +3816,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_45:
     name: IntegrationTests_45
@@ -4639,11 +3847,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_45
@@ -4684,34 +3888,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -4727,16 +3903,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_46:
     name: IntegrationTests_46
@@ -4744,11 +3934,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_46
@@ -4789,34 +3975,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -4832,16 +3990,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   IntegrationTests_47:
     name: IntegrationTests_47
@@ -4849,11 +4021,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_47
@@ -4894,34 +4062,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -4937,436 +4077,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
-
-  IntegrationTests_48:
-    name: IntegrationTests_48
-    strategy:
-      fail-fast: false
-    runs-on: ubuntu-latest
-    permissions:
-     id-token: write
-     contents: read
-     checks: write
-     pull-requests: write
-     issues: write
-    timeout-minutes: 20
-    concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_48
-     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_48
-      - name: Package Build Artifacts
-        if: always()
+      - name: Summarize Test Failures
+        if: failure()
         shell: bash
         run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-      - name: Upload Test Timing Data
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: test-timing-IntegrationTests_48
-          path: internal/venice-test-common/build/test-timings/
-          retention-days: 30
-          if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
-
-  IntegrationTests_49:
-    name: IntegrationTests_49
-    strategy:
-      fail-fast: false
-    runs-on: ubuntu-latest
-    permissions:
-     id-token: write
-     contents: read
-     checks: write
-     pull-requests: write
-     issues: write
-    timeout-minutes: 20
-    concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_49
-     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_49
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-      - name: Upload Test Timing Data
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: test-timing-IntegrationTests_49
-          path: internal/venice-test-common/build/test-timings/
-          retention-days: 30
-          if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
-
-  IntegrationTests_50:
-    name: IntegrationTests_50
-    strategy:
-      fail-fast: false
-    runs-on: ubuntu-latest
-    permissions:
-     id-token: write
-     contents: read
-     checks: write
-     pull-requests: write
-     issues: write
-    timeout-minutes: 20
-    concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_50
-     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_50
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-      - name: Upload Test Timing Data
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: test-timing-IntegrationTests_50
-          path: internal/venice-test-common/build/test-timings/
-          retention-days: 30
-          if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
-
-  IntegrationTests_51:
-    name: IntegrationTests_51
-    strategy:
-      fail-fast: false
-    runs-on: ubuntu-latest
-    permissions:
-     id-token: write
-     contents: read
-     checks: write
-     pull-requests: write
-     issues: write
-    timeout-minutes: 20
-    concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_51
-     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_51
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-      - name: Upload Test Timing Data
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: test-timing-IntegrationTests_51
-          path: internal/venice-test-common/build/test-timings/
-          retention-days: 30
-          if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   integrationTests_99:
     name: integrationTests_99
@@ -5374,11 +4108,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 20
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-integrationTests_99
@@ -5419,34 +4149,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -5462,16 +4164,30 @@ jobs:
           path: internal/venice-test-common/build/test-timings/
           retention-days: 30
           if-no-files-found: ignore
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
+            python3 -c "
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('$f')
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          " 2>/dev/null
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   # This workflow gets skipped if all upstream jobs succeeded, but it runs (and fails) if any upstream failed.
   # This is what we want since GitHub required actions do not block merging when skipped, but can block it when failed.
@@ -5479,7 +4195,7 @@ jobs:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
-    needs: [IntegrationTests_1, IntegrationTests_2, IntegrationTests_3, IntegrationTests_4, IntegrationTests_5, IntegrationTests_6, IntegrationTests_7, IntegrationTests_8, IntegrationTests_9, IntegrationTests_10, IntegrationTests_11, IntegrationTests_12, IntegrationTests_13, IntegrationTests_14, IntegrationTests_15, IntegrationTests_16, IntegrationTests_17, IntegrationTests_18, IntegrationTests_19, IntegrationTests_20, IntegrationTests_21, IntegrationTests_22, IntegrationTests_23, IntegrationTests_24, IntegrationTests_25, IntegrationTests_26, IntegrationTests_27, IntegrationTests_28, IntegrationTests_29, IntegrationTests_30, IntegrationTests_31, IntegrationTests_32, IntegrationTests_33, IntegrationTests_34, IntegrationTests_35, IntegrationTests_36, IntegrationTests_37, IntegrationTests_38, IntegrationTests_39, IntegrationTests_40, IntegrationTests_41, IntegrationTests_42, IntegrationTests_43, IntegrationTests_44, IntegrationTests_45, IntegrationTests_46, IntegrationTests_47, IntegrationTests_48, IntegrationTests_49, IntegrationTests_50, IntegrationTests_51, integrationTests_99]
+    needs: [IntegrationTests_1, IntegrationTests_2, IntegrationTests_3, IntegrationTests_4, IntegrationTests_5, IntegrationTests_6, IntegrationTests_7, IntegrationTests_8, IntegrationTests_9, IntegrationTests_10, IntegrationTests_11, IntegrationTests_12, IntegrationTests_13, IntegrationTests_14, IntegrationTests_15, IntegrationTests_16, IntegrationTests_17, IntegrationTests_18, IntegrationTests_19, IntegrationTests_20, IntegrationTests_21, IntegrationTests_22, IntegrationTests_23, IntegrationTests_24, IntegrationTests_25, IntegrationTests_26, IntegrationTests_27, IntegrationTests_28, IntegrationTests_29, IntegrationTests_30, IntegrationTests_31, IntegrationTests_32, IntegrationTests_33, IntegrationTests_34, IntegrationTests_35, IntegrationTests_36, IntegrationTests_37, IntegrationTests_38, IntegrationTests_39, IntegrationTests_40, IntegrationTests_41, IntegrationTests_42, IntegrationTests_43, IntegrationTests_44, IntegrationTests_45, IntegrationTests_46, IntegrationTests_47, integrationTests_99]
     timeout-minutes: 20
     if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}
     steps:
