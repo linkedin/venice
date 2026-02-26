@@ -31,7 +31,7 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
 
   private void handleRequest(VeniceClientRequest request, StreamObserver<VeniceServerResponse> responseObserver) {
     VeniceServerResponse.Builder responseBuilder =
-        VeniceServerResponse.newBuilder().setErrorCode(VeniceReadResponseStatus.OK);
+        VeniceServerResponse.newBuilder().setErrorCode(VeniceReadResponseStatus.OK.getCode());
     GrpcRequestContext ctx = new GrpcRequestContext(request, responseBuilder, responseObserver);
     requestProcessor.process(ctx);
   }

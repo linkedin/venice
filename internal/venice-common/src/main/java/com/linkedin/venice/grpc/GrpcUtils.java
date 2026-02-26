@@ -1,5 +1,7 @@
 package com.linkedin.venice.grpc;
 
+import com.google.protobuf.ByteString;
+import com.google.protobuf.UnsafeByteOperations;
 import com.linkedin.venice.acl.handler.AccessResult;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -12,6 +14,7 @@ import io.grpc.InsecureChannelCredentials;
 import io.grpc.ServerCall;
 import io.grpc.Status;
 import io.grpc.TlsChannelCredentials;
+import io.netty.buffer.ByteBuf;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -100,6 +103,31 @@ public final class GrpcUtils {
       keyStore.load(in, password);
     }
     return keyStore;
+  }
+
+  /**
+   * Wraps a byte array into a {@link ByteString} <b>without copying</b>. The returned {@code ByteString} directly
+   * aliases the provided array, so the caller <b>must not</b> modify the array after calling this method.
+   * Violating this contract can cause silent data corruption in serialized gRPC payloads.
+   *
+   * <p>If the caller cannot guarantee immutability of the input array, use {@link ByteString#copyFrom(byte[])}
+   * instead.
+   */
+  public static ByteString toByteStringNoCopy(byte[] bytes) {
+    if (bytes == null || bytes.length == 0) {
+      return ByteString.EMPTY;
+    }
+    return UnsafeByteOperations.unsafeWrap(bytes);
+  }
+
+  /** Copies readable bytes from a {@link ByteBuf} into a {@link ByteString}. */
+  public static ByteString toByteString(ByteBuf buf) {
+    if (buf == null || buf.readableBytes() == 0) {
+      return ByteString.EMPTY;
+    }
+    byte[] bytes = new byte[buf.readableBytes()];
+    buf.getBytes(buf.readerIndex(), bytes);
+    return ByteString.copyFrom(bytes);
   }
 
   public static ChannelCredentials buildChannelCredentials(SSLFactory sslFactory) {
