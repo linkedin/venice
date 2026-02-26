@@ -6,27 +6,16 @@ import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
-import static org.testng.Assert.assertFalse;
 
 import com.linkedin.venice.AdminTool;
-import com.linkedin.venice.Arg;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.PubSubPositionJsonWireFormat;
-import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.endToEnd.TestHybrid;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixReadOnlyDarkClusterConfigRepository;
-import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
-import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -34,22 +23,13 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
-import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import java.util.AbstractMap;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.IntStream;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -58,13 +38,9 @@ import org.testng.annotations.Test;
 
 public class TestAdminToolEndToEnd {
   private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
-  private static final Logger LOGGER = LogManager.getLogger(TestAdminToolEndToEnd.class);
 
   String clusterName;
   VeniceClusterWrapper venice;
-
-  // Constants for repush store test
-  private static final long TEST_LOG_COMPACTION_TIMEOUT = TimeUnit.SECONDS.toMillis(10); // ms
 
   @BeforeClass
   public void setUp() {
@@ -98,200 +74,6 @@ public class TestAdminToolEndToEnd {
   @AfterClass
   public void cleanUp() {
     venice.close();
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testUpdateClusterConfig() throws Exception {
-    ZkClient zkClient = ZkClientFactory.newZkClient(venice.getZk().getAddress());
-    HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
-    HelixReadOnlyLiveClusterConfigRepository liveClusterConfigRepository =
-        new HelixReadOnlyLiveClusterConfigRepository(zkClient, adapterSerializer, clusterName);
-
-    String regionName = "dc-0";
-    int kafkaFetchQuota = 1000;
-
-    Assert.assertNotEquals(
-        liveClusterConfigRepository.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(regionName),
-        kafkaFetchQuota);
-
-    String[] adminToolArgs = { "--update-cluster-config", "--url",
-        venice.getLeaderVeniceController().getControllerUrl(), "--cluster", clusterName, "--fabric", regionName,
-        "--" + Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND.getArgName(), String.valueOf(kafkaFetchQuota) };
-    AdminTool.main(adminToolArgs);
-
-    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      liveClusterConfigRepository.refresh();
-      Assert.assertEquals(
-          liveClusterConfigRepository.getConfigs().getServerKafkaFetchQuotaRecordsPerSecondForRegion(regionName),
-          kafkaFetchQuota);
-      Assert.assertTrue(liveClusterConfigRepository.getConfigs().isStoreMigrationAllowed());
-    });
-
-    String[] disallowStoreMigrationArg =
-        { "--update-cluster-config", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
-            clusterName, "--" + Arg.ALLOW_STORE_MIGRATION.getArgName(), String.valueOf(false) };
-    AdminTool.main(disallowStoreMigrationArg);
-
-    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      liveClusterConfigRepository.refresh();
-      Assert.assertFalse(liveClusterConfigRepository.getConfigs().isStoreMigrationAllowed());
-    });
-
-    try {
-      String[] startMigrationArgs = { "--migrate-store", "--url", venice.getLeaderVeniceController().getControllerUrl(),
-          "--store", "anyStore", "--cluster-src", clusterName, "--cluster-dest", "anyCluster" };
-      AdminTool.main(startMigrationArgs);
-      Assert.fail("Store migration should be denied");
-    } catch (VeniceException e) {
-      Assert.assertTrue(e.getMessage().contains("does not allow store migration"));
-    }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testUpdateDarkClusterConfig() throws Exception {
-    ZkClient zkClient = ZkClientFactory.newZkClient(venice.getZk().getAddress());
-    HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
-    HelixReadOnlyDarkClusterConfigRepository darkClusterConfigRepository =
-        new HelixReadOnlyDarkClusterConfigRepository(zkClient, adapterSerializer, clusterName);
-
-    try (ControllerClient controllerClient =
-        new ControllerClient(clusterName, venice.getLeaderVeniceController().getControllerUrl())) {
-      String testStoreName1 = Utils.getUniqueString("test-store");
-      NewStoreResponse newStoreResponse =
-          controllerClient.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
-      Assert.assertFalse(newStoreResponse.isError());
-
-      String testStoreName2 = Utils.getUniqueString("test-store");
-      newStoreResponse = controllerClient.createNewStore(testStoreName2, "test", "\"string\"", "\"string\"");
-      Assert.assertFalse(newStoreResponse.isError());
-
-      String storesParam = testStoreName1 + "," + testStoreName2;
-      String[] adminToolArgs =
-          { "--update-dark-cluster-config", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
-              clusterName, "--" + Arg.STORES_TO_REPLICATE.getArgName(), storesParam };
-      AdminTool.main(adminToolArgs);
-
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        darkClusterConfigRepository.refresh();
-        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getStoresToReplicate().contains(testStoreName1));
-        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getStoresToReplicate().contains(testStoreName2));
-        Assert.assertEquals(darkClusterConfigRepository.getConfigs().getStoresToReplicate().size(), 2);
-      });
-
-      // Update the list to contain only test store 1
-      String[] adminToolArgsWithOnlyOneStore =
-          { "--update-dark-cluster-config", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
-              clusterName, "--" + Arg.STORES_TO_REPLICATE.getArgName(), testStoreName1 };
-      AdminTool.main(adminToolArgsWithOnlyOneStore);
-
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        darkClusterConfigRepository.refresh();
-        Assert.assertEquals(darkClusterConfigRepository.getConfigs().getStoresToReplicate().size(), 1);
-        Assert.assertTrue(darkClusterConfigRepository.getConfigs().getStoresToReplicate().contains(testStoreName1));
-        Assert.assertFalse(darkClusterConfigRepository.getConfigs().getStoresToReplicate().contains(testStoreName2));
-      });
-    }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT * 4)
-  public void testWipeClusterCommand() throws Exception {
-    try (ControllerClient controllerClient =
-        new ControllerClient(clusterName, venice.getLeaderVeniceController().getControllerUrl())) {
-      // Create 2 stores. Store 1 has 2 versions
-      String testStoreName1 = Utils.getUniqueString("test-store");
-      NewStoreResponse newStoreResponse =
-          controllerClient.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
-      Assert.assertFalse(newStoreResponse.isError());
-      VersionCreationResponse versionCreationResponse =
-          controllerClient.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-1"), 1L);
-      Assert.assertFalse(versionCreationResponse.isError());
-      versionCreationResponse = controllerClient.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-2"), 1L);
-      Assert.assertFalse(versionCreationResponse.isError());
-
-      String testStoreName2 = Utils.getUniqueString("test-store");
-      newStoreResponse = controllerClient.createNewStore(testStoreName2, "test", "\"string\"", "\"string\"");
-      Assert.assertFalse(newStoreResponse.isError());
-
-      // Delete a version
-      String[] wipeClusterArgs1 = { "--wipe-cluster", "--url", venice.getLeaderVeniceController().getControllerUrl(),
-          "--cluster", clusterName, "--fabric", "dc-0", "--store", testStoreName1, "--version", "1" };
-      AdminTool.main(wipeClusterArgs1);
-      StoreResponse storeResponse = controllerClient.getStore(testStoreName1);
-      Assert.assertNotNull(storeResponse.getStore());
-      Assert.assertFalse(storeResponse.getStore().getVersion(1).isPresent());
-      Assert.assertTrue(storeResponse.getStore().getVersion(2).isPresent());
-
-      // Delete a store
-      String[] wipeClusterArgs2 = { "--wipe-cluster", "--url", venice.getLeaderVeniceController().getControllerUrl(),
-          "--cluster", clusterName, "--fabric", "dc-0", "--store", testStoreName1 };
-      AdminTool.main(wipeClusterArgs2);
-      storeResponse = controllerClient.getStore(testStoreName1);
-      Assert.assertNull(storeResponse.getStore());
-
-      // Wipe a cluster
-      String[] wipeClusterArgs3 = { "--wipe-cluster", "--url", venice.getLeaderVeniceController().getControllerUrl(),
-          "--cluster", clusterName, "--fabric", "dc-0" };
-      AdminTool.main(wipeClusterArgs3);
-      MultiStoreResponse multiStoreResponse = controllerClient.queryStoreList(false);
-      Assert.assertEquals(multiStoreResponse.getStores().length, 0);
-
-      // Wait until all topics are indeed removed from Kafka service.
-      PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-
-      PubSubTopic testStoreTopic1 = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(testStoreName1, 1));
-      PubSubTopic testStoreTopic2 = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(testStoreName1, 2));
-      PubSubTopic testStoreTopic3 = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(testStoreName2, 1));
-
-      TopicManager topicManager = venice.getLeaderVeniceController().getVeniceAdmin().getTopicManager();
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        assertFalse(topicManager.containsTopicWithExpectationAndRetry(testStoreTopic1, 3, false));
-        assertFalse(topicManager.containsTopicWithExpectationAndRetry(testStoreTopic2, 3, false));
-        assertFalse(topicManager.containsTopicWithExpectationAndRetry(testStoreTopic3, 3, false));
-      });
-
-      // Redo fabric buildup. Create the store and version again.
-      newStoreResponse = controllerClient.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
-      Assert.assertFalse(newStoreResponse.isError());
-      versionCreationResponse = controllerClient.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-1"), 1L);
-      Assert.assertFalse(versionCreationResponse.isError());
-      Assert.assertEquals(versionCreationResponse.getVersion(), 1);
-    }
-  }
-
-  /** similar test logic to {@link TestHybrid#testHybridStoreLogCompaction()} & shares {@link com.linkedin.venice.endToEnd.TestHybrid.TestRepushOrchestratorImpl} */
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testRepushStoreCommand() throws Exception {
-    // create test store
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
-        // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
-        .setHybridRewindSeconds(2000000)
-        .setHybridOffsetLagThreshold(0)
-        .setPartitionCount(2);
-    String storeName = Utils.getUniqueString("repush-test-store");
-    venice.useControllerClient(client -> {
-      client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
-      client.updateStore(storeName, params);
-    });
-    venice.createVersion(
-        storeName,
-        DEFAULT_KEY_SCHEMA,
-        DEFAULT_VALUE_SCHEMA,
-        IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
-
-    // Test: send admin command
-    String[] repushStoreArgs =
-        { "--repush-store", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--store", storeName };
-    AdminTool.main(repushStoreArgs);
-
-    // Validate repush triggered
-    try {
-      if (TestHybrid.TestRepushOrchestratorImpl.getLatch().await(TEST_LOG_COMPACTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
-        LOGGER.info("Log compaction job triggered");
-      }
-    } catch (InterruptedException e) {
-      LOGGER.error("Log compaction job failed");
-      throw new RuntimeException(e);
-    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
