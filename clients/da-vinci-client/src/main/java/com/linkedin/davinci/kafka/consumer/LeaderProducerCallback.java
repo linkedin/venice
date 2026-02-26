@@ -138,6 +138,10 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
                 LEADER_PRODUCER_COMPLETION_LATENCY_THRESHOLD_MS);
           }
         }
+        PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+        if (monitor != null) {
+          monitor.recordLeaderCompletionLatencyNs(System.nanoTime() - produceTimeNs);
+        }
         if (ingestionTask.isHybridMode() && sourceConsumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
             && partitionConsumptionState.hasLagCaughtUp()) {
           ingestionTask.getVersionIngestionStats()
@@ -221,6 +225,14 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
                   ingestionTask.versionNumber,
                   LatencyUtils.getElapsedTimeFromMsToMs(currentTimeForMetricsMs),
                   currentTimeForMetricsMs);
+        }
+        PartitionIngestionMonitor callbackMonitor = partitionConsumptionState.getIngestionMonitor();
+        if (callbackMonitor != null) {
+          // Measures time spent in callback processing (drainer queuing, chunk handling, etc.)
+          // Same measurement as recordProducerCallBackLatency above, converted to ns for precision
+          callbackMonitor
+              .recordLeaderCallbackLatencyNs((System.currentTimeMillis() - currentTimeForMetricsMs) * 1_000_000L);
+          callbackMonitor.recordLeaderProduced(producedRecordSize);
         }
         this.onCompletionCallback.accept(produceResult);
       } catch (Exception oe) {

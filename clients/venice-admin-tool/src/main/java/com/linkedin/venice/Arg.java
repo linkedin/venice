@@ -344,7 +344,9 @@ public enum Arg {
   STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks"),
   KEY_URN_COMPRESSION_EANBLED(
       "key-urn-compression-enabled", "kuce", true, "Enable/Disable key urn compression for a store."
-  ), KEY_URN_FIELDS("key-urn-fields", "kuf", true, "Comma separated list of key urn fields.");
+  ), KEY_URN_FIELDS("key-urn-fields", "kuf", true, "Comma separated list of key urn fields."),
+  GRPC_PORT("grpc-port", "gp", true, "gRPC port on the target Venice server"),
+  INTERVAL_MS("interval-ms", "ims", true, "Monitoring interval in milliseconds (default: 5000, minimum: 1000)");
 
   private final String argName;
   private final String first;

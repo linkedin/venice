@@ -481,7 +481,8 @@ public class VeniceServer {
         storeAccessController,
         diskHealthCheckService,
         compressorFactory,
-        resourceReadUsageTracker);
+        resourceReadUsageTracker,
+        Optional.of(kafkaStoreIngestionService));
     services.add(listenerService);
 
     /**
@@ -817,7 +818,8 @@ public class VeniceServer {
       Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService,
       StorageEngineBackedCompressorFactory compressorFactory,
-      Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
+      Optional<ResourceReadUsageTracker> resourceReadUsageTracker,
+      Optional<KafkaStoreIngestionService> kafkaStoreIngestionService) {
     return new ListenerService(
         storageEngineRepository,
         storeMetadataRepository,
@@ -832,7 +834,8 @@ public class VeniceServer {
         storeAccessController,
         diskHealthService,
         compressorFactory,
-        resourceReadUsageTracker);
+        resourceReadUsageTracker,
+        kafkaStoreIngestionService);
   }
 
   public static void main(String args[]) throws Exception {
