@@ -99,10 +99,6 @@ public class TestActiveActiveIngestion {
     return false;
   }
 
-  protected boolean isAAWCParallelProcessingEnabled() {
-    return false;
-  }
-
   protected boolean whetherToEnableNearlineProducerThroughputOptimizationInServer() {
     return false;
   }
