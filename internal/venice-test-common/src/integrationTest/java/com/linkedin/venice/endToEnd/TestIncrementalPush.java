@@ -440,12 +440,6 @@ public class TestIncrementalPush extends AbstractMultiRegionTest {
     }
   }
 
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    D2ClientUtils.shutdownClient(d2ClientDC0);
-    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
-  }
-
   private GenericRecord readValue(AvroGenericStoreClient<Object, Object> storeReader, String key)
       throws ExecutionException, InterruptedException {
     return (GenericRecord) storeReader.get(key).get();
