@@ -15,6 +15,7 @@ import com.linkedin.davinci.stats.ingestion.IngestionOtelStats;
 import com.linkedin.davinci.stats.ingestion.NoOpIngestionOtelStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.utils.DataProviderUtils;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
@@ -247,6 +248,7 @@ public class AggVersionedIngestionStatsTest {
     aggStats.recordBatchProcessingRequest(STORE_NAME, VERSION_1, 10, now);
     aggStats.recordBatchProcessingRequestError(STORE_NAME, VERSION_1);
     aggStats.recordBatchProcessingLatency(STORE_NAME, VERSION_1, 7.0, now);
+    aggStats.recordRegionHybridConsumption(STORE_NAME, VERSION_1, 0, 512, now, "dc-1", VeniceRegionLocality.LOCAL);
 
     Map<String, IngestionOtelStats> otelStatsMap = getOtelStatsMap(aggStats);
     if (ingestionOtelStatsEnabled) {

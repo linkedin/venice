@@ -10,6 +10,8 @@ import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.VeniceView;
 import io.tehuti.metrics.MetricsRepository;
@@ -34,6 +36,7 @@ public class AggVersionedIngestionStats
 
   private final Map<String, IngestionOtelStats> otelStatsMap = new VeniceConcurrentHashMap<>();
   private final String clusterName;
+  private final String localRegionName;
   private final boolean emitOtelIngestionStats;
 
   public AggVersionedIngestionStats(
@@ -47,6 +50,7 @@ public class AggVersionedIngestionStats
         IngestionStatsReporter::new,
         serverConfig.isUnregisterMetricForDeletedStoreEnabled());
     this.clusterName = serverConfig.getClusterName();
+    this.localRegionName = RegionUtils.normalizeRegionName(serverConfig.getRegionName());
     this.emitOtelIngestionStats = serverConfig.isIngestionOtelStatsEnabled();
   }
 
@@ -104,7 +108,7 @@ public class AggVersionedIngestionStats
     int currentVersion = getCurrentVersion(storeName);
     int futureVersion = getFutureVersion(storeName);
     return otelStatsMap.computeIfAbsent(storeName, k -> {
-      IngestionOtelStats stats = new IngestionOtelStats(getMetricsRepository(), k, clusterName);
+      IngestionOtelStats stats = new IngestionOtelStats(getMetricsRepository(), k, clusterName, localRegionName);
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
@@ -206,13 +210,18 @@ public class AggVersionedIngestionStats
       int version,
       int regionId,
       long bytesConsumed,
-      long currentTimeMs) {
+      long currentTimeMs,
+      String sourceRegion,
+      VeniceRegionLocality regionLocality) {
     // Tehuti metrics
     recordVersionedAndTotalStat(storeName, version, stat -> {
       stat.recordRegionHybridBytesConsumed(regionId, bytesConsumed, currentTimeMs);
       stat.recordRegionHybridRecordsConsumed(regionId, 1, currentTimeMs);
     });
-    // OTel RT metrics will be added in a follow-up PR
+    // OTel RT metrics
+    IngestionOtelStats otelStats = getIngestionOtelStats(storeName);
+    otelStats.recordRtBytesConsumed(version, sourceRegion, regionLocality, bytesConsumed);
+    otelStats.recordRtRecordsConsumed(version, sourceRegion, regionLocality, 1);
   }
 
   public void recordUpdateIgnoredDCR(String storeName, int version) {

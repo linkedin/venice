@@ -18,6 +18,14 @@ import org.apache.logging.log4j.Logger;
 public class RegionUtils {
   private static final Logger LOGGER = LogManager.getLogger(RegionUtils.class);
   private static final String REGION_FILTER_LIST_SEPARATOR = ",\\s*";
+  public static final String UNKNOWN_REGION = "unknown";
+
+  /**
+   * Returns the input region name if non-null and non-empty, otherwise {@link #UNKNOWN_REGION}.
+   */
+  public static String normalizeRegionName(String regionName) {
+    return (regionName == null || regionName.isEmpty()) ? UNKNOWN_REGION : regionName;
+  }
 
   public static String getLocalRegionName(VeniceProperties props, boolean isParentRegion) {
     String regionName;

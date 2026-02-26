@@ -22,6 +22,8 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ING
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TASK_PUSH_TIMEOUT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME_BETWEEN_COMPONENTS;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RT_BYTES_CONSUMED;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RT_RECORDS_CONSUMED;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -38,6 +40,7 @@ import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
@@ -46,6 +49,7 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -103,6 +107,12 @@ public class IngestionOtelStats {
   // Metrics with VersionRole + SourceComponent + DestinationComponent dimensions
   private final MetricEntityStateThreeEnums<VersionRole, VeniceIngestionSourceComponent, VeniceIngestionDestinationComponent> timeBetweenComponentsMetric;
 
+  // RT region metrics: keyed by sourceRegion string, following HeartbeatOtelStats.metricsByRegion pattern.
+  // destRegion is always the local server's region (constant per process), stored in localRegionName.
+  private final Map<String, MetricEntityStateTwoEnums<VersionRole, VeniceRegionLocality>> rtRecordsConsumedByRegion;
+  private final Map<String, MetricEntityStateTwoEnums<VersionRole, VeniceRegionLocality>> rtBytesConsumedByRegion;
+  private final String localRegionName;
+
   /**
    * Package-private no-arg constructor for {@link NoOpIngestionOtelStats}.
    * Initializes all final fields to null/empty defaults. Safe because the no-op subclass
@@ -137,9 +147,16 @@ public class IngestionOtelStats {
     this.producerCallbackTimeMetric = null;
     this.dcrEventCountMetric = null;
     this.timeBetweenComponentsMetric = null;
+    this.rtRecordsConsumedByRegion = Collections.emptyMap();
+    this.rtBytesConsumedByRegion = Collections.emptyMap();
+    this.localRegionName = null;
   }
 
-  public IngestionOtelStats(MetricsRepository metricsRepository, String storeName, String clusterName) {
+  public IngestionOtelStats(
+      MetricsRepository metricsRepository,
+      String storeName,
+      String clusterName,
+      String localRegionName) {
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelSetup =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .setStoreName(storeName)
@@ -219,6 +236,10 @@ public class IngestionOtelStats {
         VeniceIngestionSourceComponent.class,
         VeniceIngestionDestinationComponent.class);
 
+    // Initialize RT region metric maps
+    this.rtRecordsConsumedByRegion = new VeniceConcurrentHashMap<>();
+    this.rtBytesConsumedByRegion = new VeniceConcurrentHashMap<>();
+    this.localRegionName = localRegionName;
   }
 
   /**
@@ -319,6 +340,8 @@ public class IngestionOtelStats {
     ingestionTasksByVersion.clear();
     pushTimeoutByVersion.clear();
     idleTimeByVersion.clear();
+    rtRecordsConsumedByRegion.clear();
+    rtBytesConsumedByRegion.clear();
   }
 
   public void setIngestionTaskPushTimeoutGauge(int version, int value) {
@@ -436,6 +459,56 @@ public class IngestionOtelStats {
       double latencyMs) {
     timeBetweenComponentsMetric
         .record(latencyMs, classifyVersion(version, versionInfo), sourceComponent, destComponent);
+  }
+
+  // RT region metric helpers
+
+  private MetricEntityStateTwoEnums<VersionRole, VeniceRegionLocality> getOrCreateRtRecordsMetric(String sourceRegion) {
+    return rtRecordsConsumedByRegion.computeIfAbsent(sourceRegion, src -> {
+      Map<VeniceMetricsDimensions, String> dims = new HashMap<>(baseDimensionsMap);
+      dims.put(VeniceMetricsDimensions.VENICE_SOURCE_REGION, src);
+      dims.put(VeniceMetricsDimensions.VENICE_DESTINATION_REGION, localRegionName);
+      return MetricEntityStateTwoEnums.create(
+          RT_RECORDS_CONSUMED.getMetricEntity(),
+          otelRepository,
+          dims,
+          VersionRole.class,
+          VeniceRegionLocality.class);
+    });
+  }
+
+  private MetricEntityStateTwoEnums<VersionRole, VeniceRegionLocality> getOrCreateRtBytesMetric(String sourceRegion) {
+    return rtBytesConsumedByRegion.computeIfAbsent(sourceRegion, src -> {
+      Map<VeniceMetricsDimensions, String> dims = new HashMap<>(baseDimensionsMap);
+      dims.put(VeniceMetricsDimensions.VENICE_SOURCE_REGION, src);
+      dims.put(VeniceMetricsDimensions.VENICE_DESTINATION_REGION, localRegionName);
+      return MetricEntityStateTwoEnums.create(
+          RT_BYTES_CONSUMED.getMetricEntity(),
+          otelRepository,
+          dims,
+          VersionRole.class,
+          VeniceRegionLocality.class);
+    });
+  }
+
+  // RT region recording methods
+
+  public void recordRtRecordsConsumed(
+      int version,
+      String sourceRegion,
+      VeniceRegionLocality regionLocality,
+      long count) {
+    if (!emitOtelMetrics) {
+      return;
+    }
+    getOrCreateRtRecordsMetric(sourceRegion).record(count, classifyVersion(version, versionInfo), regionLocality);
+  }
+
+  public void recordRtBytesConsumed(int version, String sourceRegion, VeniceRegionLocality regionLocality, long bytes) {
+    if (!emitOtelMetrics) {
+      return;
+    }
+    getOrCreateRtBytesMetric(sourceRegion).record(bytes, classifyVersion(version, versionInfo), regionLocality);
   }
 
 }

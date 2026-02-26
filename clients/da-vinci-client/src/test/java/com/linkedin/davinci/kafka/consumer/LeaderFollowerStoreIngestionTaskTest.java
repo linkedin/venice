@@ -87,6 +87,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ReferenceCounted;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -95,6 +96,8 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -1427,5 +1430,72 @@ public class LeaderFollowerStoreIngestionTaskTest {
     DolStamp dolStampIncomplete = new DolStamp(42L, "test-host");
     dolStampIncomplete.setDolConsumed(true);
     assertFalse(dolStampIncomplete.isDolComplete());
+  }
+
+  @Test
+  public void testComputeLocalKafkaClusterId() {
+    // Each region has one primary cluster. Separate RT topic clusters for incremental pushes
+    // use a "{region}_sep" alias convention and are treated as distinct regions.
+    Int2ObjectMap<String> clusterIdToAlias = new Int2ObjectOpenHashMap<>();
+    clusterIdToAlias.put(0, "dc-1");
+    clusterIdToAlias.put(1, "dc-2");
+    clusterIdToAlias.put(2, "dc-1_sep"); // separate RT topic for inc pushes — distinct alias
+    clusterIdToAlias.put(3, "dc-3");
+
+    // Normal case: matches the primary cluster for dc-1, not the _sep cluster
+    assertEquals(
+        LeaderFollowerStoreIngestionTask.computeLocalKafkaClusterId(clusterIdToAlias, "dc-1"),
+        0,
+        "Should match the primary cluster for dc-1");
+
+    // Single match for dc-2
+    assertEquals(
+        LeaderFollowerStoreIngestionTask.computeLocalKafkaClusterId(clusterIdToAlias, "dc-2"),
+        1,
+        "Should match the cluster for dc-2");
+
+    // No match
+    assertEquals(
+        LeaderFollowerStoreIngestionTask.computeLocalKafkaClusterId(clusterIdToAlias, "dc-99"),
+        -1,
+        "Unknown region should return -1");
+
+    // Null region
+    assertEquals(
+        LeaderFollowerStoreIngestionTask.computeLocalKafkaClusterId(clusterIdToAlias, null),
+        -1,
+        "Null region should return -1");
+
+    // Empty region
+    assertEquals(
+        LeaderFollowerStoreIngestionTask.computeLocalKafkaClusterId(clusterIdToAlias, ""),
+        -1,
+        "Empty region should return -1");
+
+    // Empty map
+    assertEquals(
+        LeaderFollowerStoreIngestionTask.computeLocalKafkaClusterId(new Int2ObjectOpenHashMap<>(), "dc-1"),
+        -1,
+        "Empty map should return -1");
+  }
+
+  @Test
+  public void testUnknownRegionFallback() {
+    // Verify normalizeRegionName returns UNKNOWN_REGION for unmapped cluster IDs
+    Int2ObjectMap<String> clusterIdToAlias = new Int2ObjectOpenHashMap<>();
+    clusterIdToAlias.put(0, "dc-1");
+
+    // Cluster ID 99 is not in the map — get() returns null, normalizeRegionName returns UNKNOWN_REGION
+    String result = RegionUtils.normalizeRegionName(clusterIdToAlias.get(99));
+    assertEquals(result, RegionUtils.UNKNOWN_REGION, "Unknown kafkaClusterId should map to 'unknown' region");
+
+    // Cluster ID 0 is in the map — get() returns "dc-1", normalizeRegionName passes through
+    String known = RegionUtils.normalizeRegionName(clusterIdToAlias.get(0));
+    assertEquals(known, "dc-1", "Known kafkaClusterId should map to its alias");
+
+    // Empty alias — normalizeRegionName returns UNKNOWN_REGION
+    clusterIdToAlias.put(2, "");
+    String empty = RegionUtils.normalizeRegionName(clusterIdToAlias.get(2));
+    assertEquals(empty, RegionUtils.UNKNOWN_REGION, "Empty alias should normalize to 'unknown' region");
   }
 }

@@ -37,6 +37,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateObservableCounterValue;
 import static com.linkedin.venice.utils.Utils.setOf;
 import static org.mockito.Mockito.mock;
@@ -54,6 +55,7 @@ import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
@@ -76,6 +78,8 @@ public class IngestionOtelStatsTest {
   private static final int CURRENT_VERSION = 2;
   private static final int FUTURE_VERSION = 3;
   private static final String TEST_PREFIX = "test_prefix";
+  private static final String LOCAL_REGION = "dc-1";
+  private static final String REMOTE_REGION = "dc-2";
 
   private InMemoryMetricReader inMemoryMetricReader;
   private IngestionOtelStats ingestionOtelStats;
@@ -89,7 +93,7 @@ public class IngestionOtelStatsTest {
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build());
-    ingestionOtelStats = new IngestionOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME);
+    ingestionOtelStats = new IngestionOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
   }
 
   @Test
@@ -105,15 +109,21 @@ public class IngestionOtelStatsTest {
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build());
 
-    IngestionOtelStats stats = new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
+    IngestionOtelStats stats =
+        new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
     assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled");
   }
 
   @Test
   public void testConstructorWithNonVeniceMetricsRepository() {
     MetricsRepository regularRepository = new MetricsRepository();
-    IngestionOtelStats stats = new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME);
+    IngestionOtelStats stats = new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
     assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled for non-Venice repository");
+
+    // RT recording methods should not throw when baseDimensionsMap is null
+    stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    stats.recordRtRecordsConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 5);
+    stats.recordRtBytesConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 1024);
   }
 
   @Test
@@ -468,10 +478,13 @@ public class IngestionOtelStatsTest {
             .setEmitOtelMetrics(false)
             .setOtelAdditionalMetricsReader(disabledMetricReader)
             .build());
-    IngestionOtelStats stats = new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
+    IngestionOtelStats stats =
+        new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
     stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     stats.recordRecordsConsumed(CURRENT_VERSION, ReplicaType.LEADER, 10);
     stats.recordIngestionTime(CURRENT_VERSION, 50.0);
+    stats.recordRtRecordsConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 5);
+    stats.recordRtBytesConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 1024);
     assertEquals(disabledMetricReader.collectAllMetrics().size(), 0, "No metrics when OTel disabled");
   }
 
@@ -574,16 +587,24 @@ public class IngestionOtelStatsTest {
     ingestionOtelStats.setIngestionTask(FUTURE_VERSION, mockTask);
     ingestionOtelStats.setIngestionTaskPushTimeoutGauge(CURRENT_VERSION, 1);
     ingestionOtelStats.recordIdleTime(CURRENT_VERSION, 5000);
+    ingestionOtelStats.recordRtRecordsConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 5);
+    ingestionOtelStats.recordRtBytesConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 512);
 
     assertTrue(getIngestionTasksByVersion(ingestionOtelStats).containsKey(CURRENT_VERSION));
     assertTrue(getPushTimeoutByVersion(ingestionOtelStats).containsKey(CURRENT_VERSION));
     assertTrue(getIdleTimeByVersion(ingestionOtelStats).containsKey(CURRENT_VERSION));
+    assertFalse(getRtRecordsConsumedByRegion(ingestionOtelStats).isEmpty());
+    assertFalse(getRtBytesConsumedByRegion(ingestionOtelStats).isEmpty());
 
     ingestionOtelStats.close();
 
     assertTrue(getIngestionTasksByVersion(ingestionOtelStats).isEmpty(), "ingestionTasksByVersion should be cleared");
     assertTrue(getPushTimeoutByVersion(ingestionOtelStats).isEmpty(), "pushTimeoutByVersion should be cleared");
     assertTrue(getIdleTimeByVersion(ingestionOtelStats).isEmpty(), "idleTimeByVersion should be cleared");
+    assertTrue(
+        getRtRecordsConsumedByRegion(ingestionOtelStats).isEmpty(),
+        "rtRecordsConsumedByRegion should be cleared");
+    assertTrue(getRtBytesConsumedByRegion(ingestionOtelStats).isEmpty(), "rtBytesConsumedByRegion should be cleared");
 
     // After close, can set new state
     ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
@@ -681,6 +702,122 @@ public class IngestionOtelStatsTest {
 
     ingestionOtelStats.recordIdleTime(backupVersion, 7000L);
     assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 7000L);
+  }
+
+  // RT region metrics
+
+  @Test
+  public void testRecordRtRecordsConsumed() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordRtRecordsConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 10);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        10,
+        buildAttributesWithRegion(VersionRole.CURRENT, REMOTE_REGION, LOCAL_REGION, VeniceRegionLocality.REMOTE),
+        RT_RECORDS_CONSUMED.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordRtBytesConsumed() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordRtBytesConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 2048);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        2048,
+        buildAttributesWithRegion(VersionRole.CURRENT, REMOTE_REGION, LOCAL_REGION, VeniceRegionLocality.REMOTE),
+        RT_BYTES_CONSUMED.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRtMetricsMultipleRegionCombinations() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    // Record from local region
+    ingestionOtelStats.recordRtRecordsConsumed(CURRENT_VERSION, LOCAL_REGION, VeniceRegionLocality.LOCAL, 5);
+    ingestionOtelStats.recordRtBytesConsumed(CURRENT_VERSION, LOCAL_REGION, VeniceRegionLocality.LOCAL, 512);
+    // Record from remote region
+    ingestionOtelStats.recordRtRecordsConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 3);
+    ingestionOtelStats.recordRtBytesConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 1024);
+
+    // Validate local region data points
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        5,
+        buildAttributesWithRegion(VersionRole.CURRENT, LOCAL_REGION, LOCAL_REGION, VeniceRegionLocality.LOCAL),
+        RT_RECORDS_CONSUMED.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        512,
+        buildAttributesWithRegion(VersionRole.CURRENT, LOCAL_REGION, LOCAL_REGION, VeniceRegionLocality.LOCAL),
+        RT_BYTES_CONSUMED.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+
+    // Validate remote region data points
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        3,
+        buildAttributesWithRegion(VersionRole.CURRENT, REMOTE_REGION, LOCAL_REGION, VeniceRegionLocality.REMOTE),
+        RT_RECORDS_CONSUMED.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1024,
+        buildAttributesWithRegion(VersionRole.CURRENT, REMOTE_REGION, LOCAL_REGION, VeniceRegionLocality.REMOTE),
+        RT_BYTES_CONSUMED.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRtMetricsNoNpeWhenOtelDisabled() {
+    NoOpIngestionOtelStats noOpStats = NoOpIngestionOtelStats.INSTANCE;
+    // Should not throw NPE
+    noOpStats.recordRtRecordsConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 10);
+    noOpStats.recordRtBytesConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 1024);
+  }
+
+  @Test
+  public void testRtMetricsAccumulation() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    // Record from the same region multiple times — counter should accumulate
+    ingestionOtelStats.recordRtRecordsConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 3);
+    ingestionOtelStats.recordRtRecordsConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 7);
+    ingestionOtelStats.recordRtBytesConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 100);
+    ingestionOtelStats.recordRtBytesConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 200);
+
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        10,
+        buildAttributesWithRegion(VersionRole.CURRENT, REMOTE_REGION, LOCAL_REGION, VeniceRegionLocality.REMOTE),
+        RT_RECORDS_CONSUMED.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        300,
+        buildAttributesWithRegion(VersionRole.CURRENT, REMOTE_REGION, LOCAL_REGION, VeniceRegionLocality.REMOTE),
+        RT_BYTES_CONSUMED.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRtMetricsFutureVersionRole() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordRtRecordsConsumed(FUTURE_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 5);
+    ingestionOtelStats.recordRtBytesConsumed(FUTURE_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 1024);
+
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        5,
+        buildAttributesWithRegion(VersionRole.FUTURE, REMOTE_REGION, LOCAL_REGION, VeniceRegionLocality.REMOTE),
+        RT_RECORDS_CONSUMED.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1024,
+        buildAttributesWithRegion(VersionRole.FUTURE, REMOTE_REGION, LOCAL_REGION, VeniceRegionLocality.REMOTE),
+        RT_BYTES_CONSUMED.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
   }
 
   // Metric entity definition validation
@@ -950,6 +1087,21 @@ public class IngestionOtelStatsTest {
         .build();
   }
 
+  private Attributes buildAttributesWithRegion(
+      VersionRole versionRole,
+      String sourceRegion,
+      String destRegion,
+      VeniceRegionLocality regionLocality) {
+    return Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+        .put(VENICE_SOURCE_REGION.getDimensionNameInDefaultFormat(), sourceRegion)
+        .put(VENICE_DESTINATION_REGION.getDimensionNameInDefaultFormat(), destRegion)
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), versionRole.getDimensionValue())
+        .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), regionLocality.getDimensionValue())
+        .build();
+  }
+
   // Reflection helpers
 
   @SuppressWarnings("unchecked")
@@ -971,6 +1123,20 @@ public class IngestionOtelStatsTest {
     Field field = IngestionOtelStats.class.getDeclaredField("idleTimeByVersion");
     field.setAccessible(true);
     return (Map<Integer, ?>) field.get(stats);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Map<String, ?> getRtRecordsConsumedByRegion(IngestionOtelStats stats) throws Exception {
+    Field field = IngestionOtelStats.class.getDeclaredField("rtRecordsConsumedByRegion");
+    field.setAccessible(true);
+    return (Map<String, ?>) field.get(stats);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Map<String, ?> getRtBytesConsumedByRegion(IngestionOtelStats stats) throws Exception {
+    Field field = IngestionOtelStats.class.getDeclaredField("rtBytesConsumedByRegion");
+    field.setAccessible(true);
+    return (Map<String, ?>) field.get(stats);
   }
 
 }
