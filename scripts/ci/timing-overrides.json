@@ -1,5 +1,5 @@
 {
-  "_comment": "Manual timing overrides for split test classes. Original timing divided proportionally by test count.",
+  "_comment": "Manual timing overrides for split test classes and inherited-test subclasses.",
   "com.linkedin.venice.controller.TestAdminToolEndToEnd": 437,
   "com.linkedin.venice.controller.TestAdminToolClusterConfig": 437,
   "com.linkedin.venice.controller.TestAdminToolDataOperations": 437,
@@ -8,5 +8,13 @@
   "com.linkedin.venice.endToEnd.TestDeferredVersionSwapWithFailingRegions": 432,
   "com.linkedin.venice.endToEnd.TestDeferredVersionSwapWithFailingRegionsDvcIngestion": 432,
   "com.linkedin.venice.endToEnd.DaVinciClientSubscribeTest": 345,
-  "com.linkedin.venice.endToEnd.DaVinciClientSubscribeConcurrencyTest": 258
+  "com.linkedin.venice.endToEnd.DaVinciClientSubscribeConcurrencyTest": 258,
+  "com.linkedin.venice.consumer.TestChangelogConsumerWithParallelProcessing": 373,
+  "com.linkedin.venice.controller.TestTopicRequestOnHybridDeleteWithHMC": 37,
+  "com.linkedin.venice.endToEnd.TestActiveActiveIngestionWithCrossTpParallelProcessing": 223,
+  "com.linkedin.venice.endToEnd.TestActiveActiveIngestionWithReadWriteLeaderCompactionTuningAndParallelProcessing": 229,
+  "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest": 73,
+  "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest": 72,
+  "com.linkedin.venice.fastclient.BatchGetAvroStoreClientGzipTest": 31,
+  "com.linkedin.venice.fastclient.BatchGetAvroStoreClientZstdTest": 31
 }

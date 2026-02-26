@@ -99,7 +99,11 @@ def parse_timing_json_files(timing_dir: str) -> dict[str, float]:
 
 
 def discover_test_classes(repo_root: str) -> set[str]:
-    """Scan integrationTest source for classes with @Test annotations."""
+    """Scan integrationTest source for test classes.
+
+    Finds classes with direct @Test annotations AND concrete subclasses that
+    inherit @Test methods from parent classes within the same source tree.
+    """
     test_dir = os.path.join(
         repo_root, "internal", "venice-test-common", "src", "integrationTest", "java"
     )
@@ -109,19 +113,63 @@ def discover_test_classes(repo_root: str) -> set[str]:
         print(f"WARNING: Integration test directory not found: {test_dir}", file=sys.stderr)
         return test_classes
 
+    # First pass: build a map of class name -> (file path, has @Test, parent class, is abstract)
+    class_info: dict[str, dict] = {}
     for java_file in glob.glob(os.path.join(test_dir, "**/*.java"), recursive=True):
         try:
             with open(java_file) as f:
                 content = f.read()
 
-            # Check for @Test annotation (TestNG or JUnit)
-            if re.search(r"@Test\b", content):
-                # Derive fully qualified class name from path
-                rel_path = os.path.relpath(java_file, test_dir)
-                class_name = rel_path.replace(os.sep, ".").replace(".java", "")
-                test_classes.add(class_name)
+            rel_path = os.path.relpath(java_file, test_dir)
+            class_name = rel_path.replace(os.sep, ".").replace(".java", "")
+
+            has_test = bool(re.search(r"@Test\b", content))
+            is_abstract = bool(re.search(r"\babstract\s+class\b", content))
+
+            # Extract parent class (simple name) from "extends ParentClass"
+            parent_match = re.search(r"\bextends\s+(\w+)", content)
+            parent_simple = parent_match.group(1) if parent_match else None
+
+            class_info[class_name] = {
+                "has_test": has_test,
+                "is_abstract": is_abstract,
+                "parent_simple": parent_simple,
+            }
         except Exception as e:
             print(f"WARNING: Error scanning {java_file}: {e}", file=sys.stderr)
+
+    # Build a lookup from simple class name to fully-qualified names
+    simple_to_fqn: dict[str, list[str]] = defaultdict(list)
+    for fqn in class_info:
+        simple_name = fqn.rsplit(".", 1)[-1]
+        simple_to_fqn[simple_name].append(fqn)
+
+    # Determine which classes have @Test in their inheritance chain
+    def has_test_in_chain(fqn: str, visited=None) -> bool:
+        if visited is None:
+            visited = set()
+        if fqn in visited:
+            return False
+        visited.add(fqn)
+
+        info = class_info.get(fqn)
+        if not info:
+            return False
+        if info["has_test"]:
+            return True
+
+        # Check parent class
+        parent_simple = info["parent_simple"]
+        if parent_simple:
+            for parent_fqn in simple_to_fqn.get(parent_simple, []):
+                if has_test_in_chain(parent_fqn, visited):
+                    return True
+        return False
+
+    # Second pass: include non-abstract classes that have @Test in their chain
+    for fqn, info in class_info.items():
+        if not info["is_abstract"] and has_test_in_chain(fqn):
+            test_classes.add(fqn)
 
     return test_classes
 
@@ -139,12 +187,19 @@ def load_current_assignments(repo_root: str) -> dict[str, list[str]]:
 
 
 def bin_pack_ffd(
-    test_timings: dict[str, float], target_time: float
+    test_timings: dict[str, float], target_time: float, fork_overhead: float = 0
 ) -> dict[str, list[str]]:
     """First-Fit Decreasing bin-packing algorithm.
 
     Sort tests by duration descending, then assign each to the first shard
     that has enough remaining capacity. Create a new shard if none fit.
+
+    Args:
+        test_timings: Map of test class name to estimated duration in seconds.
+        target_time: Target max time per shard in seconds.
+        fork_overhead: Per-test-class JVM fork overhead in seconds (added on top
+            of test duration when computing shard capacity). With forkEvery=1,
+            each test class spawns a new JVM which adds startup overhead.
     """
     # Sort by duration descending
     sorted_tests = sorted(test_timings.items(), key=lambda x: x[1], reverse=True)
@@ -154,24 +209,25 @@ def bin_pack_ffd(
 
     for test_name, duration in sorted_tests:
         placed = False
+        effective_duration = duration + fork_overhead
 
         # If a single test exceeds the target, it gets its own shard
-        if duration > target_time:
+        if effective_duration > target_time:
             shards.append([test_name])
-            shard_times.append(duration)
+            shard_times.append(effective_duration)
             continue
 
         # Try to fit into an existing shard
         for i in range(len(shards)):
-            if shard_times[i] + duration <= target_time:
+            if shard_times[i] + effective_duration <= target_time:
                 shards[i].append(test_name)
-                shard_times[i] += duration
+                shard_times[i] += effective_duration
                 placed = True
                 break
 
         if not placed:
             shards.append([test_name])
-            shard_times.append(duration)
+            shard_times.append(effective_duration)
 
     # Convert to numbered dict (1-indexed)
     return {str(i + 1): tests for i, tests in enumerate(shards)}
@@ -267,6 +323,13 @@ def main():
         help="JSON file with manual timing overrides: {\"class.name\": seconds, ...}",
     )
     parser.add_argument(
+        "--fork-overhead",
+        type=float,
+        default=10,
+        help="Per-test-class JVM fork overhead in seconds (default: 10). "
+        "With forkEvery=1, each test class spawns a new JVM.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print proposed shards without writing files",
@@ -287,6 +350,7 @@ def main():
 
     print(f"Repo root: {repo_root}")
     print(f"Target shard time: {args.target_time}s ({args.target_time/60:.1f}min)")
+    print(f"Per-fork JVM overhead: {args.fork_overhead}s")
 
     # 1. Collect timing data
     timings: dict[str, float] = {}
@@ -318,7 +382,9 @@ def main():
     for tests in current_assignments.values():
         assigned_tests.update(tests)
 
-    all_tests = assigned_tests | discovered
+    # Use discovered tests as the authoritative set. Tests in old assignments
+    # but not discovered are likely abstract base classes or deleted tests.
+    all_tests = discovered
     print(f"Total unique test classes: {len(all_tests)}")
 
     # 4. Identify tests with no timing data and assign median estimate
@@ -346,7 +412,7 @@ def main():
     # 5. Run bin-packing
     # Only pack tests that are in our all_tests set
     pack_timings = {t: timings[t] for t in all_tests}
-    shards = bin_pack_ffd(pack_timings, args.target_time)
+    shards = bin_pack_ffd(pack_timings, args.target_time, args.fork_overhead)
 
     # 6. Report
     print_shard_summary(shards, timings, args.target_time)
