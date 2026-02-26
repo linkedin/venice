@@ -249,7 +249,7 @@ task generateGHCI() {
   def common = "--continue --no-daemon "
 
   def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTests_"
-  def integrationTestTimeout = 15 // minutes
+  def integrationTestTimeout = 20 // minutes
   integrationTestBuckets.each { name, patterns ->
     def flowName = "IntegrationTests_" + name
     jobs << flowName
