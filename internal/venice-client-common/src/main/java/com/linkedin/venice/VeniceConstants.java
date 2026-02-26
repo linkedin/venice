@@ -11,13 +11,10 @@ public class VeniceConstants {
   public static final String SYSTEM_STORE_OWNER = "venice-internal";
 
   /**
-   * Default per router max read quota; notice that this value is used in controller;
-   * the actual per router max read quota is defined as a router config "max.read.capacity".
-   *
-   * TODO: Support common configs among different components, so that we can define the config value once
-   *       and used everywhere.
+   * The default max read quota per router defined in "max.read.capacity". This value is used in both
+   * the controller and router
    */
-  public static final int DEFAULT_PER_ROUTER_READ_QUOTA = 20_000_000;
+  public static final int MAX_ROUTER_READ_CAPACITY_CU = 20_000_000;
 
   /**
    * Compute request version 2.

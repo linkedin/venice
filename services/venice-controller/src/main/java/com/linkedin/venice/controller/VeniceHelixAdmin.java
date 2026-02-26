@@ -5965,16 +5965,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       if (readQuotaInCU.isPresent()) {
-        HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-        ZkRoutersClusterManager routersClusterManager = resources.getRoutersClusterManager();
-        int routerCount = routersClusterManager.getLiveRoutersCount();
-        VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
-        int defaultReadQuotaPerRouter = clusterConfig.getDefaultReadQuotaPerRouter();
-
-        if (Math.max(defaultReadQuotaPerRouter, routerCount * defaultReadQuotaPerRouter) < readQuotaInCU.get()) {
-          throw new VeniceException(
-              "Cannot update read quota for store " + storeName + " in cluster " + clusterName + ". Read quota "
-                  + readQuotaInCU.get() + " requested is more than the cluster quota.");
+        // Only validate quota on child controllers. The parent controller has no routers and cannot
+        // meaningfully validate quota; the child controllers with actual routers will enforce it.
+        if (!isParent()) {
+          HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+          ZkRoutersClusterManager routersClusterManager = resources.getRoutersClusterManager();
+          int routerCount = routersClusterManager.getLiveRoutersCount();
+          VeniceControllerClusterConfig clusterConfig = resources.getConfig();
+          long maxPerRouter = clusterConfig.getMaxRouterReadCapacityCu();
+          long totalClusterReadCapacity = Math.max(maxPerRouter, maxPerRouter * routerCount);
+          if (totalClusterReadCapacity < readQuotaInCU.get()) {
+            throw new VeniceException(
+                "Cannot update read quota for store " + storeName + " in cluster " + clusterName + ". Read quota "
+                    + readQuotaInCU.get() + " requested is more than the cluster quota of " + totalClusterReadCapacity
+                    + ".");
+          }
         }
         setStoreReadQuota(clusterName, storeName, readQuotaInCU.get());
       }
