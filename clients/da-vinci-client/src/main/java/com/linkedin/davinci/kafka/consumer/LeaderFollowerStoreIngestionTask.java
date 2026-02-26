@@ -3948,6 +3948,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition topicPartition,
       ChunkedValueManifestContainer manifestContainer) {
     final GenericRecord currValue;
+    hostLevelIngestionStats.recordWriteComputeLookupCount();
     PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
     if (transientRecord == null) {
       try {

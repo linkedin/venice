@@ -375,6 +375,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       byte[] key,
       int partition,
       long currentTimeForMetricsMs) {
+    getHostLevelIngestionStats().recordIngestionReplicationMetadataLookupCount(currentTimeForMetricsMs);
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
       getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount(currentTimeForMetricsMs);
@@ -743,6 +744,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ChunkedValueManifestContainer valueManifestContainer,
       long currentTimeForMetricsMs) {
     ByteBufferValueRecord<ByteBuffer> originalValue = null;
+    hostLevelIngestionStats.recordIngestionValueBytesLookupCount(currentTimeForMetricsMs);
     // Find the existing value. If a value for this key is found from the transient map then use that value, otherwise
     // get it from DB.
     PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(key);

@@ -102,6 +102,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    */
   private final Sensor writeComputeCacheHitCount;
 
+  /**
+   * Measure the total number of transient record cache lookups during UPDATE message processing.
+   */
+  private final Sensor writeComputeLookupCount;
+
   private final LongAdderRateGauge totalLeaderBytesConsumedRate;
   private final LongAdderRateGauge totalLeaderRecordsConsumedRate;
   private final LongAdderRateGauge totalFollowerBytesConsumedRate;
@@ -119,6 +124,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor leaderIngestionReplicationMetadataCacheHitCount;
 
   /**
+   * Measure the total number of transient record cache lookups for replication metadata
+   */
+  private final Sensor leaderIngestionReplicationMetadataLookupCount;
+
+  /**
    * Measure the avg/max latency for value bytes lookup
    */
   private final Sensor leaderIngestionValueBytesLookUpLatencySensor;
@@ -127,6 +137,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    * Measure the number of times value bytes were found in {@link PartitionConsumptionState#transientRecordMap}
    */
   private final Sensor leaderIngestionValueBytesCacheHitCount;
+
+  /**
+   * Measure the total number of transient record cache lookups for value bytes
+   */
+  private final Sensor leaderIngestionValueBytesLookupCount;
 
   /**
    * Measure the avg/max latency for replication metadata data lookup
@@ -410,6 +425,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.writeComputeCacheHitCount,
         new OccurrenceRate());
 
+    this.writeComputeLookupCount = registerPerStoreAndTotalSensor(
+        "write_compute_lookup_count",
+        totalStats,
+        () -> totalStats.writeComputeLookupCount,
+        new OccurrenceRate());
+
     this.checksumVerificationFailureSensor = registerPerStoreAndTotalSensor(
         "checksum_verification_failure",
         totalStats,
@@ -428,10 +449,22 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.leaderIngestionValueBytesCacheHitCount,
         new Rate());
 
+    this.leaderIngestionValueBytesLookupCount = registerPerStoreAndTotalSensor(
+        "leader_ingestion_value_bytes_lookup_count",
+        totalStats,
+        () -> totalStats.leaderIngestionValueBytesLookupCount,
+        new Rate());
+
     this.leaderIngestionReplicationMetadataCacheHitCount = registerPerStoreAndTotalSensor(
         "leader_ingestion_replication_metadata_cache_hit_count",
         totalStats,
         () -> totalStats.leaderIngestionReplicationMetadataCacheHitCount,
+        new Rate());
+
+    this.leaderIngestionReplicationMetadataLookupCount = registerPerStoreAndTotalSensor(
+        "leader_ingestion_replication_metadata_lookup_count",
+        totalStats,
+        () -> totalStats.leaderIngestionReplicationMetadataLookupCount,
         new Rate());
 
     this.leaderIngestionReplicationMetadataLookUpLatencySensor = registerPerStoreAndTotalSensor(
@@ -620,6 +653,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     leaderIngestionValueBytesCacheHitCount.record(1, currentTime);
   }
 
+  public void recordIngestionValueBytesLookupCount(long currentTime) {
+    leaderIngestionValueBytesLookupCount.record(1, currentTime);
+  }
+
   public void recordIngestionReplicationMetadataLookUpLatency(double latency, long currentTimeMs) {
     leaderIngestionReplicationMetadataLookUpLatencySensor.record(latency, currentTimeMs);
   }
@@ -660,8 +697,16 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     writeComputeCacheHitCount.record();
   }
 
+  public void recordWriteComputeLookupCount() {
+    writeComputeLookupCount.record();
+  }
+
   public void recordIngestionReplicationMetadataCacheHitCount(long currentTimeMs) {
     leaderIngestionReplicationMetadataCacheHitCount.record(1, currentTimeMs);
+  }
+
+  public void recordIngestionReplicationMetadataLookupCount(long currentTimeMs) {
+    leaderIngestionReplicationMetadataLookupCount.record(1, currentTimeMs);
   }
 
   public void recordUpdateIgnoredDCR() {
