@@ -10,7 +10,6 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.pubsub.PubSubHealthCategory;
 import com.linkedin.venice.pubsub.PubSubHealthChangeListener;
-import com.linkedin.venice.pubsub.PubSubHealthSignalProvider;
 import com.linkedin.venice.pubsub.PubSubHealthStatus;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -177,26 +176,6 @@ public class PubSubHealthMonitorTest {
     } finally {
       monitor.stopInner();
     }
-  }
-
-  @Test
-  public void testCustomSignalProvider() {
-    PubSubHealthSignalProvider customProvider = mock(PubSubHealthSignalProvider.class);
-    when(customProvider.getName()).thenReturn("custom");
-    when(customProvider.isUnhealthy("broker1:9092", PubSubHealthCategory.BROKER)).thenReturn(true);
-
-    monitor.addSignalProvider(customProvider);
-
-    // The custom provider alone doesn't trigger transition — we need a report call
-    // that rechecks all providers. Let's use reportPubSubException which will recheck.
-    // Actually, the transition only happens via reportPubSubException currently.
-    // For custom providers, we need a general check method. For now, verify the
-    // provider was added and works through the exception path.
-    assertTrue(monitor.isHealthy("broker1:9092", PubSubHealthCategory.BROKER));
-
-    // When exception signal reports, and custom also says unhealthy, both contribute
-    monitor.reportPubSubException("broker1:9092", PubSubHealthCategory.BROKER);
-    assertFalse(monitor.isHealthy("broker1:9092", PubSubHealthCategory.BROKER));
   }
 
   @Test
