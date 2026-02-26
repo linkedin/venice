@@ -253,9 +253,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
       this.protocolVersionAutoDetectionService = new ProtocolVersionAutoDetectionService(
           clusterName,
           admin,
-          new ProtocolVersionAutoDetectionStats(
-              metricsRepository,
-              "admin_operation_protocol_version_auto_detection_service_" + clusterName),
+          new ProtocolVersionAutoDetectionStats(metricsRepository, clusterName),
           config.getProtocolVersionAutoDetectionSleepMS());
     } else {
       this.protocolVersionAutoDetectionService = null;
