@@ -138,6 +138,10 @@ public interface Store {
 
   void setRmdChunkingEnabled(boolean rmdChunkingEnabled);
 
+  boolean isMergedValueRmdColumnFamilyEnabled();
+
+  void setMergedValueRmdColumnFamilyEnabled(boolean mergedValueRmdColumnFamilyEnabled);
+
   int getBatchGetLimit();
 
   void setBatchGetLimit(int batchGetLimit);

@@ -146,6 +146,7 @@ public abstract class AbstractStore implements Store {
 
       version.setChunkingEnabled(isChunkingEnabled());
       version.setRmdChunkingEnabled(isRmdChunkingEnabled());
+      version.setMergedValueRmdColumnFamilyEnabled(isMergedValueRmdColumnFamilyEnabled());
 
       PartitionerConfig partitionerConfig = getPartitionerConfig();
       if (partitionerConfig != null) {
