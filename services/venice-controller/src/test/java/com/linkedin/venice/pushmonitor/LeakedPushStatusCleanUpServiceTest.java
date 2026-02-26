@@ -8,7 +8,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.helix.HelixState;
@@ -28,7 +27,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.Test;
 
@@ -188,55 +186,40 @@ public class LeakedPushStatusCleanUpServiceTest {
         routingDataRepository)) {
       cleanUpService.start();
 
-      // Verify that updatePartitionStatus was called at least twice (once per partition)
-      ArgumentCaptor<PartitionStatus> partitionStatusCaptor = ArgumentCaptor.forClass(PartitionStatus.class);
-      verify(accessor, timeout(TEST_TIMEOUT).atLeast(2))
-          .updatePartitionStatus(eq(kafkaTopic), partitionStatusCaptor.capture());
+      // Verify that removeStaleReplicasFromPartitionStatus was called with the correct stale instance IDs
+      @SuppressWarnings("unchecked")
+      ArgumentCaptor<Set<String>> staleIdsCaptor = ArgumentCaptor.forClass(Set.class);
+      ArgumentCaptor<Integer> partitionIdCaptor = ArgumentCaptor.forClass(Integer.class);
+      verify(accessor, timeout(TEST_TIMEOUT).atLeast(2)).removeStaleReplicasFromPartitionStatus(
+          eq(kafkaTopic),
+          partitionIdCaptor.capture(),
+          staleIdsCaptor.capture());
 
-      // Get all captured partition status updates
-      List<PartitionStatus> allUpdates = partitionStatusCaptor.getAllValues();
-      assertTrue(allUpdates.size() >= 2, "Should have at least 2 partition status updates");
+      // Get all captured calls
+      List<Integer> capturedPartitionIds = partitionIdCaptor.getAllValues();
+      List<Set<String>> capturedStaleIds = staleIdsCaptor.getAllValues();
+      assertTrue(capturedPartitionIds.size() >= 2, "Should have at least 2 calls");
 
-      // Find the latest updates for partition 0 and partition 1
-      PartitionStatus updatedPartition0 = null;
-      PartitionStatus updatedPartition1 = null;
-      for (PartitionStatus ps: allUpdates) {
-        if (ps.getPartitionId() == 0) {
-          updatedPartition0 = ps;
-        } else if (ps.getPartitionId() == 1) {
-          updatedPartition1 = ps;
+      // Find the calls for partition 0 and partition 1
+      Set<String> partition0StaleIds = null;
+      Set<String> partition1StaleIds = null;
+      for (int i = 0; i < capturedPartitionIds.size(); i++) {
+        if (capturedPartitionIds.get(i) == 0) {
+          partition0StaleIds = capturedStaleIds.get(i);
+        } else if (capturedPartitionIds.get(i) == 1) {
+          partition1StaleIds = capturedStaleIds.get(i);
         }
       }
 
-      // Verify partition 0 was updated
-      assertTrue(updatedPartition0 != null, "Partition 0 should have been updated");
-      Set<String> partition0InstanceIds =
-          updatedPartition0.getReplicaStatuses().stream().map(ReplicaStatus::getInstanceId).collect(Collectors.toSet());
-      assertEquals(partition0InstanceIds.size(), 3, "Partition 0 should have 3 replicas after cleanup");
-      assertTrue(partition0InstanceIds.contains("instance1"), "Should contain instance1");
-      assertTrue(partition0InstanceIds.contains("instance2"), "Should contain instance2");
-      assertTrue(partition0InstanceIds.contains("instance3"), "Should contain instance3");
-      assertFalse(partition0InstanceIds.contains("instance4"), "Should NOT contain stale instance4");
+      // Verify partition 0 had instance4 as stale
+      assertTrue(partition0StaleIds != null, "Partition 0 should have been cleaned up");
+      assertEquals(partition0StaleIds.size(), 1, "Partition 0 should have 1 stale replica");
+      assertTrue(partition0StaleIds.contains("instance4"), "instance4 should be identified as stale");
 
-      // Verify partition 1 was updated
-      assertTrue(updatedPartition1 != null, "Partition 1 should have been updated");
-      Set<String> partition1InstanceIds =
-          updatedPartition1.getReplicaStatuses().stream().map(ReplicaStatus::getInstanceId).collect(Collectors.toSet());
-      assertEquals(partition1InstanceIds.size(), 3, "Partition 1 should have 3 replicas after cleanup");
-      assertTrue(partition1InstanceIds.contains("instance1"), "Should contain instance1");
-      assertTrue(partition1InstanceIds.contains("instance2"), "Should contain instance2");
-      assertTrue(partition1InstanceIds.contains("instance3"), "Should contain instance3");
-      assertFalse(partition1InstanceIds.contains("instance5"), "Should NOT contain stale instance5");
-
-      // Verify that replica statuses were preserved for current instances
-      assertEquals(
-          updatedPartition0.getReplicaStatus("instance1"),
-          ExecutionStatus.COMPLETED,
-          "instance1 status should be preserved");
-      assertEquals(
-          updatedPartition1.getReplicaStatus("instance3"),
-          ExecutionStatus.PROGRESS,
-          "instance3 status should be preserved");
+      // Verify partition 1 had instance5 as stale
+      assertTrue(partition1StaleIds != null, "Partition 1 should have been cleaned up");
+      assertEquals(partition1StaleIds.size(), 1, "Partition 1 should have 1 stale replica");
+      assertTrue(partition1StaleIds.contains("instance5"), "instance5 should be identified as stale");
     }
   }
 
