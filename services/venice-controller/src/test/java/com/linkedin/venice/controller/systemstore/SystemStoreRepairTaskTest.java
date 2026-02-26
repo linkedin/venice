@@ -3,6 +3,8 @@ package com.linkedin.venice.controller.systemstore;
 import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_SYSTEM_STORE_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
+import static com.linkedin.venice.stats.dimensions.VeniceSystemStoreType.META_STORE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -421,15 +423,11 @@ public class SystemStoreRepairTaskTest {
     // OTel verification
     Attributes metaStoreAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
-        .put(
-            VENICE_SYSTEM_STORE_TYPE.getDimensionNameInDefaultFormat(),
-            com.linkedin.venice.stats.dimensions.VeniceSystemStoreType.META_STORE.getDimensionValue())
+        .put(VENICE_SYSTEM_STORE_TYPE.getDimensionNameInDefaultFormat(), META_STORE.getDimensionValue())
         .build();
     Attributes pushStatusStoreAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
-        .put(
-            VENICE_SYSTEM_STORE_TYPE.getDimensionNameInDefaultFormat(),
-            com.linkedin.venice.stats.dimensions.VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getDimensionValue())
+        .put(VENICE_SYSTEM_STORE_TYPE.getDimensionNameInDefaultFormat(), DAVINCI_PUSH_STATUS_STORE.getDimensionValue())
         .build();
     Attributes clusterAttrs =
         Attributes.builder().put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName).build();

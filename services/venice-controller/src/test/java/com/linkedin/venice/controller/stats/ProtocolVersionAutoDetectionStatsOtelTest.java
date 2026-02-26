@@ -86,6 +86,50 @@ public class ProtocolVersionAutoDetectionStatsOtelTest {
   }
 
   @Test
+  public void testGaugeOverwriteSemantics() {
+    stats.recordProtocolVersionAutoDetectionErrorSensor(5);
+    validateGauge(
+        ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity.PROTOCOL_VERSION_AUTO_DETECTION_FAILURE_COUNT
+            .getMetricName(),
+        5,
+        clusterAttributes());
+
+    // Record 0 and verify the gauge is overwritten, not accumulated
+    stats.recordProtocolVersionAutoDetectionErrorSensor(0);
+    validateGauge(
+        ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity.PROTOCOL_VERSION_AUTO_DETECTION_FAILURE_COUNT
+            .getMetricName(),
+        0,
+        clusterAttributes());
+    validateTehutiMetric(
+        ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionTehutiMetricNameEnum.PROTOCOL_VERSION_AUTO_DETECTION_ERROR,
+        "Gauge",
+        0.0);
+  }
+
+  @Test
+  public void testMultipleLatencyRecordings() {
+    stats.recordProtocolVersionAutoDetectionLatencySensor(100.0);
+    stats.recordProtocolVersionAutoDetectionLatencySensor(300.0);
+
+    // OTel: min=100, max=300, count=2, sum=400
+    validateHistogram(
+        ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity.PROTOCOL_VERSION_AUTO_DETECTION_TIME
+            .getMetricName(),
+        100.0,
+        300.0,
+        2,
+        400.0,
+        clusterAttributes());
+
+    // Tehuti: Avg = (100 + 300) / 2 = 200
+    validateTehutiMetric(
+        ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionTehutiMetricNameEnum.PROTOCOL_VERSION_AUTO_DETECTION_LATENCY,
+        "Avg",
+        200.0);
+  }
+
+  @Test
   public void testNoNpeWhenOtelDisabled() {
     VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build());

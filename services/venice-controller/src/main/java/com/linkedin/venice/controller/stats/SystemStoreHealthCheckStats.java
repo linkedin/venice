@@ -40,8 +40,8 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
     super(metricsRepository, name);
 
     // Tehuti and OTel are registered separately because: (1) multiple Tehuti sensors (bad_meta + bad_push_status)
-    // map to a single OTel metric differentiated by dimension, and (2) AsyncGauge is callback-based, not a
-    // MeasurableStat, so it cannot be passed to the combined MetricEntityStateBase.create() factory.
+    // map to a single OTel metric differentiated by dimension, and (2) AsyncMetricEntityStateOneEnum only supports
+    // OTel registration, not Tehuti.
     badMetaSystemStoreCountSensor = registerSensorIfAbsent(
         new AsyncGauge(
             (ignored, ignored2) -> badMetaSystemStoreCounter.get(),
@@ -75,7 +75,7 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
             case DAVINCI_PUSH_STATUS_STORE:
               return badPushStatusSystemStoreCounter::get;
             default:
-              return () -> 0;
+              throw new IllegalArgumentException("Unmapped VeniceSystemStoreType for unhealthy count metric: " + type);
           }
         });
 

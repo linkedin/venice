@@ -7,6 +7,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceSystemStoreType;
@@ -28,13 +29,15 @@ import org.testng.annotations.Test;
 public class SystemStoreHealthCheckStatsOtelTest {
   private static final String TEST_METRIC_PREFIX = "controller";
   private static final String TEST_CLUSTER_NAME = "test-cluster";
+  private static final String RESOURCE_NAME = "." + TEST_CLUSTER_NAME;
   private InMemoryMetricReader inMemoryMetricReader;
+  private VeniceMetricsRepository metricsRepository;
   private SystemStoreHealthCheckStats stats;
 
   @BeforeMethod
   public void setUp() {
     this.inMemoryMetricReader = InMemoryMetricReader.create();
-    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
+    metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
             .setMetricEntities(CONTROLLER_SERVICE_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
@@ -49,28 +52,77 @@ public class SystemStoreHealthCheckStatsOtelTest {
     stats.getBadMetaSystemStoreCounter().set(3);
     stats.getBadPushStatusSystemStoreCounter().set(7);
 
-    // Validate META_STORE dimension
+    // OTel: Validate META_STORE dimension
     validateGauge(
         SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricName(),
         3,
         clusterAndSystemStoreTypeAttributes(VeniceSystemStoreType.META_STORE));
 
-    // Validate DAVINCI_PUSH_STATUS_STORE dimension
+    // OTel: Validate DAVINCI_PUSH_STATUS_STORE dimension
     validateGauge(
         SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricName(),
         7,
         clusterAndSystemStoreTypeAttributes(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE));
+
+    // Tehuti
+    validateTehutiMetric(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckTehutiMetricNameEnum.BAD_META_SYSTEM_STORE_COUNT,
+        "Gauge",
+        3.0);
+    validateTehutiMetric(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckTehutiMetricNameEnum.BAD_PUSH_STATUS_SYSTEM_STORE_COUNT,
+        "Gauge",
+        7.0);
   }
 
   @Test
   public void testUnrepairableCount() {
     stats.getNotRepairableSystemStoreCounter().set(5);
 
+    // OTel
     validateGauge(
         SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNREPAIRABLE_COUNT
             .getMetricName(),
         5,
         clusterAttributes());
+
+    // Tehuti
+    validateTehutiMetric(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckTehutiMetricNameEnum.NOT_REPAIRABLE_SYSTEM_STORE_COUNT,
+        "Gauge",
+        5.0);
+  }
+
+  @Test
+  public void testCounterResetToZero() {
+    stats.getBadMetaSystemStoreCounter().set(5);
+    validateGauge(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricName(),
+        5,
+        clusterAndSystemStoreTypeAttributes(VeniceSystemStoreType.META_STORE));
+
+    // Reset to 0 and verify the gauge reflects the updated value
+    stats.getBadMetaSystemStoreCounter().set(0);
+    validateGauge(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricName(),
+        0,
+        clusterAndSystemStoreTypeAttributes(VeniceSystemStoreType.META_STORE));
+    validateTehutiMetric(
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckTehutiMetricNameEnum.BAD_META_SYSTEM_STORE_COUNT,
+        "Gauge",
+        0.0);
+  }
+
+  @Test
+  public void testVeniceSystemStoreTypeMappingIsComplete() {
+    // Guards against adding new VeniceSystemStoreType values without updating the switch
+    // statements in SystemStoreHealthCheckStats. If a new value is added, the constructor
+    // will throw IllegalArgumentException at startup, and this test makes the intent explicit.
+    assertEquals(
+        VeniceSystemStoreType.values().length,
+        2,
+        "New VeniceSystemStoreType values were added; update the Tehuti sensor registration and "
+            + "OTel callbackProvider switch in SystemStoreHealthCheckStats");
   }
 
   @Test
@@ -201,5 +253,18 @@ public class SystemStoreHealthCheckStatsOtelTest {
         expectedAttributes,
         metricName,
         TEST_METRIC_PREFIX);
+  }
+
+  private void validateTehutiMetric(
+      SystemStoreHealthCheckStats.SystemStoreHealthCheckTehutiMetricNameEnum tehutiEnum,
+      String statSuffix,
+      double expectedValue) {
+    String tehutiMetricName =
+        AbstractVeniceStats.getSensorFullName(RESOURCE_NAME, tehutiEnum.getMetricName()) + "." + statSuffix;
+    assertNotNull(metricsRepository.getMetric(tehutiMetricName), "Tehuti metric should exist: " + tehutiMetricName);
+    assertEquals(
+        metricsRepository.getMetric(tehutiMetricName).value(),
+        expectedValue,
+        "Tehuti metric value mismatch for: " + tehutiMetricName);
   }
 }
