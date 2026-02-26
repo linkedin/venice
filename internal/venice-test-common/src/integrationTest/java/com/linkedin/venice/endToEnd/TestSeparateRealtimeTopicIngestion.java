@@ -78,7 +78,6 @@ import org.testng.annotations.Test;
 public class TestSeparateRealtimeTopicIngestion extends AbstractMultiRegionTest {
   private static final long TEST_TIMEOUT_MS = 60_000;
   private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
-  private static final int REPLICATION_FACTOR = 2;
   private static final int ASSERTION_TIMEOUT_MS = 30_000;
 
   @Test(timeOut = TEST_TIMEOUT_MS * 3)
@@ -190,7 +189,7 @@ public class TestSeparateRealtimeTopicIngestion extends AbstractMultiRegionTest 
             versionV2TopicPartition,
             ConsumerPoolType.CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
             1,
-            REPLICATION_FACTOR - 1);
+            getReplicationFactor() - 1);
 
         verifyConsumerThreadPoolFor(
             multiRegionMultiClusterWrapper,
@@ -226,7 +225,7 @@ public class TestSeparateRealtimeTopicIngestion extends AbstractMultiRegionTest 
             versionV1TopicPartition,
             ConsumerPoolType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_POOL,
             1,
-            REPLICATION_FACTOR - 1);
+            getReplicationFactor() - 1);
 
         verifyConsumerThreadPoolFor(
             multiRegionMultiClusterWrapper,
