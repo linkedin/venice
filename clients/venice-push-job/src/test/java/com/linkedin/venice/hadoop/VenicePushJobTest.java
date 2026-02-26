@@ -1839,4 +1839,78 @@ public class VenicePushJobTest {
       }
     }
   }
+
+  /**
+   * Test that VPJ detects a killed push during the data writing phase and kills the data writer job.
+   * This simulates the scenario where a repush is superseded by a user push, and the controller kills
+   * the repush version while data is still being written.
+   */
+  @Test(dataProvider = "DataWriterJobClasses")
+  public void testPushJobKilledDuringDataWriting(Class<? extends DataWriterComputeJob> dataWriterJobClass)
+      throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterJobClass.getCanonicalName());
+    ControllerClient client = getClient();
+
+    // Simulate controller returning ERROR status (push was killed)
+    JobStatusQueryResponse killResponse = mock(JobStatusQueryResponse.class);
+    doReturn("ERROR").when(killResponse).getStatus();
+    doReturn(false).when(killResponse).isError();
+    doReturn(killResponse).when(client).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      pushJobSetting.pollJobStatusIntervalMs = 10; // Poll quickly for the test
+
+      CountDownLatch dataWriterRunningLatch = new CountDownLatch(1);
+      CountDownLatch dataWriterKilledLatch = new CountDownLatch(1);
+
+      // Stall the data writer job until it gets killed by the kill-check monitor
+      doCallRealMethod().when(pushJob).runJobAndUpdateStatus();
+      doCallRealMethod().when(pushJob).startPushJobKillCheckMonitor();
+      doCallRealMethod().when(pushJob).stopPushJobKillCheckMonitor();
+      doCallRealMethod().when(pushJob).killDataWriterJob();
+
+      DataWriterComputeJob dataWriterJob = spy(pushJob.getDataWriterComputeJob());
+      pushJob.setDataWriterComputeJob(dataWriterJob);
+      doNothing().when(dataWriterJob).configure(any(), any());
+      doNothing().when(dataWriterJob).validateJob();
+
+      Answer<Void> stallDataWriterJob = invocation -> {
+        dataWriterRunningLatch.countDown();
+        if (!dataWriterKilledLatch.await(10, TimeUnit.SECONDS)) {
+          fail("Timed out waiting for the data writer job to be killed by kill-check monitor");
+        }
+        throw new VeniceException("Data writer job was killed");
+      };
+      doAnswer(stallDataWriterJob).when(dataWriterJob).runComputeJob();
+
+      // When dataWriterJob.kill() is called, release the stalled data writer
+      doAnswer(invocation -> {
+        invocation.callRealMethod();
+        dataWriterKilledLatch.countDown();
+        return null;
+      }).when(dataWriterJob).kill();
+
+      skipVPJValidation(pushJob);
+      // Override skipVPJValidation's stub on runJobAndUpdateStatus
+      doCallRealMethod().when(pushJob).runJobAndUpdateStatus();
+
+      try {
+        pushJob.run();
+        fail("Expected VeniceException due to push job being killed during data writing");
+      } catch (VeniceException e) {
+        assertTrue(
+            e.getMessage().contains("killed by the controller during the data writing phase")
+                || e.getMessage().contains("Data writer job was killed"),
+            "Unexpected error message: " + e.getMessage());
+      }
+
+      assertEquals(dataWriterRunningLatch.getCount(), 0, "Data writer job should have started");
+      assertEquals(dataWriterKilledLatch.getCount(), 0, "Data writer job should have been killed");
+      verify(dataWriterJob, times(1)).kill();
+    }
+  }
 }
