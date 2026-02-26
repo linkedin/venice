@@ -61,6 +61,9 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubHealthCategory;
+import com.linkedin.venice.pubsub.PubSubHealthChangeListener;
+import com.linkedin.venice.pubsub.PubSubHealthStatus;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -141,7 +144,8 @@ import org.apache.logging.log4j.Logger;
  *
  * Uses the "new" Kafka Consumer.
  */
-public class KafkaStoreIngestionService extends AbstractVeniceService implements StoreIngestionService {
+public class KafkaStoreIngestionService extends AbstractVeniceService
+    implements StoreIngestionService, PubSubHealthChangeListener {
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private static final Logger LOGGER = LogManager.getLogger(KafkaStoreIngestionService.class);
@@ -207,6 +211,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final PubSubContext pubSubContext;
+  private PubSubHealthMonitor pubSubHealthMonitor;
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
   private final KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
@@ -1455,6 +1460,25 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public PubSubContext getPubSubContext() {
     return pubSubContext;
+  }
+
+  public void setPubSubHealthMonitor(PubSubHealthMonitor pubSubHealthMonitor) {
+    this.pubSubHealthMonitor = pubSubHealthMonitor;
+    pubSubHealthMonitor.registerListener(this);
+  }
+
+  public PubSubHealthMonitor getPubSubHealthMonitor() {
+    return pubSubHealthMonitor;
+  }
+
+  @Override
+  public void onHealthStatusChanged(String pubSubAddress, PubSubHealthCategory category, PubSubHealthStatus newStatus) {
+    LOGGER.info(
+        "PubSub health status changed: address={}, category={}, newStatus={}",
+        pubSubAddress,
+        category,
+        newStatus);
+    // TODO: Implement pause/resume logic for affected SITs
   }
 
   private boolean ingestionTaskHasAnySubscription(String topic) {

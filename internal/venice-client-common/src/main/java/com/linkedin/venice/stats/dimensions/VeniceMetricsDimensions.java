@@ -117,7 +117,10 @@ public enum VeniceMetricsDimensions {
   VENICE_RECORD_TYPE("venice.record.type"),
 
   /** {@link VeniceIngestionFailureReason} Categorized reason for ingestion failure */
-  VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason");
+  VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason"),
+
+  /** {@link com.linkedin.venice.pubsub.PubSubHealthCategory} */
+  VENICE_PUBSUB_HEALTH_CATEGORY("venice.pubsub.health.category");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
