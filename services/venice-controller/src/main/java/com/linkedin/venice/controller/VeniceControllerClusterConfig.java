@@ -1364,8 +1364,7 @@ public class VeniceControllerClusterConfig {
   public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     String baseStoreName = systemStoreType != null ? systemStoreType.extractRegularStoreName(storeName) : storeName;
-    if (alternativeBackendExclusionList.contains(baseStoreName)
-        || alternativeBackendExclusionList.contains(storeName)) {
+    if (alternativeBackendExclusionList.contains(baseStoreName)) {
       return false;
     }
     if (systemStoreType == VeniceSystemStoreType.META_STORE) {
@@ -2509,31 +2508,4 @@ public class VeniceControllerClusterConfig {
     return logContext;
   }
 
-  public boolean isAlternativeBackendMetaSystemStoreVT() {
-    return alternativeBackendMetaSystemStoreVT;
-  }
-
-  public boolean isAlternativeBackendMetaSystemStoreRT() {
-    return alternativeBackendMetaSystemStoreRT;
-  }
-
-  public boolean isAlternativeBackendPushStatusSystemStoreVT() {
-    return alternativeBackendPushStatusSystemStoreVT;
-  }
-
-  public boolean isAlternativeBackendPushStatusSystemStoreRT() {
-    return alternativeBackendPushStatusSystemStoreRT;
-  }
-
-  public boolean isAlternativeBackendUserStoreVT() {
-    return alternativeBackendUserStoreVT;
-  }
-
-  public boolean isAlternativeBackendUserStoreRT() {
-    return alternativeBackendUserStoreRT;
-  }
-
-  public Set<String> getAlternativeBackendExclusionList() {
-    return alternativeBackendExclusionList;
-  }
 }
