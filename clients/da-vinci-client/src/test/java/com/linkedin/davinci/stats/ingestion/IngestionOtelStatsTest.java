@@ -1145,7 +1145,7 @@ public class IngestionOtelStatsTest {
         "ingestion.producer.time",
         MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
         MetricUnit.MILLISECOND,
-        "Time from when the leader enqueues a message to when the pubsub producer invokes the callback, measuring broker acknowledgement latency",
+        "Time from when the leader initiates the produce call to when the pubsub producer invokes the acknowledgement callback, measuring the full produce-to-ack round trip",
         storeClusterVersion);
     assertMetricEntity(
         BATCH_PROCESSING_REQUEST_TIME.getMetricEntity(),
@@ -1291,7 +1291,7 @@ public class IngestionOtelStatsTest {
         "ingestion.view_writer.ack.time",
         MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
         MetricUnit.MILLISECOND,
-        "Time for the view writer to receive acknowledgement for all writes",
+        "End-to-end time from the start of view writing to the completion of all view writer futures, including both produce and acknowledgement phases",
         storeClusterVersion);
     assertMetricEntity(
         PRODUCER_ENQUEUE_TIME.getMetricEntity(),
@@ -1385,7 +1385,7 @@ public class IngestionOtelStatsTest {
         "ingestion.dcr.lookup.cache.hit_count",
         MetricType.COUNTER,
         MetricUnit.NUMBER,
-        "Cache hits when looking up existing value bytes or replication metadata before conflict resolution",
+        "Count of cache hits when looking up existing value bytes or replication metadata before conflict resolution",
         storeClusterVersionRecordType);
 
     // --- HostLevelIngestionStats size/rate metrics ---
@@ -1433,7 +1433,7 @@ public class IngestionOtelStatsTest {
         "ingestion.task.count",
         MetricType.ASYNC_GAUGE,
         MetricUnit.NUMBER,
-        "Count of active ingestion tasks",
+        "Whether an active ingestion task exists for this store version (0 or 1)",
         storeClusterVersion);
 
     // Verify total count (24 original + 26 new = 50)

@@ -1970,7 +1970,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     produceFunction.accept(callback, leaderMetadataWrapper);
     double enqueueLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS);
     getHostLevelIngestionStats().recordLeaderProduceLatency(enqueueLatency);
-    versionedIngestionStats.recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
+    getVersionIngestionStats().recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
 
     try {
       if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
@@ -4480,8 +4480,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     versionedIngestionStats.recordViewWriterProduceTime(storeName, versionNumber, viewProduceLatency);
     CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
       double viewAckLatency = LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime);
-      hostLevelIngestionStats.recordViewProducerAckLatency(viewAckLatency);
-      versionedIngestionStats.recordViewWriterAckTime(storeName, versionNumber, viewAckLatency);
       if (exception == null) {
         versionTopicWrite.run();
         currentVersionTopicWrite.complete(null);
@@ -4490,6 +4488,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
         currentVersionTopicWrite.completeExceptionally(veniceException);
       }
+      hostLevelIngestionStats.recordViewProducerAckLatency(viewAckLatency);
+      versionedIngestionStats.recordViewWriterAckTime(storeName, versionNumber, viewAckLatency);
     });
 
     partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);

@@ -107,7 +107,7 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
 
   INGESTION_PRODUCER_TIME(
       "ingestion.producer.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
-      "Time from when the leader enqueues a message to when the pubsub producer invokes the callback, measuring broker acknowledgement latency",
+      "Time from when the leader initiates the produce call to when the pubsub producer invokes the acknowledgement callback, measuring the full produce-to-ack round trip",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 
@@ -218,7 +218,7 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
 
   VIEW_WRITER_ACK_TIME(
       "ingestion.view_writer.ack.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
-      "Time for the view writer to receive acknowledgement for all writes",
+      "End-to-end time from the start of view writing to the completion of all view writer futures, including both produce and acknowledgement phases",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 
@@ -291,7 +291,7 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
 
   DCR_LOOKUP_CACHE_HIT_COUNT(
       "ingestion.dcr.lookup.cache.hit_count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Cache hits when looking up existing value bytes or replication metadata before conflict resolution",
+      "Count of cache hits when looking up existing value bytes or replication metadata before conflict resolution",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_RECORD_TYPE)
   ),
 
@@ -324,7 +324,8 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
   ),
 
   INGESTION_TASK_COUNT(
-      "ingestion.task.count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "Count of active ingestion tasks",
+      "ingestion.task.count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
+      "Whether an active ingestion task exists for this store version (0 or 1)",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   );
 

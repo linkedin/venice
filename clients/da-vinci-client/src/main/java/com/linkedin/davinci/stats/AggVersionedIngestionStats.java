@@ -434,8 +434,7 @@ public class AggVersionedIngestionStats
     getIngestionOtelStats(storeName).recordBatchProcessingRequestTime(version, latency);
   }
 
-  // --- HostLevelIngestionStats OTel methods (no Tehuti — Tehuti is recorded directly via hostLevelIngestionStats at
-  // the call site) ---
+  // --- OTel-only metrics (no Tehuti counterpart in this class) ---
 
   // Simple latency methods
 
