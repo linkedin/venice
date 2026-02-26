@@ -1,10 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
@@ -18,101 +16,43 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.system.SystemStream;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 
 
-public class TestActiveActiveReplicationWithDownRegion {
+public class TestActiveActiveReplicationWithDownRegion extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(TestActiveActiveReplicationWithDownRegion.class);
 
   private static final int TEST_TIMEOUT = 90_000; // ms
   private static final int RECORDS_TO_POPULATE = 4;
 
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
-  private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-  // ["venice-cluster0", "venice-cluster1", ...];
-
-  protected List<VeniceMultiClusterWrapper> childDatacenters;
-  protected List<VeniceControllerWrapper> parentControllers;
-  protected VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-
-  public Map<String, String> getExtraServerProperties() {
-    return Collections.emptyMap();
-  }
-
-  @BeforeClass(alwaysRun = true)
-  public void setUp() {
-    /**
-     * Reduce leader promotion delay to 1 second;
-     * Create a testing environment with 1 parent fabric and 2 child fabrics (one where the broker will be healthy (our source fabric)
-     * and another where the broker is having a problem); Set server and replication factor to 2 to ensure at least 1 leader
-     * replica and 1 follower replica;
-     */
+  @Override
+  protected Properties getExtraServerProperties() {
     Properties serverProperties = new Properties();
-    // We're going to trigger timeouts. Set this lower to improve developer happiness
     serverProperties.put(KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC, 10L);
-    serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
-    serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     serverProperties.put(SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS, 5);
-    getExtraServerProperties().forEach(serverProperties::put);
+    return serverProperties;
+  }
 
+  @Override
+  protected Properties getExtraControllerProperties() {
     Properties controllerProps = new Properties();
     controllerProps.put(KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC, 10L);
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
-            .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(2)
-            .numberOfRouters(1)
-            .replicationFactor(2)
-            .forkServer(false)
-            .parentControllerProperties(controllerProps)
-            .childControllerProperties(controllerProps)
-            .serverProperties(serverProperties);
-    multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-  }
-
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    // TODO: This takes FOREVER when we close a kafka broker prematurely, BUT it does finish... There seems to be a
-    // problem
-    // with how we handle processes that are closed are already.
-    // ApacheKafkaAdminAdapter that bemoans it's lost broker for a long time before timing out and giving up (I think in
-    // the
-    // controller).
-    multiRegionMultiClusterWrapper.close();
+    return controllerProps;
   }
 
   // TODO: This needs some work. It's very slow, and currently hangs on cleanup. We need to refactor how the cluster
@@ -135,7 +75,7 @@ public class TestActiveActiveReplicationWithDownRegion {
     LOGGER.info("dc1kafka: {}", dc1kafka);
 
     // Create a store in all regions with A/A and hybrid enabled
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = CLUSTER_NAME;
     String storeName = Utils.getUniqueString("test-store");
     String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
@@ -152,7 +92,7 @@ public class TestActiveActiveReplicationWithDownRegion {
     }
 
     // Verify that version 1 is created in all regions
-    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+    for (int i = 0; i < childDatacenters.size(); i++) {
       try (ControllerClient childControllerClient = new ControllerClient(
           clusterName,
           childDatacenters.get(i).getLeaderController(clusterName).getControllerUrl())) {
@@ -229,20 +169,18 @@ public class TestActiveActiveReplicationWithDownRegion {
     producerInDC1.stop();
 
     // Validate keys have been written to all regions
-    for (String cluster: CLUSTER_NAMES) {
-      String routerUrl = childDatacenters.get(0).getClusters().get(cluster).getRandomRouterURL();
-      try (AvroGenericStoreClient<Integer, Object> client = ClientFactory
-          .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-        // TODO: It seems to take an awfully long time for the hybrid data to percolate in this test setup. Be nice to
-        // puzzle out why.
-        TestUtils.waitForNonDeterministicAssertion(80, TimeUnit.SECONDS, () -> {
-          for (int rowIncrement = 0; rowIncrement < RECORDS_TO_POPULATE; rowIncrement++) {
-            Object valueObject = client.get(rowIncrement).get();
-            Assert.assertNotNull(valueObject, "Cluster:" + cluster + " didn't have key:" + rowIncrement);
-            Assert.assertEquals(valueObject.toString(), "value" + rowIncrement);
-          }
-        });
-      }
+    String routerUrl = childDatacenters.get(0).getClusters().get(CLUSTER_NAME).getRandomRouterURL();
+    try (AvroGenericStoreClient<Integer, Object> client = ClientFactory
+        .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+      // TODO: It seems to take an awfully long time for the hybrid data to percolate in this test setup. Be nice to
+      // puzzle out why.
+      TestUtils.waitForNonDeterministicAssertion(80, TimeUnit.SECONDS, () -> {
+        for (int rowIncrement = 0; rowIncrement < RECORDS_TO_POPULATE; rowIncrement++) {
+          Object valueObject = client.get(rowIncrement).get();
+          Assert.assertNotNull(valueObject, "Cluster:" + CLUSTER_NAME + " didn't have key:" + rowIncrement);
+          Assert.assertEquals(valueObject.toString(), "value" + rowIncrement);
+        }
+      });
     }
 
     // TODO: Consider moving all of the above into the 'setUp' function as it's laying the ground work for all tests in
@@ -255,10 +193,7 @@ public class TestActiveActiveReplicationWithDownRegion {
     // should succeed in the OTHER regions and go live.
 
     // It's simple, we kill the kafka broker
-    multiRegionMultiClusterWrapper.getChildRegions()
-        .get(NUMBER_OF_CHILD_DATACENTERS - 1)
-        .getKafkaBrokerWrapper()
-        .close();
+    multiRegionMultiClusterWrapper.getChildRegions().get(childDatacenters.size() - 1).getKafkaBrokerWrapper().close();
 
     // Execute a new push by writing some rows and sending an endOfPushMessage
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
@@ -273,7 +208,7 @@ public class TestActiveActiveReplicationWithDownRegion {
     }
 
     // Let's verify from the other two regions
-    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS - 1; i++) {
+    for (int i = 0; i < childDatacenters.size() - 1; i++) {
       try (ControllerClient childControllerClient = new ControllerClient(
           clusterName,
           childDatacenters.get(i).getLeaderController(clusterName).getControllerUrl())) {

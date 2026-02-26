@@ -1,7 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
@@ -47,13 +46,9 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
-import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PersistenceType;
@@ -99,49 +94,31 @@ import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestMaterializedViewEndToEnd {
+public class TestMaterializedViewEndToEnd extends AbstractMultiRegionTest {
   private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   private static final String DEFAULT_VIEW_NAME = "MaterializedViewTest";
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private String clusterName;
 
-  @BeforeClass(alwaysRun = true)
-  public void setUp() {
+  @Override
+  protected Properties getExtraServerProperties() {
     Properties serverProperties = new Properties();
-    serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     serverProperties.put(
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + TestUtils.getFreePort());
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(2)
-            .numberOfClusters(1)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(2)
-            .numberOfRouters(1)
-            .replicationFactor(2)
-            .forkServer(false)
-            .serverProperties(serverProperties);
-    multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-
-    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-    clusterName = CLUSTER_NAMES[0];
+    return serverProperties;
   }
 
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    multiRegionMultiClusterWrapper.close();
+  @Override
+  @BeforeClass(alwaysRun = true)
+  public void setUp() {
+    super.setUp();
+    clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -152,7 +129,7 @@ public class TestMaterializedViewEndToEnd {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     Properties props = TestWriteUtils.defaultVPJProps(
-        parentControllers.get(0).getControllerUrl(),
+        getParentControllerUrl(),
         inputDirPath,
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
@@ -192,7 +169,7 @@ public class TestMaterializedViewEndToEnd {
 
       // A re-push should succeed
       Properties rePushProps = TestWriteUtils.defaultVPJProps(
-          parentControllers.get(0).getControllerUrl(),
+          getParentControllerUrl(),
           inputDirPath,
           storeName,
           multiRegionMultiClusterWrapper.getPubSubClientProperties());
@@ -227,7 +204,7 @@ public class TestMaterializedViewEndToEnd {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("batchStore");
     Properties props = TestWriteUtils.defaultVPJProps(
-        parentControllers.get(0).getControllerUrl(),
+        getParentControllerUrl(),
         inputDirPath,
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
@@ -302,7 +279,7 @@ public class TestMaterializedViewEndToEnd {
       TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(newPushInputDir, 200);
       String newPushInputDirPath = "file:" + newPushInputDir.getAbsolutePath();
       Properties newPushProps = TestWriteUtils.defaultVPJProps(
-          parentControllers.get(0).getControllerUrl(),
+          getParentControllerUrl(),
           newPushInputDirPath,
           storeName,
           multiRegionMultiClusterWrapper.getPubSubClientProperties());
@@ -364,7 +341,7 @@ public class TestMaterializedViewEndToEnd {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("largeValueBatchStore");
     Properties props = TestWriteUtils.defaultVPJProps(
-        parentControllers.get(0).getControllerUrl(),
+        getParentControllerUrl(),
         inputDirPath,
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
@@ -437,7 +414,7 @@ public class TestMaterializedViewEndToEnd {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("largeValueBatchStore");
     Properties props = TestWriteUtils.defaultVPJProps(
-        parentControllers.get(0).getControllerUrl(),
+        getParentControllerUrl(),
         inputDirPath,
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
@@ -510,7 +487,7 @@ public class TestMaterializedViewEndToEnd {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("complexPartitionStore");
     Properties props = TestWriteUtils.defaultVPJProps(
-        parentControllers.get(0).getControllerUrl(),
+        getParentControllerUrl(),
         inputDirPath,
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
@@ -600,7 +577,7 @@ public class TestMaterializedViewEndToEnd {
     }
     // A re-push should succeed
     Properties rePushProps = TestWriteUtils.defaultVPJProps(
-        parentControllers.get(0).getControllerUrl(),
+        getParentControllerUrl(),
         inputDirPath,
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
@@ -773,7 +750,7 @@ public class TestMaterializedViewEndToEnd {
 
   private void setupStoreWithNoView(String inputDirPath, String storeName, Schema recordSchema) {
     Properties props = TestWriteUtils.defaultVPJProps(
-        parentControllers.get(0).getControllerUrl(),
+        getParentControllerUrl(),
         inputDirPath,
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
@@ -796,7 +773,7 @@ public class TestMaterializedViewEndToEnd {
       String testViewName,
       Schema recordSchema) {
     Properties props = TestWriteUtils.defaultVPJProps(
-        parentControllers.get(0).getControllerUrl(),
+        getParentControllerUrl(),
         inputDirPath,
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());

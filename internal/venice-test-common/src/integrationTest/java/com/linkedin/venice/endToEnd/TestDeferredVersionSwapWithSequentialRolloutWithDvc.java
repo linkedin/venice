@@ -26,8 +26,6 @@ import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -44,52 +42,40 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestDeferredVersionSwapWithSequentialRolloutWithDvc {
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
-  private static final int NUMBER_OF_CLUSTERS = 1;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+public class TestDeferredVersionSwapWithSequentialRolloutWithDvc extends AbstractMultiRegionTest {
   private static final String REGION1 = "dc-0";
   private static final String REGION2 = "dc-1";
   private static final String REGION3 = "dc-2";
   private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
+      IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   private static final int TEST_TIMEOUT = 180_000;
-  private List<VeniceMultiClusterWrapper> childDatacenters;
 
-  @BeforeClass
-  public void setUp() {
+  @Override
+  protected int getNumberOfRegions() {
+    return 3;
+  }
+
+  @Override
+  protected int getNumberOfServers() {
+    return 1;
+  }
+
+  @Override
+  protected int getReplicationFactor() {
+    return 1;
+  }
+
+  @Override
+  protected Properties getExtraControllerProperties() {
     Properties controllerProps = new Properties();
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
     controllerProps.put(DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER, REGION1 + "," + REGION2 + "," + REGION3);
     controllerProps.put(DEFERRED_VERSION_SWAP_FOR_EMPTY_PUSH_ENABLED, true);
-    Properties serverProperties = new Properties();
-
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
-            .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(1)
-            .numberOfRouters(1)
-            .replicationFactor(1)
-            .forkServer(false)
-            .parentControllerProperties(controllerProps)
-            .childControllerProperties(controllerProps)
-            .serverProperties(serverProperties);
-    multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-  }
-
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+    return controllerProps;
   }
 
   @Test(timeOut = TEST_TIMEOUT)

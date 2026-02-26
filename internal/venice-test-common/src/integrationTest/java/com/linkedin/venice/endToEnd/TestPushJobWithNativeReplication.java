@@ -1,7 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED;
@@ -11,7 +10,6 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -22,8 +20,6 @@ import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAsserti
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
@@ -32,14 +28,11 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.annotation.PubSubAgnosticTest;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -59,12 +52,9 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
@@ -109,7 +99,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
-import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
@@ -117,34 +106,21 @@ import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 @PubSubAgnosticTest
-public class TestPushJobWithNativeReplication {
+public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(TestPushJobWithNativeReplication.class);
   private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
-  private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
-                                                                                                         // "venice-cluster1",
-                                                                                                         // ...];
-  private static final String DEFAULT_NATIVE_REPLICATION_SOURCE = "dc-0";
 
-  private static final String SYSTEM_STORE_CLUSTER = CLUSTER_NAMES[0]; // "venice-cluster0"
+  private static final String SYSTEM_STORE_CLUSTER = CLUSTER_NAME; // "venice-cluster0" from base class
   private static final String VPJ_HEARTBEAT_STORE_NAME =
       AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
 
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-  private D2Client d2Client;
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private VeniceServerWrapper serverWrapper;
 
   @DataProvider(name = "storeSize")
@@ -152,17 +128,20 @@ public class TestPushJobWithNativeReplication {
     return new Object[][] { { 50, 2 }, { 1000, 10 } };
   }
 
-  @BeforeClass(alwaysRun = true)
-  public void setUp() {
-    /**
-     * Reduce leader promotion delay to 3 seconds;
-     * Create a testing environment with 1 parent fabric and 2 child fabrics;
-     * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
-     */
+  @Override
+  protected boolean shouldCreateD2Client() {
+    return true;
+  }
+
+  @Override
+  protected Properties getExtraServerProperties() {
     Properties serverProperties = new Properties();
-    serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
-    serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+    return serverProperties;
+  }
+
+  @Override
+  protected Properties getExtraControllerProperties() {
     Properties controllerProps = new Properties();
     // This property is required for test stores that have 10 partitions
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10);
@@ -172,37 +151,16 @@ public class TestPushJobWithNativeReplication {
     controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-0");
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
-
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
-            .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(2)
-            .numberOfRouters(1)
-            .replicationFactor(2)
-            .forkServer(false)
-            .parentControllerProperties(controllerProps)
-            .childControllerProperties(controllerProps)
-            .serverProperties(serverProperties);
-    multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-    VeniceClusterWrapper clusterWrapper =
-        multiRegionMultiClusterWrapper.getChildRegions().get(0).getClusters().get(CLUSTER_NAMES[0]);
-    d2Client = new D2ClientBuilder().setZkHosts(clusterWrapper.getZk().getAddress())
-        .setZkSessionTimeout(3, TimeUnit.SECONDS)
-        .setZkStartupTimeout(3, TimeUnit.SECONDS)
-        .build();
-    D2ClientUtils.startClient(d2Client);
-    serverWrapper = clusterWrapper.getVeniceServers().get(0);
+    return controllerProps;
   }
 
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    D2ClientUtils.shutdownClient(d2Client);
-    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+  @Override
+  @BeforeClass(alwaysRun = true)
+  public void setUp() {
+    super.setUp();
+    VeniceClusterWrapper clusterWrapper =
+        multiRegionMultiClusterWrapper.getChildRegions().get(0).getClusters().get(CLUSTER_NAME);
+    serverWrapper = clusterWrapper.getVeniceServers().get(0);
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
@@ -229,7 +187,7 @@ public class TestPushJobWithNativeReplication {
             }
 
             // Verify the data in the second child fabric which consumes remotely
-            VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+            VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
             String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
             try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
                 ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
@@ -322,8 +280,7 @@ public class TestPushJobWithNativeReplication {
              * TODO: Use semi-auto rebalance and assign a server as the leader to make sure leader->standby always happen.
              */
             TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
-              VeniceClusterWrapper veniceClusterWrapper =
-                  childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(clusterName);
+              VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(1).getClusters().get(clusterName);
               String topic = Version.composeKafkaTopic(storeName, 1);
               // Get Leadership information from External View repo in controller.
               HelixExternalViewRepository routingDataRepo = veniceClusterWrapper.getLeaderVeniceController()
@@ -347,7 +304,7 @@ public class TestPushJobWithNativeReplication {
               }
 
               // Verify the data in the second child fabric which consumes remotely
-              VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+              VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
               String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
               try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
                   ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
@@ -454,37 +411,6 @@ public class TestPushJobWithNativeReplication {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testNativeReplicationForIncrementalPush() throws Exception {
-    File inputDirInc = getTempDataDirectory();
-
-    motherOfAllTests(
-        "testNativeReplicationForIncrementalPush",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
-            .setHybridOffsetLagThreshold(TEST_TIMEOUT)
-            .setHybridRewindSeconds(2L)
-            .setActiveActiveReplicationEnabled(true)
-            .setIncrementalPushEnabled(true),
-        100,
-        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          try (VenicePushJob job = new VenicePushJob("Batch Push", props)) {
-            job.run();
-            // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
-          }
-
-          props.setProperty(INCREMENTAL_PUSH, "true");
-          props.put(INPUT_PATH_PROP, inputDirInc);
-          props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-
-          TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2(inputDirInc);
-          try (VenicePushJob job = new VenicePushJob("Incremental Push", props)) {
-            job.run();
-          }
-          NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
-        });
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
   public void testActiveActiveForHeartbeatSystemStores() throws Exception {
     int recordCount = 50;
     int partitionCount = 2;
@@ -558,9 +484,9 @@ public class TestPushJobWithNativeReplication {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testEmptyPush(boolean toParent) {
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = CLUSTER_NAME;
     String storeName = Utils.getUniqueString("testEmptyPush");
-    String parentControllerUrl = parentControllers.get(0).getControllerUrl();
+    String parentControllerUrl = getParentControllerUrl();
     String childControllerUrl = childDatacenters.get(0).getControllerConnectString();
 
     // Create store first
@@ -584,7 +510,7 @@ public class TestPushJobWithNativeReplication {
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to create new store version.*", timeOut = TEST_TIMEOUT)
   public void testPushDirectlyToChildRegion() throws IOException {
     // In multi-region setup, the batch push to child controller should be disabled.
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = CLUSTER_NAME;
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
@@ -597,11 +523,11 @@ public class TestPushJobWithNativeReplication {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testControllerBlocksConcurrentBatchPush() {
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = CLUSTER_NAME;
     String storeName = Utils.getUniqueString("testControllerBlocksConcurrentBatchPush");
     String pushId1 = Utils.getUniqueString(storeName + "_push");
     String pushId2 = Utils.getUniqueString(storeName + "_push");
-    String parentControllerUrl = parentControllers.get(0).getControllerUrl();
+    String parentControllerUrl = getParentControllerUrl();
 
     // Create store first
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrl)) {
@@ -651,7 +577,7 @@ public class TestPushJobWithNativeReplication {
   public void testTargetedRegionPushJobFullConsumptionForBatchStore() throws Exception {
     // make sure the participant store is up and running in dest region otherwise the test will be flaky
     // the participant store is needed for data recovery
-    String destClusterName = CLUSTER_NAMES[0];
+    String destClusterName = CLUSTER_NAME;
 
     try (ControllerClient controllerClient =
         new ControllerClient(destClusterName, childDatacenters.get(1).getControllerConnectString())) {
@@ -908,7 +834,7 @@ public class TestPushJobWithNativeReplication {
       Function<UpdateStoreQueryParams, UpdateStoreQueryParams> updateStoreParamsTransformer,
       int recordCount,
       NativeReplicationTest test) throws Exception {
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = CLUSTER_NAME;
     File inputDir = getTempDataDirectory();
     String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
@@ -968,7 +894,7 @@ public class TestPushJobWithNativeReplication {
     DaVinciConfig clientConfig = new DaVinciConfig();
     clientConfig.setStorageClass(StorageClass.DISK);
     try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
-        d2Client,
+        d2ClientDC0,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
         backendConfig,
@@ -987,7 +913,7 @@ public class TestPushJobWithNativeReplication {
   private void validatePushJobDetails(String clusterName, String storeName)
       throws ExecutionException, InterruptedException {
     String pushJobDetailsStoreName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
-    VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+    VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
     String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
 
     // Verify push job details are populated

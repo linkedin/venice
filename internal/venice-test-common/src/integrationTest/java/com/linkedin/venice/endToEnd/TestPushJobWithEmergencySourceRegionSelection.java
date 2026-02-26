@@ -1,9 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
@@ -17,27 +15,19 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
-import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -46,64 +36,34 @@ import org.testng.annotations.Test;
  * This test case enables A/A config flag for a store in all regions and then verifies that emergency source fabric takes
  * precedence over other configs.
  */
-public class TestPushJobWithEmergencySourceRegionSelection {
+public class TestPushJobWithEmergencySourceRegionSelection extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(TestPushJobWithEmergencySourceRegionSelection.class);
 
   private static final int TEST_TIMEOUT = 90_000; // ms
 
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
-  private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
-                                                                                                         // "venice-cluster1",
-                                                                                                         // ...];
+  @Override
+  protected int getNumberOfRegions() {
+    return 3;
+  }
 
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+  @Override
+  protected Properties getExtraServerProperties() {
+    Properties serverProperties = new Properties();
+    serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+    return serverProperties;
+  }
+
+  @Override
+  protected Properties getExtraControllerProperties() {
+    Properties controllerProps = new Properties();
+    controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
+    controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-2");
+    return controllerProps;
+  }
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
     return new Object[][] { { 50, 2 } };
-  }
-
-  @BeforeClass(alwaysRun = true)
-  public void setUp() {
-    /**
-     * Reduce leader promotion delay to 3 seconds;
-     * Create a testing environment with 1 parent fabric and 3 child fabrics;
-     * Set server and replication factor to 2 to ensure at least 1 leader replica and 1 follower replica;
-     */
-    Properties serverProperties = new Properties();
-    serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
-    serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
-    serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
-
-    Properties controllerProps = new Properties();
-    controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
-    controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-2");
-
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
-            .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(2)
-            .numberOfRouters(1)
-            .replicationFactor(2)
-            .forkServer(false)
-            .parentControllerProperties(controllerProps)
-            .childControllerProperties(controllerProps)
-            .serverProperties(serverProperties);
-    multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-  }
-
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    multiRegionMultiClusterWrapper.close();
   }
 
   /**
@@ -112,7 +72,7 @@ public class TestPushJobWithEmergencySourceRegionSelection {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
   public void testNativeReplicationForBatchPushWithEmergencySourceOverride(int recordCount, int partitionCount)
       throws Exception {
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = CLUSTER_NAME;
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
