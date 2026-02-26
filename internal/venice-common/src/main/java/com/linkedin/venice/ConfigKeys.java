@@ -983,6 +983,23 @@ public class ConfigKeys {
       "server." + PubSubConstants.PUBSUB_CONSUMER_POLL_RETRY_BACKOFF_MS;
 
   /**
+   * Whether the PubSub health monitor is enabled. When enabled, the server tracks per-broker
+   * health and runs recovery probes for unhealthy brokers.
+   */
+  public static final String SERVER_PUBSUB_HEALTH_MONITOR_ENABLED = "server.pubsub.health.monitor.enabled";
+
+  /**
+   * Whether partition pausing on PubSub outage is enabled. Requires the health monitor to also be enabled.
+   */
+  public static final String SERVER_PUBSUB_PARTITION_PAUSE_ENABLED = "server.pubsub.partition.pause.enabled";
+
+  /**
+   * The interval in seconds between recovery probe attempts for unhealthy brokers.
+   */
+  public static final String SERVER_PUBSUB_HEALTH_PROBE_INTERVAL_SECONDS =
+      "server.pubsub.health.probe.interval.seconds";
+
+  /**
    * Maximum duration (in milliseconds) to wait for the version information to become available in the store metadata
    * repository before skipping Heartbeat (HB) lag monitor setup activity during state transition.
    */

@@ -15,12 +15,14 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.helix.HelixParticipationService;
 import com.linkedin.davinci.kafka.consumer.AdaptiveThrottlerSignalService;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.kafka.consumer.PubSubHealthMonitor;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
+import com.linkedin.davinci.stats.PubSubHealthMonitorStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
@@ -117,6 +119,7 @@ public class VeniceServer {
   private HelixParticipationService helixParticipationService;
   private LeakedResourceCleaner leakedResourceCleaner;
   private DiskHealthCheckService diskHealthCheckService;
+  private PubSubHealthMonitor pubSubHealthMonitor;
   private MetricsRepository metricsRepository;
   private ReadOnlyStoreRepository metadataRepo;
   private ReadOnlySchemaRepository schemaRepo;
@@ -435,6 +438,16 @@ public class VeniceServer {
     services.add(diskHealthCheckService);
     // create stats for disk health check service
     new DiskHealthStats(metricsRepository, diskHealthCheckService, "disk_health_check_service");
+
+    // Create PubSub health monitor
+    this.pubSubHealthMonitor = new PubSubHealthMonitor(
+        serverConfig,
+        kafkaStoreIngestionService.getPubSubContext().getTopicManagerRepository());
+    services.add(pubSubHealthMonitor);
+    PubSubHealthMonitorStats pubSubHealthMonitorStats =
+        new PubSubHealthMonitorStats(metricsRepository, pubSubHealthMonitor, clusterConfig.getClusterName());
+    pubSubHealthMonitor.setStats(pubSubHealthMonitorStats);
+    kafkaStoreIngestionService.setPubSubHealthMonitor(pubSubHealthMonitor);
 
     final Optional<ResourceReadUsageTracker> resourceReadUsageTracker;
     if (serverConfig.isOptimizeDatabaseForBackupVersionEnabled()) {
