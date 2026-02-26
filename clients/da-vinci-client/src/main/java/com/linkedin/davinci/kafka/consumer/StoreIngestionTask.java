@@ -1674,7 +1674,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           PubSubClientException.class,
           PubSubClientRetriableException.class)) {
         LOGGER.warn(
-            "Pausing partition {} due to PubSub exception instead of unsubscribing. Replica: {}",
+            "Pausing partition {} due to PubSub exception. Replica: {}",
             exceptionPartition,
             getReplicaId(kafkaVersionTopic, exceptionPartition),
             partitionException);

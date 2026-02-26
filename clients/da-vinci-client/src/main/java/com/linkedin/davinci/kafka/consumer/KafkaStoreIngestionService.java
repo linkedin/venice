@@ -1469,10 +1469,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService
   public void setPubSubHealthMonitor(PubSubHealthMonitor pubSubHealthMonitor) {
     this.pubSubHealthMonitor = pubSubHealthMonitor;
     pubSubHealthMonitor.registerListener(this);
-    // Propagate to existing SITs
-    for (StoreIngestionTask sit: topicNameToIngestionTaskMap.values()) {
-      sit.setPubSubHealthMonitor(pubSubHealthMonitor);
-    }
   }
 
   public PubSubHealthMonitor getPubSubHealthMonitor() {
