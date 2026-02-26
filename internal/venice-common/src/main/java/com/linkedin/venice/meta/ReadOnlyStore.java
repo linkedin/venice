@@ -415,6 +415,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public boolean isMergedValueRmdColumnFamilyEnabled() {
+      return this.delegate.isMergedValueRmdColumnFamilyEnabled();
+    }
+
+    @Override
+    public void setMergedValueRmdColumnFamilyEnabled(boolean mergedValueRmdColumnFamilyEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public String getStoreName() {
       return this.delegate.getStoreName();
     }
@@ -1016,6 +1026,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setClientDecompressionEnabled(getClientDecompressionEnabled());
     storeProperties.setChunkingEnabled(isChunkingEnabled());
     storeProperties.setRmdChunkingEnabled(isRmdChunkingEnabled());
+    storeProperties.setMergedValueRmdColumnFamilyEnabled(isMergedValueRmdColumnFamilyEnabled());
     storeProperties.setBatchGetLimit(getBatchGetLimit());
     storeProperties.setNumVersionsToPreserve(getNumVersionsToPreserve());
     storeProperties.setIncrementalPushEnabled(isIncrementalPushEnabled());
@@ -1184,6 +1195,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isMergedValueRmdColumnFamilyEnabled() {
+    return this.delegate.isMergedValueRmdColumnFamilyEnabled();
+  }
+
+  @Override
+  public void setMergedValueRmdColumnFamilyEnabled(boolean mergedValueRmdColumnFamilyEnabled) {
     throw new UnsupportedOperationException();
   }
 
@@ -1938,6 +1959,7 @@ public class ReadOnlyStore implements Store {
     // storeVersion.setBufferReplayEnabledForHybrid();
     storeVersion.setChunkingEnabled(version.isChunkingEnabled());
     storeVersion.setRmdChunkingEnabled(version.isRmdChunkingEnabled());
+    storeVersion.setMergedValueRmdColumnFamilyEnabled(version.isMergedValueRmdColumnFamilyEnabled());
     storeVersion.setPushType(version.getPushType().getValue());
     storeVersion.setPartitionCount(version.getPartitionCount());
     storeVersion.setPartitionerConfig(convertPartitionerConfig(version.getPartitionerConfig()));

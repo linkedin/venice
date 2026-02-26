@@ -256,6 +256,14 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   public synchronized StorageEngine getStorageEngine(
       VeniceStoreVersionConfig storeConfig,
       boolean replicationMetadataEnabled) throws StorageInitializationException {
+    return getStorageEngine(storeConfig, replicationMetadataEnabled, false);
+  }
+
+  @Override
+  public synchronized StorageEngine getStorageEngine(
+      VeniceStoreVersionConfig storeConfig,
+      boolean replicationMetadataEnabled,
+      boolean mergedValueRmdColumnFamilyEnabled) throws StorageInitializationException {
     verifyPersistenceType(storeConfig);
     final String storeName = storeConfig.getStoreVersionName();
     try {
@@ -270,7 +278,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
               rocksDBServerConfig,
               storeVersionStateSerializer,
               partitionStateSerializer,
-              replicationMetadataEnabled));
+              replicationMetadataEnabled,
+              mergedValueRmdColumnFamilyEnabled));
     } catch (Exception e) {
       throw new StorageInitializationException(e);
     }

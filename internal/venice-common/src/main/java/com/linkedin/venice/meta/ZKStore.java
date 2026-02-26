@@ -202,6 +202,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setClientDecompressionEnabled(store.getClientDecompressionEnabled());
     setChunkingEnabled(store.isChunkingEnabled());
     setRmdChunkingEnabled(store.isRmdChunkingEnabled());
+    setMergedValueRmdColumnFamilyEnabled(store.isMergedValueRmdColumnFamilyEnabled());
     setBatchGetLimit(store.getBatchGetLimit());
     setNumVersionsToPreserve(store.getNumVersionsToPreserve());
     setIncrementalPushEnabled(store.isIncrementalPushEnabled());
@@ -591,6 +592,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
     this.storeProperties.rmdChunkingEnabled = rmdChunkingEnabled;
+  }
+
+  @Override
+  public boolean isMergedValueRmdColumnFamilyEnabled() {
+    return this.storeProperties.mergedValueRmdColumnFamilyEnabled;
+  }
+
+  @Override
+  public void setMergedValueRmdColumnFamilyEnabled(boolean mergedValueRmdColumnFamilyEnabled) {
+    this.storeProperties.mergedValueRmdColumnFamilyEnabled = mergedValueRmdColumnFamilyEnabled;
   }
 
   @Override

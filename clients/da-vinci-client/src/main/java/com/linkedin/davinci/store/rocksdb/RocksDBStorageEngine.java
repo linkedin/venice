@@ -43,6 +43,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   private final RocksDBStorageEngineFactory factory;
   private final VeniceStoreVersionConfig storeConfig;
   private final boolean replicationMetadataEnabled;
+  private final boolean mergedValueRmdColumnFamilyEnabled;
   private final StorageEngineStats stats;
 
   public RocksDBStorageEngine(
@@ -55,6 +56,30 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       boolean replicationMetadataEnabled) {
+    this(
+        storeConfig,
+        factory,
+        rocksDbPath,
+        rocksDBMemoryStats,
+        rocksDbThrottler,
+        rocksDBServerConfig,
+        storeVersionStateSerializer,
+        partitionStateSerializer,
+        replicationMetadataEnabled,
+        false);
+  }
+
+  public RocksDBStorageEngine(
+      VeniceStoreVersionConfig storeConfig,
+      RocksDBStorageEngineFactory factory,
+      String rocksDbPath,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      RocksDBThrottler rocksDbThrottler,
+      RocksDBServerConfig rocksDBServerConfig,
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      boolean replicationMetadataEnabled,
+      boolean mergedValueRmdColumnFamilyEnabled) {
     super(storeConfig.getStoreVersionName(), storeVersionStateSerializer, partitionStateSerializer);
     this.storeConfig = storeConfig;
     this.rocksDbPath = rocksDbPath;
@@ -63,6 +88,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     this.rocksDBServerConfig = rocksDBServerConfig;
     this.factory = factory;
     this.replicationMetadataEnabled = replicationMetadataEnabled;
+    this.mergedValueRmdColumnFamilyEnabled = mergedValueRmdColumnFamilyEnabled;
 
     // Create store folder if it doesn't exist
     storeDbPath = RocksDBUtils.composeStoreDbDir(this.rocksDbPath, getStoreVersionName());
@@ -142,8 +168,8 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
 
   @Override
   public RocksDBStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
-    // Metadata partition should not enable replication metadata column family.
-    if (storagePartitionConfig.getPartitionId() == METADATA_PARTITION_ID || !replicationMetadataEnabled) {
+    // Metadata partition should not enable replication metadata column family or merged mode.
+    if (storagePartitionConfig.getPartitionId() == METADATA_PARTITION_ID) {
       return new RocksDBStoragePartition(
           storagePartitionConfig,
           factory,
@@ -151,7 +177,17 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
           memoryStats,
           rocksDbThrottler,
           rocksDBServerConfig);
-    } else {
+    }
+    if (mergedValueRmdColumnFamilyEnabled) {
+      return new MergedValueRmdRocksDBStoragePartition(
+          storagePartitionConfig,
+          factory,
+          rocksDbPath,
+          memoryStats,
+          rocksDbThrottler,
+          rocksDBServerConfig);
+    }
+    if (replicationMetadataEnabled) {
       return new ReplicationMetadataRocksDBStoragePartition(
           storagePartitionConfig,
           factory,
@@ -160,6 +196,13 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
           rocksDbThrottler,
           rocksDBServerConfig);
     }
+    return new RocksDBStoragePartition(
+        storagePartitionConfig,
+        factory,
+        rocksDbPath,
+        memoryStats,
+        rocksDbThrottler,
+        rocksDBServerConfig);
   }
 
   private long getRMDSizeInBytes() {

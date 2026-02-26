@@ -65,6 +65,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGULAR_V
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.MERGED_VALUE_RMD_COLUMN_FAMILY_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
@@ -2648,6 +2649,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
       Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
       Optional<Boolean> rmdChunkingEnabled = params.getRmdChunkingEnabled();
+      Optional<Boolean> mergedValueRmdColumnFamilyEnabled = params.getMergedValueRmdColumnFamilyEnabled();
       Optional<Integer> batchGetLimit = params.getBatchGetLimit();
       Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
       Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -3236,6 +3238,12 @@ public class VeniceParentHelixAdmin implements Admin {
       if (rmdChunkingConfigUpdated) {
         updatedConfigsList.add(RMD_CHUNKING_ENABLED);
       }
+
+      // Update merged value-RMD column family config.
+      mergedValueRmdColumnFamilyEnabled.ifPresent(enabled -> {
+        setStore.mergedValueRmdColumnFamilyEnabled = enabled;
+        updatedConfigsList.add(MERGED_VALUE_RMD_COLUMN_FAMILY_ENABLED);
+      });
 
       // Validate Amplification Factor config based on latest A/A and partial update status.
       if ((setStore.getActiveActiveReplicationEnabled() || setStore.getWriteComputationEnabled())

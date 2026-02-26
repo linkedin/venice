@@ -343,6 +343,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isMergedValueRmdColumnFamilyEnabled() {
+    return zkSharedStore.isMergedValueRmdColumnFamilyEnabled();
+  }
+
+  @Override
+  public void setMergedValueRmdColumnFamilyEnabled(boolean mergedValueRmdColumnFamilyEnabled) {
+    throwUnsupportedOperationException("setMergedValueRmdColumnFamilyEnabled");
+  }
+
+  @Override
   public int getBatchGetLimit() {
     return zkSharedStore.getBatchGetLimit();
   }

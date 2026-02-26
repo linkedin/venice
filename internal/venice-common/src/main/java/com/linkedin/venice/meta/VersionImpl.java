@@ -176,6 +176,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public boolean isMergedValueRmdColumnFamilyEnabled() {
+    return this.storeVersion.mergedValueRmdColumnFamilyEnabled;
+  }
+
+  @Override
+  public void setMergedValueRmdColumnFamilyEnabled(boolean mergedValueRmdColumnFamilyEnabled) {
+    this.storeVersion.mergedValueRmdColumnFamilyEnabled = mergedValueRmdColumnFamilyEnabled;
+  }
+
+  @Override
   public final String getStoreName() {
     return this.storeVersion.storeName.toString();
   }
@@ -564,6 +574,7 @@ public class VersionImpl implements Version {
     clonedVersion.setCompressionStrategy(getCompressionStrategy());
     clonedVersion.setChunkingEnabled(isChunkingEnabled());
     clonedVersion.setRmdChunkingEnabled(isRmdChunkingEnabled());
+    clonedVersion.setMergedValueRmdColumnFamilyEnabled(isMergedValueRmdColumnFamilyEnabled());
     clonedVersion.setPushType(getPushType());
     clonedVersion.setNativeReplicationEnabled(isNativeReplicationEnabled());
     clonedVersion.setPushStreamSourceAddress(getPushStreamSourceAddress());
