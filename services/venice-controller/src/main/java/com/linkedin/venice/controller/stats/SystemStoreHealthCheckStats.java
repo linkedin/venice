@@ -43,15 +43,17 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
     // map to a single OTel metric differentiated by dimension, and (2) AsyncGauge is callback-based, not a
     // MeasurableStat, so it cannot be passed to the combined MetricEntityStateBase.create() factory.
     badMetaSystemStoreCountSensor = registerSensorIfAbsent(
-        new AsyncGauge((ignored, ignored2) -> badMetaSystemStoreCounter.get(), "bad_meta_system_store_count"));
+        new AsyncGauge(
+            (ignored, ignored2) -> badMetaSystemStoreCounter.get(),
+            SystemStoreHealthCheckTehutiMetricNameEnum.BAD_META_SYSTEM_STORE_COUNT.getMetricName()));
     badPushStatusSystemStoreCountSensor = registerSensorIfAbsent(
         new AsyncGauge(
             (ignored, ignored2) -> badPushStatusSystemStoreCounter.get(),
-            "bad_push_status_system_store_count"));
+            SystemStoreHealthCheckTehutiMetricNameEnum.BAD_PUSH_STATUS_SYSTEM_STORE_COUNT.getMetricName()));
     notRepairableSystemStoreCountSensor = registerSensorIfAbsent(
         new AsyncGauge(
             (ignored, ignored2) -> notRepairableSystemStoreCounter.get(),
-            "not_repairable_system_store_count"));
+            SystemStoreHealthCheckTehutiMetricNameEnum.NOT_REPAIRABLE_SYSTEM_STORE_COUNT.getMetricName()));
 
     // OTel setup
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
