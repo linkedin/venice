@@ -181,39 +181,44 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
     Map<PubSubHealthCategory, PubSubHealthStatus> categoryStatuses =
         healthStatuses.computeIfAbsent(pubSubAddress, k -> new ConcurrentHashMap<>());
 
-    // Use putIfAbsent to atomically transition from HEALTHY (absent) to UNHEALTHY,
-    // avoiding duplicate listener notifications from concurrent exception reports.
-    PubSubHealthStatus previous = categoryStatuses.putIfAbsent(category, PubSubHealthStatus.UNHEALTHY);
-    if (previous == PubSubHealthStatus.UNHEALTHY) {
-      return; // Already unhealthy
-    }
-
-    // Verify at least one provider considers this target unhealthy
-    boolean anyUnhealthy = false;
-    String triggerName = null;
-    for (PubSubHealthSignalProvider provider: signalProviders) {
-      if (provider.isUnhealthy(pubSubAddress, category)) {
-        anyUnhealthy = true;
-        triggerName = provider.getName();
-        break;
+    // Atomically transition to UNHEALTHY (including HEALTHY -> UNHEALTHY) while
+    // suppressing duplicate UNHEALTHY notifications.
+    final boolean[] transitioned = { false };
+    categoryStatuses.compute(category, (k, previous) -> {
+      if (previous == PubSubHealthStatus.UNHEALTHY) {
+        return PubSubHealthStatus.UNHEALTHY; // Already unhealthy, no notification needed
       }
-    }
 
-    if (!anyUnhealthy) {
-      // No provider considers it unhealthy — revert the optimistic put
-      categoryStatuses.remove(category);
-      return;
-    }
+      // Verify at least one provider considers this target unhealthy
+      boolean anyUnhealthy = false;
+      String triggerName = null;
+      for (PubSubHealthSignalProvider provider: signalProviders) {
+        if (provider.isUnhealthy(pubSubAddress, category)) {
+          anyUnhealthy = true;
+          triggerName = provider.getName();
+          break;
+        }
+      }
 
-    LOGGER.warn(
-        "PubSub target marked UNHEALTHY: address={}, category={}, trigger={}",
-        pubSubAddress,
-        category,
-        triggerName);
-    if (stats != null) {
-      stats.recordStateTransition(category);
+      if (!anyUnhealthy) {
+        return previous; // Keep existing status (null or HEALTHY)
+      }
+
+      LOGGER.warn(
+          "PubSub target marked UNHEALTHY: address={}, category={}, trigger={}",
+          pubSubAddress,
+          category,
+          triggerName);
+      transitioned[0] = true;
+      return PubSubHealthStatus.UNHEALTHY;
+    });
+
+    if (transitioned[0]) {
+      if (stats != null) {
+        stats.recordStateTransition(category);
+      }
+      notifyListeners(pubSubAddress, category, PubSubHealthStatus.UNHEALTHY);
     }
-    notifyListeners(pubSubAddress, category, PubSubHealthStatus.UNHEALTHY);
   }
 
   /**
