@@ -656,7 +656,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService
       }
     };
 
-    return ingestionTaskFactory.getNewIngestionTask(
+    StoreIngestionTask task = ingestionTaskFactory.getNewIngestionTask(
         storageService,
         store,
         version,
@@ -667,6 +667,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService
         cacheBackend,
         getInternalRecordTransformerConfig(storeName),
         zkHelixAdmin);
+    if (pubSubHealthMonitor != null) {
+      task.setPubSubHealthMonitor(pubSubHealthMonitor);
+    }
+    return task;
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {
@@ -1465,6 +1469,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService
   public void setPubSubHealthMonitor(PubSubHealthMonitor pubSubHealthMonitor) {
     this.pubSubHealthMonitor = pubSubHealthMonitor;
     pubSubHealthMonitor.registerListener(this);
+    // Propagate to existing SITs
+    for (StoreIngestionTask sit: topicNameToIngestionTaskMap.values()) {
+      sit.setPubSubHealthMonitor(pubSubHealthMonitor);
+    }
   }
 
   public PubSubHealthMonitor getPubSubHealthMonitor() {
@@ -1478,7 +1486,22 @@ public class KafkaStoreIngestionService extends AbstractVeniceService
         pubSubAddress,
         category,
         newStatus);
-    // TODO: Implement pause/resume logic for affected SITs
+
+    if (newStatus != PubSubHealthStatus.HEALTHY) {
+      return; // Pause is triggered at the exception site, not here
+    }
+    if (category != PubSubHealthCategory.BROKER) {
+      return;
+    }
+
+    LOGGER.info("PubSub broker recovered: {}. Resuming paused partitions across all SITs.", pubSubAddress);
+    for (StoreIngestionTask sit: topicNameToIngestionTaskMap.values()) {
+      try {
+        sit.resumePartitionsForPubSubHealth(pubSubAddress);
+      } catch (Exception e) {
+        LOGGER.error("Error resuming partitions for SIT {} on broker recovery", sit.getVersionTopic(), e);
+      }
+    }
   }
 
   private boolean ingestionTaskHasAnySubscription(String topic) {

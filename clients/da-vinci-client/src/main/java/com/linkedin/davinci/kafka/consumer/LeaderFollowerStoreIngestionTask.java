@@ -4453,6 +4453,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     preparePositionCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, false);
   }
 
+  @Override
+  protected void seekToCheckpointAndResume(PartitionConsumptionState pcs) throws InterruptedException {
+    PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
+    boolean isLeader = pcs.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER) && leaderTopic != null
+        && !leaderTopic.isVersionTopic();
+    if (isLeader) {
+      LOGGER.info("Re-subscribing leader partition {} via resubscribeAsLeader", pcs.getPartition());
+      resubscribeAsLeader(pcs);
+    } else {
+      LOGGER.info("Re-subscribing follower partition {} via resubscribeAsFollower", pcs.getPartition());
+      resubscribeAsFollower(pcs);
+    }
+  }
+
   protected void queueUpVersionTopicWritesWithViewWriters(
       PartitionConsumptionState partitionConsumptionState,
       BiFunction<VeniceViewWriter, Set<Integer>, CompletableFuture<Void>> viewWriterRecordProcessor,
