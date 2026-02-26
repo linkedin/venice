@@ -18,12 +18,14 @@ import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
+import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ByteArrayKey;
+import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -47,6 +49,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -58,7 +61,6 @@ import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.PutMetadata;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -557,9 +559,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         aggVersionedIngestionStats.recordTotalDuplicateKeyUpdate(storeName, versionNumber);
       }
 
+      // Save uncompressed (serialized) value before calling maybeCompressData.
+      // The transient cache stores uncompressed bytes so that subsequent reads for the same key
+      // skip the decompress-deserialize-reserialize-recompress round-trip.
+      final ByteBuffer uncompressedNewValue = mergeConflictResult.getNewValue();
+      final byte[] uncompressedArray =
+          uncompressedNewValue != null ? ByteUtils.extractByteArray(uncompressedNewValue) : null;
+      final int uncompressedOffset = 0;
+      final int uncompressedLen = uncompressedArray != null ? uncompressedArray.length : 0;
+
       final ByteBuffer updatedValueBytes = maybeCompressData(
           consumerRecord.getTopicPartition().getPartitionNumber(),
-          mergeConflictResult.getNewValue(),
+          uncompressedNewValue,
           partitionConsumptionState);
 
       final int valueSchemaId = mergeConflictResult.getValueSchemaId();
@@ -574,14 +585,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         partitionConsumptionState
             .setTransientRecord(kafkaClusterId, consumerRecord.getPosition(), keyBytes, valueSchemaId, rmdRecord);
       } else {
-        int valueLen = updatedValueBytes.remaining();
+        // Store uncompressed bytes in the transient cache. The produce path uses the compressed
+        // updatedValueBytes from MergeConflictResultWrapper independently.
         partitionConsumptionState.setTransientRecord(
             kafkaClusterId,
             consumerRecord.getPosition(),
             keyBytes,
-            updatedValueBytes.array(),
-            updatedValueBytes.position(),
-            valueLen,
+            uncompressedArray,
+            uncompressedOffset,
+            uncompressedLen,
             valueSchemaId,
             rmdRecord);
       }
@@ -770,16 +782,57 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {
-    ByteBuffer compressedValue =
-        ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
-    try {
-      return getCompressionStrategy().isCompressionEnabled()
-          ? getCompressor().get()
-              .decompress(compressedValue.array(), compressedValue.position(), compressedValue.remaining())
-          : compressedValue;
-    } catch (IOException e) {
-      throw new VeniceException(e);
+    // Transient cache stores uncompressed (serialized) value bytes since the merge path needs
+    // deserialized Avro records, not compressed bytes. Skipping the decompress-recompress cycle
+    // for consecutive same-key updates avoids redundant compression work on the AA/WC hot path.
+    return ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
+  }
+
+  private static final NoopCompressor NOOP_COMPRESSOR = new NoopCompressor();
+
+  /**
+   * Override to account for the fact that AA stores uncompressed bytes in the transient cache, while the parent's
+   * implementation passes transient record bytes through the store compressor (which expects compressed input).
+   * This matters during data recovery when the parent's WC path may read transient records written by the AA path.
+   */
+  @Override
+  GenericRecord readStoredValueRecord(
+      PartitionConsumptionState partitionConsumptionState,
+      byte[] keyBytes,
+      int readerValueSchemaID,
+      PubSubTopicPartition topicPartition,
+      ChunkedValueManifestContainer manifestContainer) {
+    PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
+    if (transientRecord == null) {
+      // No transient record — delegate to parent for RocksDB lookup (storage has compressed bytes).
+      return super.readStoredValueRecord(
+          partitionConsumptionState,
+          keyBytes,
+          readerValueSchemaID,
+          topicPartition,
+          manifestContainer);
     }
+    hostLevelIngestionStats.recordWriteComputeCacheHitCount();
+    if (transientRecord.getValue() == null) {
+      return null;
+    }
+    // AA transient records contain uncompressed bytes — use NoopCompressor to skip decompression.
+    GenericRecord currValue;
+    try {
+      currValue = GenericRecordChunkingAdapter.INSTANCE.constructValue(
+          transientRecord.getValue(),
+          transientRecord.getValueOffset(),
+          transientRecord.getValueLen(),
+          storeDeserializerCache.getDeserializer(transientRecord.getValueSchemaId(), readerValueSchemaID),
+          NOOP_COMPRESSOR);
+    } catch (Exception e) {
+      setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
+      throw e;
+    }
+    if (manifestContainer != null) {
+      manifestContainer.setManifest(transientRecord.getValueManifest());
+    }
+    return currValue;
   }
 
   /**
@@ -1258,6 +1311,25 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   public boolean isTransientRecordBufferUsed(PartitionConsumptionState partitionConsumptionState) {
     return partitionConsumptionState.isEndOfPushReceived();
+  }
+
+  /**
+   * Overrides the parent to defensively clear transient record maps when transitioning out of data recovery.
+   * During data recovery, the L/F parent path may populate transient records with compressed bytes (via
+   * {@code maybeCompressData}). When data recovery ends and the AA merge path takes over, those stale
+   * compressed records would be misinterpreted as uncompressed, causing deserialization failures. Clearing
+   * the transient maps on this transition prevents that edge case.
+   */
+  @Override
+  protected void refreshIngestionContextIfChanged(Store store) throws InterruptedException {
+    boolean wasDataRecovery = this.isDataRecovery;
+    super.refreshIngestionContextIfChanged(store);
+    if (wasDataRecovery && !this.isDataRecovery) {
+      LOGGER.info(
+          "Data recovery ended for store: {}. Clearing transient record maps to avoid stale compressed records.",
+          storeName);
+      partitionConsumptionStateMap.values().forEach(PartitionConsumptionState::clearTransientRecordMap);
+    }
   }
 
   /**
