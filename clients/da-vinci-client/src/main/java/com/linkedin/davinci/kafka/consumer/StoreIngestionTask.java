@@ -1678,12 +1678,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             exceptionPartition,
             getReplicaId(kafkaVersionTopic, exceptionPartition),
             partitionException);
-        pubSubHealthPausedPartitions.add(exceptionPartition);
+        pausePartitionForPubSubHealth(exceptionPartition, partitionConsumptionState);
         partitionIngestionExceptionList.set(exceptionPartition, null);
         failedPartitions.remove(exceptionPartition);
-        if (pubSubHealthMonitor != null) {
-          pubSubHealthMonitor.reportPubSubException(localKafkaServer, PubSubHealthCategory.BROKER);
-        }
       } else {
         if (isCurrentVersion.getAsBoolean() && resetErrorReplicaEnabled && !isDaVinciClient) {
           try {
@@ -1750,9 +1747,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "PubSub exception from shared consumer, pausing all partitions instead of killing task: {}",
             lastConsumerException.getMessage(),
             lastConsumerException);
-        pubSubHealthPausedPartitions.addAll(partitionConsumptionStateMap.keySet());
-        if (pubSubHealthMonitor != null) {
-          pubSubHealthMonitor.reportPubSubException(localKafkaServer, PubSubHealthCategory.BROKER);
+        for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
+          pausePartitionForPubSubHealth(entry.getKey(), entry.getValue());
         }
         lastConsumerException = null;
       } else {
@@ -5596,6 +5592,30 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * Pause a single partition due to a PubSub health issue. Unsubscribes the partition's consuming
+   * topic(s) at the consumer level to stop further poll attempts that would hit the same exception,
+   * then adds it to the paused set. The PCS is preserved so that resume can resubscribe at the
+   * checkpointed position. Reports the exception to the health monitor to trigger recovery probing.
+   *
+   * <p>Overridden in {@link LeaderFollowerStoreIngestionTask} to also unsubscribe from the leader
+   * topic (RT) when the partition is a leader consuming from a non-VT topic.
+   */
+  protected void pausePartitionForPubSubHealth(int partitionId, PartitionConsumptionState pcs) {
+    pubSubHealthPausedPartitions.add(partitionId);
+    unsubscribeFromTopic(versionTopic, pcs);
+    reportPubSubHealthException();
+  }
+
+  /**
+   * Report a PubSub exception to the health monitor, triggering recovery probing.
+   */
+  protected void reportPubSubHealthException() {
+    if (pubSubHealthMonitor != null) {
+      pubSubHealthMonitor.reportPubSubException(localKafkaServer, PubSubHealthCategory.BROKER);
+    }
+  }
+
+  /**
    * Resume partitions that were paused due to PubSub health issues for the given broker address.
    * Called by {@link KafkaStoreIngestionService} when the health monitor detects broker recovery.
    *
@@ -5646,13 +5666,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Seeks the consumer back to the checkpointed position for a partition and resumes consumption.
-   * Unsubscribes from the current consuming topic(s) at the consumer level, drains the store buffer,
-   * and re-subscribes at the last checkpointed position. The PCS is preserved.
+   * Re-subscribes a partition at its checkpointed position to resume consumption. The partition
+   * must already be unsubscribed (done during {@link #pausePartitionForPubSubHealth}).
    *
-   * <p>Overridden in {@link LeaderFollowerStoreIngestionTask} to delegate to
-   * {@code resubscribeAsFollower} / {@code resubscribeAsLeader} which handle buffer draining,
-   * robust leader position calculation, and upstream RT offset map sync.
+   * <p>Overridden in {@link LeaderFollowerStoreIngestionTask} to handle leader vs follower
+   * resubscription (RT vs VT topic, leader position calculation).
    */
   protected void seekToCheckpointAndResume(PartitionConsumptionState pcs) throws InterruptedException {
     // Default implementation for non-L/F SITs (currently all SITs are L/F, so this is a safety fallback)
@@ -5663,8 +5681,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionId,
         versionTopic.getName(),
         vtPosition);
-    aggKafkaConsumerService
-        .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(versionTopic, partitionId));
     consumerSubscribe(versionTopic, pcs, vtPosition, localKafkaServer);
   }
 }
