@@ -51,7 +51,7 @@ public class SplitRequestTest {
     assertEquals(request.getRecordsPerSplit(), 1000L);
     assertEquals(request.getStartPosition(), startPos);
     assertEquals(request.getEndPosition(), endPos);
-    assertEquals(request.getNumberOfRecords(), 1000L);
+    assertEquals(request.getNumberOfRecords(), Long.valueOf(1000L));
   }
 
   @Test
@@ -167,6 +167,16 @@ public class SplitRequestTest {
           .numberOfRecords(1000L)
           .build();
     });
+
+    // Case 5: Missing numberOfRecords
+    expectThrows(NullPointerException.class, () -> {
+      new SplitRequest.Builder().pubSubTopicPartition(partition)
+          .topicManager(topicManager)
+          .splitType(PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION)
+          .startPosition(startPos)
+          .endPosition(endPos)
+          .build();
+    });
   }
 
   @Test
@@ -184,5 +194,8 @@ public class SplitRequestTest {
     assertNotNull(toString);
     assertEquals(toString.contains("SplitRequest{"), true);
     assertEquals(toString.contains("partitionSplitStrategy=FIXED_RECORD_COUNT"), true, "Got: " + toString);
+    assertEquals(toString.contains("startPosition="), true, "Got: " + toString);
+    assertEquals(toString.contains("endPosition="), true, "Got: " + toString);
+    assertEquals(toString.contains("numberOfRecords=1000"), true, "Got: " + toString);
   }
 }

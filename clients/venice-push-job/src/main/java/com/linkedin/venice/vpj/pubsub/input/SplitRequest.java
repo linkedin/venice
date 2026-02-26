@@ -72,7 +72,7 @@ public final class SplitRequest {
     return endPosition;
   }
 
-  public long getNumberOfRecords() {
+  public Long getNumberOfRecords() {
     return numberOfRecords;
   }
 
@@ -80,7 +80,8 @@ public final class SplitRequest {
   public String toString() {
     return "SplitRequest{" + "pubSubTopicPartition=" + pubSubTopicPartition + ", partitionSplitStrategy="
         + partitionSplitStrategy + ", maxSplits=" + maxSplits + ", recordsPerSplit=" + recordsPerSplit
-        + ", timeWindowInMs=" + timeWindowInMs + '}';
+        + ", timeWindowInMs=" + timeWindowInMs + ", startPosition=" + startPosition + ", endPosition=" + endPosition
+        + ", numberOfRecords=" + numberOfRecords + '}';
   }
 
   public static final class Builder {

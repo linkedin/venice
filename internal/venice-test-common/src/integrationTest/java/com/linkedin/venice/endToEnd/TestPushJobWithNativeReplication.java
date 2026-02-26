@@ -777,13 +777,14 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
           // Wait for version 2 to be created in all child datacenters before killing
           // This prevents a race condition where kill command arrives before version creation
           for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
-            ControllerClient childControllerClient =
-                new ControllerClient(clusterName, childDatacenter.getControllerConnectString());
-            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-              StoreResponse store = childControllerClient.getStore(storeName);
-              Optional<Version> version = store.getStore().getVersion(2);
-              assertTrue(version.isPresent(), "Version 2 should be created in child datacenter before killing");
-            });
+            try (ControllerClient childControllerClient =
+                new ControllerClient(clusterName, childDatacenter.getControllerConnectString())) {
+              TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+                StoreResponse store = childControllerClient.getStore(storeName);
+                Optional<Version> version = store.getStore().getVersion(2);
+                assertTrue(version.isPresent(), "Version 2 should be created in child datacenter before killing");
+              });
+            }
           }
 
           // kill repush version
@@ -797,17 +798,18 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
 
           // verify child version status is marked as killed or removed (cleanup may happen quickly)
           for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
-            ControllerClient childControllerClient =
-                new ControllerClient(clusterName, childDatacenter.getControllerConnectString());
-            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-              StoreResponse store = childControllerClient.getStore(storeName);
-              Optional<Version> version = store.getStore().getVersion(2);
-              // Version may be marked as KILLED or may have been removed by cleanup
-              assertTrue(
-                  !version.isPresent() || version.get().getStatus() == VersionStatus.KILLED,
-                  "Version 2 should be killed or removed in child datacenter, but found: "
-                      + (version.isPresent() ? version.get().getStatus() : "not present"));
-            });
+            try (ControllerClient childControllerClient =
+                new ControllerClient(clusterName, childDatacenter.getControllerConnectString())) {
+              TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+                StoreResponse store = childControllerClient.getStore(storeName);
+                Optional<Version> version = store.getStore().getVersion(2);
+                // Version may be marked as KILLED or may have been removed by cleanup
+                assertTrue(
+                    !version.isPresent() || version.get().getStatus() == VersionStatus.KILLED,
+                    "Version 2 should be killed or removed in child datacenter, but found: "
+                        + (version.isPresent() ? version.get().getStatus() : "not present"));
+              });
+            }
           }
 
           TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {

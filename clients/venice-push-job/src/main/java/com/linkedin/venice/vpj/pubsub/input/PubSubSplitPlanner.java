@@ -126,6 +126,16 @@ public class PubSubSplitPlanner {
     Map<Integer, PubSubPosition> endByPartition = new HashMap<>(endPositions.size());
     endPositions.forEach((tp, pos) -> endByPartition.put(tp.getPartitionNumber(), pos));
 
+    // Validate that batch-fetched maps contain positions for all expected partitions
+    for (int p = 0; p < partitionCount; p++) {
+      if (!startByPartition.containsKey(p) || !endByPartition.containsKey(p)) {
+        throw new VeniceException(
+            "Batch-fetched positions are incomplete for topic " + topic + ": partition " + p + " is missing from "
+                + (!startByPartition.containsKey(p) ? "start" : "end") + " positions map. Expected " + partitionCount
+                + " partitions, got " + startByPartition.size() + " start and " + endByPartition.size() + " end.");
+      }
+    }
+
     LOGGER.info(
         "Batch-fetched positions for {} partitions of topic: {}. Planning splits using {} strategy with {} threads.",
         partitionCount,
@@ -144,29 +154,26 @@ public class PubSubSplitPlanner {
         PubSubPosition start = startByPartition.get(p);
         PubSubPosition end = endByPartition.get(p);
 
-        if (start == null || end == null) {
-          throw new VeniceException(
-              "Missing position data (start=" + start + ", end=" + end + ") for partition " + p + " of topic " + topic);
-        }
+        futures.add(executor.submit(() -> {
+          long records = RetryUtils.executeWithMaxAttempt(
+              () -> tm.diffPosition(tp, end, start),
+              5,
+              Duration.ofMinutes(3),
+              Collections.singletonList(Exception.class));
 
-        long records = RetryUtils.executeWithMaxAttempt(
-            () -> tm.diffPosition(tp, end, start),
-            3,
-            Duration.ofSeconds(5),
-            Collections.singletonList(Exception.class));
+          SplitRequest req = new SplitRequest.Builder().topicManager(tm)
+              .splitType(partitionSplitStrategy)
+              .maxSplits(maxSplitsPerPartition)
+              .recordsPerSplit(recordsPerSplit)
+              .timeWindowInMs(timeWindowMs)
+              .pubSubTopicPartition(tp)
+              .startPosition(start)
+              .endPosition(end)
+              .numberOfRecords(records)
+              .build();
 
-        SplitRequest req = new SplitRequest.Builder().topicManager(tm)
-            .splitType(partitionSplitStrategy)
-            .maxSplits(maxSplitsPerPartition)
-            .recordsPerSplit(recordsPerSplit)
-            .timeWindowInMs(timeWindowMs)
-            .pubSubTopicPartition(tp)
-            .startPosition(start)
-            .endPosition(end)
-            .numberOfRecords(records)
-            .build();
-
-        futures.add(executor.submit(() -> partitionSplitStrategy.split(req)));
+          return partitionSplitStrategy.split(req);
+        }));
       }
 
       List<PubSubPartitionSplit> out = new ArrayList<>();
