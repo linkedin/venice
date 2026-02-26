@@ -218,9 +218,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
         rocksDBServerConfig.isAutoTunedRateLimiterEnabled());
 
     if (rocksDBMemoryStats != null && sharedRMDCache != null) {
-      rocksDBMemoryStats.setRMDBlockCache(
-          sharedRMDCache,
-          rocksDBServerConfig.getRocksDBRMDBlockCacheSizeInBytes());
+      rocksDBMemoryStats.setRMDBlockCache(sharedRMDCache, rocksDBServerConfig.getRocksDBRMDBlockCacheSizeInBytes());
     }
   }
 
