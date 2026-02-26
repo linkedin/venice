@@ -111,9 +111,11 @@ public class TestRegionUtils {
     // No match
     Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(clusterIdToAlias, "dc-99"), -1);
 
-    // Separate RT topic cluster (dc-1_sep) should not match dc-1
-    clusterIdToAlias.put(3, "dc-1_sep");
+    // Separate RT topic cluster should not match the primary alias
+    String sepAlias = TEST_DC_2 + "_sep";
+    clusterIdToAlias.put(3, sepAlias);
     Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(clusterIdToAlias, TEST_DC_2), 1);
+    Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(clusterIdToAlias, sepAlias), 3);
 
     // Null or empty region name
     Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(clusterIdToAlias, null), -1);
