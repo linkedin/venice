@@ -15,7 +15,11 @@ import com.linkedin.davinci.stats.ingestion.IngestionOtelStats;
 import com.linkedin.davinci.stats.ingestion.NoOpIngestionOtelStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
+import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
+import com.linkedin.venice.stats.dimensions.VeniceWriteComputeOperation;
 import com.linkedin.venice.utils.DataProviderUtils;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
@@ -249,6 +253,33 @@ public class AggVersionedIngestionStatsTest {
     aggStats.recordBatchProcessingRequestError(STORE_NAME, VERSION_1);
     aggStats.recordBatchProcessingLatency(STORE_NAME, VERSION_1, 7.0, now);
     aggStats.recordRegionHybridConsumption(STORE_NAME, VERSION_1, 0, 512, now, "dc-1", VeniceRegionLocality.LOCAL);
+
+    // New HostLevelIngestionStats OTel methods
+    aggStats.recordConsumerQueuePutTime(STORE_NAME, VERSION_1, 5.0);
+    aggStats.recordStorageEnginePutTime(STORE_NAME, VERSION_1, 3.0);
+    aggStats.recordStorageEngineDeleteTime(STORE_NAME, VERSION_1, 2.0);
+    aggStats.recordConsumerActionTime(STORE_NAME, VERSION_1, 4.0);
+    aggStats.recordLongRunningTaskCheckTime(STORE_NAME, VERSION_1, 1.0);
+    aggStats.recordViewWriterProduceTime(STORE_NAME, VERSION_1, 6.0);
+    aggStats.recordViewWriterAckTime(STORE_NAME, VERSION_1, 7.0);
+    aggStats.recordProducerEnqueueTime(STORE_NAME, VERSION_1, 8.0);
+    aggStats.recordProducerCompressTime(STORE_NAME, VERSION_1, 2.0);
+    aggStats.recordProducerSynchronizeTime(STORE_NAME, VERSION_1, 3.0);
+    aggStats.recordWriteComputeTime(STORE_NAME, VERSION_1, VeniceWriteComputeOperation.QUERY, 5.0);
+    aggStats.recordDcrLookupTime(STORE_NAME, VERSION_1, VeniceRecordType.DATA, 4.0);
+    aggStats.recordDcrMergeTime(STORE_NAME, VERSION_1, VeniceDCROperation.PUT, 3.0);
+    aggStats.recordUnexpectedMessageCount(STORE_NAME, VERSION_1);
+    aggStats.recordStoreMetadataInconsistentCount(STORE_NAME, VERSION_1);
+    aggStats.recordResubscriptionFailureCount(STORE_NAME, VERSION_1);
+    aggStats.recordWriteComputeCacheHitCount(STORE_NAME, VERSION_1);
+    aggStats.recordChecksumVerificationFailureCount(STORE_NAME, VERSION_1);
+    aggStats.recordIngestionFailureCount(STORE_NAME, VERSION_1, VeniceIngestionFailureReason.GENERAL);
+    aggStats.recordDcrLookupCacheHitCount(STORE_NAME, VERSION_1, VeniceRecordType.REPLICATION_METADATA);
+    aggStats.recordBytesConsumedAsUncompressedSize(STORE_NAME, VERSION_1, 1024);
+    aggStats.recordKeySize(STORE_NAME, VERSION_1, 64);
+    aggStats.recordValueSize(STORE_NAME, VERSION_1, 256);
+    aggStats.recordAssembledSize(STORE_NAME, VERSION_1, VeniceRecordType.DATA, 512);
+    aggStats.recordAssembledSizeRatio(STORE_NAME, VERSION_1, 0.5);
 
     Map<String, IngestionOtelStats> otelStatsMap = getOtelStatsMap(aggStats);
     if (ingestionOtelStatsEnabled) {

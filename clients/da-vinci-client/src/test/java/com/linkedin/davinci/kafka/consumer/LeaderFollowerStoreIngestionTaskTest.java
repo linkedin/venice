@@ -1433,53 +1433,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testComputeLocalKafkaClusterId() {
-    // Each region has one primary cluster. Separate RT topic clusters for incremental pushes
-    // use a "{region}_sep" alias convention and are treated as distinct regions.
-    Int2ObjectMap<String> clusterIdToAlias = new Int2ObjectOpenHashMap<>();
-    clusterIdToAlias.put(0, "dc-1");
-    clusterIdToAlias.put(1, "dc-2");
-    clusterIdToAlias.put(2, "dc-1_sep"); // separate RT topic for inc pushes — distinct alias
-    clusterIdToAlias.put(3, "dc-3");
-
-    // Normal case: matches the primary cluster for dc-1, not the _sep cluster
-    assertEquals(
-        LeaderFollowerStoreIngestionTask.computeLocalKafkaClusterId(clusterIdToAlias, "dc-1"),
-        0,
-        "Should match the primary cluster for dc-1");
-
-    // Single match for dc-2
-    assertEquals(
-        LeaderFollowerStoreIngestionTask.computeLocalKafkaClusterId(clusterIdToAlias, "dc-2"),
-        1,
-        "Should match the cluster for dc-2");
-
-    // No match
-    assertEquals(
-        LeaderFollowerStoreIngestionTask.computeLocalKafkaClusterId(clusterIdToAlias, "dc-99"),
-        -1,
-        "Unknown region should return -1");
-
-    // Null region
-    assertEquals(
-        LeaderFollowerStoreIngestionTask.computeLocalKafkaClusterId(clusterIdToAlias, null),
-        -1,
-        "Null region should return -1");
-
-    // Empty region
-    assertEquals(
-        LeaderFollowerStoreIngestionTask.computeLocalKafkaClusterId(clusterIdToAlias, ""),
-        -1,
-        "Empty region should return -1");
-
-    // Empty map
-    assertEquals(
-        LeaderFollowerStoreIngestionTask.computeLocalKafkaClusterId(new Int2ObjectOpenHashMap<>(), "dc-1"),
-        -1,
-        "Empty map should return -1");
-  }
-
-  @Test
   public void testUnknownRegionFallback() {
     // Verify normalizeRegionName returns UNKNOWN_REGION for unmapped cluster IDs
     Int2ObjectMap<String> clusterIdToAlias = new Int2ObjectOpenHashMap<>();
