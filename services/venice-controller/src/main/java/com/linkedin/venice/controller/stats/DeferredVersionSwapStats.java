@@ -1,10 +1,10 @@
 package com.linkedin.venice.controller.stats;
 
+import static com.linkedin.venice.controller.stats.ControllerStatsDimensionUtils.dimensionMapBuilder;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
 
-import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
@@ -94,15 +94,16 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
   }
 
   public void recordDeferredVersionSwapExceptionMetric(String clusterName) {
-    deferredVersionSwapExceptionMetric.record(1, clusterDimensions(clusterName));
+    deferredVersionSwapExceptionMetric.record(1, dimensionMapBuilder().cluster(clusterName).build());
   }
 
   public void recordDeferredVersionSwapThrowableMetric(String clusterName) {
-    deferredVersionSwapThrowableMetric.record(1, clusterDimensions(clusterName));
+    deferredVersionSwapThrowableMetric.record(1, dimensionMapBuilder().cluster(clusterName).build());
   }
 
   public void recordDeferredVersionSwapFailedRollForwardMetric(String clusterName, String storeName) {
-    deferredVersionSwapFailedRollForwardMetric.record(1, clusterAndStoreDimensions(clusterName, storeName));
+    deferredVersionSwapFailedRollForwardMetric
+        .record(1, dimensionMapBuilder().cluster(clusterName).store(storeName).build());
   }
 
   public void recordDeferredVersionSwapStalledVersionSwapMetric(double value) {
@@ -110,19 +111,13 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
   }
 
   public void recordDeferredVersionSwapParentChildStatusMismatchMetric(String clusterName, String storeName) {
-    deferredVersionSwapParentChildStatusMismatchMetric.record(1, clusterAndStoreDimensions(clusterName, storeName));
+    deferredVersionSwapParentChildStatusMismatchMetric
+        .record(1, dimensionMapBuilder().cluster(clusterName).store(storeName).build());
   }
 
   public void recordDeferredVersionSwapChildStatusMismatchMetric(String clusterName, String storeName) {
-    deferredVersionSwapChildStatusMismatchMetric.record(1, clusterAndStoreDimensions(clusterName, storeName));
-  }
-
-  private static Map<VeniceMetricsDimensions, String> clusterDimensions(String clusterName) {
-    return Collections.singletonMap(VENICE_CLUSTER_NAME, clusterName);
-  }
-
-  private static Map<VeniceMetricsDimensions, String> clusterAndStoreDimensions(String clusterName, String storeName) {
-    return ImmutableMap.of(VENICE_CLUSTER_NAME, clusterName, VENICE_STORE_NAME, storeName);
+    deferredVersionSwapChildStatusMismatchMetric
+        .record(1, dimensionMapBuilder().cluster(clusterName).store(storeName).build());
   }
 
   enum DeferredVersionSwapTehutiMetricNameEnum implements TehutiMetricNameEnum {
