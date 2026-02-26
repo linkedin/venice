@@ -180,6 +180,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_B
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_CONSUMER_POLL_RETRY_TIMES;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_HEALTH_MONITOR_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_HEALTH_PROBE_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_HEALTH_PROBE_TOPIC;
 import static com.linkedin.venice.ConfigKeys.SERVER_PUBSUB_PARTITION_PAUSE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_CAPACITY_MULTIPLE;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
@@ -464,6 +465,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean pubSubHealthMonitorEnabled;
   private final boolean pubSubPartitionPauseEnabled;
   private final int pubSubHealthProbeIntervalSeconds;
+  private final String pubSubHealthProbeTopic;
 
   private final Duration serverMaxWaitForVersionInfo;
 
@@ -866,8 +868,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS, 30));
     diskHealthCheckServiceEnabled = serverProperties.getBoolean(SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED, true);
     pubSubHealthMonitorEnabled = serverProperties.getBoolean(SERVER_PUBSUB_HEALTH_MONITOR_ENABLED, false);
-    pubSubPartitionPauseEnabled = serverProperties.getBoolean(SERVER_PUBSUB_PARTITION_PAUSE_ENABLED, false);
+    pubSubPartitionPauseEnabled =
+        pubSubHealthMonitorEnabled && serverProperties.getBoolean(SERVER_PUBSUB_PARTITION_PAUSE_ENABLED, false);
     pubSubHealthProbeIntervalSeconds = serverProperties.getInt(SERVER_PUBSUB_HEALTH_PROBE_INTERVAL_SECONDS, 30);
+    pubSubHealthProbeTopic = serverProperties.getString(SERVER_PUBSUB_HEALTH_PROBE_TOPIC, "");
     serverMaxWaitForVersionInfo =
         Duration.ofMillis(serverProperties.getLong(SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG, 5000));
     computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
@@ -1488,6 +1492,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getPubSubHealthProbeIntervalSeconds() {
     return pubSubHealthProbeIntervalSeconds;
+  }
+
+  public String getPubSubHealthProbeTopic() {
+    return pubSubHealthProbeTopic;
   }
 
   public Duration getServerMaxWaitForVersionInfo() {

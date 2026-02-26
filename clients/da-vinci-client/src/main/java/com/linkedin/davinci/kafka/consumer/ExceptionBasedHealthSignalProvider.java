@@ -42,12 +42,9 @@ public class ExceptionBasedHealthSignalProvider implements PubSubHealthSignalPro
 
   @Override
   public void onProbeSuccess(String pubSubAddress, PubSubHealthCategory category) {
-    Set<PubSubHealthCategory> categories = unhealthyTargets.get(pubSubAddress);
-    if (categories != null) {
+    unhealthyTargets.computeIfPresent(pubSubAddress, (key, categories) -> {
       categories.remove(category);
-      if (categories.isEmpty()) {
-        unhealthyTargets.remove(pubSubAddress);
-      }
-    }
+      return categories.isEmpty() ? null : categories;
+    });
   }
 }

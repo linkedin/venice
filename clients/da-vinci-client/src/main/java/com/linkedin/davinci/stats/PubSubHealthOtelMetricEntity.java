@@ -31,6 +31,11 @@ public enum PubSubHealthOtelMetricEntity implements ModuleMetricEntityInterface 
   PUBSUB_HEALTH_STATE_TRANSITION_COUNT(
       "pubsub.health.state_transition_count", MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of health state transitions", setOf(VENICE_CLUSTER_NAME, VENICE_PUBSUB_HEALTH_CATEGORY)
+  ),
+
+  PUBSUB_HEALTH_PAUSED_PARTITION_COUNT(
+      "pubsub.health.paused_partition_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
+      "Total count of partitions paused due to PubSub health issues", setOf(VENICE_CLUSTER_NAME)
   );
 
   private final MetricEntity metricEntity;

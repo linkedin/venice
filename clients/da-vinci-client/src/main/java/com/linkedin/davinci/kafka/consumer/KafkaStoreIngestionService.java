@@ -1504,6 +1504,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService
     }
   }
 
+  /**
+   * @return total number of partitions currently paused due to PubSub health issues across all SITs
+   */
+  public int getTotalPausedPartitionCount() {
+    int count = 0;
+    for (StoreIngestionTask sit: topicNameToIngestionTaskMap.values()) {
+      count += sit.getPubSubHealthPausedPartitions().size();
+    }
+    return count;
+  }
+
   private boolean ingestionTaskHasAnySubscription(String topic) {
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);

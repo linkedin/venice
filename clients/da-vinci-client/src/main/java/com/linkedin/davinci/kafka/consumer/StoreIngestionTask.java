@@ -5617,9 +5617,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
-    // Snapshot and clear before resubscribing
+    // Snapshot before resubscribing — clear individual partitions only after successful resume
     Set<Integer> partitionsToResume = new HashSet<>(pubSubHealthPausedPartitions);
-    pubSubHealthPausedPartitions.clear();
 
     LOGGER
         .info("Resuming {} partitions paused for PubSub health on broker {}", partitionsToResume.size(), pubSubAddress);
@@ -5630,14 +5629,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     for (int partitionId: partitionsToResume) {
       PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partitionId);
       if (pcs == null || !pcs.isSubscribed()) {
+        pubSubHealthPausedPartitions.remove(partitionId);
         continue;
       }
       try {
         seekToCheckpointAndResume(pcs);
+        pubSubHealthPausedPartitions.remove(partitionId);
       } catch (InterruptedException e) {
         LOGGER.warn("Interrupted while resuming partition {} for PubSub health", partitionId, e);
         Thread.currentThread().interrupt();
         return;
+      } catch (Exception e) {
+        LOGGER.error("Failed to resume partition {} for PubSub health, will retry on next recovery", partitionId, e);
       }
     }
   }

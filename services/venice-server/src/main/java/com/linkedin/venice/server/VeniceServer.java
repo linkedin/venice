@@ -61,6 +61,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -443,9 +444,17 @@ public class VeniceServer {
     this.pubSubHealthMonitor = new PubSubHealthMonitor(
         serverConfig,
         kafkaStoreIngestionService.getPubSubContext().getTopicManagerRepository());
+    String probeTopicName = serverConfig.getPubSubHealthProbeTopic();
+    if (!probeTopicName.isEmpty()) {
+      PubSubTopicRepository topicRepo = new PubSubTopicRepository();
+      pubSubHealthMonitor.setProbeTopic(topicRepo.getTopic(probeTopicName));
+    }
     services.add(pubSubHealthMonitor);
-    PubSubHealthMonitorStats pubSubHealthMonitorStats =
-        new PubSubHealthMonitorStats(metricsRepository, pubSubHealthMonitor, clusterConfig.getClusterName());
+    PubSubHealthMonitorStats pubSubHealthMonitorStats = new PubSubHealthMonitorStats(
+        metricsRepository,
+        pubSubHealthMonitor,
+        kafkaStoreIngestionService::getTotalPausedPartitionCount,
+        clusterConfig.getClusterName());
     pubSubHealthMonitor.setStats(pubSubHealthMonitorStats);
     kafkaStoreIngestionService.setPubSubHealthMonitor(pubSubHealthMonitor);
 
