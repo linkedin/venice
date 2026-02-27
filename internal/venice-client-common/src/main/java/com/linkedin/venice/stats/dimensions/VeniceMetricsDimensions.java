@@ -117,7 +117,13 @@ public enum VeniceMetricsDimensions {
   VENICE_RECORD_TYPE("venice.record.type"),
 
   /** {@link VeniceIngestionFailureReason} Categorized reason for ingestion failure */
-  VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason");
+  VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason"),
+
+  /** {@link VeniceChunkingStatus} */
+  VENICE_CHUNKING_STATUS("venice.chunking.status"),
+
+  /** {@link VeniceComputeOperationType} */
+  VENICE_COMPUTE_OPERATION_TYPE("venice.storage_engine.compute.operation_type");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

@@ -775,10 +775,10 @@ public class StorageReadRequestHandlerTest {
       ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
       computeResponse.getStatsRecorder().recordMetrics(stats);
       verify(stats).recordDotProductCount(1);
-      verify(stats).recordHadamardProduct(1);
+      verify(stats).recordHadamardProductCount(1);
       verify(stats).recordReadComputeEfficiency(expectedReadComputeEfficiency);
       verify(stats, never()).recordMultiChunkLargeValueCount(anyInt());
-      verify(stats, never()).recordCountOperator(anyInt());
+      verify(stats, never()).recordCountOperatorCount(anyInt());
       verify(stats, never()).recordCosineSimilarityCount(anyInt());
     }
   }

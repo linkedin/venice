@@ -82,6 +82,7 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
+import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
@@ -632,6 +633,261 @@ public class IngestionOtelStatsTest {
             VENICE_RECORD_TYPE,
             VeniceRecordType.REPLICATION_METADATA),
         RECORD_ASSEMBLED_SIZE.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordStorageEngineDeleteTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordStorageEngineDeleteTime(CURRENT_VERSION, 5.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        5.0,
+        5.0,
+        1,
+        5.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        STORAGE_ENGINE_DELETE_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordConsumerActionTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordConsumerActionTime(CURRENT_VERSION, 20.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        20.0,
+        20.0,
+        1,
+        20.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        CONSUMER_ACTION_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordLongRunningTaskCheckTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordLongRunningTaskCheckTime(CURRENT_VERSION, 7.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        7.0,
+        7.0,
+        1,
+        7.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        LONG_RUNNING_TASK_CHECK_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordViewWriterProduceTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordViewWriterProduceTime(CURRENT_VERSION, 18.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        18.0,
+        18.0,
+        1,
+        18.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        VIEW_WRITER_PRODUCE_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordViewWriterAckTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordViewWriterAckTime(CURRENT_VERSION, 25.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        25.0,
+        25.0,
+        1,
+        25.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        VIEW_WRITER_ACK_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordProducerEnqueueTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordProducerEnqueueTime(CURRENT_VERSION, 3.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        3.0,
+        3.0,
+        1,
+        3.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        PRODUCER_ENQUEUE_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordProducerCompressTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordProducerCompressTime(CURRENT_VERSION, 6.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        6.0,
+        6.0,
+        1,
+        6.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        PRODUCER_COMPRESS_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordProducerSynchronizeTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordProducerSynchronizeTime(CURRENT_VERSION, 14.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        14.0,
+        14.0,
+        1,
+        14.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        PRODUCER_SYNCHRONIZE_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordDcrLookupTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordDcrLookupTime(CURRENT_VERSION, VeniceRecordType.DATA, 9.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        9.0,
+        9.0,
+        1,
+        9.0,
+        buildAttributesWithVersionRoleAndSecondEnum(VersionRole.CURRENT, VENICE_RECORD_TYPE, VeniceRecordType.DATA),
+        DCR_LOOKUP_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordDcrMergeTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordDcrMergeTime(CURRENT_VERSION, VeniceDCROperation.PUT, 11.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        11.0,
+        11.0,
+        1,
+        11.0,
+        buildAttributesWithVersionRoleAndSecondEnum(VersionRole.CURRENT, VENICE_DCR_OPERATION, VeniceDCROperation.PUT),
+        DCR_MERGE_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordStoreMetadataInconsistentCount() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordStoreMetadataInconsistentCount(CURRENT_VERSION, 1);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        STORE_METADATA_INCONSISTENT_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordResubscriptionFailureCount() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordResubscriptionFailureCount(CURRENT_VERSION, 1);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        RESUBSCRIPTION_FAILURE_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordWriteComputeCacheHitCount() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordWriteComputeCacheHitCount(CURRENT_VERSION, 1);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        WRITE_COMPUTE_CACHE_HIT_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordChecksumVerificationFailureCount() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordChecksumVerificationFailureCount(CURRENT_VERSION, 1);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        CHECKSUM_VERIFICATION_FAILURE_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordDcrLookupCacheHitCount() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordDcrLookupCacheHitCount(CURRENT_VERSION, VeniceRecordType.REPLICATION_METADATA, 1);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRoleAndSecondEnum(
+            VersionRole.CURRENT,
+            VENICE_RECORD_TYPE,
+            VeniceRecordType.REPLICATION_METADATA),
+        DCR_LOOKUP_CACHE_HIT_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordBytesConsumedAsUncompressedSize() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordBytesConsumedAsUncompressedSize(CURRENT_VERSION, 2048);
+    validateObservableCounterValue(
+        inMemoryMetricReader,
+        2048,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        BYTES_CONSUMED_AS_UNCOMPRESSED_SIZE.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordValueSize() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordValueSize(CURRENT_VERSION, 512);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        512.0,
+        512.0,
+        1,
+        512.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        RECORD_VALUE_SIZE.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordAssembledSizeRatio() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordAssembledSizeRatio(CURRENT_VERSION, 0.75);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        0.75,
+        0.75,
+        1,
+        0.75,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        RECORD_ASSEMBLED_SIZE_RATIO.getMetricEntity().getMetricName(),
         TEST_PREFIX);
   }
 

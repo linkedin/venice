@@ -89,6 +89,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.dimensions.VeniceWriteComputeOperation;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -798,6 +799,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         for (int partition: timeoutPartitions) {
           reportError(errorMsg, partition, ex);
         }
+        hostLevelIngestionStats.recordIngestionFailure();
+        versionedIngestionStats.recordIngestionFailureCount(
+            getStoreName(),
+            getVersionNumber(),
+            VeniceIngestionFailureReason.SERVING_VERSION_BOOTSTRAP_TIMEOUT);
       } else {
         throw ex;
       }
@@ -1970,7 +1976,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     produceFunction.accept(callback, leaderMetadataWrapper);
     double enqueueLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS);
     getHostLevelIngestionStats().recordLeaderProduceLatency(enqueueLatency);
-    getVersionIngestionStats().recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
+    versionedIngestionStats.recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
 
     try {
       if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {

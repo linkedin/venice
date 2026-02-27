@@ -67,9 +67,9 @@ public class ComputeResponseStats extends MultiKeyResponseStats {
     super.recordMetrics(stats);
 
     consumeIntIfAbove(stats::recordCosineSimilarityCount, this.cosineSimilarityCount, 0);
-    consumeIntIfAbove(stats::recordCountOperator, this.countOperatorCount, 0);
+    consumeIntIfAbove(stats::recordCountOperatorCount, this.countOperatorCount, 0);
     consumeIntIfAbove(stats::recordDotProductCount, this.dotProductCount, 0);
-    consumeIntIfAbove(stats::recordHadamardProduct, this.hadamardProductCount, 0);
+    consumeIntIfAbove(stats::recordHadamardProductCount, this.hadamardProductCount, 0);
     boolean isAssembledMultiChunkLargeValue = isAssembledMultiChunkLargeValue();
     consumeDoubleAndBooleanIfAbove(
         stats::recordReadComputeDeserializationLatency,
@@ -89,6 +89,11 @@ public class ComputeResponseStats extends MultiKeyResponseStats {
     if (this.readComputeOutputSize > 0) {
       stats.recordReadComputeEfficiency((double) this.totalValueSize / readComputeOutputSize);
     }
+  }
+
+  @Override
+  public int getResponseValueSize() {
+    return this.totalValueSize;
   }
 
   @Override

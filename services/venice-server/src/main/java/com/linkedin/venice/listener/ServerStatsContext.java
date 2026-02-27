@@ -8,7 +8,9 @@ import com.linkedin.venice.listener.response.stats.ReadResponseStatsRecorder;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
-import io.netty.channel.ChannelHandlerContext;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
 
@@ -44,26 +46,6 @@ public class ServerStatsContext {
    */
   private boolean statCallbackExecuted = false;
 
-  /**
-   * Normally, one multi-get request will be split into two parts, and it means
-   * {@link StatsHandler#channelRead(ChannelHandlerContext, Object)} will be invoked twice.
-   *
-   * 'firstPartLatency' will measure the time took by:
-   * {@link StatsHandler}
-   * {@link io.netty.handler.codec.http.HttpServerCodec}
-   * {@link io.netty.handler.codec.http.HttpObjectAggregator}
-   *
-   *
-   * 'secondPartLatency' will measure the time took by:
-   * {@link StatsHandler}
-   * {@link io.netty.handler.codec.http.HttpServerCodec}
-   * {@link io.netty.handler.codec.http.HttpObjectAggregator}
-   * {@link VerifySslHandler}
-   * {@link ServerAclHandler}
-   * {@link RouterRequestHttpHandler}
-   * {@link StorageReadRequestHandler}
-   *
-   */
   private boolean isMisroutedStoreVersion = false;
   private double flushLatency = -1;
   private int responseSize = -1;
@@ -209,35 +191,72 @@ public class ServerStatsContext {
       if (flushLatency >= 0) {
         serverHttpRequestStats.recordFlushLatency(flushLatency);
       }
+      // Tehuti response size is recorded here (runs for all requests including 429).
+      // OTel response size is recorded in successRequest/errorRequest (needs HTTP status dims).
       if (responseSize >= 0) {
         serverHttpRequestStats.recordResponseSize(responseSize);
       }
     }
   }
 
-  // This method does not have to be synchronized since operations in Tehuti are already synchronized.
-  // Please re-consider the race condition if new logic is added.
+  // This method does not have to be synchronized since Tehuti Sensor.record() is internally synchronized
+  // and OTel SDK recording methods are thread-safe. Please re-consider if new logic is added.
   public void successRequest(ServerHttpRequestStats stats, double elapsedTime) {
-    if (stats != null) {
-      stats.recordSuccessRequest();
-      stats.recordSuccessRequestLatency(elapsedTime);
-    } else {
+    if (stats == null) {
       throw new VeniceException("store name could not be null if request succeeded");
+    }
+
+    int statusCode = responseStatus != null ? responseStatus.code() : HttpResponseStatus.OK.code();
+    HttpResponseStatusEnum statusEnum = HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum(statusCode);
+    HttpResponseStatusCodeCategory statusCategory =
+        HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory(statusCode);
+    VeniceResponseStatusCategory veniceCategory = VeniceResponseStatusCategory.SUCCESS;
+
+    stats.recordSuccessRequest(statusEnum, statusCategory, veniceCategory);
+    stats.recordSuccessRequestLatency(statusEnum, statusCategory, veniceCategory, elapsedTime);
+
+    // OTel-only: Tehuti response size is recorded in recordBasicMetrics (runs for all requests including 429)
+    if (responseSize >= 0) {
+      stats.recordResponseSizeOtelOnly(statusEnum, statusCategory, veniceCategory, responseSize);
+    }
+    // OTel-only: Tehuti value size is recorded per-key in recordMetrics/recordUnmergedMetrics
+    if (this.responseStatsRecorder != null) {
+      int valueSize = this.responseStatsRecorder.getResponseValueSize();
+      if (valueSize > 0) {
+        stats.recordValueSizeInByteOtelOnly(statusEnum, statusCategory, veniceCategory, valueSize);
+      }
     }
   }
 
   public void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
+    int statusCode = responseStatus != null ? responseStatus.code() : 500;
+    HttpResponseStatusEnum statusEnum = HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum(statusCode);
+    HttpResponseStatusCodeCategory statusCategory =
+        HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory(statusCode);
+    VeniceResponseStatusCategory veniceCategory = VeniceResponseStatusCategory.FAIL;
+
     if (stats == null) {
-      currentStats.recordErrorRequest();
-      currentStats.recordErrorRequestLatency(elapsedTime);
+      currentStats.recordErrorRequest(statusEnum, statusCategory, veniceCategory);
+      currentStats.recordErrorRequestLatency(statusEnum, statusCategory, veniceCategory, elapsedTime);
       if (isMisroutedStoreVersion) {
         currentStats.recordMisroutedStoreVersionRequest();
       }
     } else {
-      stats.recordErrorRequest();
-      stats.recordErrorRequestLatency(elapsedTime);
+      stats.recordErrorRequest(statusEnum, statusCategory, veniceCategory);
+      stats.recordErrorRequestLatency(statusEnum, statusCategory, veniceCategory, elapsedTime);
       if (isMisroutedStoreVersion) {
         stats.recordMisroutedStoreVersionRequest();
+      }
+      // OTel-only: Tehuti response size is recorded in recordBasicMetrics (runs for all requests including 429)
+      if (responseSize >= 0) {
+        stats.recordResponseSizeOtelOnly(statusEnum, statusCategory, veniceCategory, responseSize);
+      }
+      // OTel-only: Tehuti value size is recorded per-key in recordMetrics/recordUnmergedMetrics
+      if (this.responseStatsRecorder != null) {
+        int valueSize = this.responseStatsRecorder.getResponseValueSize();
+        if (valueSize > 0) {
+          stats.recordValueSizeInByteOtelOnly(statusEnum, statusCategory, veniceCategory, valueSize);
+        }
       }
     }
   }

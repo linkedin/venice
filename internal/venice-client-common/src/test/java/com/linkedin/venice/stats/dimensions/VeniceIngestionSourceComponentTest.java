@@ -20,8 +20,6 @@ public class VeniceIngestionSourceComponentTest extends VeniceDimensionInterface
         .put(VeniceIngestionSourceComponent.PRODUCER, "producer")
         .put(VeniceIngestionSourceComponent.LOCAL_BROKER, "local_broker")
         .put(VeniceIngestionSourceComponent.SOURCE_BROKER, "source_broker")
-        .put(VeniceIngestionSourceComponent.LEADER_CONSUMER, "leader_consumer")
-        .put(VeniceIngestionSourceComponent.FOLLOWER_CONSUMER, "follower_consumer")
         .build();
   }
 }

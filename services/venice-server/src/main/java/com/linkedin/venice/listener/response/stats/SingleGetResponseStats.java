@@ -27,7 +27,13 @@ public class SingleGetResponseStats extends AbstractReadResponseStats {
   public void recordMetrics(ServerHttpRequestStats stats) {
     super.recordMetrics(stats);
 
+    // Tehuti-only value size: OTel aggregate is recorded in successRequest/errorRequest with HTTP status dims
     ResponseStatsUtil.consumeIntIfAbove(stats::recordValueSizeInByte, this.valueSize, 0);
     stats.recordKeySizeInByte(this.keySize);
+  }
+
+  @Override
+  public int getResponseValueSize() {
+    return this.valueSize;
   }
 }

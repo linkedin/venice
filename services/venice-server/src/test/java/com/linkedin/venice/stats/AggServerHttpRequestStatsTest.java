@@ -2,6 +2,9 @@ package com.linkedin.venice.stats;
 
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Percentiles;
@@ -92,10 +95,22 @@ public class AggServerHttpRequestStatsTest {
 
     ServerHttpRequestStats computeServerStatsFoo = computeStats.getStoreStats(STORE_FOO);
 
-    singleGetServerStatsFoo.recordSuccessRequest();
-    singleGetServerStatsFoo.recordSuccessRequest();
-    singleGetServerStatsFoo.recordErrorRequest();
-    singleGetServerStatsBar.recordErrorRequest();
+    singleGetServerStatsFoo.recordSuccessRequest(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS);
+    singleGetServerStatsFoo.recordSuccessRequest(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS);
+    singleGetServerStatsFoo.recordErrorRequest(
+        HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
+        HttpResponseStatusCodeCategory.SERVER_ERROR,
+        VeniceResponseStatusCategory.FAIL);
+    singleGetServerStatsBar.recordErrorRequest(
+        HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
+        HttpResponseStatusCodeCategory.SERVER_ERROR,
+        VeniceResponseStatusCategory.FAIL);
 
     singleGetServerStatsFoo.recordKeySizeInByte(100);
     singleGetServerStatsFoo.recordValueSizeInByte(1000);
@@ -105,8 +120,8 @@ public class AggServerHttpRequestStatsTest {
 
     computeServerStatsFoo.recordDotProductCount(10);
     computeServerStatsFoo.recordCosineSimilarityCount(10);
-    computeServerStatsFoo.recordHadamardProduct(10);
-    computeServerStatsFoo.recordCountOperator(10);
+    computeServerStatsFoo.recordHadamardProductCount(10);
+    computeServerStatsFoo.recordCountOperatorCount(10);
     computeServerStatsFoo.recordKeyNotFoundCount(5);
 
     Assert.assertTrue(
@@ -143,13 +158,13 @@ public class AggServerHttpRequestStatsTest {
         "Avg value for compute dot product count should always be recorded");
     Assert.assertTrue(
         reporter.query(".store_foo--compute_cosine_similarity_count.Avg").value() > 0,
-        "Avg value for compute dot product count should always be recorded");
+        "Avg value for compute cosine similarity count should always be recorded");
     Assert.assertTrue(
         reporter.query(".store_foo--compute_hadamard_product_count.Avg").value() > 0,
-        "Avg value for compute dot product count should always be recorded");
+        "Avg value for compute hadamard product count should always be recorded");
     Assert.assertTrue(
         reporter.query(".store_foo--compute_count_operator_count.Avg").value() > 0,
-        "Avg value for compute dot product count should always be recorded");
+        "Avg value for compute count operator count should always be recorded");
 
     String[] fineGrainedPercentiles = new String[] { "0_01", "0_01", "0_1", "1", "2", "3", "4", "5", "10", "20", "30",
         "40", "50", "60", "70", "80", "90", "95", "99", "99_9" };
@@ -200,9 +215,15 @@ public class AggServerHttpRequestStatsTest {
     ServerHttpRequestStats batchGetSmallStats = batchGetStats.getStoreStats(STORE_WITH_SMALL_VALUES);
     ServerHttpRequestStats batchGetLargeStats = batchGetStats.getStoreStats(STORE_WITH_LARGE_VALUES);
 
-    smallValueStats.recordSuccessRequest();
+    smallValueStats.recordSuccessRequest(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS);
     smallValueStats.recordMultiChunkLargeValueCount(0);
-    largeValueStats.recordSuccessRequest();
+    largeValueStats.recordSuccessRequest(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS);
     largeValueStats.recordMultiChunkLargeValueCount(1);
 
     // Sanity check
@@ -232,11 +253,20 @@ public class AggServerHttpRequestStatsTest {
         1,
         "storage_engine_large_value_lookup rate should be positive");
 
-    batchGetSmallStats.recordSuccessRequest();
+    batchGetSmallStats.recordSuccessRequest(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS);
     batchGetSmallStats.recordMultiChunkLargeValueCount(0);
-    batchGetLargeStats.recordSuccessRequest();
+    batchGetLargeStats.recordSuccessRequest(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS);
     batchGetLargeStats.recordMultiChunkLargeValueCount(5);
-    batchGetLargeStats.recordSuccessRequest();
+    batchGetLargeStats.recordSuccessRequest(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS);
     batchGetLargeStats.recordMultiChunkLargeValueCount(15);
 
     // Sanity check

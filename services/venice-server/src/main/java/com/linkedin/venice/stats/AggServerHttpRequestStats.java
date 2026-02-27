@@ -3,6 +3,9 @@ package com.linkedin.venice.stats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.tehuti.metrics.MetricsRepository;
 
 
@@ -57,6 +60,7 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
       return new ServerHttpRequestStats(
           metricsRepository,
           storeName,
+          clusterName,
           requestType,
           isKeyValueProfilingEnabled,
           totalStats,
@@ -64,12 +68,19 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
     }
   }
 
-  public void recordErrorRequest() {
-    totalStats.recordErrorRequest();
+  public void recordErrorRequest(
+      HttpResponseStatusEnum statusEnum,
+      HttpResponseStatusCodeCategory statusCategory,
+      VeniceResponseStatusCategory veniceCategory) {
+    totalStats.recordErrorRequest(statusEnum, statusCategory, veniceCategory);
   }
 
-  public void recordErrorRequestLatency(double latency) {
-    totalStats.recordErrorRequestLatency(latency);
+  public void recordErrorRequestLatency(
+      HttpResponseStatusEnum statusEnum,
+      HttpResponseStatusCodeCategory statusCategory,
+      VeniceResponseStatusCategory veniceCategory,
+      double latency) {
+    totalStats.recordErrorRequestLatency(statusEnum, statusCategory, veniceCategory, latency);
   }
 
   public void recordMisroutedStoreVersionRequest() {

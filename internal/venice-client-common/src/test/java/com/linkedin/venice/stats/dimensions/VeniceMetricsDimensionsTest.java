@@ -121,6 +121,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_INGESTION_FAILURE_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.ingestion.failure.reason");
           break;
+        case VENICE_CHUNKING_STATUS:
+          assertEquals(dimension.getDimensionName(format), "venice.chunking.status");
+          break;
+        case VENICE_COMPUTE_OPERATION_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.storage_engine.compute.operation_type");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -240,6 +246,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_INGESTION_FAILURE_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.ingestion.failure.reason");
           break;
+        case VENICE_CHUNKING_STATUS:
+          assertEquals(dimension.getDimensionName(format), "venice.chunking.status");
+          break;
+        case VENICE_COMPUTE_OPERATION_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.storageEngine.compute.operationType");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -358,6 +370,12 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_INGESTION_FAILURE_REASON:
           assertEquals(dimension.getDimensionName(format), "Venice.Ingestion.Failure.Reason");
+          break;
+        case VENICE_CHUNKING_STATUS:
+          assertEquals(dimension.getDimensionName(format), "Venice.Chunking.Status");
+          break;
+        case VENICE_COMPUTE_OPERATION_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.StorageEngine.Compute.OperationType");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

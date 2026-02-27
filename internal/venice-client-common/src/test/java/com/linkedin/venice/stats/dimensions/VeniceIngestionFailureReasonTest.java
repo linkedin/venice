@@ -19,8 +19,8 @@ public class VeniceIngestionFailureReasonTest extends VeniceDimensionInterfaceTe
     return CollectionUtils.<VeniceIngestionFailureReason, String>mapBuilder()
         .put(VeniceIngestionFailureReason.TASK_KILLED, "task_killed")
         .put(VeniceIngestionFailureReason.CHECKSUM_VERIFICATION_FAILURE, "checksum_verification_failure")
-        .put(VeniceIngestionFailureReason.BOOTSTRAP_TIMEOUT, "bootstrap_timeout")
-        .put(VeniceIngestionFailureReason.PUSH_TIMEOUT, "push_timeout")
+        .put(VeniceIngestionFailureReason.SERVING_VERSION_BOOTSTRAP_TIMEOUT, "serving_version_bootstrap_timeout")
+        .put(VeniceIngestionFailureReason.FUTURE_VERSION_PUSH_TIMEOUT, "future_version_push_timeout")
         .put(VeniceIngestionFailureReason.REMOTE_BROKER_UNREACHABLE, "remote_broker_unreachable")
         .put(VeniceIngestionFailureReason.GENERAL, "general")
         .build();

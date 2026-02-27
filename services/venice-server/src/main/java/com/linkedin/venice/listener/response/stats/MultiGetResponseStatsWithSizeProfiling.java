@@ -8,6 +8,7 @@ import it.unimi.dsi.fastutil.ints.IntList;
 public class MultiGetResponseStatsWithSizeProfiling extends MultiKeyResponseStats {
   private final IntList keySizes;
   private final IntList valueSizes;
+  private int totalValueSize = 0;
 
   public MultiGetResponseStatsWithSizeProfiling(int maxKeyCount) {
     this.keySizes = new IntArrayList(maxKeyCount);
@@ -22,6 +23,20 @@ public class MultiGetResponseStatsWithSizeProfiling extends MultiKeyResponseStat
   @Override
   public void addValueSize(int size) {
     this.valueSizes.add(size);
+    this.totalValueSize += size;
+  }
+
+  @Override
+  public int getResponseValueSize() {
+    return this.totalValueSize;
+  }
+
+  @Override
+  public void merge(ReadResponseStatsRecorder other) {
+    super.merge(other);
+    if (other instanceof MultiGetResponseStatsWithSizeProfiling) {
+      this.totalValueSize += ((MultiGetResponseStatsWithSizeProfiling) other).totalValueSize;
+    }
   }
 
   /**
