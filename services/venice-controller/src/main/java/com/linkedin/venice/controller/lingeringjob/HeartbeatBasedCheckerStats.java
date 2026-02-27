@@ -1,37 +1,68 @@
 package com.linkedin.venice.controller.lingeringjob;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
+import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.tehuti.metrics.MetricsRepository;
-import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
+import java.util.Arrays;
 
 
 public class HeartbeatBasedCheckerStats extends AbstractVeniceStats {
   private static final String STATS_NAME = "controller-batch-job-heartbeat-checker";
 
-  // Error sensors
-  private final Sensor checkJobHasHeartbeatFailedSensor;
-
-  // Happy path sensors
-  private final Sensor timeoutHeartbeatCheckSensor;
-  private final Sensor noTimeoutHeartbeatCheckSensor;
+  private final MetricEntityStateBase checkJobHasHeartbeatFailedState;
+  private final MetricEntityStateBase timeoutHeartbeatCheckState;
+  private final MetricEntityStateBase noTimeoutHeartbeatCheckState;
 
   public HeartbeatBasedCheckerStats(MetricsRepository metricsRepository) {
     super(metricsRepository, STATS_NAME);
-    checkJobHasHeartbeatFailedSensor = registerSensor("check_job_has_heartbeat_failed", new Count());
-    timeoutHeartbeatCheckSensor = registerSensor("timeout_heartbeat_check", new Count());
-    noTimeoutHeartbeatCheckSensor = registerSensor("non_timeout_heartbeat_check", new Count());
+
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
+        OpenTelemetryMetricsSetup.builder(metricsRepository).build();
+
+    checkJobHasHeartbeatFailedState = MetricEntityStateBase.create(
+        HeartbeatCheckerOtelMetricEntity.BATCH_JOB_HEARTBEAT_CHECK_FAILURE_COUNT.getMetricEntity(),
+        otelData.getOtelRepository(),
+        this::registerSensor,
+        HeartbeatCheckerTehutiMetricNameEnum.CHECK_JOB_HAS_HEARTBEAT_FAILED,
+        Arrays.asList(new Count()),
+        otelData.getBaseDimensionsMap(),
+        otelData.getBaseAttributes());
+
+    timeoutHeartbeatCheckState = MetricEntityStateBase.create(
+        HeartbeatCheckerOtelMetricEntity.BATCH_JOB_HEARTBEAT_TIMEOUT_COUNT.getMetricEntity(),
+        otelData.getOtelRepository(),
+        this::registerSensor,
+        HeartbeatCheckerTehutiMetricNameEnum.TIMEOUT_HEARTBEAT_CHECK,
+        Arrays.asList(new Count()),
+        otelData.getBaseDimensionsMap(),
+        otelData.getBaseAttributes());
+
+    noTimeoutHeartbeatCheckState = MetricEntityStateBase.create(
+        HeartbeatCheckerOtelMetricEntity.BATCH_JOB_HEARTBEAT_ACTIVE_COUNT.getMetricEntity(),
+        otelData.getOtelRepository(),
+        this::registerSensor,
+        HeartbeatCheckerTehutiMetricNameEnum.NON_TIMEOUT_HEARTBEAT_CHECK,
+        Arrays.asList(new Count()),
+        otelData.getBaseDimensionsMap(),
+        otelData.getBaseAttributes());
   }
 
   void recordCheckJobHasHeartbeatFailed() {
-    checkJobHasHeartbeatFailedSensor.record();
+    checkJobHasHeartbeatFailedState.record(1);
   }
 
   void recordTimeoutHeartbeatCheck() {
-    timeoutHeartbeatCheckSensor.record();
+    timeoutHeartbeatCheckState.record(1);
   }
 
   void recordNoTimeoutHeartbeatCheck() {
-    noTimeoutHeartbeatCheckSensor.record();
+    noTimeoutHeartbeatCheckState.record(1);
+  }
+
+  enum HeartbeatCheckerTehutiMetricNameEnum implements TehutiMetricNameEnum {
+    CHECK_JOB_HAS_HEARTBEAT_FAILED, TIMEOUT_HEARTBEAT_CHECK, NON_TIMEOUT_HEARTBEAT_CHECK
   }
 }

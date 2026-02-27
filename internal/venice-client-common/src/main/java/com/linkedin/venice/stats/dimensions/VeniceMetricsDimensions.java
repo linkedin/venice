@@ -105,7 +105,10 @@ public enum VeniceMetricsDimensions {
   VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT("venice.admin_message.processing.component"),
 
   /** AdminMessageType */
-  VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type");
+  VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type"),
+
+  /** Thread pool name for ThreadPoolStats */
+  VENICE_THREAD_POOL_NAME("venice.thread_pool.name");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
