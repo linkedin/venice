@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_1
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -107,7 +107,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_2
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -194,7 +194,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_3
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -281,7 +281,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_4
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -368,7 +368,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_5
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -455,7 +455,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_6
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -542,7 +542,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_7
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -629,7 +629,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_8
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -716,7 +716,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_9
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -803,7 +803,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_10
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -890,7 +890,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_11
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -977,7 +977,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_12
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1064,7 +1064,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_13
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1151,7 +1151,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_14
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1238,7 +1238,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_15
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1325,7 +1325,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_16
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1412,7 +1412,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_17
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1499,7 +1499,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_18
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1586,7 +1586,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_19
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1673,7 +1673,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_20
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1760,7 +1760,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_21
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1847,7 +1847,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_22
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1934,7 +1934,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_23
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2021,7 +2021,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_24
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2108,7 +2108,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_25
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2195,7 +2195,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_26
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2282,7 +2282,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_27
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2369,7 +2369,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_28
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2456,7 +2456,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_29
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2543,7 +2543,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_30
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2630,7 +2630,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_31
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2717,7 +2717,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_32
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2804,7 +2804,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_33
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2891,7 +2891,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_34
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2978,7 +2978,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_35
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3065,7 +3065,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_36
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3152,7 +3152,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_37
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3239,7 +3239,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_38
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3326,7 +3326,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_39
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3413,7 +3413,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_40
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3500,7 +3500,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_41
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3587,7 +3587,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_42
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3674,7 +3674,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_43
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3761,7 +3761,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_44
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3848,7 +3848,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_45
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3935,7 +3935,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-integrationTests_99
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
