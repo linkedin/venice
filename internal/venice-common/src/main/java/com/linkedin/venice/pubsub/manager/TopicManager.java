@@ -740,16 +740,16 @@ public class TopicManager implements Closeable {
   public Map<PubSubTopicPartition, PubSubPosition> getEndPositionsForTopicWithRetries(PubSubTopic pubSubTopic) {
     return RetryUtils.executeWithMaxAttempt(
         () -> topicMetadataFetcher.getEndPositionsForTopic(pubSubTopic),
-        10,
-        Duration.ofMinutes(1),
+        5,
+        Duration.ofMinutes(3),
         Collections.singletonList(Exception.class));
   }
 
   public Map<PubSubTopicPartition, PubSubPosition> getStartPositionsForTopicWithRetries(PubSubTopic pubSubTopic) {
     return RetryUtils.executeWithMaxAttempt(
         () -> topicMetadataFetcher.getStartPositionsForTopic(pubSubTopic),
-        10,
-        Duration.ofMinutes(1),
+        5,
+        Duration.ofMinutes(3),
         Collections.singletonList(Exception.class));
   }
 

@@ -21,6 +21,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -202,7 +203,6 @@ public class PubSubSplitPlannerTest {
   @Test(dataProvider = "splitTypeProvider")
   public void testPlanWithAllSplitTypes(PartitionSplitStrategy partitionSplitStrategy) {
     doReturn(mockTopicManager).when(planner).createTopicManager(any(VeniceProperties.class), anyString());
-    doReturn(3).when(mockTopicManager).getPartitionCount(any(PubSubTopic.class));
 
     VeniceProperties props = createVenicePropertiesWithValues(
         TEST_TOPIC_NAME,
@@ -303,21 +303,36 @@ public class PubSubSplitPlannerTest {
   }
 
   private void setupTopicManagerMocks(TopicManager topicManager, int partitionCount, long recordsPerPartition) {
+    PubSubTopic topic = TOPIC_REPO.getTopic(TEST_TOPIC_NAME);
     when(topicManager.getPartitionCount(any(PubSubTopic.class))).thenReturn(partitionCount);
 
+    // Set up batch position fetching (used by PubSubSplitPlanner)
+    Map<PubSubTopicPartition, PubSubPosition> startPositions = new HashMap<>();
+    Map<PubSubTopicPartition, PubSubPosition> endPositions = new HashMap<>();
+
     for (int i = 0; i < partitionCount; i++) {
+      PubSubTopicPartition tp = new PubSubTopicPartitionImpl(topic, i);
       PubSubPosition startPos = ApacheKafkaOffsetPosition.of(0L);
       PubSubPosition endPos = ApacheKafkaOffsetPosition.of(recordsPerPartition);
-
-      when(topicManager.getStartPositionsForPartitionWithRetries(any(PubSubTopicPartition.class))).thenReturn(startPos);
-      when(topicManager.getEndPositionsForPartitionWithRetries(any(PubSubTopicPartition.class))).thenReturn(endPos);
-      when(topicManager.getNumRecordsInPartition(any(PubSubTopicPartition.class))).thenReturn(recordsPerPartition);
-      when(
-          topicManager
-              .diffPosition(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class)))
-                  .thenReturn(recordsPerPartition);
-      when(topicManager.advancePosition(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(Long.class)))
-          .thenReturn(endPos);
+      startPositions.put(tp, startPos);
+      endPositions.put(tp, endPos);
     }
+
+    when(topicManager.getStartPositionsForTopicWithRetries(any(PubSubTopic.class))).thenReturn(startPositions);
+    when(topicManager.getEndPositionsForTopicWithRetries(any(PubSubTopic.class))).thenReturn(endPositions);
+
+    // diffPosition is called by the planner to compute record counts
+    when(
+        topicManager
+            .diffPosition(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(PubSubPosition.class)))
+                .thenReturn(recordsPerPartition);
+
+    // advancePosition is still called by strategies (pure math)
+    when(topicManager.advancePosition(any(PubSubTopicPartition.class), any(PubSubPosition.class), any(Long.class)))
+        .thenAnswer(invocation -> {
+          PubSubPosition start = invocation.getArgument(1);
+          long n = invocation.getArgument(2);
+          return ApacheKafkaOffsetPosition.of(start.getNumericOffset() + n);
+        });
   }
 }
