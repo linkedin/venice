@@ -1255,4 +1255,12 @@ public class Utils {
     }
     return -1;
   }
+
+  /**
+   * Used for seeding purposes. e.g. consumer sequence id. Doesn't actual have nanosecond accuracy.
+   * @return the current time in nanoseconds.
+   */
+  public static long getCurrentTimeInNanos() {
+    return System.currentTimeMillis() * Time.NS_PER_MS;
+  }
 }

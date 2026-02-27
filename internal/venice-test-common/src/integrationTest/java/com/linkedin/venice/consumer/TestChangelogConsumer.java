@@ -691,6 +691,9 @@ public class TestChangelogConsumer {
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+
+    // Capture timestamp before consumer initialization to validate sequence IDs
+    long initTimestampNs = Utils.getCurrentTimeInNanos();
     VeniceChangelogConsumer<Utf8, Utf8> changeLogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName, "0");
     testCloseables.add(changeLogConsumer);
@@ -702,17 +705,61 @@ public class TestChangelogConsumer {
       pubSubMessages.addAll(changeLogConsumer.poll(5));
       Assert.assertEquals(pubSubMessages.size(), 100);
     });
+
+    // Verify sequence IDs are greater than initialization timestamp
+    long firstSequenceId = pubSubMessages.iterator().next().getPosition().getConsumerSequenceId();
+    assertTrue(
+        firstSequenceId >= initTimestampNs,
+        String.format(
+            "First sequence ID (%d) should be >= initialization timestamp (%d)",
+            firstSequenceId,
+            initTimestampNs));
+
     // The consumer sequence id should be consecutive and monotonically increasing within the same partition. All
     // partitions should start with the same sequence id (seeded by consumer initialization timestamp).
-    long startingSequenceId = pubSubMessages.iterator().next().getPosition().getConsumerSequenceId();
+    long startingSequenceId = firstSequenceId;
     HashMap<Integer, Long> partitionSequenceIdMap = new HashMap<>();
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessages) {
       int partition = message.getPartition();
+      long currentSequenceId = message.getPosition().getConsumerSequenceId();
       long expectedSequenceId = partitionSequenceIdMap.computeIfAbsent(partition, k -> startingSequenceId);
-      Assert.assertEquals(message.getPosition().getConsumerSequenceId(), expectedSequenceId);
+      Assert.assertEquals(currentSequenceId, expectedSequenceId);
       partitionSequenceIdMap.put(partition, expectedSequenceId + 1);
     }
     Assert.assertEquals(partitionSequenceIdMap.size(), 3);
+
+    // Test with consumer restart to ensure new consumer gets new sequence IDs
+    changeLogConsumer.close();
+    long restartTimestampNs = Utils.getCurrentTimeInNanos();
+    VeniceChangelogConsumer<Utf8, Utf8> restartedConsumer =
+        veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName, "1");
+    testCloseables.add(restartedConsumer);
+    restartedConsumer.subscribeAll().get();
+
+    final List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> restartedMessages = new ArrayList<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      restartedMessages.addAll(restartedConsumer.poll(5));
+      Assert.assertEquals(restartedMessages.size(), 100);
+    });
+
+    // Verify restarted consumer's sequence IDs are greater than restart timestamp
+    long firstRestartedSequenceId = restartedMessages.iterator().next().getPosition().getConsumerSequenceId();
+    assertTrue(
+        firstRestartedSequenceId >= restartTimestampNs,
+        String.format(
+            "Restarted consumer first sequence ID (%d) should be >= restart timestamp (%d)",
+            firstRestartedSequenceId,
+            restartTimestampNs));
+
+    // Verify sequence IDs from restarted consumer are monotonically increasing per partition
+    partitionSequenceIdMap.clear();
+    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: restartedMessages) {
+      int partition = message.getPartition();
+      long currentSequenceId = message.getPosition().getConsumerSequenceId();
+      long expectedSequenceId = partitionSequenceIdMap.computeIfAbsent(partition, k -> firstRestartedSequenceId);
+      Assert.assertEquals(currentSequenceId, expectedSequenceId);
+      partitionSequenceIdMap.put(partition, expectedSequenceId + 1);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT * 2, priority = 3)
