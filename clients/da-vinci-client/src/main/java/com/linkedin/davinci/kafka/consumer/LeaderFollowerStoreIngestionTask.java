@@ -799,11 +799,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         for (int partition: timeoutPartitions) {
           reportError(errorMsg, partition, ex);
         }
-        hostLevelIngestionStats.recordIngestionFailure();
-        versionedIngestionStats.recordIngestionFailureCount(
-            getStoreName(),
-            getVersionNumber(),
-            VeniceIngestionFailureReason.SERVING_VERSION_BOOTSTRAP_TIMEOUT);
+        if (hostLevelIngestionStats != null) {
+          hostLevelIngestionStats.recordIngestionFailure();
+        }
+        if (versionedIngestionStats != null) {
+          versionedIngestionStats.recordIngestionFailureCount(
+              getStoreName(),
+              getVersionNumber(),
+              VeniceIngestionFailureReason.SERVING_VERSION_BOOTSTRAP_TIMEOUT);
+        }
       } else {
         throw ex;
       }
@@ -1976,7 +1980,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     produceFunction.accept(callback, leaderMetadataWrapper);
     double enqueueLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS);
     getHostLevelIngestionStats().recordLeaderProduceLatency(enqueueLatency);
-    versionedIngestionStats.recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
+    getVersionIngestionStats().recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
 
     try {
       if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
