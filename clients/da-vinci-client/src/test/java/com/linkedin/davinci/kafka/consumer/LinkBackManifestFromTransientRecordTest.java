@@ -31,7 +31,7 @@ import org.testng.annotations.Test;
  * method reads this manifest and sets it on the next record's oldValueManifestContainer so that
  * chunk deletion works correctly for all records, not just the first.
  */
-public class DeduplicateBatchResultsTest {
+public class LinkBackManifestFromTransientRecordTest {
   private PubSubMessageProcessedResultWrapper createAAResult(byte[] keyBytes, ChunkedValueManifest oldManifest) {
     DefaultPubSubMessage message = mock(DefaultPubSubMessage.class);
     KafkaKey kafkaKey = mock(KafkaKey.class);
