@@ -189,7 +189,7 @@ public class TestVersionSpecificChangelogConsumer {
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
     // Capture timestamp before consumer initialization to validate sequence IDs
-    long initTimestampNs = System.currentTimeMillis() * Time.NS_PER_MS;
+    long initTimestampNs = Utils.getCurrentTimeInNanosForSeeding();
     VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
     testCloseables.add(changeLogConsumer);
@@ -248,7 +248,7 @@ public class TestVersionSpecificChangelogConsumer {
 
     // Restart a new client
     changeLogConsumer.close();
-    long newClientTimestampNs = System.currentTimeMillis() * Time.NS_PER_MS;
+    long newClientTimestampNs = Utils.getCurrentTimeInNanosForSeeding();
     VeniceChangelogConsumer<Integer, Utf8> newChangeLogConsumer =
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
     testCloseables.add(newChangeLogConsumer);
@@ -277,7 +277,7 @@ public class TestVersionSpecificChangelogConsumer {
         90,
         TimeUnit.SECONDS);
 
-    long v3ConsumerTimestampNs = System.currentTimeMillis() * Time.NS_PER_MS;
+    long v3ConsumerTimestampNs = Utils.getCurrentTimeInNanosForSeeding();
     VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer3 =
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, version, true);
     testCloseables.add(changeLogConsumer3);
@@ -461,7 +461,14 @@ public class TestVersionSpecificChangelogConsumer {
               firstSequenceId,
               initializationTimestampNs));
       for (int j = 1; j < sequenceIdList.size(); j++) {
-        assertTrue(sequenceIdList.get(j) > sequenceIdList.get(j - 1));
+        assertTrue(
+            sequenceIdList.get(j) > sequenceIdList.get(j - 1),
+            String.format(
+                "Message: %s, sequence id: %s, message: %s, sequence id: %s",
+                j,
+                sequenceIdList.get(j),
+                j - 1,
+                sequenceIdList.get(j - 1)));
       }
     }
 

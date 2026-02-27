@@ -693,7 +693,7 @@ public class TestChangelogConsumer {
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
 
     // Capture timestamp before consumer initialization to validate sequence IDs
-    long initTimestampNs = Utils.getCurrentTimeInNanos();
+    long initTimestampNs = Utils.getCurrentTimeInNanosForSeeding();
     VeniceChangelogConsumer<Utf8, Utf8> changeLogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName, "0");
     testCloseables.add(changeLogConsumer);
@@ -730,7 +730,7 @@ public class TestChangelogConsumer {
 
     // Test with consumer restart to ensure new consumer gets new sequence IDs
     changeLogConsumer.close();
-    long restartTimestampNs = Utils.getCurrentTimeInNanos();
+    long restartTimestampNs = Utils.getCurrentTimeInNanosForSeeding();
     VeniceChangelogConsumer<Utf8, Utf8> restartedConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName, "1");
     testCloseables.add(restartedConsumer);

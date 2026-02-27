@@ -162,7 +162,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         changelogClientConfig,
         pubSubConsumer,
         pubSubMessageDeserializer,
-        Utils.getCurrentTimeInNanos(),
+        Utils.getCurrentTimeInNanosForSeeding(),
         veniceChangelogConsumerClientFactory);
   }
 

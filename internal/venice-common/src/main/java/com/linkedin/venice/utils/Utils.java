@@ -1260,7 +1260,13 @@ public class Utils {
    * Used for seeding purposes. e.g. consumer sequence id. Doesn't actual have nanosecond accuracy.
    * @return the current time in nanoseconds.
    */
-  public static long getCurrentTimeInNanos() {
-    return System.currentTimeMillis() * Time.NS_PER_MS;
+  public static long getCurrentTimeInNanosForSeeding() {
+    long max = Long.MAX_VALUE / Time.NS_PER_MS;
+    long currentMs = System.currentTimeMillis();
+    if (currentMs > max) {
+      throw new VeniceException(
+          "Can no longer generate nanoseconds for seeding purposes (why are you still on Venice)");
+    }
+    return currentMs * Time.NS_PER_MS;
   }
 }

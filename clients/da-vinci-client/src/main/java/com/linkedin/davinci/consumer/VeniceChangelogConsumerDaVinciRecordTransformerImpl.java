@@ -109,7 +109,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
-    this(changelogClientConfig, Utils.getCurrentTimeInNanos(), veniceChangelogConsumerClientFactory);
+    this(changelogClientConfig, Utils.getCurrentTimeInNanosForSeeding(), veniceChangelogConsumerClientFactory);
   }
 
   VeniceChangelogConsumerDaVinciRecordTransformerImpl(
