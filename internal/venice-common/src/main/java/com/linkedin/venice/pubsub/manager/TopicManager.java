@@ -220,6 +220,9 @@ public class TopicManager implements Closeable {
         false);
   }
 
+  /**
+   * @param useAlternativeBackend if true, signals that the topic should be created using an alternative PubSub backend
+   */
   public void createTopic(
       PubSubTopic topicName,
       int numPartitions,
