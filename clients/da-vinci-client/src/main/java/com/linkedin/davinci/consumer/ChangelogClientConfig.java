@@ -407,7 +407,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords())
         .setIncludeControlMessages(config.shouldIncludeControlMessages())
         .setDeserializeReplicationMetadata(config.shouldDeserializeReplicationMetadata())
-        .setInnerClientConfig(config.getInnerClientConfig())
+        .setInnerClientConfig(ClientConfig.cloneConfig(config.getInnerClientConfig()))
         // Store version should not be cloned
         .setStoreVersion(null)
         // Is stateful config should not be cloned
