@@ -181,13 +181,16 @@ public class DeduplicateBatchResultsTest {
     PubSubMessageProcessedResultWrapper b2 = createAAResult(keyB, null);
 
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-    PartitionConsumptionState.TransientRecord transientA_afterA1 = mock(PartitionConsumptionState.TransientRecord.class);
+    PartitionConsumptionState.TransientRecord transientA_afterA1 =
+        mock(PartitionConsumptionState.TransientRecord.class);
     when(transientA_afterA1.getValueManifest()).thenReturn(mA2);
-    PartitionConsumptionState.TransientRecord transientA_afterA2 = mock(PartitionConsumptionState.TransientRecord.class);
+    PartitionConsumptionState.TransientRecord transientA_afterA2 =
+        mock(PartitionConsumptionState.TransientRecord.class);
     when(transientA_afterA2.getValueManifest()).thenReturn(mA3);
     when(pcs.getTransientRecord(keyA)).thenReturn(transientA_afterA1, transientA_afterA2);
 
-    PartitionConsumptionState.TransientRecord transientB_afterB1 = mock(PartitionConsumptionState.TransientRecord.class);
+    PartitionConsumptionState.TransientRecord transientB_afterB1 =
+        mock(PartitionConsumptionState.TransientRecord.class);
     when(transientB_afterB1.getValueManifest()).thenReturn(mB2);
     when(pcs.getTransientRecord(keyB)).thenReturn(transientB_afterB1);
 
