@@ -207,9 +207,12 @@ public class OpenTelemetryMetricsSetup {
 
       // Add thread pool name if provided
       if (threadPoolName != null) {
-        baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME, threadPoolName);
-        baseAttributesBuilder
-            .put(otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME), threadPoolName);
+        String sanitizedThreadPoolName =
+            threadPoolName.trim().isEmpty() ? "unknown" : threadPoolName;
+        baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME, sanitizedThreadPoolName);
+        baseAttributesBuilder.put(
+            otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME),
+            sanitizedThreadPoolName);
       }
 
       // Add helix group ID if provided
