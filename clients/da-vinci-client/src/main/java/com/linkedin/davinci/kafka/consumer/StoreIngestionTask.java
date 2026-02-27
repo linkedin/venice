@@ -1609,12 +1609,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   static void linkBackManifestFromTransientRecord(
       PubSubMessageProcessedResultWrapper processedRecord,
       PartitionConsumptionState partitionConsumptionState) {
-    MergeConflictResultWrapper mcr = processedRecord.getProcessedResult().getMergeConflictResultWrapper();
+    PubSubMessageProcessedResult processedResult = processedRecord.getProcessedResult();
+    if (processedResult == null) {
+      return;
+    }
+    MergeConflictResultWrapper mcr = processedResult.getMergeConflictResultWrapper();
     if (mcr != null) {
       PartitionConsumptionState.TransientRecord transientRecord =
           partitionConsumptionState.getTransientRecord(processedRecord.getMessage().getKey().getKey());
       if (transientRecord != null) {
         mcr.getOldValueManifestContainer().setManifest(transientRecord.getValueManifest());
+        // Also link back the RMD manifest — setChunkingInfo sets both on the transient record,
+        // and both are needed by VeniceWriter.put()/delete() for old chunk deletion.
+        if (mcr.getOldRmdWithValueSchemaId() != null) {
+          mcr.getOldRmdWithValueSchemaId().setRmdManifest(transientRecord.getRmdManifest());
+        }
       }
     }
   }

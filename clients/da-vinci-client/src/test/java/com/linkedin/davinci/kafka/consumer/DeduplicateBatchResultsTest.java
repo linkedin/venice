@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 
+import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.message.KafkaKey;
@@ -40,8 +41,11 @@ public class DeduplicateBatchResultsTest {
     ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
     manifestContainer.setManifest(oldManifest);
 
+    RmdWithValueSchemaId oldRmd = new RmdWithValueSchemaId();
+
     MergeConflictResultWrapper mcr = mock(MergeConflictResultWrapper.class);
     when(mcr.getOldValueManifestContainer()).thenReturn(manifestContainer);
+    when(mcr.getOldRmdWithValueSchemaId()).thenReturn(oldRmd);
 
     PubSubMessageProcessedResult processedResult = new PubSubMessageProcessedResult(mcr);
 
@@ -98,6 +102,8 @@ public class DeduplicateBatchResultsTest {
     ChunkedValueManifest m1 = createManifest(3);
     ChunkedValueManifest m2 = createManifest(4);
     ChunkedValueManifest m3 = createManifest(5);
+    ChunkedValueManifest rmdM2 = createManifest(10);
+    ChunkedValueManifest rmdM3 = createManifest(11);
 
     PubSubMessageProcessedResultWrapper r1 = createAAResult(key, m1);
     PubSubMessageProcessedResultWrapper r2 = createAAResult(key, null);
@@ -106,8 +112,10 @@ public class DeduplicateBatchResultsTest {
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     PartitionConsumptionState.TransientRecord transientAfterR1 = mock(PartitionConsumptionState.TransientRecord.class);
     when(transientAfterR1.getValueManifest()).thenReturn(m2);
+    when(transientAfterR1.getRmdManifest()).thenReturn(rmdM2);
     PartitionConsumptionState.TransientRecord transientAfterR2 = mock(PartitionConsumptionState.TransientRecord.class);
     when(transientAfterR2.getValueManifest()).thenReturn(m3);
+    when(transientAfterR2.getRmdManifest()).thenReturn(rmdM3);
     when(pcs.getTransientRecord(key)).thenReturn(transientAfterR1, transientAfterR2);
 
     List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
@@ -126,6 +134,13 @@ public class DeduplicateBatchResultsTest {
     assertSame(
         r3.getProcessedResult().getMergeConflictResultWrapper().getOldValueManifestContainer().getManifest(),
         m3);
+    // Verify RMD manifests are also linked back
+    assertSame(
+        r2.getProcessedResult().getMergeConflictResultWrapper().getOldRmdWithValueSchemaId().getRmdManifest(),
+        rmdM2);
+    assertSame(
+        r3.getProcessedResult().getMergeConflictResultWrapper().getOldRmdWithValueSchemaId().getRmdManifest(),
+        rmdM3);
   }
 
   @Test
@@ -173,6 +188,9 @@ public class DeduplicateBatchResultsTest {
     ChunkedValueManifest mA2 = createManifest(4);
     ChunkedValueManifest mB2 = createManifest(6);
     ChunkedValueManifest mA3 = createManifest(7);
+    ChunkedValueManifest rmdA2 = createManifest(20);
+    ChunkedValueManifest rmdA3 = createManifest(21);
+    ChunkedValueManifest rmdB2 = createManifest(22);
 
     PubSubMessageProcessedResultWrapper a1 = createAAResult(keyA, mA1);
     PubSubMessageProcessedResultWrapper b1 = createAAResult(keyB, mB1);
@@ -184,14 +202,17 @@ public class DeduplicateBatchResultsTest {
     PartitionConsumptionState.TransientRecord transientA_afterA1 =
         mock(PartitionConsumptionState.TransientRecord.class);
     when(transientA_afterA1.getValueManifest()).thenReturn(mA2);
+    when(transientA_afterA1.getRmdManifest()).thenReturn(rmdA2);
     PartitionConsumptionState.TransientRecord transientA_afterA2 =
         mock(PartitionConsumptionState.TransientRecord.class);
     when(transientA_afterA2.getValueManifest()).thenReturn(mA3);
+    when(transientA_afterA2.getRmdManifest()).thenReturn(rmdA3);
     when(pcs.getTransientRecord(keyA)).thenReturn(transientA_afterA1, transientA_afterA2);
 
     PartitionConsumptionState.TransientRecord transientB_afterB1 =
         mock(PartitionConsumptionState.TransientRecord.class);
     when(transientB_afterB1.getValueManifest()).thenReturn(mB2);
+    when(transientB_afterB1.getRmdManifest()).thenReturn(rmdB2);
     when(pcs.getTransientRecord(keyB)).thenReturn(transientB_afterB1);
 
     List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
@@ -218,6 +239,16 @@ public class DeduplicateBatchResultsTest {
     assertSame(
         b2.getProcessedResult().getMergeConflictResultWrapper().getOldValueManifestContainer().getManifest(),
         mB2);
+    // Verify RMD manifests are also linked back per key
+    assertSame(
+        a2.getProcessedResult().getMergeConflictResultWrapper().getOldRmdWithValueSchemaId().getRmdManifest(),
+        rmdA2);
+    assertSame(
+        a3.getProcessedResult().getMergeConflictResultWrapper().getOldRmdWithValueSchemaId().getRmdManifest(),
+        rmdA3);
+    assertSame(
+        b2.getProcessedResult().getMergeConflictResultWrapper().getOldRmdWithValueSchemaId().getRmdManifest(),
+        rmdB2);
   }
 
   @Test
@@ -229,6 +260,7 @@ public class DeduplicateBatchResultsTest {
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     PartitionConsumptionState.TransientRecord transientRecord = mock(PartitionConsumptionState.TransientRecord.class);
     when(transientRecord.getValueManifest()).thenReturn(null);
+    when(transientRecord.getRmdManifest()).thenReturn(null);
     when(pcs.getTransientRecord(key)).thenReturn(transientRecord);
 
     List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
@@ -239,6 +271,7 @@ public class DeduplicateBatchResultsTest {
 
     assertNull(r1.getProcessedResult().getMergeConflictResultWrapper().getOldValueManifestContainer().getManifest());
     assertNull(r2.getProcessedResult().getMergeConflictResultWrapper().getOldValueManifestContainer().getManifest());
+    assertNull(r2.getProcessedResult().getMergeConflictResultWrapper().getOldRmdWithValueSchemaId().getRmdManifest());
   }
 
   @Test
@@ -278,5 +311,68 @@ public class DeduplicateBatchResultsTest {
         r1.getProcessedResult().getMergeConflictResultWrapper().getOldValueManifestContainer().getManifest(),
         m1);
     assertNull(r2.getProcessedResult().getMergeConflictResultWrapper().getOldValueManifestContainer().getManifest());
+  }
+
+  @Test
+  public void testNullOldRmdDoesNotCrash() {
+    byte[] key = new byte[] { 1 };
+    ChunkedValueManifest m1 = createManifest(3);
+    ChunkedValueManifest m2 = createManifest(4);
+    ChunkedValueManifest rmdM2 = createManifest(10);
+
+    // r1 has a value manifest; r2 starts with null (will be linked back)
+    PubSubMessageProcessedResultWrapper r1 = createAAResult(key, m1);
+    PubSubMessageProcessedResultWrapper r2 = createAAResult(key, null);
+
+    // Override r2's MCR to return null for getOldRmdWithValueSchemaId (no RMD chunking)
+    MergeConflictResultWrapper mcr2 = r2.getProcessedResult().getMergeConflictResultWrapper();
+    when(mcr2.getOldRmdWithValueSchemaId()).thenReturn(null);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    PartitionConsumptionState.TransientRecord transientRecord = mock(PartitionConsumptionState.TransientRecord.class);
+    when(transientRecord.getValueManifest()).thenReturn(m2);
+    when(transientRecord.getRmdManifest()).thenReturn(rmdM2);
+    when(pcs.getTransientRecord(key)).thenReturn(transientRecord);
+
+    List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
+    results.add(r1);
+    results.add(r2);
+
+    // Should not throw NPE even though getOldRmdWithValueSchemaId() is null
+    simulateLinkBackLoop(results, pcs);
+
+    // Value manifest should still be linked back correctly
+    assertSame(
+        r2.getProcessedResult().getMergeConflictResultWrapper().getOldValueManifestContainer().getManifest(),
+        m2);
+    // RMD is null, so no RMD manifest to verify
+    assertNull(r2.getProcessedResult().getMergeConflictResultWrapper().getOldRmdWithValueSchemaId());
+  }
+
+  @Test
+  public void testNullProcessedResultDoesNotCrash() {
+    byte[] key = new byte[] { 1 };
+
+    // r1 is a normal AA result; r2 has a null processedResult (not yet pre-processed)
+    PubSubMessageProcessedResultWrapper r1 = createAAResult(key, createManifest(3));
+
+    DefaultPubSubMessage message2 = mock(DefaultPubSubMessage.class);
+    KafkaKey kafkaKey2 = mock(KafkaKey.class);
+    when(message2.getKey()).thenReturn(kafkaKey2);
+    when(kafkaKey2.getKey()).thenReturn(key);
+    PubSubMessageProcessedResultWrapper r2 = new PubSubMessageProcessedResultWrapper(message2);
+    // Do NOT call r2.setProcessedResult() — getProcessedResult() returns null
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+
+    List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
+    results.add(r1);
+    results.add(r2);
+
+    // Should not throw NPE when getProcessedResult() is null
+    simulateLinkBackLoop(results, pcs);
+
+    // r2 has null processedResult, so no transient record lookup should happen
+    verify(pcs, never()).getTransientRecord(key);
   }
 }
