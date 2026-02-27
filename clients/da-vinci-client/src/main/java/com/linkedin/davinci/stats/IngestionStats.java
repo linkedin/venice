@@ -37,6 +37,7 @@ public class IngestionStats {
   protected static final String TIMESTAMP_REGRESSION_DCR_ERROR = "timestamp_regression_dcr_error";
   protected static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
   protected static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
+  protected static final String STALE_LEADER_RECORDS_FILTERED = "stale_leader_records_filtered";
 
   /**
    * Consumer metric: Measures the total time from when a record starts being processed (after polling from Kafka and
@@ -159,6 +160,7 @@ public class IngestionStats {
   private final LongAdderRateGauge batchProcessingRequestRecordsSensor = new LongAdderRateGauge();
   private final WritePathLatencySensor batchProcessingRequestLatencySensor;
   private final LongAdderRateGauge batchProcessingRequestErrorSensor = new LongAdderRateGauge();
+  private final LongAdderRateGauge staleLeaderRecordsFilteredSensor = new LongAdderRateGauge();
 
   public IngestionStats(VeniceServerConfig serverConfig) {
 
@@ -234,6 +236,7 @@ public class IngestionStats {
     registerSensor(localMetricRepository, TOMBSTONE_CREATION_DCR, tombstoneCreationDCRSensor);
     registerSensor(localMetricRepository, IDLE_TIME, idleTimeSensor);
 
+    registerSensor(localMetricRepository, STALE_LEADER_RECORDS_FILTERED, staleLeaderRecordsFilteredSensor);
     registerSensor(localMetricRepository, BATCH_PROCESSING_REQUEST, batchProcessingRequestSensor);
     registerSensor(localMetricRepository, BATCH_PROCESSING_REQUEST_RECORDS, batchProcessingRequestRecordsSensor);
     registerSensor(localMetricRepository, BATCH_PROCESSING_REQUEST_ERROR, batchProcessingRequestErrorSensor);
@@ -574,5 +577,13 @@ public class IngestionStats {
    */
   public double getStorageQuotaUsed() {
     return IngestionStatsUtils.getStorageQuotaUsed(ingestionTask);
+  }
+
+  public void recordStaleLeaderRecordFiltered() {
+    staleLeaderRecordsFilteredSensor.record();
+  }
+
+  public double getStaleLeaderRecordsFilteredRate() {
+    return staleLeaderRecordsFilteredSensor.getRate();
   }
 }

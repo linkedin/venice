@@ -16,6 +16,7 @@ import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
 import static com.linkedin.venice.utils.Utils.isFutureVersionReady;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static java.util.Comparator.comparingInt;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -3670,6 +3671,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           LOGGER.error("Failed to record Record heartbeat with message: ", e);
         }
       } else {
+        if (shouldFilterStaleLeaderRecord(partitionConsumptionState, consumerRecord)) {
+          return 0;
+        }
         updateLatestInMemoryProcessedOffset(
             partitionConsumptionState,
             consumerRecord,
@@ -5511,6 +5515,52 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         consumedHostId,
         messageTimestamp,
         currentDolStamp);
+  }
+
+  /**
+   * Checks whether a data record from the version topic should be filtered because it was
+   * produced by a stale leader (Delayed Leadership Problem). A record is considered stale
+   * if its termId is strictly less than the highest termId observed so far.
+   *
+   * <p>Records with DEFAULT_TERM_ID (-1) are never filtered for backward compatibility
+   * during mixed rollout. This method also updates highestLeadershipTerm when a new higher
+   * term is observed from regular data messages.
+   *
+   * @return true if the record should be skipped (stale leader), false otherwise
+   */
+  boolean shouldFilterStaleLeaderRecord(PartitionConsumptionState pcs, DefaultPubSubMessage record) {
+    if (!serverConfig.isLeaderTermFilteringEnabled()) {
+      return false;
+    }
+
+    LeaderMetadata leaderMetadata = record.getValue().getLeaderMetadataFooter();
+    if (leaderMetadata == null) {
+      return false;
+    }
+
+    long recordTermId = leaderMetadata.getTermId();
+    if (recordTermId == DEFAULT_TERM_ID) {
+      return false;
+    }
+
+    long currentHighest = pcs.getHighestLeadershipTerm();
+    if (recordTermId >= currentHighest) {
+      if (recordTermId > currentHighest) {
+        pcs.setHighestLeadershipTerm(recordTermId);
+      }
+      return false;
+    }
+
+    // recordTermId < currentHighest: stale leader record
+    getHostLevelIngestionStats().recordStaleLeaderRecordFiltered();
+    versionedIngestionStats.recordStaleLeaderRecordFiltered(storeName, versionNumber);
+    LOGGER.debug(
+        "Filtering stale leader record for replica: {}, recordTermId: {}, highestLeadershipTerm: {}, position: {}",
+        pcs.getReplicaId(),
+        recordTermId,
+        currentHighest,
+        record.getPosition());
+    return true;
   }
 
   protected boolean shouldUseDolMechanism() {
