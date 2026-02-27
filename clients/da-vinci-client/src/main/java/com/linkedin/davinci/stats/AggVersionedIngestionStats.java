@@ -417,6 +417,10 @@ public class AggVersionedIngestionStats
     otelStats.recordBatchProcessingRequestRecordCount(version, size);
   }
 
+  public void recordStaleLeaderRecordFiltered(String storeName, int version) {
+    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordStaleLeaderRecordFiltered);
+  }
+
   public void recordBatchProcessingRequestError(String storeName, int version) {
     // Tehuti metrics
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordBatchProcessingRequestError());

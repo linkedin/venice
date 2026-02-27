@@ -27,6 +27,7 @@ import static com.linkedin.davinci.stats.IngestionStats.PRODUCER_TO_LOCAL_BROKER
 import static com.linkedin.davinci.stats.IngestionStats.PRODUCER_TO_SOURCE_BROKER_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.RECORDS_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.SOURCE_BROKER_TO_LEADER_CONSUMER_LATENCY;
+import static com.linkedin.davinci.stats.IngestionStats.STALE_LEADER_RECORDS_FILTERED;
 import static com.linkedin.davinci.stats.IngestionStats.STORAGE_QUOTA_USED;
 import static com.linkedin.davinci.stats.IngestionStats.SUBSCRIBE_ACTION_PREP_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.TIMESTAMP_REGRESSION_DCR_ERROR;
@@ -231,6 +232,13 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               () -> getStats().getBatchProcessingRequestLatencySensor().getMax(),
               0,
               BATCH_PROCESSING_REQUEST_LATENCY + "_max"));
+
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getStaleLeaderRecordsFilteredRate(),
+              0,
+              STALE_LEADER_RECORDS_FILTERED));
     }
   }
 

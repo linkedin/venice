@@ -826,6 +826,18 @@ public class ConfigKeys {
   public static final String SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES =
       "server.leader.handover.use.dol.mechanism.for.user.stores";
 
+  /**
+   * When enabled, followers will filter out stale leader data records whose termId is less than the
+   * highest termId observed so far. This prevents the Delayed Leadership Problem (DLP) where a stale
+   * leader produces to the version topic after a new leader has taken over.
+   *
+   * <p>Records with DEFAULT_TERM_ID (-1) are never filtered, ensuring backward compatibility during
+   * mixed rollout. Control messages are also never filtered.
+   *
+   * Default: false (filtering disabled; enable after validating termId propagation)
+   */
+  public static final String SERVER_LEADER_TERM_FILTERING_ENABLED = "server.leader.term.filtering.enabled";
+
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";

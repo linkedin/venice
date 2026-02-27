@@ -144,10 +144,27 @@ public class PartitionConsumptionState {
   private volatile DolStamp dolStamp = null;
 
   /**
-   * The highest leadership term observed by this replica. Currently used only
-   * for troubleshooting. This will eventually become part of the durable state.
+   * The highest leadership term observed by this replica. Used for follower-side
+   * filtering of stale leader records. Updated from both DoLStamps and regular
+   * leader data messages carrying a termId.
    */
   private volatile long highestLeadershipTerm = -1;
+
+  /**
+   * This replica's own leadership term when it is the active leader. Set during
+   * STANDBY_TO_LEADER transition from the Helix state transition timestamp, and
+   * cleared back to DEFAULT_TERM_ID during LEADER_TO_STANDBY transition.
+   *
+   * <p>This is separate from {@link #highestLeadershipTerm} because:
+   * <ul>
+   *   <li>{@code highestLeadershipTerm} = max term observed from ANY leader (for follower-side filtering)</li>
+   *   <li>{@code activeLeaderTerm} = THIS replica's own term when it is the leader (for stamping outgoing messages)</li>
+   * </ul>
+   * If a replica falls back to legacy mode and sees another leader's DoLStamp with a higher term,
+   * highestLeadershipTerm would jump, but using it for stamping would incorrectly tag this replica's
+   * data with the other leader's term.
+   */
+  private volatile long activeLeaderTerm = VeniceWriter.DEFAULT_TERM_ID;
 
   /**
    * This future is completed in drainer thread after persisting the associated record and offset to DB.
@@ -569,6 +586,14 @@ public class PartitionConsumptionState {
 
   public void setHighestLeadershipTerm(long term) {
     this.highestLeadershipTerm = term;
+  }
+
+  public long getActiveLeaderTerm() {
+    return activeLeaderTerm;
+  }
+
+  public void setActiveLeaderTerm(long term) {
+    this.activeLeaderTerm = term;
   }
 
   public void setLastLeaderPersistFuture(Future<Void> future) {

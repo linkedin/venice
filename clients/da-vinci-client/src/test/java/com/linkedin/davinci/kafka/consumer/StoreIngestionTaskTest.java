@@ -36,6 +36,7 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter.getPosition;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
 import static com.linkedin.venice.utils.Time.MS_PER_HOUR;
@@ -7025,5 +7026,200 @@ public abstract class StoreIngestionTaskTest {
     assertFalse(dolStamp.isDolConsumed());
     // Verify highest term was updated
     verify(mockPcs).setHighestLeadershipTerm(100L);
+  }
+
+  // ==================== shouldFilterStaleLeaderRecord tests ====================
+
+  /**
+   * Helper to set up a mock StoreIngestionTask with the fields needed by shouldFilterStaleLeaderRecord.
+   */
+  private StoreIngestionTask setupMockTaskForFiltering(boolean filteringEnabled) throws Exception {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(task).shouldFilterStaleLeaderRecord(any(), any());
+
+    VeniceServerConfig mockServerConfig = mock(VeniceServerConfig.class);
+    doReturn(filteringEnabled).when(mockServerConfig).isLeaderTermFilteringEnabled();
+
+    java.lang.reflect.Field serverConfigField = StoreIngestionTask.class.getDeclaredField("serverConfig");
+    serverConfigField.setAccessible(true);
+    serverConfigField.set(task, mockServerConfig);
+
+    HostLevelIngestionStats mockHostStats = mock(HostLevelIngestionStats.class);
+    doReturn(mockHostStats).when(task).getHostLevelIngestionStats();
+
+    AggVersionedIngestionStats mockVersionedStats = mock(AggVersionedIngestionStats.class);
+    java.lang.reflect.Field versionedStatsField = StoreIngestionTask.class.getDeclaredField("versionedIngestionStats");
+    versionedStatsField.setAccessible(true);
+    versionedStatsField.set(task, mockVersionedStats);
+
+    return task;
+  }
+
+  private DefaultPubSubMessage createMockMessageWithTermId(long termId) {
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope mockEnvelope = mock(KafkaMessageEnvelope.class);
+    doReturn(mockEnvelope).when(mockMessage).getValue();
+
+    LeaderMetadata leaderMetadata = new LeaderMetadata();
+    leaderMetadata.termId = termId;
+    leaderMetadata.hostName = "test-host";
+    leaderMetadata.upstreamKafkaClusterId = 0;
+    doReturn(leaderMetadata).when(mockEnvelope).getLeaderMetadataFooter();
+
+    doReturn(mock(PubSubPosition.class)).when(mockMessage).getPosition();
+    return mockMessage;
+  }
+
+  @Test
+  public void testFilterDisabledAlwaysReturnsFalse() throws Exception {
+    StoreIngestionTask task = setupMockTaskForFiltering(false);
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    DefaultPubSubMessage mockMessage = createMockMessageWithTermId(5L);
+
+    // Even with a stale term, should NOT filter when disabled
+    doReturn(10L).when(mockPcs).getHighestLeadershipTerm();
+    assertFalse(task.shouldFilterStaleLeaderRecord(mockPcs, mockMessage));
+
+    // Should never touch PCS state
+    verify(mockPcs, never()).setHighestLeadershipTerm(anyLong());
+  }
+
+  @Test
+  public void testFilterWithNullLeaderMetadata() throws Exception {
+    StoreIngestionTask task = setupMockTaskForFiltering(true);
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope mockEnvelope = mock(KafkaMessageEnvelope.class);
+    doReturn(mockEnvelope).when(mockMessage).getValue();
+    doReturn(null).when(mockEnvelope).getLeaderMetadataFooter();
+
+    assertFalse(task.shouldFilterStaleLeaderRecord(mockPcs, mockMessage));
+    verify(mockPcs, never()).setHighestLeadershipTerm(anyLong());
+  }
+
+  @Test
+  public void testFilterWithDefaultTermIdBypassesFiltering() throws Exception {
+    StoreIngestionTask task = setupMockTaskForFiltering(true);
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    doReturn(100L).when(mockPcs).getHighestLeadershipTerm();
+
+    // DEFAULT_TERM_ID (-1) should never be filtered — backward compat
+    DefaultPubSubMessage mockMessage = createMockMessageWithTermId(VeniceWriter.DEFAULT_TERM_ID);
+    assertFalse(task.shouldFilterStaleLeaderRecord(mockPcs, mockMessage));
+    verify(mockPcs, never()).setHighestLeadershipTerm(anyLong());
+  }
+
+  @Test
+  public void testFilterWithHigherTermUpdatesHighestAndPasses() throws Exception {
+    StoreIngestionTask task = setupMockTaskForFiltering(true);
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    doReturn(10L).when(mockPcs).getHighestLeadershipTerm();
+
+    // Record with higher term should pass through and update highest
+    DefaultPubSubMessage mockMessage = createMockMessageWithTermId(42L);
+    assertFalse(task.shouldFilterStaleLeaderRecord(mockPcs, mockMessage));
+    verify(mockPcs).setHighestLeadershipTerm(42L);
+  }
+
+  @Test
+  public void testFilterWithEqualTermPasses() throws Exception {
+    StoreIngestionTask task = setupMockTaskForFiltering(true);
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    doReturn(42L).when(mockPcs).getHighestLeadershipTerm();
+
+    // Record with equal term should pass through
+    DefaultPubSubMessage mockMessage = createMockMessageWithTermId(42L);
+    assertFalse(task.shouldFilterStaleLeaderRecord(mockPcs, mockMessage));
+    verify(mockPcs, never()).setHighestLeadershipTerm(anyLong());
+  }
+
+  @Test
+  public void testFilterWithStaleTermFiltersRecord() throws Exception {
+    StoreIngestionTask task = setupMockTaskForFiltering(true);
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    doReturn(42L).when(mockPcs).getHighestLeadershipTerm();
+    doReturn("test-replica").when(mockPcs).getReplicaId();
+
+    // Record with LOWER term should be filtered
+    DefaultPubSubMessage mockMessage = createMockMessageWithTermId(10L);
+    assertTrue(task.shouldFilterStaleLeaderRecord(mockPcs, mockMessage));
+
+    // Should NOT update highest (stale record)
+    verify(mockPcs, never()).setHighestLeadershipTerm(anyLong());
+    // Should emit metrics
+    verify(task.getHostLevelIngestionStats()).recordStaleLeaderRecordFiltered();
+  }
+
+  @Test
+  public void testFilterWithStaleTermEmitsVersionedMetric() throws Exception {
+    StoreIngestionTask task = setupMockTaskForFiltering(true);
+
+    // Set storeName and versionNumber via reflection
+    java.lang.reflect.Field storeNameField = StoreIngestionTask.class.getDeclaredField("storeName");
+    storeNameField.setAccessible(true);
+    storeNameField.set(task, "test-store");
+
+    java.lang.reflect.Field versionNumberField = StoreIngestionTask.class.getDeclaredField("versionNumber");
+    versionNumberField.setAccessible(true);
+    versionNumberField.setInt(task, 1);
+
+    PartitionConsumptionState mockPcs = mock(PartitionConsumptionState.class);
+    doReturn(50L).when(mockPcs).getHighestLeadershipTerm();
+    doReturn("test-replica").when(mockPcs).getReplicaId();
+
+    DefaultPubSubMessage mockMessage = createMockMessageWithTermId(5L);
+    assertTrue(task.shouldFilterStaleLeaderRecord(mockPcs, mockMessage));
+
+    // Verify versioned metric
+    java.lang.reflect.Field versionedStatsField = StoreIngestionTask.class.getDeclaredField("versionedIngestionStats");
+    versionedStatsField.setAccessible(true);
+    AggVersionedIngestionStats versionedStats = (AggVersionedIngestionStats) versionedStatsField.get(task);
+    verify(versionedStats).recordStaleLeaderRecordFiltered("test-store", 1);
+  }
+
+  @Test
+  public void testFilteringEnabledSequenceOfRecords() throws Exception {
+    StoreIngestionTask task = setupMockTaskForFiltering(true);
+
+    // Use a REAL PCS so we can verify state updates end-to-end
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test_v1"), 0),
+        mock(OffsetRecord.class),
+        DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING,
+        false,
+        Schema.create(Schema.Type.STRING));
+
+    // Initially highest is -1, activeLeaderTerm is -1
+    assertEquals(pcs.getHighestLeadershipTerm(), -1L);
+
+    // Record with term 10 → should pass and update highest to 10
+    assertFalse(task.shouldFilterStaleLeaderRecord(pcs, createMockMessageWithTermId(10L)));
+    assertEquals(pcs.getHighestLeadershipTerm(), 10L);
+
+    // Record with term 10 → equal, should pass
+    assertFalse(task.shouldFilterStaleLeaderRecord(pcs, createMockMessageWithTermId(10L)));
+    assertEquals(pcs.getHighestLeadershipTerm(), 10L);
+
+    // Record with term 20 → higher, should pass and update highest to 20
+    assertFalse(task.shouldFilterStaleLeaderRecord(pcs, createMockMessageWithTermId(20L)));
+    assertEquals(pcs.getHighestLeadershipTerm(), 20L);
+
+    // Record with term 10 → STALE, should be filtered
+    assertTrue(task.shouldFilterStaleLeaderRecord(pcs, createMockMessageWithTermId(10L)));
+    assertEquals(pcs.getHighestLeadershipTerm(), 20L); // unchanged
+
+    // Record with DEFAULT_TERM_ID → should always pass (backward compat)
+    assertFalse(task.shouldFilterStaleLeaderRecord(pcs, createMockMessageWithTermId(VeniceWriter.DEFAULT_TERM_ID)));
+    assertEquals(pcs.getHighestLeadershipTerm(), 20L); // unchanged
+
+    // Record with term 15 → STALE, should be filtered
+    assertTrue(task.shouldFilterStaleLeaderRecord(pcs, createMockMessageWithTermId(15L)));
+    assertEquals(pcs.getHighestLeadershipTerm(), 20L); // unchanged
   }
 }

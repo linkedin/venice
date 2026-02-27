@@ -480,6 +480,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               "State transition from STANDBY to LEADER is paused for replica: {} as this store is undergoing migration",
               partitionConsumptionState.getReplicaId());
         } else {
+          // Set this replica's active leadership term for stamping outgoing messages
+          partitionConsumptionState.setActiveLeaderTerm(checker.getLeadershipTerm());
+
           // Initialize DoL state and send DoL stamp to local VT
           initializeAndSendDoLStamp(partitionConsumptionState, checker.getLeadershipTerm());
 
@@ -527,6 +530,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          *    produce; finally the new follower will switch back to consume from local VT using the latest VT offset
          *    tracked by producer callback.
          */
+        // Clear active leadership term since this replica is no longer the leader
+        partitionConsumptionState.setActiveLeaderTerm(DEFAULT_TERM_ID);
+
         OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
         PubSubTopic topic = message.getTopicPartition().getPubSubTopic();
         PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
@@ -1964,7 +1970,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         beforeProcessingRecordTimestampNs);
     PubSubPosition consumedPosition = consumerRecord.getPosition();
     LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID);
+        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, partitionConsumptionState.getActiveLeaderTerm());
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     long beforeProduceTimestampNS = System.nanoTime();
     produceFunction.accept(callback, leaderMetadataWrapper);
@@ -2499,7 +2505,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         beforeProcessingRecordTimestampNs);
     PubSubPosition consumedPosition = consumerRecord.getPosition();
     LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID);
+        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, partitionConsumptionState.getActiveLeaderTerm());
     LeaderCompleteState leaderCompleteState =
         LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
     /**
