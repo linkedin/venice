@@ -447,25 +447,25 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "leader_ingestion_value_bytes_cache_hit_count",
         totalStats,
         () -> totalStats.leaderIngestionValueBytesCacheHitCount,
-        new Rate());
+        new OccurrenceRate());
 
     this.leaderIngestionValueBytesLookupCount = registerPerStoreAndTotalSensor(
         "leader_ingestion_value_bytes_lookup_count",
         totalStats,
         () -> totalStats.leaderIngestionValueBytesLookupCount,
-        new Rate());
+        new OccurrenceRate());
 
     this.leaderIngestionReplicationMetadataCacheHitCount = registerPerStoreAndTotalSensor(
         "leader_ingestion_replication_metadata_cache_hit_count",
         totalStats,
         () -> totalStats.leaderIngestionReplicationMetadataCacheHitCount,
-        new Rate());
+        new OccurrenceRate());
 
     this.leaderIngestionReplicationMetadataLookupCount = registerPerStoreAndTotalSensor(
         "leader_ingestion_replication_metadata_lookup_count",
         totalStats,
         () -> totalStats.leaderIngestionReplicationMetadataLookupCount,
-        new Rate());
+        new OccurrenceRate());
 
     this.leaderIngestionReplicationMetadataLookUpLatencySensor = registerPerStoreAndTotalSensor(
         "leader_ingestion_replication_metadata_lookup_latency",

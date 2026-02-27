@@ -744,7 +744,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ChunkedValueManifestContainer valueManifestContainer,
       long currentTimeForMetricsMs) {
     ByteBufferValueRecord<ByteBuffer> originalValue = null;
-    hostLevelIngestionStats.recordIngestionValueBytesLookupCount(currentTimeForMetricsMs);
+    getHostLevelIngestionStats().recordIngestionValueBytesLookupCount(currentTimeForMetricsMs);
     // Find the existing value. If a value for this key is found from the transient map then use that value, otherwise
     // get it from DB.
     PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(key);
@@ -766,10 +766,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               compressor.get(),
               valueManifestContainer));
       double valueLookupLatency = LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS);
-      hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(valueLookupLatency, currentTimeForMetricsMs);
+      getHostLevelIngestionStats().recordIngestionValueBytesLookUpLatency(valueLookupLatency, currentTimeForMetricsMs);
       versionedIngestionStats.recordDcrLookupTime(storeName, versionNumber, VeniceRecordType.DATA, valueLookupLatency);
     } else {
-      hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
+      getHostLevelIngestionStats().recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
       versionedIngestionStats.recordDcrLookupCacheHitCount(storeName, versionNumber, VeniceRecordType.DATA);
       // construct originalValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
