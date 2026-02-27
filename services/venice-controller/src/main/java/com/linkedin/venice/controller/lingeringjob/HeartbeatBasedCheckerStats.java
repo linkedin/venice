@@ -6,7 +6,7 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Count;
-import java.util.Arrays;
+import java.util.Collections;
 
 
 public class HeartbeatBasedCheckerStats extends AbstractVeniceStats {
@@ -27,7 +27,7 @@ public class HeartbeatBasedCheckerStats extends AbstractVeniceStats {
         otelData.getOtelRepository(),
         this::registerSensor,
         HeartbeatCheckerTehutiMetricNameEnum.CHECK_JOB_HAS_HEARTBEAT_FAILED,
-        Arrays.asList(new Count()),
+        Collections.singletonList(new Count()),
         otelData.getBaseDimensionsMap(),
         otelData.getBaseAttributes());
 
@@ -36,7 +36,7 @@ public class HeartbeatBasedCheckerStats extends AbstractVeniceStats {
         otelData.getOtelRepository(),
         this::registerSensor,
         HeartbeatCheckerTehutiMetricNameEnum.TIMEOUT_HEARTBEAT_CHECK,
-        Arrays.asList(new Count()),
+        Collections.singletonList(new Count()),
         otelData.getBaseDimensionsMap(),
         otelData.getBaseAttributes());
 
@@ -45,7 +45,7 @@ public class HeartbeatBasedCheckerStats extends AbstractVeniceStats {
         otelData.getOtelRepository(),
         this::registerSensor,
         HeartbeatCheckerTehutiMetricNameEnum.NON_TIMEOUT_HEARTBEAT_CHECK,
-        Arrays.asList(new Count()),
+        Collections.singletonList(new Count()),
         otelData.getBaseDimensionsMap(),
         otelData.getBaseAttributes());
   }

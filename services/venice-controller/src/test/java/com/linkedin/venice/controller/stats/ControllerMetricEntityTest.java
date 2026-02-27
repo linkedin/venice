@@ -131,7 +131,12 @@ public class ControllerMetricEntityTest {
             result.add((Class<? extends ModuleMetricEntityInterface>) clazz);
           }
         } catch (ClassNotFoundException e) {
-          // skip — not all nested class files may be loadable
+          if (!fileName.contains("$")) {
+            throw new RuntimeException(
+                "Failed to load top-level class: " + fullClassName + ". This may indicate a classpath issue.",
+                e);
+          }
+          // Nested classes like anonymous inner classes may not be loadable — skip
         }
       }
     }

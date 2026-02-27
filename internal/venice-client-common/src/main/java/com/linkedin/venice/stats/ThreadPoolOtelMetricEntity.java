@@ -11,6 +11,7 @@ import java.util.Collections;
 import java.util.Set;
 
 
+/** OTel metric entity definitions for thread pool monitoring. Used by {@link ThreadPoolStats}. */
 public enum ThreadPoolOtelMetricEntity implements ModuleMetricEntityInterface {
   THREAD_POOL_THREAD_ACTIVE_COUNT(
       "thread_pool.thread.active_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "Active threads in the thread pool",

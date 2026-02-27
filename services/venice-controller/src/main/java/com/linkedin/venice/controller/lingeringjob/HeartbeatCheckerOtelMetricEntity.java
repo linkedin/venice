@@ -6,6 +6,7 @@ import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 
 
+/** OTel metric entity definitions for batch job heartbeat checking. Used by {@link HeartbeatBasedCheckerStats}. */
 public enum HeartbeatCheckerOtelMetricEntity implements ModuleMetricEntityInterface {
   BATCH_JOB_HEARTBEAT_CHECK_FAILURE_COUNT(
       "batch_job_heartbeat.check_failure_count", MetricType.COUNTER, MetricUnit.NUMBER,
