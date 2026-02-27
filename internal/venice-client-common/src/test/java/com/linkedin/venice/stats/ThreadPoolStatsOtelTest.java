@@ -73,6 +73,24 @@ public class ThreadPoolStatsOtelTest {
   }
 
   @Test
+  public void testAsyncGaugeReflectsChangedThreadPoolState() {
+    // Verify initial values
+    validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_COUNT.getMetricEntity().getMetricName(), 5);
+    validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_MAX_COUNT.getMetricEntity().getMetricName(), 10);
+    validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_COUNT.getMetricEntity().getMetricName(), 3);
+
+    // Change mock values after construction
+    Mockito.doReturn(8).when(mockThreadPool).getActiveCount();
+    Mockito.doReturn(20).when(mockThreadPool).getMaximumPoolSize();
+    Mockito.doReturn(12).when(mockQueue).size();
+
+    // Async gauges should pick up the new values dynamically
+    validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_COUNT.getMetricEntity().getMetricName(), 8);
+    validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_MAX_COUNT.getMetricEntity().getMetricName(), 20);
+    validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_COUNT.getMetricEntity().getMetricName(), 12);
+  }
+
+  @Test
   public void testRecordQueuedTasksCount() {
     Mockito.doReturn(7).when(mockQueue).size();
     stats.recordQueuedTasksCount(0); // argument is ignored, uses actual queue size
@@ -216,8 +234,12 @@ public class ThreadPoolStatsOtelTest {
   }
 
   private void validateAsyncGauge(String metricName, long expectedValue) {
-    OpenTelemetryDataTestUtils
-        .validateAnyGaugeDataPointAtLeast(inMemoryMetricReader, expectedValue, metricName, TEST_METRIC_PREFIX);
+    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        expectedValue,
+        threadPoolAttributes(),
+        metricName,
+        TEST_METRIC_PREFIX);
   }
 
   private void validateHistogram(

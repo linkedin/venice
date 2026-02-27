@@ -87,6 +87,34 @@ public class PartitionHealthStatsOtelTest {
   }
 
   @Test
+  public void testRecordMultipleStores() {
+    AggPartitionHealthStats aggStats = createAggStats(metricsRepository);
+
+    String storeATopic = "store-a_v1";
+    String storeBTopic = "store-b_v2";
+
+    aggStats.reportUnderReplicatedPartition(storeATopic, 2);
+    aggStats.reportUnderReplicatedPartition(storeBTopic, 4);
+
+    String metricName =
+        PartitionHealthStats.PartitionHealthOtelMetricEntity.PARTITION_UNDER_REPLICATED_COUNT.getMetricEntity()
+            .getMetricName();
+
+    // OTel: each store should have its own gauge data point with the correct attributes
+    Attributes storeAAttributes = Attributes.builder()
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "store-a")
+        .build();
+    validateGauge(metricName, 2, storeAAttributes);
+
+    Attributes storeBAttributes = Attributes.builder()
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "store-b")
+        .build();
+    validateGauge(metricName, 4, storeBAttributes);
+  }
+
+  @Test
   public void testZeroUnderReplicatedNotRecorded() {
     AggPartitionHealthStats aggStats = createAggStats(metricsRepository);
 
