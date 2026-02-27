@@ -31,6 +31,7 @@ import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -109,7 +110,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
-    this(changelogClientConfig, System.nanoTime(), veniceChangelogConsumerClientFactory);
+    this(changelogClientConfig, System.currentTimeMillis() * Time.NS_PER_MS, veniceChangelogConsumerClientFactory);
   }
 
   VeniceChangelogConsumerDaVinciRecordTransformerImpl(
