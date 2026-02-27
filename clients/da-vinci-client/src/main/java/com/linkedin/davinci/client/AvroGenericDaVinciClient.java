@@ -289,9 +289,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   protected CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitionSet) {
-    if (getBackend().isIsolatedIngestion()) {
-      throw new VeniceClientException("Isolated Ingestion is not supported with seekToBeginningOfPush");
-    }
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.wrap(partitionSet));
     return getStoreBackend()
