@@ -1,5 +1,6 @@
 package com.linkedin.venice.grpc;
 
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyDouble;
 import static org.mockito.Mockito.anyInt;
@@ -177,7 +178,7 @@ public class ServerStatsContextTest {
     context.recordBasicMetrics(stats);
 
     // From AbstractReadResponseStats.recordMetrics (via responseStatsRecorder.recordMetrics)
-    verify(stats).recordDatabaseLookupLatency(anyDouble(), /* assembledMultiChunk */ any(Boolean.class));
+    verify(stats).recordDatabaseLookupLatency(anyDouble(), /* assembledMultiChunk */ anyBoolean());
     verify(stats).recordMultiChunkLargeValueCount(1);
     verify(stats).recordStorageExecutionHandlerSubmissionWaitTime(20.5);
 
@@ -186,9 +187,9 @@ public class ServerStatsContextTest {
     verify(stats).recordCosineSimilarityCount(13);
     verify(stats).recordHadamardProductCount(132);
     verify(stats).recordCountOperatorCount(432);
-    verify(stats).recordReadComputeLatency(anyDouble(), /* assembledMultiChunk */ any(Boolean.class));
-    verify(stats).recordReadComputeDeserializationLatency(anyDouble(), /* assembledMultiChunk */ any(Boolean.class));
-    verify(stats).recordReadComputeSerializationLatency(anyDouble(), /* assembledMultiChunk */ any(Boolean.class));
+    verify(stats).recordReadComputeLatency(anyDouble(), /* assembledMultiChunk */ anyBoolean());
+    verify(stats).recordReadComputeDeserializationLatency(anyDouble(), /* assembledMultiChunk */ anyBoolean());
+    verify(stats).recordReadComputeSerializationLatency(anyDouble(), /* assembledMultiChunk */ anyBoolean());
 
     // From ServerStatsContext.recordBasicMetrics directly
     verify(stats).recordRequestKeyCount(105);
@@ -428,7 +429,7 @@ public class ServerStatsContextTest {
     verify(stats).recordRequestKeyCount(5);
     verify(stats).recordRequestSizeInBytes(256);
     // No response stats interactions (no responseStatsRecorder means no recordMetrics call)
-    verify(stats, never()).recordDatabaseLookupLatency(anyDouble(), any(Boolean.class));
+    verify(stats, never()).recordDatabaseLookupLatency(anyDouble(), anyBoolean());
   }
 
   /**
