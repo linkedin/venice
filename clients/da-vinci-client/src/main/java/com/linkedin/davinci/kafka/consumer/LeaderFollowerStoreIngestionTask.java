@@ -799,10 +799,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         for (int partition: timeoutPartitions) {
           reportError(errorMsg, partition, ex);
         }
-        if (hostLevelIngestionStats != null) {
+        if (isMetricsEmissionEnabled()) {
           hostLevelIngestionStats.recordIngestionFailure();
-        }
-        if (versionedIngestionStats != null) {
           versionedIngestionStats.recordIngestionFailureCount(
               getStoreName(),
               getVersionNumber(),
