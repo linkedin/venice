@@ -1562,14 +1562,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           ByteArrayKey key = ByteArrayKey.wrap(processedRecord.getMessage().getKey().getKey());
 
           if (seenKeys.contains(key)) {
-            MergeConflictResultWrapper mcr = processedRecord.getProcessedResult().getMergeConflictResultWrapper();
-            if (mcr != null) {
-              PartitionConsumptionState.TransientRecord transientRecord =
-                  partitionConsumptionState.getTransientRecord(processedRecord.getMessage().getKey().getKey());
-              if (transientRecord != null) {
-                mcr.getOldValueManifestContainer().setManifest(transientRecord.getValueManifest());
-              }
-            }
+            linkBackManifestFromTransientRecord(processedRecord, partitionConsumptionState);
           }
           seenKeys.add(key);
 
@@ -1605,6 +1598,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
+    }
+  }
+
+  /**
+   * For batch processing: reads the manifest from the transient record (set by the previous
+   * record's produce via setChunkingInfo) and overrides this record's old manifest container,
+   * so chunk deletion works correctly for records 2+ of the same key in a batch.
+   */
+  static void linkBackManifestFromTransientRecord(
+      PubSubMessageProcessedResultWrapper processedRecord,
+      PartitionConsumptionState partitionConsumptionState) {
+    MergeConflictResultWrapper mcr = processedRecord.getProcessedResult().getMergeConflictResultWrapper();
+    if (mcr != null) {
+      PartitionConsumptionState.TransientRecord transientRecord =
+          partitionConsumptionState.getTransientRecord(processedRecord.getMessage().getKey().getKey());
+      if (transientRecord != null) {
+        mcr.getOldValueManifestContainer().setManifest(transientRecord.getValueManifest());
+      }
     }
   }
 
