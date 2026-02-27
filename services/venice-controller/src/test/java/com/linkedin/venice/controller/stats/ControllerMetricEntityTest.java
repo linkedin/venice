@@ -34,7 +34,12 @@ import org.testng.annotations.Test;
  */
 public class ControllerMetricEntityTest {
   /**
-   * Controller packages to scan for ModuleMetricEntityInterface enums.
+   * Controller packages to scan for {@link ModuleMetricEntityInterface} enums.
+   *
+   * <p>When adding a new controller package that defines {@link ModuleMetricEntityInterface}
+   * enums expected to be included in {@link VeniceController#CONTROLLER_SERVICE_METRIC_ENTITIES},
+   * this list must be updated to include that package; otherwise, those enums will not be
+   * discovered by this test.
    */
   private static final List<String> CONTROLLER_PACKAGES =
       Arrays.asList("com.linkedin.venice.controller.stats", "com.linkedin.venice.controller.lingeringjob");
