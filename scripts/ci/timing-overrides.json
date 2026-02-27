@@ -16,5 +16,7 @@
   "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest": 73,
   "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest": 72,
   "com.linkedin.venice.fastclient.BatchGetAvroStoreClientGzipTest": 31,
-  "com.linkedin.venice.fastclient.BatchGetAvroStoreClientZstdTest": 31
+  "com.linkedin.venice.fastclient.BatchGetAvroStoreClientZstdTest": 31,
+  "com.linkedin.venice.endToEnd.TestDeferredVersionSwap": 200,
+  "com.linkedin.venice.endToEnd.TestDeferredVersionSwapDvc": 300
 }

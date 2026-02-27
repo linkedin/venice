@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_1
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -107,7 +107,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_2
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -194,7 +194,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_3
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -281,7 +281,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_4
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -368,7 +368,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_5
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -455,7 +455,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_6
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -542,7 +542,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_7
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -629,7 +629,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_8
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -716,7 +716,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_9
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -803,7 +803,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_10
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -890,7 +890,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_11
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -977,7 +977,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_12
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1064,7 +1064,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_13
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1151,7 +1151,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_14
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1238,7 +1238,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_15
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1325,7 +1325,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_16
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1412,7 +1412,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_17
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1499,7 +1499,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_18
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1586,7 +1586,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_19
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1673,7 +1673,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_20
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1760,7 +1760,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_21
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1847,7 +1847,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_22
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1934,7 +1934,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_23
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2021,7 +2021,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_24
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2108,7 +2108,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_25
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2195,7 +2195,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_26
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2282,7 +2282,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_27
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2369,7 +2369,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_28
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2456,7 +2456,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_29
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2543,7 +2543,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_30
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2630,7 +2630,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_31
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2717,7 +2717,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_32
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2804,7 +2804,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_33
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2891,7 +2891,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_34
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -2978,7 +2978,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_35
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3065,7 +3065,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_36
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3152,7 +3152,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_37
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3239,7 +3239,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_38
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3326,7 +3326,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_39
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3413,7 +3413,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_40
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3500,7 +3500,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_41
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3587,7 +3587,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_42
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3674,7 +3674,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_43
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3761,7 +3761,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_44
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3848,7 +3848,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_45
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -3928,180 +3928,6 @@ jobs:
             echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
           fi
 
-  IntegrationTests_46:
-    name: IntegrationTests_46
-    strategy:
-      fail-fast: false
-    runs-on: ubuntu-latest
-    permissions:
-     contents: read
-    timeout-minutes: 20
-    concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_46
-     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_46
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-      - name: Upload Test Timing Data
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: test-timing-IntegrationTests_46
-          path: internal/venice-test-common/build/test-timings/
-          retention-days: 30
-          if-no-files-found: ignore
-      - name: Summarize Test Failures
-        if: failure()
-        shell: bash
-        run: |
-          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
-          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
-          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
-            python3 -c "
-          import xml.etree.ElementTree as ET, sys
-          tree = ET.parse('$f')
-          root = tree.getroot()
-          for tc in root.iter('testcase'):
-              if tc.find('failure') is not None or tc.find('error') is not None:
-                  cls = tc.get('classname','')
-                  name = tc.get('name','')
-                  time = tc.get('time','')
-                  print(f'| {cls} | {name} | {time}s |')
-          " 2>/dev/null
-          done | sort -u >> $GITHUB_STEP_SUMMARY
-          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
-            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-  IntegrationTests_47:
-    name: IntegrationTests_47
-    strategy:
-      fail-fast: false
-    runs-on: ubuntu-latest
-    permissions:
-     contents: read
-    timeout-minutes: 20
-    concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_47
-     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_47
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-      - name: Upload Test Timing Data
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: test-timing-IntegrationTests_47
-          path: internal/venice-test-common/build/test-timings/
-          retention-days: 30
-          if-no-files-found: ignore
-      - name: Summarize Test Failures
-        if: failure()
-        shell: bash
-        run: |
-          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
-          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
-          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -l 'failures="[1-9]\|errors="[1-9]' {} \; 2>/dev/null | while read f; do
-            python3 -c "
-          import xml.etree.ElementTree as ET, sys
-          tree = ET.parse('$f')
-          root = tree.getroot()
-          for tc in root.iter('testcase'):
-              if tc.find('failure') is not None or tc.find('error') is not None:
-                  cls = tc.get('classname','')
-                  name = tc.get('name','')
-                  time = tc.get('time','')
-                  print(f'| {cls} | {name} | {time}s |')
-          " 2>/dev/null
-          done | sort -u >> $GITHUB_STEP_SUMMARY
-          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
-            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
-          fi
-
   integrationTests_99:
     name: integrationTests_99
     strategy:
@@ -4109,7 +3935,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
      contents: read
-    timeout-minutes: 20
+    timeout-minutes: 15
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-integrationTests_99
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -4195,7 +4021,7 @@ jobs:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
-    needs: [IntegrationTests_1, IntegrationTests_2, IntegrationTests_3, IntegrationTests_4, IntegrationTests_5, IntegrationTests_6, IntegrationTests_7, IntegrationTests_8, IntegrationTests_9, IntegrationTests_10, IntegrationTests_11, IntegrationTests_12, IntegrationTests_13, IntegrationTests_14, IntegrationTests_15, IntegrationTests_16, IntegrationTests_17, IntegrationTests_18, IntegrationTests_19, IntegrationTests_20, IntegrationTests_21, IntegrationTests_22, IntegrationTests_23, IntegrationTests_24, IntegrationTests_25, IntegrationTests_26, IntegrationTests_27, IntegrationTests_28, IntegrationTests_29, IntegrationTests_30, IntegrationTests_31, IntegrationTests_32, IntegrationTests_33, IntegrationTests_34, IntegrationTests_35, IntegrationTests_36, IntegrationTests_37, IntegrationTests_38, IntegrationTests_39, IntegrationTests_40, IntegrationTests_41, IntegrationTests_42, IntegrationTests_43, IntegrationTests_44, IntegrationTests_45, IntegrationTests_46, IntegrationTests_47, integrationTests_99]
+    needs: [IntegrationTests_1, IntegrationTests_2, IntegrationTests_3, IntegrationTests_4, IntegrationTests_5, IntegrationTests_6, IntegrationTests_7, IntegrationTests_8, IntegrationTests_9, IntegrationTests_10, IntegrationTests_11, IntegrationTests_12, IntegrationTests_13, IntegrationTests_14, IntegrationTests_15, IntegrationTests_16, IntegrationTests_17, IntegrationTests_18, IntegrationTests_19, IntegrationTests_20, IntegrationTests_21, IntegrationTests_22, IntegrationTests_23, IntegrationTests_24, IntegrationTests_25, IntegrationTests_26, IntegrationTests_27, IntegrationTests_28, IntegrationTests_29, IntegrationTests_30, IntegrationTests_31, IntegrationTests_32, IntegrationTests_33, IntegrationTests_34, IntegrationTests_35, IntegrationTests_36, IntegrationTests_37, IntegrationTests_38, IntegrationTests_39, IntegrationTests_40, IntegrationTests_41, IntegrationTests_42, IntegrationTests_43, IntegrationTests_44, IntegrationTests_45, integrationTests_99]
     timeout-minutes: 20
     if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}
     steps:

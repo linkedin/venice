@@ -68,7 +68,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     String keySchemaStr = "\"string\"";
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
-    storeParms.setTargetRegionSwapWaitTime(1);
+    storeParms.setTargetRegionSwapWaitTime(60);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
@@ -84,14 +84,14 @@ public class TestDeferredVersionSwapWithFailingRegions {
       }
 
       // Wait for job to fail
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         JobStatusQueryResponse jobStatusQueryResponse = assertCommand(
             parentControllerClient.queryOverallJobStatus(Version.composeKafkaTopic(storeName, 1), Optional.empty()));
         ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
         assertEquals(executionStatus, ExecutionStatus.ERROR);
       });
 
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
