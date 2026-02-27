@@ -24,7 +24,6 @@ import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceComputeOperationType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
-import com.linkedin.venice.stats.metrics.MetricAttributesData;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
@@ -650,24 +649,12 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     requestKeySizeMetric.record(keySize);
   }
 
-  /** OTel-only value size with HTTP status dims; Tehuti is recorded per-key via {@link #recordValueSizeInByte}. */
-  public void recordValueSizeInByteOtelOnly(
+  public void recordValueSizeInByte(
       HttpResponseStatusEnum statusEnum,
       HttpResponseStatusCodeCategory statusCategory,
       VeniceResponseStatusCategory veniceCategory,
       int valueSize) {
-    Attributes attrs = responseValueSizeMetric.getAttributes(statusEnum, statusCategory, veniceCategory);
-    if (attrs != null) {
-      responseValueSizeMetric.recordOtelMetric(valueSize, new MetricAttributesData(attrs));
-    }
-  }
-
-  /** Tehuti-only value size; OTel aggregate is via {@link #recordValueSizeInByteOtelOnly}. */
-  public void recordValueSizeInByte(int valueSize) {
-    Sensor tehutiSensor = responseValueSizeMetric.getTehutiSensor();
-    if (tehutiSensor != null) {
-      tehutiSensor.record(valueSize);
-    }
+    responseValueSizeMetric.record(valueSize, statusEnum, statusCategory, veniceCategory);
   }
 
   public void recordMisroutedStoreVersionRequest() {
@@ -678,24 +665,12 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     flushTimeMetric.record(latency);
   }
 
-  /** OTel-only response size with HTTP status dims; Tehuti is via {@link #recordResponseSize(int)}. */
-  public void recordResponseSizeOtelOnly(
+  public void recordResponseSize(
       HttpResponseStatusEnum statusEnum,
       HttpResponseStatusCodeCategory statusCategory,
       VeniceResponseStatusCategory veniceCategory,
       int size) {
-    Attributes attrs = responseSizeMetric.getAttributes(statusEnum, statusCategory, veniceCategory);
-    if (attrs != null) {
-      responseSizeMetric.recordOtelMetric(size, new MetricAttributesData(attrs));
-    }
-  }
-
-  /** Tehuti-only response size; OTel is via {@link #recordResponseSizeOtelOnly}. */
-  public void recordResponseSize(int size) {
-    Sensor tehutiSensor = responseSizeMetric.getTehutiSensor();
-    if (tehutiSensor != null) {
-      tehutiSensor.record(size);
-    }
+    responseSizeMetric.record(size, statusEnum, statusCategory, veniceCategory);
   }
 
   enum ServerTehutiMetricName implements TehutiMetricNameEnum {

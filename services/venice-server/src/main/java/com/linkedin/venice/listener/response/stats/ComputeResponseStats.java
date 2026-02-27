@@ -4,6 +4,9 @@ import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.cons
 import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeIntIfAbove;
 
 import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 
 
 public class ComputeResponseStats extends MultiKeyResponseStats {
@@ -63,8 +66,12 @@ public class ComputeResponseStats extends MultiKeyResponseStats {
   }
 
   @Override
-  public void recordMetrics(ServerHttpRequestStats stats) {
-    super.recordMetrics(stats);
+  public void recordMetrics(
+      ServerHttpRequestStats stats,
+      HttpResponseStatusEnum statusEnum,
+      HttpResponseStatusCodeCategory statusCategory,
+      VeniceResponseStatusCategory veniceCategory) {
+    super.recordMetrics(stats, statusEnum, statusCategory, veniceCategory);
 
     consumeIntIfAbove(stats::recordCosineSimilarityCount, this.cosineSimilarityCount, 0);
     consumeIntIfAbove(stats::recordCountOperatorCount, this.countOperatorCount, 0);

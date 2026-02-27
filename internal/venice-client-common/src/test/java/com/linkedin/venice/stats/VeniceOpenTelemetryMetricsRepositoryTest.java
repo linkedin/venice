@@ -25,7 +25,6 @@ import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricAttributesData;
 import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricType;
@@ -162,7 +161,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
   /**
    * This test verifies that the {@link VeniceOpenTelemetryMetricsRepository#createInstrument} creates the correct instrument
-   * type and {@link MetricEntityState#recordOtelMetric} casts it to the same instrument type.
+   * type and that recording via the unified {@link MetricEntityStateBase#record} API works without ClassCastException.
    */
   @Test
   public void testCreateAndRecordMetricsForAllMetricTypes() {
@@ -206,7 +205,6 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
       metricEntityState.setOtelMetric(instrument);
 
-      Attributes attributes = Attributes.builder().put("key", "value").build();
       double value = 10.0;
 
       switch (metricType) {
@@ -216,28 +214,28 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           assertTrue(
               instrument instanceof DoubleHistogram,
               "Instrument should be a DoubleHistogram for metric type: " + metricType);
-          metricEntityStateBase.recordOtelMetric(value, new MetricAttributesData(attributes));
+          metricEntityStateBase.record(value);
           break;
         case COUNTER:
           metricEntityStateBase = (MetricEntityStateBase) metricEntityState;
           assertTrue(
               instrument instanceof LongCounter,
               "Instrument should be a LongCounter for metric type: " + metricType);
-          metricEntityStateBase.recordOtelMetric(value, new MetricAttributesData(attributes));
+          metricEntityStateBase.record(value);
           break;
         case UP_DOWN_COUNTER:
           metricEntityStateBase = (MetricEntityStateBase) metricEntityState;
           assertTrue(
               instrument instanceof LongUpDownCounter,
               "Instrument should be a LongUpDownCounter for metric type: " + metricType);
-          metricEntityStateBase.recordOtelMetric(value, new MetricAttributesData(attributes));
+          metricEntityStateBase.record(value);
           break;
         case GAUGE:
           metricEntityStateBase = (MetricEntityStateBase) metricEntityState;
           assertTrue(
               instrument instanceof LongGauge,
               "Instrument should be a LongGauge for metric type: " + metricType);
-          metricEntityStateBase.recordOtelMetric(value, new MetricAttributesData(attributes));
+          metricEntityStateBase.record(value);
           break;
 
         case ASYNC_GAUGE:

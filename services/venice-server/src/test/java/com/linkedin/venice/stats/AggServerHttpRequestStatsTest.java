@@ -113,10 +113,18 @@ public class AggServerHttpRequestStatsTest {
         VeniceResponseStatusCategory.FAIL);
 
     singleGetServerStatsFoo.recordKeySizeInByte(100);
-    singleGetServerStatsFoo.recordValueSizeInByte(1000);
+    singleGetServerStatsFoo.recordValueSizeInByte(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS,
+        1000);
 
     singleGetServerStatsWithKvProfilingFoo.recordKeySizeInByte(100);
-    singleGetServerStatsWithKvProfilingFoo.recordValueSizeInByte(1000);
+    singleGetServerStatsWithKvProfilingFoo.recordValueSizeInByte(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS,
+        1000);
 
     computeServerStatsFoo.recordDotProductCount(10);
     computeServerStatsFoo.recordCosineSimilarityCount(10);

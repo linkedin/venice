@@ -177,9 +177,19 @@ public class ServerStatsContext {
   }
 
   public void recordBasicMetrics(ServerHttpRequestStats serverHttpRequestStats) {
-    if (serverHttpRequestStats != null) {
+    if (serverHttpRequestStats != null && responseStatus != null) {
+      // Compute HTTP status dimensions once, used by recordMetrics (for value size) and recordResponseSize.
+      int statusCode = responseStatus.code();
+      HttpResponseStatusEnum statusEnum = HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum(statusCode);
+      HttpResponseStatusCodeCategory statusCategory =
+          HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory(statusCode);
+      VeniceResponseStatusCategory veniceCategory =
+          (responseStatus.equals(HttpResponseStatus.OK) || responseStatus.equals(HttpResponseStatus.NOT_FOUND))
+              ? VeniceResponseStatusCategory.SUCCESS
+              : VeniceResponseStatusCategory.FAIL;
+
       if (this.responseStatsRecorder != null) {
-        this.responseStatsRecorder.recordMetrics(serverHttpRequestStats);
+        this.responseStatsRecorder.recordMetrics(serverHttpRequestStats, statusEnum, statusCategory, veniceCategory);
       }
 
       consumeIntIfAbove(serverHttpRequestStats::recordRequestKeyCount, this.requestKeyCount, 0);
@@ -191,10 +201,8 @@ public class ServerStatsContext {
       if (flushLatency >= 0) {
         serverHttpRequestStats.recordFlushLatency(flushLatency);
       }
-      // Tehuti response size is recorded here (runs for all requests including 429).
-      // OTel response size is recorded in successRequest/errorRequest (needs HTTP status dims).
       if (responseSize >= 0) {
-        serverHttpRequestStats.recordResponseSize(responseSize);
+        serverHttpRequestStats.recordResponseSize(statusEnum, statusCategory, veniceCategory, responseSize);
       }
     }
   }
@@ -214,18 +222,6 @@ public class ServerStatsContext {
 
     stats.recordSuccessRequest(statusEnum, statusCategory, veniceCategory);
     stats.recordSuccessRequestLatency(statusEnum, statusCategory, veniceCategory, elapsedTime);
-
-    // OTel-only: Tehuti response size is recorded in recordBasicMetrics (runs for all requests including 429)
-    if (responseSize >= 0) {
-      stats.recordResponseSizeOtelOnly(statusEnum, statusCategory, veniceCategory, responseSize);
-    }
-    // OTel-only: Tehuti value size is recorded per-key in recordMetrics/recordUnmergedMetrics
-    if (this.responseStatsRecorder != null) {
-      int valueSize = this.responseStatsRecorder.getResponseValueSize();
-      if (valueSize > 0) {
-        stats.recordValueSizeInByteOtelOnly(statusEnum, statusCategory, veniceCategory, valueSize);
-      }
-    }
   }
 
   public void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
@@ -246,17 +242,6 @@ public class ServerStatsContext {
       stats.recordErrorRequestLatency(statusEnum, statusCategory, veniceCategory, elapsedTime);
       if (isMisroutedStoreVersion) {
         stats.recordMisroutedStoreVersionRequest();
-      }
-      // OTel-only: Tehuti response size is recorded in recordBasicMetrics (runs for all requests including 429)
-      if (responseSize >= 0) {
-        stats.recordResponseSizeOtelOnly(statusEnum, statusCategory, veniceCategory, responseSize);
-      }
-      // OTel-only: Tehuti value size is recorded per-key in recordMetrics/recordUnmergedMetrics
-      if (this.responseStatsRecorder != null) {
-        int valueSize = this.responseStatsRecorder.getResponseValueSize();
-        if (valueSize > 0) {
-          stats.recordValueSizeInByteOtelOnly(statusEnum, statusCategory, veniceCategory, valueSize);
-        }
       }
     }
   }

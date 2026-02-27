@@ -147,7 +147,6 @@ public class ServerStatsContextTest {
   }
 
   /**
-   * T3 fix: replaced brittle invocation counting with explicit verify calls.
    * Verifies all metrics recorded by recordBasicMetrics for a compute request.
    */
   @Test
@@ -156,6 +155,7 @@ public class ServerStatsContextTest {
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setStoreName("testStore");
     context.setRequestType(RequestType.COMPUTE);
+    context.setResponseStatus(HttpResponseStatus.OK);
 
     context.setRequestKeyCount(105);
     context.setRequestSize(1000);
@@ -195,8 +195,11 @@ public class ServerStatsContextTest {
     verify(stats).recordRequestSizeInBytes(1000);
   }
 
+  /**
+   * Verifies that recordBasicMetrics records unified response size and value size for a success request (OK).
+   */
   @Test
-  public void testSuccessRequestRecordsResponseAndValueSize() {
+  public void testRecordBasicMetricsRecordsSizeForSuccessRequest() {
     ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
     context.setStoreName("testStore");
     context.setRequestType(RequestType.SINGLE_GET);
@@ -208,8 +211,23 @@ public class ServerStatsContextTest {
     context.setReadResponseStats(responseStats);
 
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
-    context.successRequest(stats, 10.5);
+    context.recordBasicMetrics(stats);
 
+    // Unified response size (both Tehuti and OTel)
+    verify(stats).recordResponseSize(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS,
+        500);
+    // Unified value size per-key via SingleGetResponseStats.recordMetrics (both Tehuti and OTel)
+    verify(stats).recordValueSizeInByte(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS,
+        200);
+
+    // successRequest only records count and latency (not size)
+    context.successRequest(stats, 10.5);
     verify(stats).recordSuccessRequest(
         HttpResponseStatusEnum.OK,
         HttpResponseStatusCodeCategory.SUCCESS,
@@ -219,20 +237,13 @@ public class ServerStatsContextTest {
         HttpResponseStatusCodeCategory.SUCCESS,
         VeniceResponseStatusCategory.SUCCESS,
         10.5);
-    verify(stats).recordResponseSizeOtelOnly(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS,
-        500);
-    verify(stats).recordValueSizeInByteOtelOnly(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS,
-        200);
   }
 
+  /**
+   * Verifies that recordBasicMetrics records unified response size and value size for an error request.
+   */
   @Test
-  public void testErrorRequestRecordsResponseAndValueSize() {
+  public void testRecordBasicMetricsRecordsSizeForErrorRequest() {
     ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
     context.setStoreName("testStore");
     context.setRequestType(RequestType.SINGLE_GET);
@@ -244,8 +255,23 @@ public class ServerStatsContextTest {
     context.setReadResponseStats(responseStats);
 
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
-    context.errorRequest(stats, 15.0);
+    context.recordBasicMetrics(stats);
 
+    // Unified response size (both Tehuti and OTel)
+    verify(stats).recordResponseSize(
+        HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
+        HttpResponseStatusCodeCategory.SERVER_ERROR,
+        VeniceResponseStatusCategory.FAIL,
+        100);
+    // Unified value size per-key (both Tehuti and OTel)
+    verify(stats).recordValueSizeInByte(
+        HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
+        HttpResponseStatusCodeCategory.SERVER_ERROR,
+        VeniceResponseStatusCategory.FAIL,
+        50);
+
+    // errorRequest only records count and latency (not size)
+    context.errorRequest(stats, 15.0);
     verify(stats).recordErrorRequest(
         HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
         HttpResponseStatusCodeCategory.SERVER_ERROR,
@@ -255,16 +281,6 @@ public class ServerStatsContextTest {
         HttpResponseStatusCodeCategory.SERVER_ERROR,
         VeniceResponseStatusCategory.FAIL,
         15.0);
-    verify(stats).recordResponseSizeOtelOnly(
-        HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
-        HttpResponseStatusCodeCategory.SERVER_ERROR,
-        VeniceResponseStatusCategory.FAIL,
-        100);
-    verify(stats).recordValueSizeInByteOtelOnly(
-        HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
-        HttpResponseStatusCodeCategory.SERVER_ERROR,
-        VeniceResponseStatusCategory.FAIL,
-        50);
   }
 
   @Test
@@ -291,37 +307,41 @@ public class ServerStatsContextTest {
 
     context.recordBasicMetrics(stats);
 
-    // Per-key sizes are recorded in recordUnmergedMetrics via ResponseStatsUtil.recordKeyValueSizes
+    // Per-key sizes are recorded via recordUnmergedMetrics with unified recording (both Tehuti and OTel)
     verify(stats).recordKeySizeInByte(10);
     verify(stats).recordKeySizeInByte(20);
     verify(stats).recordKeySizeInByte(30);
-    verify(stats).recordValueSizeInByte(100);
-    verify(stats).recordValueSizeInByte(200);
-    verify(stats).recordValueSizeInByte(300);
+    verify(stats).recordValueSizeInByte(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS,
+        100);
+    verify(stats).recordValueSizeInByte(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS,
+        200);
+    verify(stats).recordValueSizeInByte(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS,
+        300);
 
-    // Now test successRequest to verify OTel-only recording
-    // (per-key Tehuti recording already happened above; Tehuti responseSize recorded in recordBasicMetrics)
-    context.successRequest(stats, 5.0);
-
-    verify(stats).recordResponseSizeOtelOnly(
+    // Unified response size (both Tehuti and OTel)
+    verify(stats).recordResponseSize(
         HttpResponseStatusEnum.OK,
         HttpResponseStatusCodeCategory.SUCCESS,
         VeniceResponseStatusCategory.SUCCESS,
         800);
-    verify(stats).recordValueSizeInByteOtelOnly(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS,
-        600);
   }
 
   /**
-   * T1: 429 flow — recordBasicMetrics runs (Tehuti recorded) but neither successRequest nor errorRequest
-   * is called. Verifies that Tehuti responseSize and valueSize ARE recorded, while OTel-only methods
-   * are NOT called (since they require HTTP status dimensions only available in successRequest/errorRequest).
+   * 429 flow: recordBasicMetrics records both Tehuti and OTel via unified recording.
+   * Neither successRequest nor errorRequest is called. OTel uses FAIL category (consistent with
+   * the router's treatment of 429 as FAIL).
    */
   @Test
-  public void test429FlowRecordsTehutiButNotOtel() {
+  public void test429FlowRecordsBothTehutiAndOtel() {
     ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setStoreName("testStore");
@@ -338,24 +358,21 @@ public class ServerStatsContextTest {
     // successRequest or errorRequest for 429)
     context.recordBasicMetrics(stats);
 
-    // Tehuti response size IS recorded (via recordResponseSize(int) — no dims needed)
-    verify(stats).recordResponseSize(500);
-
-    // Tehuti value size IS recorded per-key via SingleGetResponseStats.recordMetrics
-    verify(stats).recordValueSizeInByte(200);
+    // Unified response size (both Tehuti and OTel)
+    verify(stats).recordResponseSize(
+        HttpResponseStatusEnum.TOO_MANY_REQUESTS,
+        HttpResponseStatusCodeCategory.CLIENT_ERROR,
+        VeniceResponseStatusCategory.FAIL,
+        500);
+    // Unified value size per-key via SingleGetResponseStats.recordMetrics (both Tehuti and OTel)
+    verify(stats).recordValueSizeInByte(
+        HttpResponseStatusEnum.TOO_MANY_REQUESTS,
+        HttpResponseStatusCodeCategory.CLIENT_ERROR,
+        VeniceResponseStatusCategory.FAIL,
+        200);
     verify(stats).recordKeySizeInByte(50);
 
-    // OTel-only methods are NOT called since neither successRequest nor errorRequest runs for 429
-    verify(stats, never()).recordResponseSizeOtelOnly(
-        any(HttpResponseStatusEnum.class),
-        any(HttpResponseStatusCodeCategory.class),
-        any(VeniceResponseStatusCategory.class),
-        anyInt());
-    verify(stats, never()).recordValueSizeInByteOtelOnly(
-        any(HttpResponseStatusEnum.class),
-        any(HttpResponseStatusCodeCategory.class),
-        any(VeniceResponseStatusCategory.class),
-        anyInt());
+    // success/error count and latency are NOT recorded for 429
     verify(stats, never()).recordSuccessRequest(
         any(HttpResponseStatusEnum.class),
         any(HttpResponseStatusCodeCategory.class),
@@ -367,7 +384,7 @@ public class ServerStatsContextTest {
   }
 
   /**
-   * T4/T5: Verify flushLatency, earlyTermination, and responseSize are recorded in recordBasicMetrics.
+   * Verify flushLatency, earlyTermination, and responseSize are recorded in recordBasicMetrics.
    */
   @Test
   public void testRecordBasicMetricsFlushLatencyEarlyTerminationResponseSize() {
@@ -375,6 +392,7 @@ public class ServerStatsContextTest {
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setStoreName("testStore");
     context.setRequestType(RequestType.SINGLE_GET);
+    context.setResponseStatus(HttpResponseStatus.OK);
 
     context.setFlushLatency(25.5);
     context.setRequestTerminatedEarly();
@@ -384,11 +402,15 @@ public class ServerStatsContextTest {
 
     verify(stats).recordFlushLatency(25.5);
     verify(stats).recordEarlyTerminatedEarlyRequest();
-    verify(stats).recordResponseSize(1024);
+    verify(stats).recordResponseSize(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS,
+        1024);
   }
 
   /**
-   * T7: Verify recordBasicMetrics works when no responseStatsRecorder is set.
+   * Verify recordBasicMetrics works when no responseStatsRecorder is set.
    */
   @Test
   public void testRecordBasicMetricsWithoutResponseStatsRecorder() {
@@ -396,6 +418,7 @@ public class ServerStatsContextTest {
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setStoreName("testStore");
     context.setRequestType(RequestType.SINGLE_GET);
+    context.setResponseStatus(HttpResponseStatus.OK);
     context.setRequestKeyCount(5);
     context.setRequestSize(256);
 
@@ -409,10 +432,10 @@ public class ServerStatsContextTest {
   }
 
   /**
-   * T8: OTel size recording is skipped when responseSize is negative (default) or valueSize is zero.
+   * Response size recording is skipped when responseSize is negative (default).
    */
   @Test
-  public void testSuccessRequestSkipsOtelSizeRecordingWhenNotSet() {
+  public void testRecordBasicMetricsSkipsSizeRecordingWhenNotSet() {
     ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setStoreName("testStore");
@@ -420,26 +443,10 @@ public class ServerStatsContextTest {
     context.setResponseStatus(HttpResponseStatus.OK);
     // responseSize is left at default (-1), no responseStatsRecorder set
 
-    context.successRequest(stats, 5.0);
+    context.recordBasicMetrics(stats);
 
-    // Success count and latency are always recorded
-    verify(stats).recordSuccessRequest(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS);
-    verify(stats).recordSuccessRequestLatency(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS,
-        5.0);
-
-    // OTel size methods should NOT be called when responseSize < 0 and no responseStatsRecorder
-    verify(stats, never()).recordResponseSizeOtelOnly(
-        any(HttpResponseStatusEnum.class),
-        any(HttpResponseStatusCodeCategory.class),
-        any(VeniceResponseStatusCategory.class),
-        anyInt());
-    verify(stats, never()).recordValueSizeInByteOtelOnly(
+    // Response size should NOT be called when responseSize < 0
+    verify(stats, never()).recordResponseSize(
         any(HttpResponseStatusEnum.class),
         any(HttpResponseStatusCodeCategory.class),
         any(VeniceResponseStatusCategory.class),
@@ -447,11 +454,10 @@ public class ServerStatsContextTest {
   }
 
   /**
-   * T8: OTel valueSize recording is skipped when aggregate valueSize is zero
-   * (e.g., single get with no value found).
+   * Value size recording is skipped when valueSize is zero (e.g., single get with no value found).
    */
   @Test
-  public void testSuccessRequestSkipsOtelValueSizeWhenZero() {
+  public void testRecordBasicMetricsSkipsValueSizeWhenZero() {
     ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setStoreName("testStore");
@@ -464,16 +470,16 @@ public class ServerStatsContextTest {
     context.setReadResponseStats(responseStats);
     assertEquals(responseStats.getResponseValueSize(), 0);
 
-    context.successRequest(stats, 3.0);
+    context.recordBasicMetrics(stats);
 
-    // OTel response size IS recorded (responseSize=50 > 0)
-    verify(stats).recordResponseSizeOtelOnly(
+    // Response size IS recorded (responseSize=50 > 0)
+    verify(stats).recordResponseSize(
         HttpResponseStatusEnum.OK,
         HttpResponseStatusCodeCategory.SUCCESS,
         VeniceResponseStatusCategory.SUCCESS,
         50);
-    // OTel value size is NOT recorded (valueSize=0, guard: valueSize > 0)
-    verify(stats, never()).recordValueSizeInByteOtelOnly(
+    // Value size is NOT recorded (valueSize=0, guard in SingleGetResponseStats: valueSize > 0)
+    verify(stats, never()).recordValueSizeInByte(
         any(HttpResponseStatusEnum.class),
         any(HttpResponseStatusCodeCategory.class),
         any(VeniceResponseStatusCategory.class),
@@ -481,7 +487,7 @@ public class ServerStatsContextTest {
   }
 
   /**
-   * T2: Verify MultiGetResponseStatsWithSizeProfiling.merge() correctly merges totalValueSize.
+   * Verify MultiGetResponseStatsWithSizeProfiling.merge() correctly merges totalValueSize.
    */
   @Test
   public void testMultiGetResponseStatsMergeTotalValueSize() {
@@ -508,7 +514,11 @@ public class ServerStatsContextTest {
 
     // Verify merged stats record correctly
     ServerHttpRequestStats mockStats = mock(ServerHttpRequestStats.class);
-    stats1.recordMetrics(mockStats);
+    stats1.recordMetrics(
+        mockStats,
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS);
 
     // multiChunkLargeValueCount: 1 from stats1 + 0 from stats2 = 1 (merged in super.merge)
     verify(mockStats).recordMultiChunkLargeValueCount(1);
@@ -516,12 +526,20 @@ public class ServerStatsContextTest {
     // Per-key K/V sizes are unmerged (recorded individually from stats1's lists only)
     verify(mockStats).recordKeySizeInByte(10);
     verify(mockStats).recordKeySizeInByte(20);
-    verify(mockStats).recordValueSizeInByte(100);
-    verify(mockStats).recordValueSizeInByte(200);
+    verify(mockStats).recordValueSizeInByte(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS,
+        100);
+    verify(mockStats).recordValueSizeInByte(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS,
+        200);
   }
 
   /**
-   * T2: Verify ComputeResponseStats.merge() correctly merges totalValueSize and compute-specific fields.
+   * Verify ComputeResponseStats.merge() correctly merges totalValueSize and compute-specific fields.
    */
   @Test
   public void testComputeResponseStatsMergeTotalValueSize() {
@@ -546,14 +564,18 @@ public class ServerStatsContextTest {
 
     // Verify merged compute stats record correctly
     ServerHttpRequestStats mockStats = mock(ServerHttpRequestStats.class);
-    stats1.recordMetrics(mockStats);
+    stats1.recordMetrics(
+        mockStats,
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS);
 
     // dotProductCount: 10 + 5 = 15
     verify(mockStats).recordDotProductCount(15);
   }
 
   /**
-   * C1: Verify CompositeReadResponseStatsRecorder.getResponseValueSize() delegates to mergedStats.
+   * Verify CompositeReadResponseStatsRecorder.getResponseValueSize() delegates to mergedStats.
    */
   @Test
   public void testCompositeReadResponseStatsRecorderGetResponseValueSize() {
@@ -583,10 +605,10 @@ public class ServerStatsContextTest {
   }
 
   /**
-   * I1: Verify errorRequest() boundary conditions — responseSize=-1 and valueSize=0 skip OTel recording.
+   * Verify size recording is skipped when responseSize=-1 and valueSize=0 for error requests.
    */
   @Test
-  public void testErrorRequestBoundarySkipsOtelSizeRecording() {
+  public void testErrorRequestBoundarySkipsSizeRecording() {
     ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setStoreName("testStore");
@@ -599,9 +621,24 @@ public class ServerStatsContextTest {
     context.setReadResponseStats(responseStats);
     assertEquals(responseStats.getResponseValueSize(), 0);
 
-    context.errorRequest(stats, 8.0);
+    // recordBasicMetrics should skip size recording when sizes aren't set
+    context.recordBasicMetrics(stats);
 
-    // Error count and latency are always recorded
+    // Response size NOT recorded (responseSize=-1, guard: responseSize >= 0)
+    verify(stats, never()).recordResponseSize(
+        any(HttpResponseStatusEnum.class),
+        any(HttpResponseStatusCodeCategory.class),
+        any(VeniceResponseStatusCategory.class),
+        anyInt());
+    // Value size NOT recorded (valueSize=0, guard in SingleGetResponseStats: valueSize > 0)
+    verify(stats, never()).recordValueSizeInByte(
+        any(HttpResponseStatusEnum.class),
+        any(HttpResponseStatusCodeCategory.class),
+        any(VeniceResponseStatusCategory.class),
+        anyInt());
+
+    // Error count and latency are still recorded in errorRequest
+    context.errorRequest(stats, 8.0);
     verify(stats).recordErrorRequest(
         HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
         HttpResponseStatusCodeCategory.SERVER_ERROR,
@@ -611,23 +648,10 @@ public class ServerStatsContextTest {
         HttpResponseStatusCodeCategory.SERVER_ERROR,
         VeniceResponseStatusCategory.FAIL,
         8.0);
-
-    // OTel response size NOT recorded (responseSize=-1, guard: responseSize >= 0)
-    verify(stats, never()).recordResponseSizeOtelOnly(
-        any(HttpResponseStatusEnum.class),
-        any(HttpResponseStatusCodeCategory.class),
-        any(VeniceResponseStatusCategory.class),
-        anyInt());
-    // OTel value size NOT recorded (valueSize=0, guard: valueSize > 0)
-    verify(stats, never()).recordValueSizeInByteOtelOnly(
-        any(HttpResponseStatusEnum.class),
-        any(HttpResponseStatusCodeCategory.class),
-        any(VeniceResponseStatusCategory.class),
-        anyInt());
   }
 
   /**
-   * I2: Verify ComputeResponseStatsWithSizeProfiling.merge() correctly merges compute fields
+   * Verify ComputeResponseStatsWithSizeProfiling.merge() correctly merges compute fields
    * and totalValueSize from the parent ComputeResponseStats.
    */
   @Test
@@ -659,7 +683,11 @@ public class ServerStatsContextTest {
     // Verify merged stats record correctly — recordMetrics calls recordUnmergedMetrics internally,
     // so per-key sizes from stats1 are also recorded here.
     ServerHttpRequestStats mockStats = mock(ServerHttpRequestStats.class);
-    stats1.recordMetrics(mockStats);
+    stats1.recordMetrics(
+        mockStats,
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS);
 
     // dotProductCount: 5 + 10 = 15
     verify(mockStats).recordDotProductCount(15);
@@ -671,7 +699,15 @@ public class ServerStatsContextTest {
     // Per-key sizes from stats1 are recorded via recordUnmergedMetrics (called by recordMetrics)
     verify(mockStats).recordKeySizeInByte(10);
     verify(mockStats).recordKeySizeInByte(20);
-    verify(mockStats).recordValueSizeInByte(100);
-    verify(mockStats).recordValueSizeInByte(200);
+    verify(mockStats).recordValueSizeInByte(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS,
+        100);
+    verify(mockStats).recordValueSizeInByte(
+        HttpResponseStatusEnum.OK,
+        HttpResponseStatusCodeCategory.SUCCESS,
+        VeniceResponseStatusCategory.SUCCESS,
+        200);
   }
 }

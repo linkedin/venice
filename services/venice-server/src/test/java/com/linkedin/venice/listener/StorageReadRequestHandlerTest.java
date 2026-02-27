@@ -111,6 +111,9 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -474,7 +477,12 @@ public class StorageReadRequestHandlerTest {
       }
 
       ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
-      multiGetResponseWrapper.getStatsRecorder().recordMetrics(stats);
+      multiGetResponseWrapper.getStatsRecorder()
+          .recordMetrics(
+              stats,
+              HttpResponseStatusEnum.OK,
+              HttpResponseStatusCodeCategory.SUCCESS,
+              VeniceResponseStatusCategory.SUCCESS);
       if (largeValue.config) {
         /**
          * The assertion below can catch an issue where metrics are inaccurate during parallel batch gets. This was due
@@ -773,7 +781,12 @@ public class StorageReadRequestHandlerTest {
       double expectedReadComputeEfficiency = (double) valueBytes.length / (double) expectedReadComputeOutputSize;
 
       ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
-      computeResponse.getStatsRecorder().recordMetrics(stats);
+      computeResponse.getStatsRecorder()
+          .recordMetrics(
+              stats,
+              HttpResponseStatusEnum.OK,
+              HttpResponseStatusCodeCategory.SUCCESS,
+              VeniceResponseStatusCategory.SUCCESS);
       verify(stats).recordDotProductCount(1);
       verify(stats).recordHadamardProductCount(1);
       verify(stats).recordReadComputeEfficiency(expectedReadComputeEfficiency);
