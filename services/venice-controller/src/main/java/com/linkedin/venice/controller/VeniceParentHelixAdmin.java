@@ -10,6 +10,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_DB_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
@@ -55,6 +56,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONER_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PREVIOUS_CURRENT_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
@@ -347,7 +349,7 @@ public class VeniceParentHelixAdmin implements Admin {
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
   private final Map<String, VeniceWriter<byte[], byte[], byte[]>> veniceWriterMap;
-  private final AdminTopicMetadataAccessor adminTopicMetadataAccessor;
+  private volatile AdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private final byte[] emptyKeyByteArr = new byte[0];
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -1810,9 +1812,6 @@ public class VeniceParentHelixAdmin implements Admin {
         return version;
       }
 
-      boolean isExistingPushJobARepush = Version.isPushIdRePush(existingPushJobId);
-      boolean isIncomingPushJobARepush = Version.isPushIdRePush(pushJobId);
-
       // If version swap is enabled, do not check for lingering push as user may swap at much later time.
       if (!version.isVersionSwapDeferred() && getLingeringStoreVersionChecker()
           .isStoreVersionLingering(store, version, timer, this, requesterCert, identityParser)) {
@@ -1837,14 +1836,12 @@ public class VeniceParentHelixAdmin implements Admin {
               version.getCreatedTime());
           killOfflinePush(clusterName, currentPushTopic.get(), true);
         }
-      } else if (isExistingPushJobARepush && !pushType.isIncremental() && !isIncomingPushJobARepush) {
-        // Inc push policy INCREMENTAL_PUSH_SAME_AS_REAL_TIME with target version filtering is deprecated and not going
-        // to be used.
-
-        // Kill the existing job if incoming push type is not an inc push and also not a repush job.
+      } else if (Version.canIncomingPushKillExistingPush(existingPushJobId, pushJobId, pushType)) {
+        // Kill the existing system push (repush or compliance push) if incoming push is a user-initiated push.
+        // This allows user-initiated pushes to preempt system pushes.
         LOGGER.info(
-            "Found running repush job with push id: {} and incoming push is a batch job or stream reprocessing "
-                + "job with push id: {}. Killing the repush job for store: {}",
+            "Found running system push job (repush/compliance) with push id: {} and incoming push is a "
+                + "user-initiated batch job or stream reprocessing job with push id: {}. Killing the system push for store: {}",
             existingPushJobId,
             pushJobId,
             storeName);
@@ -3084,6 +3081,14 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_IN_SERVER_ENABLED))
           .orElseGet(currStore::getBlobTransferInServerEnabled);
 
+      setStore.blobDbEnabled = params.getBlobDbEnabled()
+          .map(addToUpdatedConfigList(updatedConfigsList, BLOB_DB_ENABLED))
+          .orElseGet(currStore::getBlobDbEnabled);
+
+      setStore.previousCurrentVersion = params.getPreviousCurrentVersion()
+          .map(addToUpdatedConfigList(updatedConfigsList, PREVIOUS_CURRENT_VERSION))
+          .orElseGet(currStore::getPreviousCurrentVersion);
+
       setStore.separateRealTimeTopicEnabled =
           separateRealTimeTopicEnabled.map(addToUpdatedConfigList(updatedConfigsList, SEPARATE_REAL_TIME_TOPIC_ENABLED))
               .orElseGet(currStore::isSeparateRealTimeTopicEnabled);
@@ -3677,8 +3682,15 @@ public class VeniceParentHelixAdmin implements Admin {
       final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
       Schema existingValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
 
+      // Update superset schema if:
+      // 1. Compute is enabled (existing behavior), OR
+      // 2. A superset schema already exists (always keep it updated even if compute is disabled)
+      // Check if a superset schema already exists for this store
       final boolean doUpdateSupersetSchemaID;
-      if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
+      boolean supersetSchemaAlreadyExists =
+          store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID;
+      if (existingValueSchema != null
+          && (store.isReadComputationEnabled() || store.isWriteComputationEnabled() || supersetSchemaAlreadyExists)) {
         SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
         Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();
@@ -6360,5 +6372,10 @@ public class VeniceParentHelixAdmin implements Admin {
   @VisibleForTesting
   public AdminOperationSerializer getAdminOperationSerializer() {
     return adminOperationSerializer;
+  }
+
+  @VisibleForTesting
+  void setAdminTopicMetadataAccessor(AdminTopicMetadataAccessor accessor) {
+    this.adminTopicMetadataAccessor = accessor;
   }
 }

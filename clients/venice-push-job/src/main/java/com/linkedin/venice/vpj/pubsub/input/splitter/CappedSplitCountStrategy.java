@@ -27,10 +27,8 @@ public class CappedSplitCountStrategy implements PubSubTopicPartitionSplitStrate
     TopicManager topicManager = splitRequest.getTopicManager();
     int maxSplits = Math.max(1, splitRequest.getMaxSplits()); // ensure >= 1
 
-    PubSubPosition startPosition = topicManager.getStartPositionsForPartitionWithRetries(pubSubTopicPartition);
-    PubSubPosition endPosition = topicManager.getEndPositionsForPartitionWithRetries(pubSubTopicPartition);
-
-    long numberOfRecords = topicManager.diffPosition(pubSubTopicPartition, endPosition, startPosition);
+    PubSubPosition startPosition = splitRequest.getStartPosition();
+    long numberOfRecords = splitRequest.getNumberOfRecords();
     if (numberOfRecords <= 0) {
       return Collections.emptyList();
     }
@@ -59,7 +57,7 @@ public class CappedSplitCountStrategy implements PubSubTopicPartitionSplitStrate
               thisSplitCount,
               i,
               startOffset));
-      LOGGER.info(
+      LOGGER.debug(
           "Created split-{} for TP: {} record count: {}, start: {}, end: {}",
           i,
           pubSubTopicPartition,
@@ -70,6 +68,8 @@ public class CappedSplitCountStrategy implements PubSubTopicPartitionSplitStrate
       startOffset += thisSplitCount;
     }
 
+    LOGGER
+        .info("Created {} splits for TP: {} with {} total records", out.size(), pubSubTopicPartition, numberOfRecords);
     return out;
   }
 }

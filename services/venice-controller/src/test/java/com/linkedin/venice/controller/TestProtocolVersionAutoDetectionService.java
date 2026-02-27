@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
@@ -11,6 +13,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
@@ -20,7 +24,17 @@ import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionController
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
+import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.TestUtils;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.metrics.data.HistogramPointData;
+import io.opentelemetry.sdk.metrics.data.LongPointData;
+import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -53,6 +67,9 @@ public class TestProtocolVersionAutoDetectionService {
   private static final String REGION_DC_1 = "dc1";
   private static final String REGION_DC_2 = "dc2";
   private static final long DEFAULT_SLEEP_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
+  private static final String TEST_METRIC_PREFIX = "controller";
+  private InMemoryMetricReader inMemoryMetricReader;
+  private VeniceMetricsRepository veniceMetricsRepository;
 
   @BeforeMethod(alwaysRun = true)
   public void setUp() {
@@ -108,6 +125,17 @@ public class TestProtocolVersionAutoDetectionService {
         .thenReturn(getAdminOperationProtocolVersionResponse(REGION_DC_2, CLUSTER_VENICE_0));
   }
 
+  private ProtocolVersionAutoDetectionStats createRealStats(String clusterName) {
+    inMemoryMetricReader = InMemoryMetricReader.create();
+    veniceMetricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setMetricEntities(CONTROLLER_SERVICE_METRIC_ENTITIES)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .build());
+    return new ProtocolVersionAutoDetectionStats(veniceMetricsRepository, clusterName);
+  }
+
   @Test
   public void testProtocolVersionDetection() throws Exception {
     AdminMetadata adminTopicMetadata = new AdminMetadata();
@@ -116,18 +144,48 @@ public class TestProtocolVersionAutoDetectionService {
     adminTopicMetadata.setAdminOperationProtocolVersion(80L);
     doReturn(adminTopicMetadata).when(admin).getAdminTopicMetadata(clusterName, Optional.empty());
 
+    ProtocolVersionAutoDetectionStats realStats = createRealStats(clusterName);
     ProtocolVersionAutoDetectionService localProtocolVersionAutoDetectionService =
-        new ProtocolVersionAutoDetectionService(
-            clusterName,
-            admin,
-            mock(ProtocolVersionAutoDetectionStats.class),
-            DEFAULT_SLEEP_INTERVAL_MS);
+        new ProtocolVersionAutoDetectionService(clusterName, admin, realStats, DEFAULT_SLEEP_INTERVAL_MS);
 
     localProtocolVersionAutoDetectionService.startInner();
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(admin, atLeastOnce()).getAdminOperationVersionFromControllers(clusterName);
       verify(adminConsumerService, atLeastOnce()).updateAdminOperationProtocolVersion(clusterName, 1L);
+
+      // Validate Tehuti metrics are recorded
+      String tehutiResourceName = ".admin_operation_protocol_version_auto_detection_service_" + clusterName;
+      String errorMetricName =
+          AbstractVeniceStats.getSensorFullName(tehutiResourceName, "protocol_version_auto_detection_error") + ".Gauge";
+      assertNotNull(
+          veniceMetricsRepository.getMetric(errorMetricName),
+          "Tehuti error metric should exist: " + errorMetricName);
+
+      String latencyMetricName =
+          AbstractVeniceStats.getSensorFullName(tehutiResourceName, "protocol_version_auto_detection_latency") + ".Avg";
+      assertNotNull(
+          veniceMetricsRepository.getMetric(latencyMetricName),
+          "Tehuti latency metric should exist: " + latencyMetricName);
+      assertTrue(veniceMetricsRepository.getMetric(latencyMetricName).value() > 0, "Tehuti latency should be > 0");
+
+      // Validate OTel metrics are recorded
+      Attributes clusterAttrs =
+          Attributes.builder().put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName).build();
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+
+      LongPointData gaugeData = OpenTelemetryDataTestUtils.getLongPointDataFromGauge(
+          metricsData,
+          "protocol_version_auto_detection.consecutive_failure_count",
+          TEST_METRIC_PREFIX,
+          clusterAttrs);
+      assertNotNull(gaugeData, "OTel failure count gauge should exist");
+
+      HistogramPointData histogramData = OpenTelemetryDataTestUtils
+          .getHistogramPointData(metricsData, "protocol_version_auto_detection.time", TEST_METRIC_PREFIX, clusterAttrs);
+      assertNotNull(histogramData, "OTel detection time histogram should exist");
+      assertTrue(histogramData.getCount() >= 1, "Should have at least 1 latency recording");
+      assertTrue(histogramData.getSum() > 0, "OTel latency sum should be > 0");
     });
 
     localProtocolVersionAutoDetectionService.stopInner();
@@ -142,18 +200,48 @@ public class TestProtocolVersionAutoDetectionService {
 
     doReturn(adminMetadata).when(admin).getAdminTopicMetadata(clusterName, Optional.empty());
 
+    ProtocolVersionAutoDetectionStats realStats = createRealStats(clusterName);
     ProtocolVersionAutoDetectionService localProtocolVersionAutoDetectionService =
-        new ProtocolVersionAutoDetectionService(
-            clusterName,
-            admin,
-            mock(ProtocolVersionAutoDetectionStats.class),
-            DEFAULT_SLEEP_INTERVAL_MS);
+        new ProtocolVersionAutoDetectionService(clusterName, admin, realStats, DEFAULT_SLEEP_INTERVAL_MS);
 
     localProtocolVersionAutoDetectionService.startInner();
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       verify(admin, atLeastOnce()).getAdminOperationVersionFromControllers(clusterName);
       verify(adminConsumerService, never()).updateAdminOperationProtocolVersion(anyString(), anyLong());
+
+      // Validate Tehuti metrics are recorded
+      String tehutiResourceName = ".admin_operation_protocol_version_auto_detection_service_" + clusterName;
+      String errorMetricName =
+          AbstractVeniceStats.getSensorFullName(tehutiResourceName, "protocol_version_auto_detection_error") + ".Gauge";
+      assertNotNull(
+          veniceMetricsRepository.getMetric(errorMetricName),
+          "Tehuti error metric should exist: " + errorMetricName);
+
+      String latencyMetricName =
+          AbstractVeniceStats.getSensorFullName(tehutiResourceName, "protocol_version_auto_detection_latency") + ".Avg";
+      assertNotNull(
+          veniceMetricsRepository.getMetric(latencyMetricName),
+          "Tehuti latency metric should exist: " + latencyMetricName);
+      assertTrue(veniceMetricsRepository.getMetric(latencyMetricName).value() > 0, "Tehuti latency should be > 0");
+
+      // Validate OTel metrics are recorded
+      Attributes clusterAttrs =
+          Attributes.builder().put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName).build();
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+
+      LongPointData gaugeData = OpenTelemetryDataTestUtils.getLongPointDataFromGauge(
+          metricsData,
+          "protocol_version_auto_detection.consecutive_failure_count",
+          TEST_METRIC_PREFIX,
+          clusterAttrs);
+      assertNotNull(gaugeData, "OTel failure count gauge should exist");
+
+      HistogramPointData histogramData = OpenTelemetryDataTestUtils
+          .getHistogramPointData(metricsData, "protocol_version_auto_detection.time", TEST_METRIC_PREFIX, clusterAttrs);
+      assertNotNull(histogramData, "OTel detection time histogram should exist");
+      assertTrue(histogramData.getCount() >= 1, "Should have at least 1 latency recording");
+      assertTrue(histogramData.getSum() > 0, "OTel latency sum should be > 0");
     });
 
     localProtocolVersionAutoDetectionService.stopInner();

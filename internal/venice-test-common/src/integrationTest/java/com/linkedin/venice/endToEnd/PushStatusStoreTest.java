@@ -53,7 +53,6 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -143,14 +142,13 @@ public class PushStatusStoreTest {
     return storeName;
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS * 2)
-  public void testKafkaPushJob(boolean isIsolated) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT_MS * 2)
+  public void testKafkaPushJob() throws Exception {
     Properties vpjProperties = getVPJProperties();
     // setup initial version
     runVPJ(vpjProperties, 1, cluster);
 
-    Map<String, Object> extraBackendConfigMap =
-        isIsolated ? TestUtils.getIngestionIsolationPropertyMap() : new HashMap<>();
+    Map<String, Object> extraBackendConfigMap = new HashMap<>();
     extraBackendConfigMap.put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true);
     extraBackendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1);
     extraBackendConfigMap.put(PUSH_STATUS_STORE_ENABLED, true);

@@ -246,7 +246,7 @@ public class GrpcTransportClient extends InternalTransportClient {
 
     @Override
     public void onNext(VeniceServerResponse value) {
-      if (value.getErrorCode() != VeniceReadResponseStatus.OK) {
+      if (value.getErrorCode() != VeniceReadResponseStatus.OK.getCode()) {
         handleResponseError(value);
         return;
       }
@@ -288,21 +288,16 @@ public class GrpcTransportClient extends InternalTransportClient {
       String errorMessage = response.getErrorMessage();
       Exception exception;
 
-      switch (statusCode) {
-        case VeniceReadResponseStatus.BAD_REQUEST:
-          exception = new VeniceClientHttpException(errorMessage, statusCode);
-          break;
-        case VeniceReadResponseStatus.TOO_MANY_REQUESTS:
-          exception = new VeniceClientRateExceededException(errorMessage);
-          break;
-        case VeniceReadResponseStatus.KEY_NOT_FOUND:
-          exception = null;
-          break;
-        default:
-          exception = new VeniceClientException(
-              String
-                  .format("An unexpected error occurred with status code: %d, message: %s", statusCode, errorMessage));
-          break;
+      VeniceReadResponseStatus responseStatus = VeniceReadResponseStatus.fromCode(statusCode);
+      if (responseStatus == VeniceReadResponseStatus.BAD_REQUEST) {
+        exception = new VeniceClientHttpException(errorMessage, statusCode);
+      } else if (responseStatus == VeniceReadResponseStatus.TOO_MANY_REQUESTS) {
+        exception = new VeniceClientRateExceededException(errorMessage);
+      } else if (responseStatus == VeniceReadResponseStatus.KEY_NOT_FOUND) {
+        exception = null;
+      } else {
+        exception = new VeniceClientException(
+            String.format("An unexpected error occurred with status code: %d, message: %s", statusCode, errorMessage));
       }
 
       if (exception != null) {

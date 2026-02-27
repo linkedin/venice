@@ -1,56 +1,18 @@
 package com.linkedin.venice.integration.utils;
 
-import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelStats.SERVER_METRIC_ENTITIES;
+import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_OPTIONS_USE_DIRECT_READS;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES;
-import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
-import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
-import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
-import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
-import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
-import static com.linkedin.venice.ConfigKeys.GRPC_SERVER_WORKER_THREAD_COUNT;
-import static com.linkedin.venice.ConfigKeys.KAFKA_READ_CYCLE_DELAY_MS;
-import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
-import static com.linkedin.venice.ConfigKeys.LOCAL_CONTROLLER_D2_SERVICE_NAME;
-import static com.linkedin.venice.ConfigKeys.LOCAL_D2_ZK_HOST;
-import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
-import static com.linkedin.venice.ConfigKeys.MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER;
-import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
-import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP;
-import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
-import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG;
-import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_STORAGE_THREAD_NUM;
-import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
-import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper.addKafkaClusterIDMappingToServerConfigs;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_ENABLED;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
+import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -61,6 +23,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.server.VeniceServerContext;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
@@ -74,6 +37,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
+import io.tehuti.metrics.JmxReporter;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
@@ -103,7 +67,7 @@ import org.testng.Assert;
 public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerWrapper.class);
   public static final String SERVICE_NAME = VeniceComponent.SERVER.getName();
-  private static final String SERVICE_METRIC_PREFIX = "server";
+  public static final String SERVICE_METRIC_PREFIX = "server";
 
   /**
    *  Possible config options which are not included in {@link com.linkedin.venice.ConfigKeys}.
@@ -282,8 +246,15 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000)
           .put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 5000)
           .put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true)
+          .put(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES, true)
+          .put(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES, true)
           .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 512 * 1024 * 1024L)
           .put(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 128 * 1024 * 1024L)
+          .put(
+              SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY,
+              KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION.name())
+          .put(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, true)
+          .put(SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED, true)
 
           /**
            * Experimental mode... overriding the main code default to take it through its paces in integration tests.
@@ -294,7 +265,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
               IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL)
           .put(SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS, 1)
           .put(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, serverDeleteUnassignedPartitionsOnStartup)
-          .put(OTEL_VENICE_METRICS_ENABLED, Boolean.TRUE.toString());
+          .put(OTEL_VENICE_METRICS_ENABLED, Boolean.TRUE.toString())
+          .put(SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED, Boolean.TRUE.toString());
       if (sslToKafka) {
         serverPropsBuilder.put(PUBSUB_SECURITY_PROTOCOL_LEGACY, PubSubSecurityProtocol.SSL.name());
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
@@ -547,6 +519,13 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     }
   }
 
+  public Process getServerProcess() {
+    if (!forkServer || serverProcess == null) {
+      throw new VeniceException("getServerProcess is only supported in forked mode with an active process");
+    }
+    return serverProcess;
+  }
+
   @Override
   public MetricsRepository getMetricsRepository() {
     if (!forkServer) {
@@ -567,13 +546,15 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   private static VeniceMetricsRepository getVeniceMetricRepositoryForServer(VeniceProperties serverProps) {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
-    VeniceMetricsRepository veniceMetricsRepository = VeniceMetricsRepository.getVeniceMetricsRepository(
-        SERVICE_NAME,
-        SERVICE_METRIC_PREFIX,
-        SERVER_METRIC_ENTITIES,
-        serverProps.getAsMap(),
-        true);
-    veniceMetricsRepository.getVeniceMetricsConfig().setOtelAdditionalMetricsReader(inMemoryMetricReader);
+    VeniceMetricsRepository veniceMetricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(SERVICE_NAME)
+            .setMetricPrefix(SERVICE_METRIC_PREFIX)
+            .setMetricEntities(SERVER_METRIC_ENTITIES)
+            .extractAndSetOtelConfigs(serverProps.getAsMap())
+            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
+            .build());
+    veniceMetricsRepository.addReporter(new JmxReporter(SERVICE_NAME));
     return veniceMetricsRepository;
   }
 

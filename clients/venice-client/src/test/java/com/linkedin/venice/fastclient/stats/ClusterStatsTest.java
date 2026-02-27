@@ -10,6 +10,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromGauge;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
@@ -18,6 +19,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 import org.testng.annotations.Test;
 
@@ -193,5 +195,26 @@ public class ClusterStatsTest {
         expectedAttributes,
         STORE_VERSION_CURRENT.getMetricEntity().getMetricName(),
         FAST_CLIENT.getMetricsPrefix());
+  }
+
+  @Test
+  public void testClusterTehutiMetricNameEnum() {
+    Map<ClusterStats.ClusterTehutiMetricName, String> expectedNames = new HashMap<>();
+    expectedNames.put(ClusterStats.ClusterTehutiMetricName.VERSION_UPDATE_FAILURE, "version_update_failure");
+    expectedNames.put(ClusterStats.ClusterTehutiMetricName.CURRENT_VERSION, "current_version");
+    expectedNames.put(ClusterStats.ClusterTehutiMetricName.BLOCKED_INSTANCE_COUNT, "blocked_instance_count");
+    expectedNames.put(ClusterStats.ClusterTehutiMetricName.UNHEALTHY_INSTANCE_COUNT, "unhealthy_instance_count");
+    expectedNames.put(ClusterStats.ClusterTehutiMetricName.OVERLOADED_INSTANCE_COUNT, "overloaded_instance_count");
+
+    assertEquals(
+        ClusterStats.ClusterTehutiMetricName.values().length,
+        expectedNames.size(),
+        "New ClusterTehutiMetricName values were added but not included in this test");
+
+    for (ClusterStats.ClusterTehutiMetricName enumValue: ClusterStats.ClusterTehutiMetricName.values()) {
+      String expectedName = expectedNames.get(enumValue);
+      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
+      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
+    }
   }
 }

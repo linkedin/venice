@@ -1,6 +1,7 @@
 package com.linkedin.venice.fastclient;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
@@ -111,6 +112,11 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         BatchGetConfigUtils.parseRetryThresholdForBatchGet(longTailComputeRangeBasedRetryThresholdInMilliSeconds);
   }
 
+  @VisibleForTesting
+  void setSingleKeyLongTailRetryManager(RetryManager retryManager) {
+    this.singleKeyLongTailRetryManager = retryManager;
+  }
+
   enum RetryType {
     LONG_TAIL_RETRY, ERROR_RETRY
   }
@@ -186,6 +192,16 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
             }
           }
         });
+      } else {
+        // Budget exhausted: chain retryFuture to originalRequestFuture so the original error
+        // propagates instead of being masked by a synthetic "budget exhausted" exception.
+        originalRequestFuture.whenComplete((origValue, origThrowable) -> {
+          if (origThrowable != null) {
+            retryFuture.completeExceptionally(origThrowable);
+          } else {
+            retryFuture.complete(origValue);
+          }
+        });
       }
     };
 
@@ -213,6 +229,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           timeoutFuture.cancel();
           if (!isExceptionCausedByTooManyRequests(throwable)) {
             new RetryRunnable(requestContext, RetryType.ERROR_RETRY, retryTask).run();
+          } else {
+            // 429 received before long-tail fired: retryTask won't run, complete retryFuture directly
+            retryFuture.completeExceptionally(throwable);
           }
         }
       }

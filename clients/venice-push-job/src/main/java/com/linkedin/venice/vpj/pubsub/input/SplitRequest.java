@@ -2,6 +2,7 @@ package com.linkedin.venice.vpj.pubsub.input;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER;
 
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import java.time.Duration;
@@ -22,6 +23,11 @@ public final class SplitRequest {
   private final Long recordsPerSplit; // for FIXED_RECORD_COUNT
   private final Long timeWindowInMs; // for TIME_WINDOW
 
+  // Pre-fetched positions (batch-fetched by the planner to avoid per-partition network calls)
+  private final PubSubPosition startPosition;
+  private final PubSubPosition endPosition;
+  private final Long numberOfRecords;
+
   private SplitRequest(Builder builder) {
     this.pubSubTopicPartition = builder.pubSubTopicPartition;
     this.topicManager = builder.topicManager;
@@ -29,6 +35,9 @@ public final class SplitRequest {
     this.maxSplits = builder.maxSplits;
     this.recordsPerSplit = builder.recordsPerSplit;
     this.timeWindowInMs = builder.timeWindowInMs;
+    this.startPosition = builder.startPosition;
+    this.endPosition = builder.endPosition;
+    this.numberOfRecords = builder.numberOfRecords;
   }
 
   public PubSubTopicPartition getPubSubTopicPartition() {
@@ -55,11 +64,24 @@ public final class SplitRequest {
     return timeWindowInMs;
   }
 
+  public PubSubPosition getStartPosition() {
+    return startPosition;
+  }
+
+  public PubSubPosition getEndPosition() {
+    return endPosition;
+  }
+
+  public Long getNumberOfRecords() {
+    return numberOfRecords;
+  }
+
   @Override
   public String toString() {
     return "SplitRequest{" + "pubSubTopicPartition=" + pubSubTopicPartition + ", partitionSplitStrategy="
         + partitionSplitStrategy + ", maxSplits=" + maxSplits + ", recordsPerSplit=" + recordsPerSplit
-        + ", timeWindowInMs=" + timeWindowInMs + '}';
+        + ", timeWindowInMs=" + timeWindowInMs + ", startPosition=" + startPosition + ", endPosition=" + endPosition
+        + ", numberOfRecords=" + numberOfRecords + '}';
   }
 
   public static final class Builder {
@@ -71,6 +93,10 @@ public final class SplitRequest {
     private Integer maxSplits;
     private Long recordsPerSplit;
     private Long timeWindowInMs;
+
+    private PubSubPosition startPosition;
+    private PubSubPosition endPosition;
+    private Long numberOfRecords;
 
     public Builder() {
     }
@@ -108,10 +134,28 @@ public final class SplitRequest {
       return this;
     }
 
+    public Builder startPosition(PubSubPosition value) {
+      this.startPosition = value;
+      return this;
+    }
+
+    public Builder endPosition(PubSubPosition value) {
+      this.endPosition = value;
+      return this;
+    }
+
+    public Builder numberOfRecords(Long value) {
+      this.numberOfRecords = value;
+      return this;
+    }
+
     private void validate() {
       Objects.requireNonNull(pubSubTopicPartition, "pubSubTopicPartition");
       Objects.requireNonNull(topicManager, "topicManager");
       Objects.requireNonNull(partitionSplitStrategy, "partitionSplitStrategy");
+      Objects.requireNonNull(startPosition, "startPosition");
+      Objects.requireNonNull(endPosition, "endPosition");
+      Objects.requireNonNull(numberOfRecords, "numberOfRecords");
 
       switch (partitionSplitStrategy) {
         case CAPPED_SPLIT_COUNT:

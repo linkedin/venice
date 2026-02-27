@@ -46,7 +46,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.helix.PropertyKey;
@@ -337,20 +336,11 @@ public class StorageService extends AbstractVeniceService {
       int partitionId,
       Supplier<StoreVersionState> initialStoreVersionStateSupplier,
       StoragePartitionConfig storagePartitionConfig) {
-    LOGGER.info("Opening store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
+    LOGGER.info("Opening store for replica: {}", Utils.getReplicaId(storeConfig.getStoreVersionName(), partitionId));
     StorageEngine engine = openStore(storeConfig, initialStoreVersionStateSupplier);
     engine.addStoragePartition(storagePartitionConfig);
-    LOGGER.info("Opened store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
+    LOGGER.info("Opened store for replica: {}", Utils.getReplicaId(storeConfig.getStoreVersionName(), partitionId));
     return engine;
-  }
-
-  public BiConsumer<String, StoreVersionState> getStoreVersionStateSyncer() {
-    return (storeVersionName, storeVersionState) -> {
-      StorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storeVersionName);
-      if (storageEngine != null) {
-        storageEngine.updateStoreVersionStateCache(storeVersionState);
-      }
-    };
   }
 
   /**
@@ -524,16 +514,6 @@ public class StorageService extends AbstractVeniceService {
     for (StorageEngineFactory factory: persistenceTypeToStorageEngineFactoryMap.values()) {
       factory.removeStorageEnginePartition(kafkaTopic, partition);
     }
-  }
-
-  public synchronized void closeStorePartition(VeniceStoreVersionConfig storeConfig, int partition) {
-    String kafkaTopic = storeConfig.getStoreVersionName();
-    StorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
-    if (storageEngine == null) {
-      LOGGER.warn("Storage engine {} does not exist, ignoring close partition request.", kafkaTopic);
-      return;
-    }
-    storageEngine.closePartition(partition);
   }
 
   public synchronized void removeStorageEngine(String kafkaTopic) {

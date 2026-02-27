@@ -12,6 +12,7 @@ public class PubSubTopicConfiguration implements Cloneable {
   Long minLogCompactionLagMs;
   Optional<Long> maxLogCompactionLagMs;
   Optional<Integer> minInSyncReplicas;
+  private boolean useAlternativeBackend = false;
 
   public PubSubTopicConfiguration(
       Optional<Long> retentionInMs,
@@ -24,6 +25,17 @@ public class PubSubTopicConfiguration implements Cloneable {
     this.minInSyncReplicas = minInSyncReplicas;
     this.minLogCompactionLagMs = minLogCompactionLagMs;
     this.maxLogCompactionLagMs = maxLogCompactionLagMs;
+  }
+
+  public PubSubTopicConfiguration(
+      Optional<Long> retentionInMs,
+      boolean isLogCompacted,
+      Optional<Integer> minInSyncReplicas,
+      Long minLogCompactionLagMs,
+      Optional<Long> maxLogCompactionLagMs,
+      boolean useAlternativeBackend) {
+    this(retentionInMs, isLogCompacted, minInSyncReplicas, minLogCompactionLagMs, maxLogCompactionLagMs);
+    this.useAlternativeBackend = useAlternativeBackend;
   }
 
   /**
@@ -82,6 +94,10 @@ public class PubSubTopicConfiguration implements Cloneable {
     this.minLogCompactionLagMs = minLogCompactionLagMs;
   }
 
+  public boolean isUseAlternativeBackend() {
+    return useAlternativeBackend;
+  }
+
   public Optional<Long> getMaxLogCompactionLagMs() {
     return maxLogCompactionLagMs;
   }
@@ -96,12 +112,13 @@ public class PubSubTopicConfiguration implements Cloneable {
   @Override
   public String toString() {
     return String.format(
-        "TopicConfiguration(retentionInMs = %s, isLogCompacted = %s, minInSyncReplicas = %s, minLogCompactionLagMs = %s, maxLogCompactionLagMs = %s)",
+        "TopicConfiguration(retentionInMs = %s, isLogCompacted = %s, minInSyncReplicas = %s, minLogCompactionLagMs = %s, maxLogCompactionLagMs = %s, useAlternativeBackend = %s)",
         retentionInMs.isPresent() ? retentionInMs.get() : "not set",
         isLogCompacted,
         minInSyncReplicas.isPresent() ? minInSyncReplicas.get() : "not set",
         minLogCompactionLagMs,
-        maxLogCompactionLagMs.isPresent() ? maxLogCompactionLagMs.get() : " not set");
+        maxLogCompactionLagMs.isPresent() ? maxLogCompactionLagMs.get() : " not set",
+        useAlternativeBackend);
   }
 
   @Override

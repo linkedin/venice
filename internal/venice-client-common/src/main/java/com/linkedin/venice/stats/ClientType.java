@@ -5,11 +5,9 @@ public enum ClientType {
   CHANGE_DATA_CAPTURE_CLIENT("change-data-capture-client");
 
   private final String name;
-  private final String otelMetricsPrefix;
 
   ClientType(String clientName) {
     this.name = clientName;
-    this.otelMetricsPrefix = this.name().toLowerCase();
   }
 
   public String getName() {
@@ -17,7 +15,7 @@ public enum ClientType {
   }
 
   public String getMetricsPrefix() {
-    return otelMetricsPrefix;
+    return name().toLowerCase();
   }
 
   public static boolean isDavinciClient(ClientType clientType) {

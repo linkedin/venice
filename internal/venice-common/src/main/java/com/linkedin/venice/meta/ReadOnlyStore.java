@@ -539,6 +539,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public String getBlobDbEnabled() {
+      return this.delegate.getBlobDbEnabled();
+    }
+
+    @Override
+    public void setBlobDbEnabled(String blobDbEnabled) {
+      throw new UnsupportedOperationException("BlobDB not supported");
+    }
+
+    @Override
     public boolean isUseVersionLevelIncrementalPushEnabled() {
       return this.delegate.isUseVersionLevelIncrementalPushEnabled();
     }
@@ -706,6 +716,16 @@ public class ReadOnlyStore implements Store {
 
     @Override
     public void setRmdVersionId(int replicationMetadataVersionId) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int getPreviousCurrentVersion() {
+      return this.delegate.getPreviousCurrentVersion();
+    }
+
+    @Override
+    public void setPreviousCurrentVersion(int previousCurrentVersion) {
       throw new UnsupportedOperationException();
     }
 
@@ -1037,6 +1057,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setStorageNodeReadQuotaEnabled(isStorageNodeReadQuotaEnabled());
     storeProperties.setBlobTransferEnabled(isBlobTransferEnabled());
     storeProperties.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
+    storeProperties.setBlobDbEnabled(getBlobDbEnabled());
     storeProperties.setNearlineProducerCompressionEnabled(isNearlineProducerCompressionEnabled());
     storeProperties.setNearlineProducerCountPerWriter(getNearlineProducerCountPerWriter());
     storeProperties.setTargetSwapRegion(getTargetSwapRegion());
@@ -1045,6 +1066,9 @@ public class ReadOnlyStore implements Store {
     storeProperties.setStoreLifecycleHooks(convertStoreLifecycleHooks(getStoreLifecycleHooks()));
     storeProperties.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
     storeProperties.setKeyUrnFields(getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
+    storeProperties.setPreviousCurrentVersion(getPreviousCurrentVersion());
+    // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Store interface
+    storeProperties.setBlobDbEnabled("NOT_SPECIFIED");
 
     return storeProperties;
   }
@@ -1651,6 +1675,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void setBlobDbEnabled(String blobDbEnabled) {
+    throw new UnsupportedOperationException("BlobDB not supported");
+  }
+
+  @Override
+  public String getBlobDbEnabled() {
+    return this.delegate.getBlobDbEnabled();
+  }
+
+  @Override
   public boolean isNearlineProducerCompressionEnabled() {
     return delegate.isNearlineProducerCompressionEnabled();
   }
@@ -1763,6 +1797,16 @@ public class ReadOnlyStore implements Store {
   @Override
   public List<String> getKeyUrnFields() {
     return delegate.getKeyUrnFields();
+  }
+
+  @Override
+  public int getPreviousCurrentVersion() {
+    return this.delegate.getPreviousCurrentVersion();
+  }
+
+  @Override
+  public void setPreviousCurrentVersion(int previousCurrentVersion) {
+    throw new UnsupportedOperationException();
   }
 
   @Override
@@ -1904,6 +1948,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setSeparateRealTimeTopicEnabled(version.isSeparateRealTimeTopicEnabled());
     storeVersion.setBlobTransferEnabled(version.isBlobTransferEnabled());
     storeVersion.setBlobTransferInServerEnabled(version.getBlobTransferInServerEnabled());
+    storeVersion.setBlobDbEnabled(version.getBlobDbEnabled());
     storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
     storeVersion.setHybridConfig(convertHybridStoreConfig(version.getHybridStoreConfig()));
     storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());
@@ -1920,6 +1965,9 @@ public class ReadOnlyStore implements Store {
     storeVersion.setKeyUrnCompressionEnabled(version.isKeyUrnCompressionEnabled());
     storeVersion.setKeyUrnFields(version.getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
     storeVersion.setRepushTtlSeconds(version.getRepushTtlSeconds());
+    storeVersion.setPreviousCurrentVersion(version.getPreviousCurrentVersion());
+    // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Version interface
+    storeVersion.setBlobDbEnabled("NOT_SPECIFIED");
 
     return storeVersion;
   }

@@ -7,6 +7,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_SCHE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_DB_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
@@ -54,6 +55,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONER_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PREVIOUS_CURRENT_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
@@ -162,6 +164,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
             .setBlobTransferInServerEnabled(
                 ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobTransferInServerEnabled()))
+            .setBlobDbEnabled(ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobDbEnabled()))
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
@@ -814,6 +817,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getString(BLOB_TRANSFER_IN_SERVER_ENABLED);
   }
 
+  public UpdateStoreQueryParams setBlobDbEnabled(ConfigCommonUtils.ActivationState blobDbEnabled) {
+    return putString(BLOB_DB_ENABLED, blobDbEnabled.name());
+  }
+
+  public Optional<String> getBlobDbEnabled() {
+    return getString(BLOB_DB_ENABLED);
+  }
+
   public UpdateStoreQueryParams setNearlineProducerCompressionEnabled(boolean compressionEnabled) {
     return putBoolean(NEARLINE_PRODUCER_COMPRESSION_ENABLED, compressionEnabled);
   }
@@ -916,6 +927,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<List<String>> getKeyUrnFields() {
     return getStringList(KEY_URN_FIELDS);
+  }
+
+  public UpdateStoreQueryParams setPreviousCurrentVersion(int previousCurrentVersion) {
+    return putInteger(PREVIOUS_CURRENT_VERSION, previousCurrentVersion);
+  }
+
+  public Optional<Integer> getPreviousCurrentVersion() {
+    return getInteger(PREVIOUS_CURRENT_VERSION);
   }
 
   // ***************** above this line are getters and setters *****************

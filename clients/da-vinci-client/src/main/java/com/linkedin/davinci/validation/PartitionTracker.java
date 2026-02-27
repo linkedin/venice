@@ -35,10 +35,12 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -153,15 +155,15 @@ public class PartitionTracker {
   }
 
   public void setPartitionState(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
-    long minimumRequiredRecordProducerTimestamp =
-        maxAgeInMs == DISABLED ? DISABLED : offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
-    setPartitionState(type, offsetRecord.getProducerPartitionStateMap(), minimumRequiredRecordProducerTimestamp);
+    long earliestAllowableTimestamp =
+        maxAgeInMs == DISABLED ? DISABLED : offsetRecord.calculateLatestMessageTimeInMs() - maxAgeInMs;
+    setPartitionState(type, offsetRecord.getProducerPartitionStateMap(), earliestAllowableTimestamp);
   }
 
   public void setPartitionState(
       TopicType type,
       Map<CharSequence, ProducerPartitionState> producerPartitionStateMap,
-      long minimumRequiredRecordProducerTimestamp) {
+      long earliestAllowableTimestamp) {
     Iterator<Map.Entry<CharSequence, ProducerPartitionState>> iterator =
         producerPartitionStateMap.entrySet().iterator();
     Map.Entry<CharSequence, ProducerPartitionState> entry;
@@ -171,7 +173,7 @@ public class PartitionTracker {
       entry = iterator.next();
       producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
       producerPartitionState = entry.getValue();
-      if (producerPartitionState.messageTimestamp >= minimumRequiredRecordProducerTimestamp) {
+      if (producerPartitionState.messageTimestamp >= earliestAllowableTimestamp) {
         /**
          * This {@link producerPartitionState} is eligible to be retained, so we'll set the state in the
          * {@link PartitionTracker}.
@@ -210,9 +212,25 @@ public class PartitionTracker {
   /**
    * Clone the vtSegments and LCVP to the destination PartitionTracker. May be called concurrently.
    */
-  public void cloneVtProducerStates(PartitionTracker destProducerTracker) {
+  public void cloneVtProducerStates(PartitionTracker destProducerTracker, long maxAgeInMs) {
+    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
+    List<GUID> staleGuids = new ArrayList<>();
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
-      destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
+      if (entry.getValue().getLastRecordProducerTimestamp() >= earliestAllowableTimestamp) {
+        destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
+      } else {
+        staleGuids.add(entry.getKey()); // Collect stale GUIDs for removal
+      }
+    }
+    // Remove stale entries using map API
+    int removedCount = 0;
+    for (GUID guid: staleGuids) {
+      if (vtSegments.remove(guid) != null) {
+        removedCount++;
+      }
+    }
+    if (removedCount > 0 && !REDUNDANT_LOGGING_FILTER.isRedundantException(topicName + "-cloneVtProducerStates")) {
+      logger.info("event=globalRtDiv Removed {} stale VT producer state(s) for store {}", removedCount, topicName);
     }
     destProducerTracker.updateLatestConsumedVtPosition(latestConsumedVtPosition.get());
   }
@@ -220,17 +238,44 @@ public class PartitionTracker {
   /**
    * Clone the rtSegments to the destination PartitionTracker. Filter by brokerUrl. May be called concurrently.
    */
-  public void cloneRtProducerStates(PartitionTracker destProducerTracker, String brokerUrl) {
-    for (Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> entry: rtSegments.entrySet()) {
-      if (!brokerUrl.isEmpty() && !brokerUrl.equals(entry.getKey())) {
-        continue; // filter by brokerUrl if specified
+  public void cloneRtProducerStates(PartitionTracker destProducerTracker, String brokerUrl, long maxAgeInMs) {
+    long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
+    int removedCount = 0;
+    List<String> brokersToRemove = new ArrayList<>();
+    Iterator<Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>>> brokerIterator =
+        rtSegments.entrySet().iterator();
+    while (brokerIterator.hasNext()) {
+      Map.Entry<String, VeniceConcurrentHashMap<GUID, Segment>> broker2Segment = brokerIterator.next();
+      if (!brokerUrl.equals(broker2Segment.getKey())) {
+        continue; // filter by the specified brokerUrl
       }
-      for (Map.Entry<GUID, Segment> rtEntry: entry.getValue().entrySet()) {
-        destProducerTracker.setSegment(
-            TopicType.of(TopicType.REALTIME_TOPIC_TYPE, entry.getKey()),
-            rtEntry.getKey(),
-            new Segment(rtEntry.getValue()));
+
+      final VeniceConcurrentHashMap<GUID, Segment> rtEntries = broker2Segment.getValue();
+      List<GUID> guidsToRemove = new ArrayList<>();
+      for (Map.Entry<GUID, Segment> rtEntry: rtEntries.entrySet()) {
+        if (rtEntry.getValue().getLastRecordProducerTimestamp() >= earliestAllowableTimestamp) {
+          TopicType realTimeTopicType = TopicType.of(TopicType.REALTIME_TOPIC_TYPE, broker2Segment.getKey());
+          destProducerTracker.setSegment(realTimeTopicType, rtEntry.getKey(), new Segment(rtEntry.getValue()));
+        } else {
+          guidsToRemove.add(rtEntry.getKey()); // Collect stale GUIDs for removal
+        }
       }
+      // Remove stale entries using map API
+      for (GUID guid: guidsToRemove) {
+        if (rtEntries.remove(guid) != null) {
+          removedCount++;
+        }
+      }
+      if (broker2Segment.getValue().isEmpty()) {
+        brokersToRemove.add(broker2Segment.getKey());
+      }
+    }
+    // Remove empty broker entries using map API
+    for (String broker: brokersToRemove) {
+      rtSegments.remove(broker);
+    }
+    if (removedCount > 0 && !REDUNDANT_LOGGING_FILTER.isRedundantException(topicName + "-cloneRtProducerStates")) {
+      logger.info("event=globalRtDiv Removed {} stale RT producer state(s) for store {}", removedCount, topicName);
     }
   }
 
@@ -711,7 +756,7 @@ public class PartitionTracker {
   }
 
   void clearExpiredStateAndUpdateOffsetRecord(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
-    long minimumRequiredRecordProducerTimestamp = offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
+    long minimumRequiredRecordProducerTimestamp = offsetRecord.calculateLatestMessageTimeInMs() - maxAgeInMs;
     int numberOfClearedGUIDs = 0;
     Iterator<Map.Entry<GUID, Segment>> iterator = getSegments(type).entrySet().iterator();
     Map.Entry<GUID, Segment> entry;
@@ -747,14 +792,12 @@ public class PartitionTracker {
   }
 
   @VisibleForTesting
-  Map<String, Map<GUID, Segment>> getAllRtSegmentsForTesting() {
-    return rtSegments.entrySet()
-        .stream()
-        .collect(Collectors.toMap(Map.Entry::getKey, entry -> Collections.unmodifiableMap(entry.getValue())));
+  VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<GUID, Segment>> getRtSegmentsForTesting() {
+    return rtSegments;
   }
 
   @VisibleForTesting
-  Map<GUID, Segment> getVtSegmentsForTesting() {
+  VeniceConcurrentHashMap<GUID, Segment> getVtSegmentsForTesting() {
     return vtSegments;
   }
 

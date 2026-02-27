@@ -41,6 +41,41 @@ public class BlobTransferUtils {
     PLAIN_TABLE, BLOCK_BASED_TABLE
   }
 
+  public enum BlobTransferStatus {
+    /**
+     * Transfer is not started yet.
+     */
+    TRANSFER_NOT_STARTED,
+
+    /**
+     * Transfer has been initiated and is in progress.
+     * This is the initial state when blob transfer starts.
+     */
+    TRANSFER_STARTED,
+
+    /**
+     * Cancellation has been requested.
+     * - Cancellation flag set
+     * - Active channel closed
+     * - Waiting for transfer future to complete with cancellation exception
+     */
+    TRANSFER_CANCEL_REQUESTED,
+
+    /**
+     * Transfer was successfully cancelled.
+     * - Transfer future completed with VeniceBlobTransferCancelledException
+     * - Cancellation is confirmed complete
+     */
+    TRANSFER_CANCELLED,
+
+    /**
+     * Transfer completed successfully without cancellation.
+     * - Transfer future completed normally
+     * - No cancellation was requested
+     */
+    TRANSFER_COMPLETED
+  }
+
   /**
    * Check if the HttpResponse message is for metadata.
    * @param msg the HttpResponse message
@@ -183,20 +218,12 @@ public class BlobTransferUtils {
   /**
    * A config check to determine if blob transfer manager is enabled
    * @param backendConfig the Venice server config
-   * @param isIsolatedIngestionEnabled whether isolated ingestion is enabled
    * @return true if blob transfer manager is enabled, false otherwise
    */
-  public static boolean isBlobTransferManagerEnabled(
-      VeniceServerConfig backendConfig,
-      boolean isIsolatedIngestionEnabled) {
-    // Blob transfer feature and isolated ingestion feature are mutually exclusive
+  public static boolean isBlobTransferManagerEnabled(VeniceServerConfig backendConfig) {
     if (backendConfig.isBlobTransferManagerEnabled() && backendConfig.isBlobTransferSslEnabled()
         && backendConfig.isBlobTransferAclEnabled()) {
-      if (isIsolatedIngestionEnabled) {
-        throw new VeniceException("Blob transfer manager is not supported with isolated ingestion");
-      } else {
-        return true;
-      }
+      return true;
     } else if (backendConfig.isBlobTransferManagerEnabled()) {
       throw new VeniceException("Blob transfer manager is not supported without SSL and ACL enabled");
     }

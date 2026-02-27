@@ -23,6 +23,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
@@ -36,6 +37,7 @@ import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.Map;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -688,6 +690,36 @@ public class ClusterRouteStatsTest {
         expectedAttributesThrottled,
         ClientMetricEntity.ROUTE_REQUEST_REJECTION_RATIO.getMetricEntity().getMetricName(),
         otelMetricPrefix);
+  }
+
+  @Test
+  public void testRouteTehutiMetricNameEnum() {
+    Map<ClusterRouteStats.RouteTehutiMetricName, String> expectedNames = new HashMap<>();
+    expectedNames.put(ClusterRouteStats.RouteTehutiMetricName.HEALTHY_REQUEST_COUNT, "healthy_request_count");
+    expectedNames
+        .put(ClusterRouteStats.RouteTehutiMetricName.QUOTA_EXCEEDED_REQUEST_COUNT, "quota_exceeded_request_count");
+    expectedNames.put(
+        ClusterRouteStats.RouteTehutiMetricName.INTERNAL_SERVER_ERROR_REQUEST_COUNT,
+        "internal_server_error_request_count");
+    expectedNames.put(ClusterRouteStats.RouteTehutiMetricName.LEAKED_REQUEST_COUNT, "leaked_request_count");
+    expectedNames.put(
+        ClusterRouteStats.RouteTehutiMetricName.SERVICE_UNAVAILABLE_REQUEST_COUNT,
+        "service_unavailable_request_count");
+    expectedNames.put(ClusterRouteStats.RouteTehutiMetricName.OTHER_ERROR_REQUEST_COUNT, "other_error_request_count");
+    expectedNames.put(ClusterRouteStats.RouteTehutiMetricName.RESPONSE_WAITING_TIME, "response_waiting_time");
+    expectedNames.put(ClusterRouteStats.RouteTehutiMetricName.PENDING_REQUEST_COUNT, "pending_request_count");
+    expectedNames.put(ClusterRouteStats.RouteTehutiMetricName.REJECTION_RATIO, "rejection_ratio");
+
+    assertEquals(
+        ClusterRouteStats.RouteTehutiMetricName.values().length,
+        expectedNames.size(),
+        "New RouteTehutiMetricName values were added but not included in this test");
+
+    for (ClusterRouteStats.RouteTehutiMetricName enumValue: ClusterRouteStats.RouteTehutiMetricName.values()) {
+      String expectedName = expectedNames.get(enumValue);
+      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
+      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
+    }
   }
 
   private void verifyTehutiResponseWaitingTime(Map<String, ? extends Metric> metrics) {

@@ -16,6 +16,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -25,6 +26,7 @@ import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -253,5 +255,36 @@ public class FastClientStatsTest {
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .put(VENICE_REQUEST_REJECTION_REASON.getDimensionNameInDefaultFormat(), rejectionReason.getDimensionValue())
         .build();
+  }
+
+  @Test
+  public void testFastClientTehutiMetricNameEnum() {
+    Map<FastClientStats.FastClientTehutiMetricName, String> expectedNames = new HashMap<>();
+    expectedNames.put(FastClientStats.FastClientTehutiMetricName.LONG_TAIL_RETRY_REQUEST, "long_tail_retry_request");
+    expectedNames.put(FastClientStats.FastClientTehutiMetricName.ERROR_RETRY_REQUEST, "error_retry_request");
+    expectedNames.put(FastClientStats.FastClientTehutiMetricName.RETRY_REQUEST_WIN, "retry_request_win");
+    expectedNames.put(
+        FastClientStats.FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS,
+        "metadata_staleness_high_watermark_ms");
+    expectedNames.put(FastClientStats.FastClientTehutiMetricName.FANOUT_SIZE, "fanout_size");
+    expectedNames.put(FastClientStats.FastClientTehutiMetricName.RETRY_FANOUT_SIZE, "retry_fanout_size");
+    expectedNames.put(
+        FastClientStats.FastClientTehutiMetricName.NO_AVAILABLE_REPLICA_REQUEST_COUNT,
+        "no_available_replica_request_count");
+    expectedNames.put(
+        FastClientStats.FastClientTehutiMetricName.REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER,
+        "rejected_request_count_by_load_controller");
+    expectedNames.put(FastClientStats.FastClientTehutiMetricName.REJECTION_RATIO, "rejection_ratio");
+
+    assertEquals(
+        FastClientStats.FastClientTehutiMetricName.values().length,
+        expectedNames.size(),
+        "New FastClientTehutiMetricName values were added but not included in this test");
+
+    for (FastClientStats.FastClientTehutiMetricName enumValue: FastClientStats.FastClientTehutiMetricName.values()) {
+      String expectedName = expectedNames.get(enumValue);
+      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
+      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
+    }
   }
 }

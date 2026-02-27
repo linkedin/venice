@@ -100,6 +100,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
@@ -178,8 +179,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final StoreIngestionTaskFactory ingestionTaskFactory;
 
-  private final boolean isIsolatedIngestion;
-
   private final boolean isDaVinciClient;
 
   private final TopicManagerRepository topicManagerRepository;
@@ -242,7 +241,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Optional<HelixReadOnlyZKSharedSchemaRepository> zkSharedSchemaRepository,
       ICProvider icProvider,
-      boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
       boolean isDaVinciClient,
@@ -260,7 +258,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
     this.veniceConfigLoader = veniceConfigLoader;
-    this.isIsolatedIngestion = isIsolatedIngestion;
     this.isDaVinciClient = isDaVinciClient;
     this.partitionStateSerializer = partitionStateSerializer;
     this.compressorFactory = compressorFactory;
@@ -631,8 +628,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private StoreIngestionTask createStoreIngestionTask(
       VeniceStoreVersionConfig veniceStoreVersionConfig,
       int partitionId) {
-    String storeName = Version.parseStoreFromKafkaTopicName(veniceStoreVersionConfig.getStoreVersionName());
-    int versionNumber = Version.parseVersionFromKafkaTopicName(veniceStoreVersionConfig.getStoreVersionName());
+    String topicName = veniceStoreVersionConfig.getStoreVersionName();
+
+    // For view topic, we need to use internal view store name
+    String storeName = VeniceView.isViewTopic(topicName)
+        ? VeniceView.parseStoreAndViewFromViewTopic(topicName)
+        : Version.parseStoreFromKafkaTopicName(topicName);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
 
     // Apply per-store disableBlockCache setting
     veniceStoreVersionConfig.setDisableBlockCache(storeNameToDisableBlockCache.getOrDefault(storeName, false));
@@ -661,7 +663,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         isVersionCurrent,
         veniceStoreVersionConfig,
         partitionId,
-        isIsolatedIngestion,
         cacheBackend,
         getInternalRecordTransformerConfig(storeName),
         zkHelixAdmin);
@@ -1097,14 +1098,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       // Must check the idle status again after acquiring the lock.
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topicName);
       if (ingestionTask != null && !ingestionTask.hasAnySubscription()) {
-        if (isIsolatedIngestion) {
-          LOGGER.info(
-              "Ingestion task for topic {} will be kept open for the access from main process even though it has no subscription now.",
-              topicName);
-        } else {
-          LOGGER.info("Shutting down ingestion task of topic {}", topicName);
-          shutdownStoreIngestionTask(topicName);
-        }
+        LOGGER.info("Shutting down ingestion task of topic {}", topicName);
+        shutdownStoreIngestionTask(topicName);
       }
     }
   }
@@ -1481,11 +1476,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private void resetConsumptionOffset(VeniceStoreVersionConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreVersionName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-    if (consumerTask != null && consumerTask.isRunning()) {
-      consumerTask.resetPartitionConsumptionOffset(
-          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+    try {
+      if (consumerTask != null && consumerTask.isRunning()) {
+        consumerTask.resetPartitionConsumptionOffset(
+            new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
+      }
+      LOGGER.info("Offset reset to beginning - Replica: {}.", Utils.getReplicaId(topic, partitionId));
+    } catch (Exception e) {
+      LOGGER.warn("Error resetting replica offset for replica: {}.", Utils.getReplicaId(topic, partitionId));
     }
-    LOGGER.info("Offset reset to beginning - Replica: {}.", Utils.getReplicaId(topic, partitionId));
   }
 
   @VisibleForTesting

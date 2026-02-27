@@ -16,11 +16,13 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityState;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricAttributesData;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityState;
@@ -36,12 +38,15 @@ import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongGauge;
 import io.opentelemetry.api.metrics.LongUpDownCounter;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
+import io.opentelemetry.sdk.metrics.data.LongPointData;
+import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -338,7 +343,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertNotNull(metricPrefix, "Metric prefix should not be null");
     assertEquals(metricPrefix, "venice.test_prefix", "Metric prefix should match the configured value");
 
-    MetricEntity metricEntity = MetricEntity.createInternalMetricEntityWithoutDimensions(
+    MetricEntity metricEntity = MetricEntity.createWithNoDimensions(
         "test_metric",
         MetricType.COUNTER,
         MetricUnit.NUMBER,
@@ -495,8 +500,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
             "histogramMap", // Child has its own instrument maps
             "counterMap",
             "upDownCounterMap",
-            "gaugeMap",
-            "asyncGaugeMap"));
+            "gaugeMap"));
 
     // Fields that are expected to be null in child
     Set<String> FIELDS_EXPECTED_NULL_IN_CHILD = new HashSet<>(Arrays.asList("sdkMeterProvider"));
@@ -838,4 +842,274 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertEquals(data1.sumThenReset(), -100L, "Should support negative accumulation");
   }
 
+  /**
+   * Test that multiple callbacks registered for the same ASYNC_COUNTER_FOR_HIGH_PERF_CASES metric
+   * are all invoked during metric collection.
+   * This simulates multiple stores each creating their own IngestionOtelStats instance that
+   * registers a callback for the same metric name.
+   */
+  @Test
+  public void testMultipleCallbacksForSameAsyncCounter() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().setServiceName("test_service")
+        .setMetricPrefix(TEST_PREFIX)
+        .setEmitOtelMetrics(true)
+        .setExportOtelMetricsToEndpoint(false)
+        .setUseOtelExponentialHistogram(false)
+        .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+        .build();
+
+    VeniceOpenTelemetryMetricsRepository otelRepo = new VeniceOpenTelemetryMetricsRepository(config);
+
+    try {
+      String metricName = "test_multi_callback_counter";
+      MetricEntity metricEntity = createAsyncCounterMetricEntity(metricName);
+
+      // Create two metric states with different store names (simulating two stores)
+      Map<VeniceMetricsDimensions, String> storeADimensions = new HashMap<>();
+      storeADimensions.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "store_A");
+      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> stateA =
+          MetricEntityStateThreeEnums.create(
+              metricEntity,
+              otelRepo,
+              storeADimensions,
+              HttpResponseStatusEnum.class,
+              HttpResponseStatusCodeCategory.class,
+              RequestType.class);
+
+      Map<VeniceMetricsDimensions, String> storeBDimensions = new HashMap<>();
+      storeBDimensions.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "store_B");
+      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> stateB =
+          MetricEntityStateThreeEnums.create(
+              metricEntity,
+              otelRepo,
+              storeBDimensions,
+              HttpResponseStatusEnum.class,
+              HttpResponseStatusCodeCategory.class,
+              RequestType.class);
+
+      // Record data via both states
+      stateA.record(100L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+      stateB.record(200L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+
+      // Build expected attributes for each store
+      Attributes storeAAttributes =
+          new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("store_A")
+              .setHttpStatus(HttpResponseStatusEnum.OK)
+              .setRequestType(RequestType.SINGLE_GET)
+              .build();
+      Attributes storeBAttributes =
+          new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("store_B")
+              .setHttpStatus(HttpResponseStatusEnum.OK)
+              .setRequestType(RequestType.SINGLE_GET)
+              .build();
+
+      // Collect once and verify both stores' data points are present
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+
+      LongPointData pointA =
+          OpenTelemetryDataTestUtils.getLongPointDataFromSum(metricsData, metricName, TEST_PREFIX, storeAAttributes);
+      assertNotNull(pointA, "Data point for store_A should be present");
+      assertEquals(pointA.getValue(), 100L, "store_A counter value should be 100");
+
+      LongPointData pointB =
+          OpenTelemetryDataTestUtils.getLongPointDataFromSum(metricsData, metricName, TEST_PREFIX, storeBAttributes);
+      assertNotNull(pointB, "Data point for store_B should be present");
+      assertEquals(pointB.getValue(), 200L, "store_B counter value should be 200");
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  /**
+   * Test that multiple callbacks registered for the same ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES
+   * metric are all invoked during metric collection.
+   */
+  @Test
+  public void testMultipleCallbacksForSameAsyncUpDownCounter() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().setServiceName("test_service")
+        .setMetricPrefix(TEST_PREFIX)
+        .setEmitOtelMetrics(true)
+        .setExportOtelMetricsToEndpoint(false)
+        .setUseOtelExponentialHistogram(false)
+        .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+        .build();
+
+    VeniceOpenTelemetryMetricsRepository otelRepo = new VeniceOpenTelemetryMetricsRepository(config);
+
+    try {
+      String metricName = "test_multi_callback_up_down_counter";
+      MetricEntity metricEntity = createAsyncUpDownCounterMetricEntity(metricName);
+
+      // Create two metric states with different store names (simulating two stores)
+      Map<VeniceMetricsDimensions, String> storeADimensions = new HashMap<>();
+      storeADimensions.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "store_A");
+      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> stateA =
+          MetricEntityStateThreeEnums.create(
+              metricEntity,
+              otelRepo,
+              storeADimensions,
+              HttpResponseStatusEnum.class,
+              HttpResponseStatusCodeCategory.class,
+              RequestType.class);
+
+      Map<VeniceMetricsDimensions, String> storeBDimensions = new HashMap<>();
+      storeBDimensions.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "store_B");
+      MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, RequestType> stateB =
+          MetricEntityStateThreeEnums.create(
+              metricEntity,
+              otelRepo,
+              storeBDimensions,
+              HttpResponseStatusEnum.class,
+              HttpResponseStatusCodeCategory.class,
+              RequestType.class);
+
+      // Record data via both states (including negative values for up-down counter)
+      stateA.record(50L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+      stateA.record(-10L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+      stateB.record(300L, HttpResponseStatusEnum.OK, HttpResponseStatusCodeCategory.SUCCESS, RequestType.SINGLE_GET);
+
+      // Build expected attributes for each store
+      Attributes storeAAttributes =
+          new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("store_A")
+              .setHttpStatus(HttpResponseStatusEnum.OK)
+              .setRequestType(RequestType.SINGLE_GET)
+              .build();
+      Attributes storeBAttributes =
+          new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("store_B")
+              .setHttpStatus(HttpResponseStatusEnum.OK)
+              .setRequestType(RequestType.SINGLE_GET)
+              .build();
+
+      // Collect once and verify both stores' data points are present
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+
+      LongPointData pointA =
+          OpenTelemetryDataTestUtils.getLongPointDataFromSum(metricsData, metricName, TEST_PREFIX, storeAAttributes);
+      assertNotNull(pointA, "Data point for store_A should be present");
+      assertEquals(pointA.getValue(), 40L, "store_A up-down counter value should be 50 - 10 = 40");
+
+      LongPointData pointB =
+          OpenTelemetryDataTestUtils.getLongPointDataFromSum(metricsData, metricName, TEST_PREFIX, storeBAttributes);
+      assertNotNull(pointB, "Data point for store_B should be present");
+      assertEquals(pointB.getValue(), 300L, "store_B up-down counter value should be 300");
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  /**
+   * Test that multiple callbacks registered for the same ASYNC_GAUGE metric name are all
+   * invoked during metric collection. This simulates multiple stores each registering their
+   * own gauge callback for the same metric.
+   */
+  @Test
+  public void testMultipleCallbacksForSameAsyncGauge() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().setServiceName("test_service")
+        .setMetricPrefix(TEST_PREFIX)
+        .setEmitOtelMetrics(true)
+        .setExportOtelMetricsToEndpoint(false)
+        .setUseOtelExponentialHistogram(false)
+        .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+        .build();
+
+    VeniceOpenTelemetryMetricsRepository otelRepo = new VeniceOpenTelemetryMetricsRepository(config);
+
+    try {
+      Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
+      dimensionsSet.add(VeniceMetricsDimensions.VENICE_STORE_NAME);
+      MetricEntity metricEntity = new MetricEntity(
+          "test_async_gauge_multi_callback",
+          MetricType.ASYNC_GAUGE,
+          MetricUnit.NUMBER,
+          "test gauge",
+          dimensionsSet);
+
+      // Register two gauges for the same metric name with different callbacks and attributes
+      Attributes storeAAttributes =
+          new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("store_A").build();
+      Attributes storeBAttributes =
+          new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName("store_B").build();
+
+      otelRepo.createAsyncLongGauge(metricEntity, () -> 42L, storeAAttributes);
+      otelRepo.createAsyncLongGauge(metricEntity, () -> 99L, storeBAttributes);
+
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+
+      LongPointData pointA = OpenTelemetryDataTestUtils
+          .getLongPointDataFromGauge(metricsData, "test_async_gauge_multi_callback", TEST_PREFIX, storeAAttributes);
+      assertNotNull(pointA, "Data point for store_A should be present");
+      assertEquals(pointA.getValue(), 42L, "store_A gauge value should be 42");
+
+      LongPointData pointB = OpenTelemetryDataTestUtils
+          .getLongPointDataFromGauge(metricsData, "test_async_gauge_multi_callback", TEST_PREFIX, storeBAttributes);
+      assertNotNull(pointB, "Data point for store_B should be present");
+      assertEquals(pointB.getValue(), 99L, "store_B gauge value should be 99");
+    } finally {
+      otelRepo.close();
+    }
+  }
+
+  /**
+   * Test that {@link AsyncMetricEntityStateOneEnum} correctly registers callbacks for all enum
+   * values when iterating over the enum constants. Each {@link VersionRole} (BACKUP, CURRENT,
+   * FUTURE) should have its own gauge data point reported during collection.
+   */
+  @Test
+  public void testAsyncMetricEntityStateOneEnumRegistersAllEnumCallbacks() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+
+    VeniceMetricsConfig config = new VeniceMetricsConfig.Builder().setServiceName("test_service")
+        .setMetricPrefix(TEST_PREFIX)
+        .setEmitOtelMetrics(true)
+        .setExportOtelMetricsToEndpoint(false)
+        .setUseOtelExponentialHistogram(false)
+        .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+        .build();
+
+    VeniceOpenTelemetryMetricsRepository otelRepo = new VeniceOpenTelemetryMetricsRepository(config);
+
+    try {
+      Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
+      dimensionsSet.add(VeniceMetricsDimensions.VENICE_STORE_NAME);
+      dimensionsSet.add(VeniceMetricsDimensions.VENICE_VERSION_ROLE);
+      MetricEntity metricEntity = new MetricEntity(
+          "test_enum_gauge",
+          MetricType.ASYNC_GAUGE,
+          MetricUnit.NUMBER,
+          "test gauge with enum dimension",
+          dimensionsSet);
+
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
+      baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, "test_store");
+
+      // Each VersionRole gets a distinct callback value: BACKUP=10, CURRENT=20, FUTURE=30
+      AsyncMetricEntityStateOneEnum<VersionRole> metricState = AsyncMetricEntityStateOneEnum.create(
+          metricEntity,
+          otelRepo,
+          baseDimensionsMap,
+          VersionRole.class,
+          role -> () -> (role.ordinal() + 1) * 10L);
+
+      assertNotNull(metricState);
+
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+
+      // Verify every VersionRole has a data point with the expected value
+      for (VersionRole role: VersionRole.values()) {
+        Attributes expectedAttributes = otelRepo.createAttributes(metricEntity, baseDimensionsMap, role);
+        LongPointData point = OpenTelemetryDataTestUtils
+            .getLongPointDataFromGauge(metricsData, "test_enum_gauge", TEST_PREFIX, expectedAttributes);
+        assertNotNull(point, "Data point for " + role + " should be present");
+        assertEquals(point.getValue(), (role.ordinal() + 1) * 10L, "Gauge value for " + role + " should match");
+      }
+    } finally {
+      otelRepo.close();
+    }
+  }
 }

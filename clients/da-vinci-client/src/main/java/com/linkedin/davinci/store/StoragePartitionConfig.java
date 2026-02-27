@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store;
 
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.Utils;
 import java.util.Objects;
 
@@ -21,6 +22,10 @@ public class StoragePartitionConfig {
   private boolean readWriteLeaderForRMDCF;
   private final boolean blobTransferInProgress;
   private boolean disableBlockCache;
+  /**
+   * Store-level BlobDB config. NOT_SPECIFIED means use cluster-level config.
+   */
+  private ActivationState blobDbEnabled = ActivationState.NOT_SPECIFIED;
 
   public StoragePartitionConfig(String storeName, int partitionId) {
     this(storeName, partitionId, false);
@@ -104,6 +109,14 @@ public class StoragePartitionConfig {
     this.disableBlockCache = disableBlockCache;
   }
 
+  public ActivationState getBlobDbEnabled() {
+    return blobDbEnabled;
+  }
+
+  public void setBlobDbEnabled(ActivationState blobDbEnabled) {
+    this.blobDbEnabled = blobDbEnabled != null ? blobDbEnabled : ActivationState.NOT_SPECIFIED;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -116,7 +129,8 @@ public class StoragePartitionConfig {
     return partitionId == that.partitionId && deferredWrite == that.deferredWrite && readOnly == that.readOnly
         && writeOnlyConfig == that.writeOnlyConfig && storeName.equals(that.storeName)
         && readWriteLeaderForDefaultCF == that.readWriteLeaderForDefaultCF
-        && readWriteLeaderForRMDCF == that.readWriteLeaderForRMDCF && disableBlockCache == that.disableBlockCache;
+        && readWriteLeaderForRMDCF == that.readWriteLeaderForRMDCF && disableBlockCache == that.disableBlockCache
+        && blobDbEnabled == that.blobDbEnabled;
   }
 
   @Override
@@ -129,15 +143,17 @@ public class StoragePartitionConfig {
         writeOnlyConfig,
         readWriteLeaderForDefaultCF,
         readWriteLeaderForRMDCF,
-        disableBlockCache);
+        disableBlockCache,
+        blobDbEnabled);
   }
 
   @Override
   public String toString() {
-    String toStringResult = "Replica: " + Utils.getReplicaId(storeName, partitionId) + ", deferred-write: "
-        + deferredWrite + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig
-        + ", read-write leader for default CF: " + readWriteLeaderForDefaultCF + ", read-write leader for RMD CF: "
-        + readWriteLeaderForRMDCF + ", disable-block-cache: " + disableBlockCache;
+    String toStringResult =
+        "Replica: " + Utils.getReplicaId(storeName, partitionId) + ", deferred-write: " + deferredWrite
+            + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", read-write leader for default CF: "
+            + readWriteLeaderForDefaultCF + ", read-write leader for RMD CF: " + readWriteLeaderForRMDCF
+            + ", disable-block-cache: " + disableBlockCache + ", blob-db-enabled: " + blobDbEnabled;
 
     if (blobTransferInProgress) {
       toStringResult += ", blob transfer in progress: true.";

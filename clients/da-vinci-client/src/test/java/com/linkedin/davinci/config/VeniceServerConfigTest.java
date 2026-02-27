@@ -6,7 +6,13 @@ import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY;
+import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES;
+import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
+import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
@@ -122,5 +128,79 @@ public class VeniceServerConfigTest {
     props.put(PARTICIPANT_MESSAGE_STORE_ENABLED, "false");
     config = new VeniceServerConfig(new VeniceProperties(props));
     assertFalse(config.isParticipantMessageStoreEnabled());
+  }
+
+  @Test
+  public void testCrossTpParallelProcessingConfigs() {
+    // Test default values
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+
+    assertFalse(config.isCrossTpParallelProcessingEnabled());
+    assertEquals(config.getCrossTpParallelProcessingThreadPoolSize(), 4);
+    assertFalse(config.isCrossTpParallelProcessingCurrentVersionAAWCLeaderOnly());
+
+    // Test enabling cross-TP parallel processing
+    props.put(SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED, "true");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertTrue(config.isCrossTpParallelProcessingEnabled());
+
+    // Test custom thread pool size
+    props.put(SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE, "8");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(config.getCrossTpParallelProcessingThreadPoolSize(), 8);
+
+    // Test enabling CURRENT_VERSION_AA_WC_LEADER_ONLY mode
+    props.put(SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY, "true");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertTrue(config.isCrossTpParallelProcessingCurrentVersionAAWCLeaderOnly());
+
+    // Test disabling CURRENT_VERSION_AA_WC_LEADER_ONLY mode explicitly
+    props.put(SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY, "false");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isCrossTpParallelProcessingCurrentVersionAAWCLeaderOnly());
+  }
+
+  @Test
+  public void testLeaderHandoverDoLMechanismConfigs() {
+    Properties props = populatedBasicProperties();
+
+    // Test default values (both should be true by default)
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+    assertTrue(config.isLeaderHandoverUseDoLMechanismEnabledForSystemStores());
+    assertTrue(config.isLeaderHandoverUseDoLMechanismEnabledForUserStores());
+
+    // Test disabling DoL for system stores only
+    props.put(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES, "false");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isLeaderHandoverUseDoLMechanismEnabledForSystemStores());
+    assertTrue(config.isLeaderHandoverUseDoLMechanismEnabledForUserStores());
+
+    // Test disabling DoL for user stores only
+    props.put(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES, "true");
+    props.put(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES, "false");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertTrue(config.isLeaderHandoverUseDoLMechanismEnabledForSystemStores());
+    assertFalse(config.isLeaderHandoverUseDoLMechanismEnabledForUserStores());
+
+    // Test disabling DoL for both system and user stores
+    props.put(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES, "false");
+    props.put(SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES, "false");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isLeaderHandoverUseDoLMechanismEnabledForSystemStores());
+    assertFalse(config.isLeaderHandoverUseDoLMechanismEnabledForUserStores());
+  }
+
+  @Test
+  public void testParallelShutdownThreadPoolSizeConfig() {
+    // Test default value
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(config.getParallelShutdownThreadPoolSize(), 16);
+
+    // Test custom value
+    props.put(SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE, "4");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(config.getParallelShutdownThreadPoolSize(), 4);
   }
 }

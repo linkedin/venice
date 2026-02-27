@@ -215,7 +215,7 @@ public class DaVinciComputeTest {
             cluster,
             storeName,
             new DaVinciConfig(),
-            TestUtils.getIngestionIsolationPropertyMap());
+            new HashMap<>());
     try (
         VeniceWriter<Object, Object, byte[]> veniceWriter = vwFactory.createVeniceWriter(
             new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
@@ -321,7 +321,7 @@ public class DaVinciComputeTest {
             cluster,
             storeName,
             new DaVinciConfig(),
-            TestUtils.getIngestionIsolationPropertyMap());
+            new HashMap<>());
     try (
         VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
             new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
@@ -379,7 +379,7 @@ public class DaVinciComputeTest {
             cluster,
             storeName,
             new DaVinciConfig(),
-            TestUtils.getIngestionIsolationPropertyMap());
+            new HashMap<>());
 
     try (
         VeniceWriter<Object, Object, byte[]> writerForMissingField = vwFactory.createVeniceWriter(
@@ -457,7 +457,7 @@ public class DaVinciComputeTest {
             cluster,
             storeName,
             new DaVinciConfig(),
-            TestUtils.getIngestionIsolationPropertyMap());
+            new HashMap<>());
     try (
         VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
             new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
@@ -504,7 +504,7 @@ public class DaVinciComputeTest {
             cluster,
             storeName,
             new DaVinciConfig(),
-            TestUtils.getIngestionIsolationPropertyMap());
+            new HashMap<>());
     try (
         VeniceWriter<Object, Object, byte[]> writer2 = vwFactory.createVeniceWriter(
             new VeniceWriterOptions.Builder(topicForMissingField).setKeyPayloadSerializer(keySerializer)
@@ -575,7 +575,7 @@ public class DaVinciComputeTest {
             cluster,
             storeName,
             config,
-            TestUtils.getIngestionIsolationPropertyMap());
+            new HashMap<>());
     try (VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
             .setValuePayloadSerializer(valueSerializer)

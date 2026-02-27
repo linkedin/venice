@@ -1,6 +1,5 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.davinci.replication.merge.TestMergeConflictResolver.P1;
 import static com.linkedin.davinci.replication.merge.TestMergeConflictResolver.RMD_VERSION_ID;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_FIELD_NAME;
@@ -57,8 +56,6 @@ public class TestMergeUpdate extends TestMergeBase {
         schemaSet.getValueSchemaId(),
         schemaSet.getUpdateSchemaProtocolVersion(),
         updateTs,
-        P1,
-        0,
         0,
         null);
     Assert.assertTrue(result.isUpdateIgnored());
@@ -103,8 +100,6 @@ public class TestMergeUpdate extends TestMergeBase {
         schemaSet.getValueSchemaId(),
         schemaSet.getUpdateSchemaProtocolVersion(),
         updateTs,
-        P1,
-        0,
         updateColoId,
         null);
     Assert.assertTrue(result.isUpdateIgnored());
@@ -164,8 +159,6 @@ public class TestMergeUpdate extends TestMergeBase {
         schemaSet.getValueSchemaId(),
         schemaSet.getUpdateSchemaProtocolVersion(),
         updateTs,
-        P1,
-        0,
         -2,
         null);
     Assert.assertTrue(result.isUpdateIgnored());
@@ -223,8 +216,6 @@ public class TestMergeUpdate extends TestMergeBase {
         schemaSet.getValueSchemaId(),
         schemaSet.getUpdateSchemaProtocolVersion(),
         updateTs,
-        P1,
-        0,
         -2,
         null);
     Assert.assertTrue(result.isUpdateIgnored());
@@ -263,8 +254,6 @@ public class TestMergeUpdate extends TestMergeBase {
         schemaSet.getValueSchemaId(),
         schemaSet.getUpdateSchemaProtocolVersion(),
         updateTs,
-        P1,
-        0,
         -2,
         null);
     Assert.assertTrue(result.isUpdateIgnored());
@@ -335,8 +324,6 @@ public class TestMergeUpdate extends TestMergeBase {
         schemaSet.getValueSchemaId(),
         schemaSet.getUpdateSchemaProtocolVersion(),
         2L,
-        P1,
-        0,
         0,
         null);
 
@@ -402,8 +389,6 @@ public class TestMergeUpdate extends TestMergeBase {
         schemaSet.getValueSchemaId(),
         schemaSet.getUpdateSchemaProtocolVersion(),
         10L,
-        P1,
-        0,
         0,
         null);
 
@@ -444,8 +429,6 @@ public class TestMergeUpdate extends TestMergeBase {
         schemaSet.getValueSchemaId(),
         schemaSet.getUpdateSchemaProtocolVersion(),
         10L,
-        P1,
-        0,
         0,
         container);
 
@@ -524,8 +507,6 @@ public class TestMergeUpdate extends TestMergeBase {
         schemaSet.getValueSchemaId(),
         schemaSet.getUpdateSchemaProtocolVersion(),
         2L,
-        P1,
-        0,
         0,
         null);
 
@@ -603,8 +584,6 @@ public class TestMergeUpdate extends TestMergeBase {
         schemaSet.getValueSchemaId(),
         schemaSet.getUpdateSchemaProtocolVersion(),
         3L,
-        P1,
-        0,
         0,
         null);
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
@@ -814,8 +793,6 @@ public class TestMergeUpdate extends TestMergeBase {
         schemaSet.getValueSchemaId(),
         schemaSet.getUpdateSchemaProtocolVersion(),
         timestamp,
-        P1,
-        0,
         0,
         null);
   }

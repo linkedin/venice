@@ -34,6 +34,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.MaterializedView;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -103,11 +104,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final ReplicationMetadataSchemaRepository replicationMetadataSchemaRepository;
   private final StoreDeserializerCache<GenericRecord> rmdDeserializerCache;
   private final DaVinciConfig daVinciConfig;
+  private final String viewName;
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
-    this(changelogClientConfig, System.nanoTime(), veniceChangelogConsumerClientFactory);
+    this(changelogClientConfig, Utils.getCurrentTimeInNanosForSeeding(), veniceChangelogConsumerClientFactory);
   }
 
   VeniceChangelogConsumerDaVinciRecordTransformerImpl(
@@ -125,6 +127,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.partitionToVersionToServe = new VeniceConcurrentHashMap<>();
     this.isVersionSpecificClient = changelogClientConfig.getStoreVersion() != null;
     this.veniceChangelogConsumerClientFactory = veniceChangelogConsumerClientFactory;
+    this.viewName = changelogClientConfig.getViewName();
 
     recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(DaVinciRecordTransformerChangelogConsumer::new)
@@ -154,14 +157,21 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           "Version specific CDC client is in use. Subscribing to version: {} for store: {}",
           changelogClientConfig.getStoreVersion(),
           storeName);
-      this.daVinciClient = this.daVinciClientFactory
-          .getVersionSpecificGenericAvroClient(this.storeName, changelogClientConfig.getStoreVersion(), daVinciConfig);
+      this.daVinciClient = this.daVinciClientFactory.getVersionSpecificGenericAvroClient(
+          this.storeName,
+          changelogClientConfig.getStoreVersion(),
+          this.viewName,
+          daVinciConfig);
     } else {
       if (innerClientConfig.isSpecificClient()) {
-        this.daVinciClient = this.daVinciClientFactory
-            .getSpecificSeekableAvroClient(this.storeName, daVinciConfig, innerClientConfig.getSpecificValueClass());
+        this.daVinciClient = this.daVinciClientFactory.getSpecificSeekableAvroClient(
+            this.storeName,
+            this.viewName,
+            daVinciConfig,
+            innerClientConfig.getSpecificValueClass());
       } else {
-        this.daVinciClient = this.daVinciClientFactory.getGenericSeekableAvroClient(this.storeName, daVinciConfig);
+        this.daVinciClient =
+            this.daVinciClientFactory.getGenericSeekableAvroClient(this.storeName, this.viewName, daVinciConfig);
       }
     }
 
@@ -597,7 +607,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         Schema outputValueSchema,
         DaVinciRecordTransformerConfig recordTransformerConfig) {
       super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
-      this.topicName = Version.composeKafkaTopic(changelogClientConfig.getStoreName(), getStoreVersion());
+
+      // Determine the topic name based on whether a view name is provided
+      if (viewName != null && !viewName.isEmpty() && getViewClass().equals(MaterializedView.class.getCanonicalName())) {
+        this.topicName =
+            MaterializedView.composeTopicName(changelogClientConfig.getStoreName(), getStoreVersion(), viewName);
+      } else {
+        this.topicName = Version.composeKafkaTopic(changelogClientConfig.getStoreName(), getStoreVersion());
+      }
     }
 
     @Override
@@ -739,6 +756,17 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         LOGGER.error("Thread was interrupted while putting a message into pubSubMessages", e);
         Thread.currentThread().interrupt();
       }
+    }
+
+    /**
+     * Helper method to get the view class based on the view name and store configuration.
+     */
+    private String getViewClass() {
+      return veniceChangelogConsumerClientFactory.viewClassGetter.apply(
+          changelogClientConfig.getStoreName(),
+          viewName,
+          changelogClientConfig.getD2ControllerClient(),
+          changelogClientConfig.getControllerRequestRetryCount());
     }
 
     private long getNextConsumerSequenceId(int partition) {

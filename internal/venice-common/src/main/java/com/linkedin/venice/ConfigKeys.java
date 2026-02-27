@@ -415,9 +415,25 @@ public class ConfigKeys {
   public static final String REPUSH_ORCHESTRATOR_CLASS_NAME = "controller.repush.orchestrator.class.name";
 
   /**
-   * Class names of the implementation of interface {@link com.linkedin.venice.controller.logcompaction.CandidateFilter} in {@link com.linkedin.venice.controller.logcompaction.CompactionManager}
+   * Class names of the implementation of interface
+   * {@link com.linkedin.venice.controller.logcompaction.RepushCandidateFilter} used by
+   * {@link com.linkedin.venice.controller.logcompaction.CompactionManager}.
+   *
+   * <p>Filters are chained with AND logic: <b>all</b> filters must pass for a store to remain a candidate.
+   * They enforce exclusion criteria such as cluster config, store eligibility, and migration status.</p>
    */
   public static final String REPUSH_CANDIDATE_FILTER_CLASS_NAMES = "controller.repush.candidate.filter.class.names";
+
+  /**
+   * Class names of the implementation of interface
+   * {@link com.linkedin.venice.controller.logcompaction.RepushCandidateTrigger} used by
+   * {@link com.linkedin.venice.controller.logcompaction.CompactionManager}.
+   *
+   * <p>Triggers are chained with OR logic: at least <b>one</b> trigger must pass for a store to be scheduled.
+   * They represent conditions that independently justify compaction (e.g., version staleness,
+   * high duplicate key ratio). A store is scheduled when all filters pass AND any trigger passes.</p>
+   */
+  public static final String REPUSH_CANDIDATE_TRIGGER_CLASS_NAMES = "controller.repush.candidate.trigger.class.names";
 
   /**
    * Prefix of configs to configure RepushOrchestrator
@@ -765,6 +781,51 @@ public class ConfigKeys {
    */
   public static final String SERVER_USE_CHECKPOINTED_PUBSUB_POSITIONS = "server.use.checkpointed.pubsub.positions";
 
+  /**
+   * Controls whether to use the Declaration of Leadership (DoL) mechanism for leader handover
+   * of system stores (meta stores, push status stores, etc.).
+   *
+   * <p>When enabled, the new leader replica will:
+   * 1. Produce a Declaration of Leadership message to the local version topic (VT)
+   * 2. Wait until it consumes this message back from VT (loopback confirmation)
+   * 3. Only then switch to consuming from the leader source topic (remote VT during batch push,
+   *    or RT topic for hybrid stores post-EOP)
+   *
+   * <p>This provides a deterministic guarantee that the leader has successfully written to
+   * and consumed from the local VT before transitioning to the leader source topic, eliminating
+   * the need for time-based waits.
+   *
+   * <p>System stores typically benefit more from fast handover due to their critical role in
+   * cluster operations. Having a separate config allows independent rollout strategy.
+   *
+   * Default: true (DoL mechanism enabled for system stores)
+   */
+  public static final String SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES =
+      "server.leader.handover.use.dol.mechanism.for.system.stores";
+
+  /**
+   * Controls whether to use the Declaration of Leadership (DoL) mechanism for leader handover
+   * of user stores (regular application data stores).
+   *
+   * <p>When enabled, the new leader replica will:
+   * 1. Produce a Declaration of Leadership message to the local version topic (VT)
+   * 2. Wait until it consumes this message back from VT (loopback confirmation)
+   * 3. Only then switch to consuming from the leader source topic (remote VT during batch push,
+   *    or RT topic for hybrid stores post-EOP)
+   *
+   * <p>This provides a deterministic guarantee that the leader has successfully written to
+   * and consumed from the local VT before transitioning to the leader source topic, eliminating
+   * the need for time-based waits.
+   *
+   * <p>Having a separate config from system stores allows independent rollout - typically you
+   * would enable DoL for system stores first, validate it works correctly, then roll out to
+   * user stores.
+   *
+   * Default: true (DoL mechanism enabled for user stores)
+   */
+  public static final String SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES =
+      "server.leader.handover.use.dol.mechanism.for.user.stores";
+
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
@@ -1016,12 +1077,6 @@ public class ConfigKeys {
   public static final String SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED = "server.leaked.resource.cleanup.enabled";
 
   /**
-   * Ingestion mode in target storage instance.
-   * This will be applied to Da Vinci and Storage Node.
-   */
-  public static final String SERVER_INGESTION_MODE = "server.ingestion.mode";
-
-  /**
    * Unsubscribe from kakfa topic once a batch-store push finishes
    */
   public static final String SERVER_UNSUB_AFTER_BATCHPUSH = "server.unsub.after.batch.push";
@@ -1042,17 +1097,6 @@ public class ConfigKeys {
    * Number of retries allowed for stopConsumptionAndWait() API in StoreIngestionService.
    */
   public static final String SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS = "server.stop.consumption.timeout.in.seconds";
-
-  /**
-   * Service listening port number for main ingestion service.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_SERVICE_PORT = "server.ingestion.isolation.service.port";
-
-  /**
-   * Service listening port number for forked ingestion process.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT =
-      "server.ingestion.isolation.application.port";
 
   public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED =
       "server.db.read.only.for.batch.only.store.enabled";
@@ -1091,49 +1135,21 @@ public class ConfigKeys {
   public static final String SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED = "server.parallel.resource.shutdown.enabled";
 
   /**
+   * Config to control the thread pool size used for parallel ingestion task shutdown.
+   * Default is 16 to avoid creating too many threads.
+   */
+  public static final String SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE = "server.parallel.shutdown.thread.pool.size";
+
+  /**
    * Config for adaptive throttler signal refresh interval in seconds.
    */
   public static final String SERVER_ADAPTIVE_THROTTLER_SIGNAL_REFRESH_INTERVAL_IN_SECONDS =
       "server.adaptive.throttler.signal.refresh.interval.in.seconds";
 
   /**
-   * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
-   * separated by comma. This config will help isolated ingestion process to register extra stats needed for monitoring,
-   * for example: JVM GC/Memory stats. All the classes defined here will be extending {@link com.linkedin.venice.stats.AbstractVeniceStats},
-   * and will take {@link io.tehuti.metrics.MetricsRepository} as the only parameter in their constructor.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST =
-      "server.ingestion.isolation.stats.class.list";
-
-  public static final String SERVER_INGESTION_ISOLATION_SSL_ENABLED = "server.ingestion.isolation.ssl.enabled";
-
-  public static final String SERVER_INGESTION_ISOLATION_ACL_ENABLED = "server.ingestion.isolation.acl.enabled";
-
-  public static final String SERVER_INGESTION_ISOLATION_PRINCIPAL_NAME = "server.ingestion.isolation.principal.name";
-
-  /**
    * A list of JVM arguments for forked child process, separated by semicolon.
    */
   public static final String SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST = "server.forked.process.jvm.arg.list";
-
-  /**
-   * Timeout for connection between main process and forked ingestion process. If heartbeat is not refreshed within this
-   * timeout, both processes should act to reconstruct the state in order to restore connection and service.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS =
-      "server.ingestion.isolation.connection.timeout.seconds";
-
-  /**
-   * Timeout for single ingestion command request sent from main process to forked ingestion process.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS =
-      "server.ingestion.isolation.request.timeout.seconds";
-
-  /**
-   * Timeout for single heartbeat request sent from main process to forked ingestion process.
-   */
-  public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS =
-      "server.ingestion.isolation.heartbeat.request.timeout.seconds";
 
   public static final String SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED =
       "server.batch.report.end.of.incremental.push.status.enabled";
@@ -1729,6 +1745,13 @@ public class ConfigKeys {
   public static final String ROUTER_MULTIGET_TARDY_LATENCY_MS = "router.multiget.tardy.latency.ms";
   public static final String ROUTER_COMPUTE_TARDY_LATENCY_MS = "router.compute.tardy.latency.ms";
 
+  /**
+   * Threshold in milliseconds for logging slow scatter requests.
+   * When a scatter request exceeds this threshold, detailed information will be logged
+   * to help debug high P99 latency issues.
+   */
+  public static final String ROUTER_SLOW_SCATTER_REQUEST_THRESHOLD_MS = "router.slow.scatter.request.threshold.ms";
+
   public static final String ROUTER_ENABLE_READ_THROTTLING = "router.enable.read.throttling";
 
   /**
@@ -2306,6 +2329,36 @@ public class ConfigKeys {
   public static final String CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE =
       "controller.auto.materialize.davinci.push.status.system.store";
 
+  // --- Alternative PubSub backend configs (per-cluster, per-topic-type) ---
+
+  /** Create meta system store version topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT =
+      "controller.pubsub.alternative.backend.meta.system.store.vt";
+
+  /** Create meta system store RT topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT =
+      "controller.pubsub.alternative.backend.meta.system.store.rt";
+
+  /** Create push status system store VTs using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT =
+      "controller.pubsub.alternative.backend.push.status.system.store.vt";
+
+  /** Create push status system store RTs using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT =
+      "controller.pubsub.alternative.backend.push.status.system.store.rt";
+
+  /** Create user store version topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT =
+      "controller.pubsub.alternative.backend.user.store.vt";
+
+  /** Create user store RT topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT =
+      "controller.pubsub.alternative.backend.user.store.rt";
+
+  /** Comma-separated store names excluded from alternative pubsub backend. Default: empty */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST =
+      "controller.pubsub.alternative.backend.exclusion.list";
+
   /**
    * This will indicate which ReplicationMetadataSchemaGenerator version to use to generate replication metadata schema.
    * This config should be set on a per-cluster level, meaning that each cluster can have its own RMD version ID.
@@ -2379,6 +2432,15 @@ public class ConfigKeys {
    */
   public static final String SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED =
       "server.ingestion.checkpoint.during.graceful.shutdown.enabled";
+
+  /**
+   * Whether to emit OTel metrics for ingestion stats. When enabled (and the global OTel flag is also enabled),
+   * per-store ingestion OTel metrics are recorded. Enabled by default so that turning on OTel for servers
+   * automatically includes ingestion stats. Can be set to {@code false} to disable ingestion OTel stats
+   * independently — useful because ingestion stats are high-frequency hot-path metrics and may need to be
+   * turned off separately without affecting other server/DaVinci OTel metrics.
+   */
+  public static final String SERVER_INGESTION_OTEL_STATS_ENABLED = "server.ingestion.otel.stats.enabled";
 
   /**
    * A config to control which status store to use for fetching incremental push job status from the controller. This config
@@ -2470,9 +2532,33 @@ public class ConfigKeys {
   public static final String SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY = "server.ssl.handshake.queue.capacity";
 
   /**
-   * Number of threads for online Venice producer controlling the number of concurrent processing operations.
+   * Number of partition workers for parallel processing.
+   * Each worker handles preprocessing + dispatch for assigned partitions.
+   * Default: 4.
+   * Set to 0 to DISABLE worker threads (execute inline on caller thread).
    */
-  public static final String CLIENT_PRODUCER_THREAD_NUM = "client.producer.thread.num";
+  public static final String CLIENT_PRODUCER_WORKER_COUNT = "client.producer.worker.count";
+
+  /**
+   * Queue capacity per worker for backpressure.
+   * When full, the caller thread blocks until space is available.
+   * Default: 100000. Ignored if worker count is 0.
+   */
+  public static final String CLIENT_PRODUCER_WORKER_QUEUE_CAPACITY = "client.producer.worker.queue.capacity";
+
+  /**
+   * Number of threads for callback executor (optional).
+   * Isolates user code from Kafka callback thread.
+   * Default: 0 (DISABLED - callbacks run on Kafka thread).
+   * Set to >0 to enable callback thread pool.
+   */
+  public static final String CLIENT_PRODUCER_CALLBACK_THREAD_COUNT = "client.producer.callback.thread.count";
+
+  /**
+   * Queue capacity for callback executor.
+   * Default: 100000. Ignored if callback thread count is 0.
+   */
+  public static final String CLIENT_PRODUCER_CALLBACK_QUEUE_CAPACITY = "client.producer.callback.queue.capacity";
 
   /**
    * The refresh interval for online producer to refresh value schemas and update schemas that rely on periodic polling.
@@ -2516,6 +2602,23 @@ public class ConfigKeys {
    * with SOS, EOS or skipped records.
    */
   public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
+
+  /**
+   * Enable record-level timestamp tracking in heartbeat monitoring service.
+   * When enabled, the monitoring service will track timestamps for all records processed during
+   * ingestion, not just heartbeat control messages. This provides more granular visibility into
+   * ingestion progress and lag at the expense of additional memory and CPU overhead.
+   */
+  public static final String SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED = "server.record.level.timestamp.enabled";
+
+  /**
+   * Enable per-record OTel metrics emission for record-level delay tracking.
+   * When enabled, OTel metrics are emitted for every record processed during ingestion,
+   * providing real-time visibility into ingestion delays. When disabled (default), OTel metrics
+   * are only emitted periodically (every 60 seconds) with aggregated max/avg values.
+   * Requires SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED to be true.
+   */
+  public static final String SERVER_PER_RECORD_OTEL_METRICS_ENABLED = "server.per.record.otel.metrics.enabled";
 
   /**
    * Follower replicas and DavinciClient will only consider heartbeats received within
@@ -2705,6 +2808,19 @@ public class ConfigKeys {
    * Chunk size (number of partitions) for parallel routing within one multi-key request in Router.
    */
   public static final String ROUTER_PARALLEL_ROUTING_CHUNK_SIZE = "router.parallel.routing.chunk.size";
+  /**
+   * Thread pool size for response aggregation in Router. Response aggregation happens after scatter-gather
+   * completes and all sub-responses are collected. Previously this work ran on the Netty EventLoop
+   * (stageExecutor(ctx) in ScatterGatherRequestHandlerImpl); it now uses a dedicated thread pool to reduce
+   * contention and isolate aggregation load from I/O processing and other JVM components.
+   */
+  public static final String ROUTER_RESPONSE_AGGREGATION_THREAD_POOL_SIZE =
+      "router.response.aggregation.thread.pool.size";
+  /**
+   * Task queue capacity for response aggregation thread pool. Higher values allow more pending aggregation
+   * tasks but consume more memory. Lower values provide back-pressure during extreme load.
+   */
+  public static final String ROUTER_RESPONSE_AGGREGATION_QUEUE_CAPACITY = "router.response.aggregation.queue.capacity";
 
   /**
    * Server configs to enable the topic partition re-subscription during ingestion to let bottom ingestion service aware
@@ -2764,6 +2880,38 @@ public class ConfigKeys {
    */
   public static final String SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE =
       "server.aa.wc.ingestion.storage.lookup.thread.pool.size";
+
+  /**
+   * Enable cross-TP (topic-partition) parallel processing in the ConsumptionTask.
+   * When enabled, records from different topic-partitions in a single poll batch will be processed
+   * in parallel instead of sequentially. This can improve throughput when one slow TP would
+   * otherwise block all others in the same poll batch.
+   *
+   * Default: false (sequential processing, current behavior)
+   */
+  public static final String SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED =
+      "server.cross.tp.parallel.processing.enabled";
+
+  /**
+   * Thread pool size for cross-TP parallel processing.
+   * This controls the maximum number of topic-partitions that can be processed concurrently
+   * within a single poll batch.
+   *
+   * Default: 4
+   */
+  public static final String SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE =
+      "server.cross.tp.parallel.processing.thread.pool.size";
+
+  /**
+   * When enabled, cross-TP parallel processing will only be applied to the
+   * {@code ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL} consumer pool.
+   * This is useful for limiting parallel processing to the most critical pool type
+   * while keeping other pools using sequential processing.
+   *
+   * Default: false (when cross-TP parallel processing is enabled, it applies to all pools)
+   */
+  public static final String SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY =
+      "server.cross.tp.parallel.processing.current.version.aa.wc.leader.only";
 
   /**
    * Please find more details here: {@link com.linkedin.venice.reliability.LoadController}.
@@ -2836,7 +2984,6 @@ public class ConfigKeys {
       "controller.enable.realtime.topic.versioning";
 
   public static final boolean DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING = false;
-  public final static String USE_V2_ADMIN_TOPIC_METADATA = "controller.use.v2.admin.topic.metadata";
   public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
       "controller.enable.hybrid.store.partition.count.update";
   public static final String PUSH_JOB_VIEW_CONFIGS = "push.job.view.configs";
@@ -3070,9 +3217,6 @@ public class ConfigKeys {
    * Default is false (i.e. not a dark cluster).
    */
   public static final String IS_DARK_CLUSTER = "is.dark.cluster";
-
-  public static final String SERVER_INGESTION_ISOLATION_D2_CLIENT_ENABLED =
-      "server.ingestion.isolation.d2.client.enabled";
 
   /**
    * When dumping topic partition info for each consumer, there will be one line for each partition. This limit will

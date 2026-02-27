@@ -3,7 +3,6 @@ package com.linkedin.davinci.replication.merge;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -22,21 +21,13 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       ValueAndRmd<ByteBuffer> oldValueAndRmd,
       ByteBuffer newValue,
       long putOperationTimestamp,
-      int writeOperationColoID,
-      PubSubPosition sourcePositionOfNewValue,
-      int newValueSourceBrokerID) {
+      int writeOperationColoID) {
     final GenericRecord oldReplicationMetadata = oldValueAndRmd.getRmd();
     final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_POS);
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(tsObject);
 
     if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
-      return putWithRecordLevelTimestamp(
-          (long) tsObject,
-          oldValueAndRmd,
-          putOperationTimestamp,
-          sourcePositionOfNewValue,
-          newValueSourceBrokerID,
-          newValue);
+      return putWithRecordLevelTimestamp((long) tsObject, oldValueAndRmd, putOperationTimestamp, newValue);
     } else {
       throw new IllegalArgumentException("Only handle record-level timestamp. Got: " + rmdTimestampType);
     }
@@ -46,19 +37,12 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
   public ValueAndRmd<ByteBuffer> delete(
       ValueAndRmd<ByteBuffer> oldValueAndRmd,
       long deleteOperationTimestamp,
-      int deleteOperationColoID,
-      PubSubPosition newValueSourcePosition,
-      int newValueSourceBrokerID) {
+      int deleteOperationColoID) {
     final GenericRecord oldReplicationMetadata = oldValueAndRmd.getRmd();
     final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_POS);
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(tsObject);
     if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
-      return deleteWithValueLevelTimestamp(
-          (long) tsObject,
-          deleteOperationTimestamp,
-          newValueSourcePosition,
-          newValueSourceBrokerID,
-          oldValueAndRmd);
+      return deleteWithValueLevelTimestamp((long) tsObject, deleteOperationTimestamp, oldValueAndRmd);
     } else {
       throw new IllegalArgumentException("Only handle record-level timestamp. Got: " + rmdTimestampType);
     }
@@ -70,9 +54,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       Lazy<GenericRecord> writeOperation,
       Schema currValueSchema,
       long updateOperationTimestamp,
-      int updateOperationColoID,
-      PubSubPosition newValueSourcePosition,
-      int newValueSourceBrokerID) {
+      int updateOperationColoID) {
     throw new IllegalStateException("Update request should not be handled by this class.");
   }
 

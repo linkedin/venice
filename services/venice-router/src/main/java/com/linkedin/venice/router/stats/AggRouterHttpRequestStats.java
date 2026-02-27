@@ -298,6 +298,31 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
     recordStoreStats(storeName, stats -> stats.recordRequestRoutingLatency(latency));
   }
 
+  public void recordPipelineLatency(String storeName, double latency) {
+    totalStats.recordPipelineLatency(latency);
+    recordStoreStats(storeName, stats -> stats.recordPipelineLatency(latency));
+  }
+
+  public void recordScatterLatency(String storeName, double latency) {
+    totalStats.recordScatterLatency(latency);
+    recordStoreStats(storeName, stats -> stats.recordScatterLatency(latency));
+  }
+
+  public void recordQueueLatency(String storeName, double latency) {
+    totalStats.recordQueueLatency(latency);
+    recordStoreStats(storeName, stats -> stats.recordQueueLatency(latency));
+  }
+
+  public void recordDispatchLatency(String storeName, double latency) {
+    totalStats.recordDispatchLatency(latency);
+    recordStoreStats(storeName, stats -> stats.recordDispatchLatency(latency));
+  }
+
+  public void recordBodyAggregationLatency(String storeName, double latency) {
+    totalStats.recordBodyAggregationLatency(latency);
+    recordStoreStats(storeName, stats -> stats.recordBodyAggregationLatency(latency));
+  }
+
   public void recordUnavailableRequest(String storeName) {
     totalStats.recordUnavailableRequest();
     recordStoreStats(storeName, RouterHttpRequestStats::recordUnavailableRequest);

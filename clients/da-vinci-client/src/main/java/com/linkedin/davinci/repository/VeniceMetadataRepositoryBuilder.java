@@ -32,7 +32,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * VeniceMetadataRepositoryBuilder is a centralized builder class for constructing a variety of metadata components
  * including store repository, schema repository, ZK-shared schema repository, ZK client and cluster info provider
- * for Da Vinci, Venice Service and Isolated Ingestion Service.
+ * for Da Vinci and Venice Service.
  */
 public class VeniceMetadataRepositoryBuilder {
   private static final Logger LOGGER = LogManager.getLogger(VeniceMetadataRepositoryBuilder.class);
@@ -40,7 +40,6 @@ public class VeniceMetadataRepositoryBuilder {
   private final VeniceConfigLoader configLoader;
   private final ClientConfig clientConfig;
   private final MetricsRepository metricsRepository;
-  private final boolean isIngestionIsolation;
   private final ICProvider icProvider;
 
   private ReadOnlyStoreRepository storeRepo;
@@ -55,17 +54,15 @@ public class VeniceMetadataRepositoryBuilder {
       VeniceConfigLoader configLoader,
       ClientConfig clientConfig,
       MetricsRepository metricsRepository,
-      ICProvider icProvider,
-      boolean isIngestionIsolation) {
+      ICProvider icProvider) {
     this.configLoader = configLoader;
     this.clientConfig = clientConfig;
     if (clientConfig != null) {
       clientConfig.setMetricsRepository(metricsRepository);
     }
     this.metricsRepository = metricsRepository;
-    this.isIngestionIsolation = isIngestionIsolation;
     this.icProvider = icProvider;
-    if (isDaVinciClient() && !isIngestionIsolation) {
+    if (isDaVinciClient()) {
       initDaVinciStoreAndSchemaRepository();
     } else {
       initServerStoreAndSchemaRepository();
@@ -124,8 +121,7 @@ public class VeniceMetadataRepositoryBuilder {
   private void initServerStoreAndSchemaRepository() {
     VeniceClusterConfig clusterConfig = configLoader.getVeniceClusterConfig();
     zkClient = ZkClientFactory.newZkClient(clusterConfig.getZookeeperAddress());
-    String zkClientNamePrefix = isIngestionIsolation ? "ingestion-isolation-" : "";
-    zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, zkClientNamePrefix + "server-zk-client"));
+    zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "server-zk-client"));
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     String clusterName = clusterConfig.getClusterName();
 

@@ -304,6 +304,18 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   long positionDifference(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2);
 
   /**
+   * Advances a position by {@code n} records within the given topic-partition.
+   *
+   * @param pubSubTopicPartition the topic-partition
+   * @param startInclusive the starting position (inclusive)
+   * @param n the number of records to advance; must be >= 0
+   * @return a new PubSubPosition representing the position n records after startInclusive
+   * @throws IllegalArgumentException if n is negative
+   * @throws NullPointerException if any argument is null
+   */
+  PubSubPosition advancePosition(PubSubTopicPartition pubSubTopicPartition, PubSubPosition startInclusive, long n);
+
+  /**
    * Decodes the given type-encoded byte array into a {@link PubSubPosition} for the specified topic partition.
    *
    * @param partition The topic partition this position belongs to.

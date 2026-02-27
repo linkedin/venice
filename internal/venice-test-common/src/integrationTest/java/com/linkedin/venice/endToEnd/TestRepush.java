@@ -31,21 +31,16 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -55,14 +50,9 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -86,7 +76,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -100,66 +89,22 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestRepush {
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
-  private static final int NUMBER_OF_CLUSTERS = 1;
+public class TestRepush extends AbstractMultiRegionTest {
   private static final int TEST_TIMEOUT_MS = 180_000;
   private static final int ASSERTION_TIMEOUT_MS = 30_000;
 
-  private static final int REPLICATION_FACTOR = 2;
-  private static final String CLUSTER_NAME = "venice-cluster0";
-
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-  private VeniceControllerWrapper parentController;
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-  private D2Client d2ClientDC0;
-
-  @BeforeClass(alwaysRun = true)
-  public void setUp() {
-    Properties serverProperties = new Properties();
-    serverProperties.put(ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true);
-    serverProperties.put(
-        ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY,
-        KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.CURRENT_VERSION_PRIORITIZATION.name());
-    Properties controllerProps = new Properties();
-    controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, true);
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
-            .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(2)
-            .numberOfRouters(1)
-            .replicationFactor(REPLICATION_FACTOR)
-            .forkServer(false)
-            .parentControllerProperties(controllerProps)
-            .childControllerProperties(controllerProps)
-            .serverProperties(serverProperties);
-    this.multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-    this.childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-    if (parentControllers.size() != 1) {
-      throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
-    }
-    this.parentController = parentControllers.get(0);
-    this.d2ClientDC0 = new D2ClientBuilder()
-        .setZkHosts(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress())
-        .setZkSessionTimeout(3, TimeUnit.SECONDS)
-        .setZkStartupTimeout(3, TimeUnit.SECONDS)
-        .build();
-    D2ClientUtils.startClient(d2ClientDC0);
+  @Override
+  protected boolean shouldCreateD2Client() {
+    return true;
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testRepushWithChunkingFlagChanged() {
     final String storeName = Utils.getUniqueString("reproduce");
-    String parentControllerUrl = parentController.getControllerUrl();
+    String parentControllerUrl = getParentControllerUrl();
     Schema keySchema = AvroCompatibilityHelper.parse(loadFileAsString("UserKey.avsc"));
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("UserValue.avsc"));
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
@@ -287,7 +232,7 @@ public class TestRepush {
   @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
   public void testRepushWithTTLWithActiveActivePartialUpdateStore(CompressionStrategy compressionStrategy) {
     final String storeName = Utils.getUniqueString("ttlRepushAAWC");
-    String parentControllerUrl = parentController.getControllerUrl();
+    String parentControllerUrl = getParentControllerUrl();
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
 
@@ -526,7 +471,7 @@ public class TestRepush {
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testRepushWithDeleteRecord() {
     final String storeName = Utils.getUniqueString("testRepushWithDeleteRecord");
-    String parentControllerUrl = parentController.getControllerUrl();
+    String parentControllerUrl = getParentControllerUrl();
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
 
@@ -585,7 +530,8 @@ public class TestRepush {
           30,
           TimeUnit.SECONDS);
     }
-    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+    int numberOfChildDatacenters = childDatacenters.size();
+    for (int i = 0; i < numberOfChildDatacenters; i++) {
       VeniceClusterWrapper cluster = childDatacenters.get(i).getClusters().get(CLUSTER_NAME);
       try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
@@ -636,7 +582,7 @@ public class TestRepush {
       sendStreamingRecord(veniceProducer, storeName, key3, updateBuilder.build(), 10000L);
     }
 
-    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+    for (int i = 0; i < numberOfChildDatacenters; i++) {
       VeniceClusterWrapper cluster = childDatacenters.get(i).getClusters().get(CLUSTER_NAME);
       try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
@@ -663,7 +609,7 @@ public class TestRepush {
       sendStreamingRecord(veniceProducer, storeName, key1, updateBuilder.build(), 12345L);
     }
 
-    for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
+    for (int i = 0; i < numberOfChildDatacenters; i++) {
       VeniceClusterWrapper cluster = childDatacenters.get(i).getClusters().get(CLUSTER_NAME);
       try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
@@ -681,12 +627,6 @@ public class TestRepush {
         });
       }
     }
-  }
-
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    D2ClientUtils.shutdownClient(d2ClientDC0);
-    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   private GenericRecord readValue(AvroGenericStoreClient<Object, Object> storeReader, String key)

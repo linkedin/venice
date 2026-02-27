@@ -30,15 +30,15 @@ public class GrpcReadQuotaEnforcementHandler extends VeniceServerGrpcHandler {
     context.setError();
     if (result == ReadQuotaEnforcementHandler.QuotaEnforcementResult.BAD_REQUEST) {
       context.getVeniceServerResponseBuilder()
-          .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
+          .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST.getCode())
           .setErrorMessage(INVALID_REQUEST_RESOURCE_MSG + request.getResourceName());
     } else if (result == ReadQuotaEnforcementHandler.QuotaEnforcementResult.REJECTED) {
       context.getVeniceServerResponseBuilder()
-          .setErrorCode(VeniceReadResponseStatus.TOO_MANY_REQUESTS)
+          .setErrorCode(VeniceReadResponseStatus.TOO_MANY_REQUESTS.getCode())
           .setErrorMessage("");
     } else if (result == ReadQuotaEnforcementHandler.QuotaEnforcementResult.OVER_CAPACITY) {
       context.getVeniceServerResponseBuilder()
-          .setErrorCode(VeniceReadResponseStatus.SERVICE_UNAVAILABLE)
+          .setErrorCode(VeniceReadResponseStatus.SERVICE_UNAVAILABLE.getCode())
           .setErrorMessage(SERVER_OVER_CAPACITY_MSG);
     }
 
