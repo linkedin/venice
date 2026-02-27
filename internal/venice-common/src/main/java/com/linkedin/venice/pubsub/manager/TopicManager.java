@@ -148,6 +148,26 @@ public class TopicManager implements Closeable {
       boolean logCompaction,
       Optional<Integer> minIsr,
       boolean useFastPubSubOperationTimeout) {
+    createTopic(
+        topicName,
+        numPartitions,
+        replication,
+        eternal,
+        logCompaction,
+        minIsr,
+        useFastPubSubOperationTimeout,
+        false);
+  }
+
+  public void createTopic(
+      PubSubTopic topicName,
+      int numPartitions,
+      int replication,
+      boolean eternal,
+      boolean logCompaction,
+      Optional<Integer> minIsr,
+      boolean useFastPubSubOperationTimeout,
+      boolean useAlternativeBackend) {
     long retentionTimeMs;
     if (eternal) {
       retentionTimeMs = ETERNAL_TOPIC_RETENTION_POLICY_MS;
@@ -161,7 +181,8 @@ public class TopicManager implements Closeable {
         retentionTimeMs,
         logCompaction,
         minIsr,
-        useFastPubSubOperationTimeout);
+        useFastPubSubOperationTimeout,
+        useAlternativeBackend);
   }
 
   /**
@@ -186,6 +207,29 @@ public class TopicManager implements Closeable {
       boolean logCompaction,
       Optional<Integer> minIsr,
       boolean useFastPubSubOperationTimeout) {
+    createTopic(
+        topicName,
+        numPartitions,
+        replication,
+        retentionTimeMs,
+        logCompaction,
+        minIsr,
+        useFastPubSubOperationTimeout,
+        false);
+  }
+
+  /**
+   * @param useAlternativeBackend if true, signals that the topic should be created using an alternative PubSub backend
+   */
+  public void createTopic(
+      PubSubTopic topicName,
+      int numPartitions,
+      int replication,
+      long retentionTimeMs,
+      boolean logCompaction,
+      Optional<Integer> minIsr,
+      boolean useFastPubSubOperationTimeout,
+      boolean useAlternativeBackend) {
     long startTimeMs = System.currentTimeMillis();
     long deadlineMs = startTimeMs + (useFastPubSubOperationTimeout
         ? PUBSUB_FAST_OPERATION_TIMEOUT_MS
@@ -195,7 +239,8 @@ public class TopicManager implements Closeable {
         logCompaction,
         minIsr,
         topicManagerContext.getTopicMinLogCompactionLagMs(),
-        Optional.empty());
+        Optional.empty(),
+        useAlternativeBackend);
     logger.info(
         "Creating topic: {} partitions: {} replication: {}, configuration: {}",
         topicName,
