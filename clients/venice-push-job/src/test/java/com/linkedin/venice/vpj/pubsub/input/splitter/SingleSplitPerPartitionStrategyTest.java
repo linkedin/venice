@@ -1,8 +1,6 @@
 package com.linkedin.venice.vpj.pubsub.input.splitter;
 
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -39,6 +37,7 @@ public class SingleSplitPerPartitionStrategyTest {
     topic = TOPIC_REPOSITORY.getTopic("test-topic");
     partition = new PubSubTopicPartitionImpl(topic, 0);
     topicManager = mock(TopicManager.class);
+    when(topicManager.getTopicRepository()).thenReturn(TOPIC_REPOSITORY);
     splitter = new SingleSplitPerPartitionStrategy();
   }
 
@@ -48,42 +47,34 @@ public class SingleSplitPerPartitionStrategyTest {
     PubSubPosition startPos = ApacheKafkaOffsetPosition.of(100);
     PubSubPosition endPos = ApacheKafkaOffsetPosition.of(1000);
     long recordCount = 900;
-    setupTopicManagerMocks(startPos, endPos, recordCount);
 
-    SplitRequest request = createSplitRequest();
+    SplitRequest request = createSplitRequest(startPos, endPos, recordCount);
     List<PubSubPartitionSplit> splits = splitter.split(request);
 
     assertEquals(splits.size(), 1, "Should create exactly one split for whole partition");
     verifySingleSplit(splits.get(0), startPos, endPos, recordCount, 0);
-    verifyTopicManagerMethodCalls();
 
     // Case 2: Large partition with many records
-    reset(topicManager);
     startPos = ApacheKafkaOffsetPosition.of(0);
     endPos = ApacheKafkaOffsetPosition.of(1000000);
     recordCount = 1000000;
-    setupTopicManagerMocks(startPos, endPos, recordCount);
 
-    request = createSplitRequest();
+    request = createSplitRequest(startPos, endPos, recordCount);
     splits = splitter.split(request);
 
     assertEquals(splits.size(), 1, "Should create exactly one split for large partition");
     verifySingleSplit(splits.get(0), startPos, endPos, recordCount, 0);
-    verifyTopicManagerMethodCalls();
 
     // Case 3: Small partition with few records
-    reset(topicManager);
     startPos = ApacheKafkaOffsetPosition.of(50);
     endPos = ApacheKafkaOffsetPosition.of(55);
     recordCount = 5;
-    setupTopicManagerMocks(startPos, endPos, recordCount);
 
-    request = createSplitRequest();
+    request = createSplitRequest(startPos, endPos, recordCount);
     splits = splitter.split(request);
 
     assertEquals(splits.size(), 1, "Should create exactly one split for small partition");
     verifySingleSplit(splits.get(0), startPos, endPos, recordCount, 0);
-    verifyTopicManagerMethodCalls();
   }
 
   @Test
@@ -92,41 +83,33 @@ public class SingleSplitPerPartitionStrategyTest {
     PubSubPosition startPos = ApacheKafkaOffsetPosition.of(100);
     PubSubPosition endPos = ApacheKafkaOffsetPosition.of(100);
     long recordCount = 0;
-    setupTopicManagerMocks(startPos, endPos, recordCount);
 
-    SplitRequest request = createSplitRequest();
+    SplitRequest request = createSplitRequest(startPos, endPos, recordCount);
     List<PubSubPartitionSplit> splits = splitter.split(request);
 
     assertEquals(splits.size(), 0, "Should create no splits for empty partition");
-    verifyTopicManagerMethodCalls();
 
     // Case 2: Single record partition
-    reset(topicManager);
     startPos = ApacheKafkaOffsetPosition.of(42);
     endPos = ApacheKafkaOffsetPosition.of(43);
     recordCount = 1;
-    setupTopicManagerMocks(startPos, endPos, recordCount);
 
-    request = createSplitRequest();
+    request = createSplitRequest(startPos, endPos, recordCount);
     splits = splitter.split(request);
 
     assertEquals(splits.size(), 1, "Should create exactly one split for single record partition");
     verifySingleSplit(splits.get(0), startPos, endPos, recordCount, 0);
-    verifyTopicManagerMethodCalls();
 
     // Case 3: Partition with start position at zero
-    reset(topicManager);
     startPos = ApacheKafkaOffsetPosition.of(0);
     endPos = ApacheKafkaOffsetPosition.of(1000);
     recordCount = 1000;
-    setupTopicManagerMocks(startPos, endPos, recordCount);
 
-    request = createSplitRequest();
+    request = createSplitRequest(startPos, endPos, recordCount);
     splits = splitter.split(request);
 
     assertEquals(splits.size(), 1, "Should create exactly one split for partition starting at zero");
     verifySingleSplit(splits.get(0), startPos, endPos, recordCount, 0);
-    verifyTopicManagerMethodCalls();
   }
 
   @DataProvider(name = "partitionSizeScenarios")
@@ -145,16 +128,12 @@ public class SingleSplitPerPartitionStrategyTest {
       String description) {
     PubSubPosition startPos = ApacheKafkaOffsetPosition.of(startOffset);
     PubSubPosition endPos = ApacheKafkaOffsetPosition.of(endOffset);
-    setupTopicManagerMocks(startPos, endPos, expectedRecordCount);
 
-    SplitRequest request = createSplitRequest();
+    SplitRequest request = createSplitRequest(startPos, endPos, expectedRecordCount);
     List<PubSubPartitionSplit> splits = splitter.split(request);
 
     assertEquals(splits.size(), 1, "Should always create exactly one split: " + description);
     verifySingleSplit(splits.get(0), startPos, endPos, expectedRecordCount, 0);
-    verifyTopicManagerMethodCalls();
-
-    reset(topicManager);
   }
 
   @Test
@@ -163,9 +142,8 @@ public class SingleSplitPerPartitionStrategyTest {
     PubSubPosition startPos = ApacheKafkaOffsetPosition.of(500);
     PubSubPosition endPos = ApacheKafkaOffsetPosition.of(1500);
     long recordCount = 1000;
-    setupTopicManagerMocks(startPos, endPos, recordCount);
 
-    SplitRequest request = createSplitRequest();
+    SplitRequest request = createSplitRequest(startPos, endPos, recordCount);
     List<PubSubPartitionSplit> splits = splitter.split(request);
 
     PubSubPartitionSplit split = splits.get(0);
@@ -179,9 +157,6 @@ public class SingleSplitPerPartitionStrategyTest {
     assertEquals(split.getStartIndex(), 0, "Split should have start offset 0 for whole partition");
 
     // Case 2: Verify immutability and consistency across multiple calls
-    reset(topicManager);
-    setupTopicManagerMocks(startPos, endPos, recordCount);
-
     List<PubSubPartitionSplit> secondSplits = splitter.split(request);
     assertEquals(secondSplits.size(), splits.size(), "Multiple calls should return same structure");
     assertEquals(
@@ -192,18 +167,14 @@ public class SingleSplitPerPartitionStrategyTest {
 
   // Helper methods
 
-  private SplitRequest createSplitRequest() {
+  private SplitRequest createSplitRequest(PubSubPosition startPos, PubSubPosition endPos, long numberOfRecords) {
     return new SplitRequest.Builder().pubSubTopicPartition(partition)
         .topicManager(topicManager)
         .splitType(PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION)
+        .startPosition(startPos)
+        .endPosition(endPos)
+        .numberOfRecords(numberOfRecords)
         .build();
-  }
-
-  private void setupTopicManagerMocks(PubSubPosition startPos, PubSubPosition endPos, long recordCount) {
-    when(topicManager.getStartPositionsForPartitionWithRetries(partition)).thenReturn(startPos);
-    when(topicManager.getEndPositionsForPartitionWithRetries(partition)).thenReturn(endPos);
-    when(topicManager.diffPosition(partition, endPos, startPos)).thenReturn(recordCount);
-    when(topicManager.getTopicRepository()).thenReturn(TOPIC_REPOSITORY);
   }
 
   private void verifySingleSplit(
@@ -221,14 +192,5 @@ public class SingleSplitPerPartitionStrategyTest {
 
     // Verify startOffset value directly from the split
     assertEquals(split.getStartIndex(), 0, "Split should have start offset 0 for whole partition");
-  }
-
-  private void verifyTopicManagerMethodCalls() {
-    verify(topicManager).getStartPositionsForPartitionWithRetries(partition);
-    verify(topicManager).getEndPositionsForPartitionWithRetries(partition);
-    verify(topicManager).diffPosition(
-        partition,
-        topicManager.getEndPositionsForPartitionWithRetries(partition),
-        topicManager.getStartPositionsForPartitionWithRetries(partition));
   }
 }

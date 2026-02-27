@@ -2,14 +2,18 @@ package com.linkedin.davinci.stats.ingestion;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_EVENT;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_OPERATION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DESTINATION_REGION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_DESTINATION_COMPONENT;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_FAILURE_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_SOURCE_COMPONENT;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RECORD_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_SOURCE_REGION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_WRITE_COMPUTE_OPERATION;
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -74,7 +78,7 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
 
   INGESTION_PRODUCER_CALLBACK_TIME(
       "ingestion.producer.callback.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
-      "Producer callback latency (ack wait time)",
+      "Time spent inside the producer callback after pubsub broker acknowledgement, including result processing and queuing the record to the drainer",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_REPLICA_TYPE)
   ),
 
@@ -103,7 +107,7 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
 
   INGESTION_PRODUCER_TIME(
       "ingestion.producer.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
-      "Latency from leader producing to producer completion",
+      "Time from when the leader initiates the produce call to when the pubsub producer invokes the acknowledgement callback, measuring the full produce-to-ack round trip",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 
@@ -176,6 +180,153 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
           VENICE_SOURCE_REGION,
           VENICE_DESTINATION_REGION,
           VENICE_REGION_LOCALITY)
+  ),
+
+  CONSUMER_QUEUE_PUT_TIME(
+      "ingestion.consumer_queue.put.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Time to put consumed records into the consumer queue",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  STORAGE_ENGINE_PUT_TIME(
+      "ingestion.storage_engine.put.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Time to put records into the storage engine", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  STORAGE_ENGINE_DELETE_TIME(
+      "ingestion.storage_engine.delete.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Time to delete records from the storage engine",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  CONSUMER_ACTION_TIME(
+      "ingestion.consumer_action.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Time to process a batch of consumer actions (subscribe, unsubscribe, etc.)",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  LONG_RUNNING_TASK_CHECK_TIME(
+      "ingestion.long_running_task.check.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Time to check long running task state", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  VIEW_WRITER_PRODUCE_TIME(
+      "ingestion.view_writer.produce.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Time for the view writer to trigger all writes",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  VIEW_WRITER_ACK_TIME(
+      "ingestion.view_writer.ack.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "End-to-end time from the start of view writing to the completion of all view writer futures, including both produce and acknowledgement phases",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  PRODUCER_ENQUEUE_TIME(
+      "ingestion.producer.enqueue.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Time for the leader to execute the synchronous produce call that enqueues a message into the pubsub producer buffer",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  PRODUCER_COMPRESS_TIME(
+      "ingestion.producer.compress.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Time to compress records before producing", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  PRODUCER_SYNCHRONIZE_TIME(
+      "ingestion.producer.synchronize.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Time spent waiting for the last leader-produced message to be persisted during partition stop or leader handoff",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  WRITE_COMPUTE_TIME(
+      "ingestion.write_compute.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Time to perform write compute operations",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_WRITE_COMPUTE_OPERATION)
+  ),
+
+  DCR_LOOKUP_TIME(
+      "ingestion.dcr.lookup.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Time to look up existing records during conflict resolution",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_RECORD_TYPE)
+  ),
+
+  DCR_MERGE_TIME(
+      "ingestion.dcr.merge.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Time to merge records during conflict resolution",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_DCR_OPERATION)
+  ),
+
+  UNEXPECTED_MESSAGE_COUNT(
+      "ingestion.unexpected_message.count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of unexpected messages encountered during ingestion",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  STORE_METADATA_INCONSISTENT_COUNT(
+      "ingestion.store_metadata.inconsistent_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of store metadata inconsistency events", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  INGESTION_FAILURE_COUNT(
+      "ingestion.failure.count", MetricType.COUNTER, MetricUnit.NUMBER, "Count of ingestion failures by reason",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_INGESTION_FAILURE_REASON)
+  ),
+
+  RESUBSCRIPTION_FAILURE_COUNT(
+      "ingestion.resubscription_failure.count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of resubscription failures during ingestion",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  WRITE_COMPUTE_CACHE_HIT_COUNT(
+      "ingestion.write_compute.cache.hit_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of write compute cache hits", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  CHECKSUM_VERIFICATION_FAILURE_COUNT(
+      "ingestion.checksum_verification_failure.count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of checksum verification failures", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  DCR_LOOKUP_CACHE_HIT_COUNT(
+      "ingestion.dcr.lookup.cache.hit_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of cache hits when looking up existing value bytes or replication metadata before conflict resolution",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_RECORD_TYPE)
+  ),
+
+  BYTES_CONSUMED_AS_UNCOMPRESSED_SIZE(
+      "ingestion.bytes.consumed_as_uncompressed_size", MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES, MetricUnit.BYTES,
+      "Bytes consumed from pubsub as uncompressed size",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  RECORD_KEY_SIZE(
+      "ingestion.record.key_size", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.BYTES,
+      "Size of record keys during ingestion", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  RECORD_VALUE_SIZE(
+      "ingestion.record.value_size", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.BYTES,
+      "Size of record values during ingestion", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  RECORD_ASSEMBLED_SIZE(
+      "ingestion.record.assembled_size", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.BYTES,
+      "Size of assembled records during ingestion",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_RECORD_TYPE)
+  ),
+
+  RECORD_ASSEMBLED_SIZE_RATIO(
+      "ingestion.record.assembled_size_ratio", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.RATIO,
+      "Ratio of assembled record size to the max record size limit",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
+  ),
+
+  INGESTION_TASK_COUNT(
+      "ingestion.task.count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
+      "Whether an active ingestion task exists for this store version (0 or 1)",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   );
 
   private final MetricEntity metricEntity;

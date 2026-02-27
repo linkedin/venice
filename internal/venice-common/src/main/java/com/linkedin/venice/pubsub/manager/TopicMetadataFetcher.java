@@ -591,6 +591,15 @@ class TopicMetadataFetcher implements Closeable {
     }
   }
 
+  public PubSubPosition advancePosition(PubSubTopicPartition tp, PubSubPosition startInclusive, long n) {
+    PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
+    try {
+      return pubSubConsumerAdapter.advancePosition(tp, startInclusive, n);
+    } finally {
+      releaseConsumer(pubSubConsumerAdapter);
+    }
+  }
+
   void invalidateKey(PubSubTopicPartition pubSubTopicPartition) {
     latestPositionCache.remove(pubSubTopicPartition);
     earliestPositionCache.remove(pubSubTopicPartition);

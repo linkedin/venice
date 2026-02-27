@@ -108,7 +108,19 @@ public enum VeniceMetricsDimensions {
   VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type"),
 
   /** Thread pool name for ThreadPoolStats */
-  VENICE_THREAD_POOL_NAME("venice.thread_pool.name");
+  VENICE_THREAD_POOL_NAME("venice.thread_pool.name"),
+
+  /** {@link VeniceDCROperation} DCR merge operation type (put, update, delete) */
+  VENICE_DCR_OPERATION("venice.dcr.operation"),
+
+  /** {@link VeniceWriteComputeOperation} Write compute operation phase (query, update) */
+  VENICE_WRITE_COMPUTE_OPERATION("venice.write_compute.operation"),
+
+  /** {@link VeniceRecordType} Record type (data, replication_metadata) */
+  VENICE_RECORD_TYPE("venice.record.type"),
+
+  /** {@link VeniceIngestionFailureReason} Categorized reason for ingestion failure */
+  VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

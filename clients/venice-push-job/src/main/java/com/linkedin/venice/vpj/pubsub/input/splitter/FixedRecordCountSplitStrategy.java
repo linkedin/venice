@@ -24,10 +24,8 @@ public class FixedRecordCountSplitStrategy implements PubSubTopicPartitionSplitS
     PubSubTopicPartition pubSubTopicPartition = splitRequest.getPubSubTopicPartition();
     TopicManager topicManager = splitRequest.getTopicManager();
 
-    PubSubPosition startPosition = topicManager.getStartPositionsForPartitionWithRetries(pubSubTopicPartition);
-    PubSubPosition endPosition = topicManager.getEndPositionsForPartitionWithRetries(pubSubTopicPartition);
-
-    long numberOfRecords = topicManager.diffPosition(pubSubTopicPartition, endPosition, startPosition);
+    PubSubPosition startPosition = splitRequest.getStartPosition();
+    long numberOfRecords = splitRequest.getNumberOfRecords();
     if (numberOfRecords <= 0) {
       return Collections.emptyList();
     }
@@ -63,7 +61,7 @@ public class FixedRecordCountSplitStrategy implements PubSubTopicPartitionSplitS
               thisSplitCount, // numberOfRecords
               rangeIndex,
               startOffset));
-      LOGGER.info(
+      LOGGER.debug(
           "Created split-{} for TP: {} record count: {}, start: {}, end: {}",
           rangeIndex,
           pubSubTopicPartition,
@@ -78,6 +76,8 @@ public class FixedRecordCountSplitStrategy implements PubSubTopicPartitionSplitS
       rangeIndex++;
     }
 
+    LOGGER
+        .info("Created {} splits for TP: {} with {} total records", out.size(), pubSubTopicPartition, numberOfRecords);
     return out;
   }
 }

@@ -3005,6 +3005,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .getTopic(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
       topicNamesToCreate.add(streamReprocessingTopic);
     }
+    boolean useAltBackend = clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false);
     topicNamesToCreate.forEach(
         topicNameToCreate -> topicManager.createTopic(
             topicNameToCreate,
@@ -3013,7 +3014,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             true,
             false,
             clusterConfig.getMinInSyncReplicas(),
-            useFastKafkaOperationTimeout));
+            useFastKafkaOperationTimeout,
+            useAltBackend));
   }
 
   private Pair<Boolean, Version> addVersion(
@@ -3620,7 +3622,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           false,
           // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
           clusterConfig.getMinInSyncReplicasRealTimeTopics(),
-          false);
+          false,
+          clusterConfig.shouldUseAlternativePubSubBackend(store.getName(), true));
     }
     LOGGER.info(
         "Completed setup for real-time topic: {} for store: {} with reference hybrid version: {} and partition count: {}",

@@ -112,6 +112,18 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_THREAD_POOL_NAME:
           assertEquals(dimension.getDimensionName(format), "venice.thread_pool.name");
           break;
+        case VENICE_DCR_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "venice.dcr.operation");
+          break;
+        case VENICE_WRITE_COMPUTE_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "venice.write_compute.operation");
+          break;
+        case VENICE_RECORD_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.record.type");
+          break;
+        case VENICE_INGESTION_FAILURE_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.ingestion.failure.reason");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -222,6 +234,18 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_THREAD_POOL_NAME:
           assertEquals(dimension.getDimensionName(format), "venice.threadPool.name");
           break;
+        case VENICE_DCR_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "venice.dcr.operation");
+          break;
+        case VENICE_WRITE_COMPUTE_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "venice.writeCompute.operation");
+          break;
+        case VENICE_RECORD_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.record.type");
+          break;
+        case VENICE_INGESTION_FAILURE_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.ingestion.failure.reason");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -331,6 +355,18 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_THREAD_POOL_NAME:
           assertEquals(dimension.getDimensionName(format), "Venice.ThreadPool.Name");
+          break;
+        case VENICE_DCR_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "Venice.Dcr.Operation");
+          break;
+        case VENICE_WRITE_COMPUTE_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "Venice.WriteCompute.Operation");
+          break;
+        case VENICE_RECORD_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Record.Type");
+          break;
+        case VENICE_INGESTION_FAILURE_REASON:
+          assertEquals(dimension.getDimensionName(format), "Venice.Ingestion.Failure.Reason");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
