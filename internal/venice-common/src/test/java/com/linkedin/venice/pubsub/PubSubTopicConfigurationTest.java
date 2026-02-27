@@ -7,8 +7,6 @@ import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.Test;
 
@@ -123,29 +121,23 @@ public class PubSubTopicConfigurationTest {
   }
 
   @Test
-  public void testAdditionalProperties_EmptyByDefault() {
+  public void testUseAlternativeBackendDefaultIsFalse() {
     PubSubTopicConfiguration config =
         new PubSubTopicConfiguration(Optional.of(1000L), true, Optional.of(1), 0L, Optional.empty());
-    assertTrue(config.getAdditionalProperties().isEmpty());
+    assertFalse(config.isUseAlternativeBackend());
   }
 
   @Test
-  public void testAdditionalProperties_PassedThroughConstructor() {
-    Map<String, String> props = new HashMap<>();
-    props.put("key1", "value1");
-    props.put("key2", "value2");
+  public void testUseAlternativeBackendPassedThroughConstructor() {
     PubSubTopicConfiguration config =
-        new PubSubTopicConfiguration(Optional.of(1000L), true, Optional.of(1), 0L, Optional.empty(), props);
-    assertEquals(config.getAdditionalProperties().size(), 2);
-    assertEquals(config.getAdditionalProperties().get("key1"), "value1");
+        new PubSubTopicConfiguration(Optional.of(1000L), true, Optional.of(1), 0L, Optional.empty(), true);
+    assertTrue(config.isUseAlternativeBackend());
   }
 
-  @Test(expectedExceptions = UnsupportedOperationException.class)
-  public void testAdditionalProperties_Immutable() {
-    Map<String, String> props = new HashMap<>();
-    props.put("key1", "value1");
+  @Test
+  public void testUseAlternativeBackendIncludedInToString() {
     PubSubTopicConfiguration config =
-        new PubSubTopicConfiguration(Optional.of(1000L), true, Optional.of(1), 0L, Optional.empty(), props);
-    config.getAdditionalProperties().put("key2", "value2"); // Should throw
+        new PubSubTopicConfiguration(Optional.of(1000L), true, Optional.of(1), 0L, Optional.empty(), true);
+    assertTrue(config.toString().contains("useAlternativeBackend = true"));
   }
 }

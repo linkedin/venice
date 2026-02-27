@@ -1,8 +1,5 @@
 package com.linkedin.venice.pubsub;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 
 
@@ -15,7 +12,7 @@ public class PubSubTopicConfiguration implements Cloneable {
   Long minLogCompactionLagMs;
   Optional<Long> maxLogCompactionLagMs;
   Optional<Integer> minInSyncReplicas;
-  private Map<String, String> additionalProperties = Collections.emptyMap();
+  private boolean useAlternativeBackend = false;
 
   public PubSubTopicConfiguration(
       Optional<Long> retentionInMs,
@@ -36,11 +33,9 @@ public class PubSubTopicConfiguration implements Cloneable {
       Optional<Integer> minInSyncReplicas,
       Long minLogCompactionLagMs,
       Optional<Long> maxLogCompactionLagMs,
-      Map<String, String> additionalProperties) {
+      boolean useAlternativeBackend) {
     this(retentionInMs, isLogCompacted, minInSyncReplicas, minLogCompactionLagMs, maxLogCompactionLagMs);
-    this.additionalProperties = additionalProperties != null
-        ? Collections.unmodifiableMap(new HashMap<>(additionalProperties))
-        : Collections.emptyMap();
+    this.useAlternativeBackend = useAlternativeBackend;
   }
 
   /**
@@ -99,8 +94,8 @@ public class PubSubTopicConfiguration implements Cloneable {
     this.minLogCompactionLagMs = minLogCompactionLagMs;
   }
 
-  public Map<String, String> getAdditionalProperties() {
-    return additionalProperties;
+  public boolean isUseAlternativeBackend() {
+    return useAlternativeBackend;
   }
 
   public Optional<Long> getMaxLogCompactionLagMs() {
@@ -117,19 +112,17 @@ public class PubSubTopicConfiguration implements Cloneable {
   @Override
   public String toString() {
     return String.format(
-        "TopicConfiguration(retentionInMs = %s, isLogCompacted = %s, minInSyncReplicas = %s, minLogCompactionLagMs = %s, maxLogCompactionLagMs = %s, additionalProperties = %s)",
+        "TopicConfiguration(retentionInMs = %s, isLogCompacted = %s, minInSyncReplicas = %s, minLogCompactionLagMs = %s, maxLogCompactionLagMs = %s, useAlternativeBackend = %s)",
         retentionInMs.isPresent() ? retentionInMs.get() : "not set",
         isLogCompacted,
         minInSyncReplicas.isPresent() ? minInSyncReplicas.get() : "not set",
         minLogCompactionLagMs,
         maxLogCompactionLagMs.isPresent() ? maxLogCompactionLagMs.get() : " not set",
-        additionalProperties);
+        useAlternativeBackend);
   }
 
   @Override
   public PubSubTopicConfiguration clone() throws CloneNotSupportedException {
-    PubSubTopicConfiguration cloned = (PubSubTopicConfiguration) super.clone();
-    // additionalProperties is already unmodifiable, so shallow copy is safe
-    return cloned;
+    return (PubSubTopicConfiguration) super.clone();
   }
 }

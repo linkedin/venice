@@ -158,7 +158,7 @@ public class TopicManager implements Closeable {
         logCompaction,
         minIsr,
         useFastPubSubOperationTimeout,
-        Collections.emptyMap());
+        false);
   }
 
   public void createTopic(
@@ -169,7 +169,7 @@ public class TopicManager implements Closeable {
       boolean logCompaction,
       Optional<Integer> minIsr,
       boolean useFastPubSubOperationTimeout,
-      Map<String, String> additionalProperties) {
+      boolean useAlternativeBackend) {
     long retentionTimeMs;
     if (eternal) {
       retentionTimeMs = ETERNAL_TOPIC_RETENTION_POLICY_MS;
@@ -184,7 +184,7 @@ public class TopicManager implements Closeable {
         logCompaction,
         minIsr,
         useFastPubSubOperationTimeout,
-        additionalProperties);
+        useAlternativeBackend);
   }
 
   /**
@@ -217,7 +217,7 @@ public class TopicManager implements Closeable {
         logCompaction,
         minIsr,
         useFastPubSubOperationTimeout,
-        Collections.emptyMap());
+        false);
   }
 
   public void createTopic(
@@ -228,7 +228,7 @@ public class TopicManager implements Closeable {
       boolean logCompaction,
       Optional<Integer> minIsr,
       boolean useFastPubSubOperationTimeout,
-      Map<String, String> additionalProperties) {
+      boolean useAlternativeBackend) {
     long startTimeMs = System.currentTimeMillis();
     long deadlineMs = startTimeMs + (useFastPubSubOperationTimeout
         ? PUBSUB_FAST_OPERATION_TIMEOUT_MS
@@ -239,7 +239,7 @@ public class TopicManager implements Closeable {
         minIsr,
         topicManagerContext.getTopicMinLogCompactionLagMs(),
         Optional.empty(),
-        additionalProperties);
+        useAlternativeBackend);
     logger.info(
         "Creating topic: {} partitions: {} replication: {}, configuration: {}",
         topicName,
