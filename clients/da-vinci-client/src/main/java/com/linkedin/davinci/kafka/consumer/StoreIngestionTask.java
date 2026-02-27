@@ -1554,7 +1554,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             beforeProcessingPerRecordTimestampNs,
             beforeProcessingBatchRecordsTimestampMs);
 
+        // Track which keys have been seen, so we can link back manifests for subsequent records.
+        // When multiple records for the same key appear in a batch, records 2+ have null manifests
+        // because setTransientRecord() during pre-processing creates records with null valueManifest.
+        // After each produce, setChunkingInfo() (called synchronously by VeniceWriter) sets the new
+        // manifest on the transient record. We read it back and set it on the next record's old
+        // manifest container so chunk deletion works correctly.
+        Set<ByteArrayKey> seenKeys = new HashSet<>();
+
         for (PubSubMessageProcessedResultWrapper processedRecord: processedResults) {
+          ByteArrayKey key = ByteArrayKey.wrap(processedRecord.getMessage().getKey().getKey());
+
+          if (seenKeys.contains(key)) {
+            linkBackManifestFromTransientRecord(processedRecord, partitionConsumptionState);
+          }
+          seenKeys.add(key);
+
           totalBytesRead += handleSingleMessage(
               processedRecord,
               topicPartition,
@@ -1589,6 +1604,33 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
+    }
+  }
+
+  /**
+   * For batch processing: reads the manifest from the transient record (set by the previous
+   * record's produce via setChunkingInfo) and overrides this record's old manifest container,
+   * so chunk deletion works correctly for records 2+ of the same key in a batch.
+   */
+  static void linkBackManifestFromTransientRecord(
+      PubSubMessageProcessedResultWrapper processedRecord,
+      PartitionConsumptionState partitionConsumptionState) {
+    PubSubMessageProcessedResult processedResult = processedRecord.getProcessedResult();
+    if (processedResult == null) {
+      return;
+    }
+    MergeConflictResultWrapper mcr = processedResult.getMergeConflictResultWrapper();
+    if (mcr != null) {
+      PartitionConsumptionState.TransientRecord transientRecord =
+          partitionConsumptionState.getTransientRecord(processedRecord.getMessage().getKey().getKey());
+      if (transientRecord != null) {
+        mcr.getOldValueManifestContainer().setManifest(transientRecord.getValueManifest());
+        // Also link back the RMD manifest — setChunkingInfo sets both on the transient record,
+        // and both are needed by VeniceWriter.put()/delete() for old chunk deletion.
+        if (mcr.getOldRmdWithValueSchemaId() != null) {
+          mcr.getOldRmdWithValueSchemaId().setRmdManifest(transientRecord.getRmdManifest());
+        }
+      }
     }
   }
 
