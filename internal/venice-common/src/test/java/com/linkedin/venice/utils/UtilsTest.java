@@ -622,4 +622,35 @@ public class UtilsTest {
     boolean ready = Utils.isFutureVersionReady(resource, storeRepository);
     Assert.assertTrue(ready);
   }
+
+  @Test
+  public void testGetCurrentTimeInNanosForSeeding() {
+    // Capture time before and after the call
+    long beforeMs = System.currentTimeMillis();
+    long nanoTime = Utils.getCurrentTimeInNanosForSeeding();
+    long afterMs = System.currentTimeMillis();
+
+    // Verify the returned value is in nanoseconds (should be much larger than milliseconds)
+    assertTrue(nanoTime > 0, "Nano time should be positive");
+    assertTrue(nanoTime > beforeMs, "Nano time should be larger than millisecond time");
+
+    // Verify the conversion is approximately correct
+    long beforeNs = beforeMs * Time.NS_PER_MS;
+    long afterNs = afterMs * Time.NS_PER_MS;
+    assertTrue(nanoTime >= beforeNs, "Nano time should be >= time before call");
+    assertTrue(nanoTime <= afterNs, "Nano time should be <= time after call");
+
+    // Verify multiple calls return increasing values
+    long nanoTime1 = Utils.getCurrentTimeInNanosForSeeding();
+    Utils.sleep(1); // Sleep for 1ms to ensure time advances
+    long nanoTime2 = Utils.getCurrentTimeInNanosForSeeding();
+    assertTrue(
+        nanoTime2 >= nanoTime1,
+        "Second call should return >= value than first call: " + nanoTime2 + " vs " + nanoTime1);
+
+    // Verify the magnitude is reasonable (should be in the order of 10^15 or higher for current epoch)
+    assertTrue(
+        nanoTime > 1_000_000_000_000_000L,
+        "Nano time should be in the order of 10^15 or higher for current epoch");
+  }
 }
