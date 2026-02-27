@@ -42,7 +42,6 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
@@ -156,7 +155,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -1552,10 +1550,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             beforeProcessingPerRecordTimestampNs,
             beforeProcessingBatchRecordsTimestampMs);
 
-        List<PubSubMessageProcessedResultWrapper> deduplicatedResults =
-            deduplicateBatchResults(processedResults);
+        // Track which keys have been seen, so we can link back manifests for subsequent records.
+        // When multiple records for the same key appear in a batch, records 2+ have null manifests
+        // because setTransientRecord() during pre-processing creates records with null valueManifest.
+        // After each produce, setChunkingInfo() (called synchronously by VeniceWriter) sets the new
+        // manifest on the transient record. We read it back and set it on the next record's old
+        // manifest container so chunk deletion works correctly.
+        Set<ByteArrayKey> seenKeys = new HashSet<>();
 
-        for (PubSubMessageProcessedResultWrapper processedRecord: deduplicatedResults) {
+        for (PubSubMessageProcessedResultWrapper processedRecord: processedResults) {
+          ByteArrayKey key = ByteArrayKey.wrap(processedRecord.getMessage().getKey().getKey());
+
+          if (seenKeys.contains(key)) {
+            MergeConflictResultWrapper mcr = processedRecord.getProcessedResult().getMergeConflictResultWrapper();
+            if (mcr != null) {
+              PartitionConsumptionState.TransientRecord transientRecord =
+                  partitionConsumptionState.getTransientRecord(processedRecord.getMessage().getKey().getKey());
+              if (transientRecord != null) {
+                mcr.getOldValueManifestContainer().setManifest(transientRecord.getValueManifest());
+              }
+            }
+          }
+          seenKeys.add(key);
+
           totalBytesRead += handleSingleMessage(
               processedRecord,
               topicPartition,
@@ -1589,61 +1606,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
     }
-  }
-
-  /**
-   * When multiple records for the same key appear in a batch, only produce the final result.
-   * Intermediate produces are wasteful and cause orphan chunks: during pre-processing,
-   * setTransientRecord() creates records with null valueManifest, so records 2+ in the batch
-   * see null manifests and their chunk deletions are skipped.
-   *
-   * This method returns only the last record per key (preserving order), and for AA records,
-   * overrides the last record's old manifest container with the first record's (which has the
-   * correct old manifest read from storage).
-   */
-  static List<PubSubMessageProcessedResultWrapper> deduplicateBatchResults(
-      List<PubSubMessageProcessedResultWrapper> processedResults) {
-    if (processedResults.size() <= 1) {
-      return processedResults;
-    }
-
-    Map<ByteArrayKey, ChunkedValueManifestContainer> firstManifestByKey = new HashMap<>();
-    Map<ByteArrayKey, Integer> lastIndexByKey = new HashMap<>();
-    for (int i = 0; i < processedResults.size(); i++) {
-      PubSubMessageProcessedResultWrapper result = processedResults.get(i);
-      ByteArrayKey key = ByteArrayKey.wrap(result.getMessage().getKey().getKey());
-      lastIndexByKey.put(key, i);
-      if (!firstManifestByKey.containsKey(key)) {
-        MergeConflictResultWrapper mcr = result.getProcessedResult().getMergeConflictResultWrapper();
-        if (mcr != null) {
-          firstManifestByKey.put(key, mcr.getOldValueManifestContainer());
-        }
-      }
-    }
-
-    List<PubSubMessageProcessedResultWrapper> deduplicated = new ArrayList<>();
-    for (int i = 0; i < processedResults.size(); i++) {
-      PubSubMessageProcessedResultWrapper processedRecord = processedResults.get(i);
-      ByteArrayKey key = ByteArrayKey.wrap(processedRecord.getMessage().getKey().getKey());
-
-      if (lastIndexByKey.get(key) != i) {
-        continue;
-      }
-
-      // For the last AA record of a key, override the old manifest container with the first
-      // record's manifest (which has the correct old manifest read from storage, not null
-      // from the transient record).
-      MergeConflictResultWrapper mcr = processedRecord.getProcessedResult().getMergeConflictResultWrapper();
-      if (mcr != null) {
-        ChunkedValueManifestContainer firstManifest = firstManifestByKey.get(key);
-        if (firstManifest != null) {
-          mcr.getOldValueManifestContainer().setManifest(firstManifest.getManifest());
-        }
-      }
-
-      deduplicated.add(processedRecord);
-    }
-    return deduplicated;
   }
 
   // For testing purpose
