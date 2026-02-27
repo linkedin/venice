@@ -207,8 +207,7 @@ public class OpenTelemetryMetricsSetup {
 
       // Add thread pool name if provided
       if (threadPoolName != null) {
-        String sanitizedThreadPoolName =
-            threadPoolName.trim().isEmpty() ? "unknown" : threadPoolName;
+        String sanitizedThreadPoolName = threadPoolName.trim().isEmpty() ? "unknown" : threadPoolName;
         baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME, sanitizedThreadPoolName);
         baseAttributesBuilder.put(
             otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME),
