@@ -151,18 +151,14 @@ public class PartitionConsumptionState {
   private volatile long highestLeadershipTerm = -1;
 
   /**
-   * This replica's own leadership term when it is the active leader. Set during
-   * STANDBY_TO_LEADER transition from the Helix state transition timestamp, and
-   * cleared back to DEFAULT_TERM_ID during LEADER_TO_STANDBY transition.
+   * This replica's own leadership term when it is the active leader, used for stamping
+   * outgoing messages. Set during STANDBY_TO_LEADER transition and cleared back to
+   * DEFAULT_TERM_ID during LEADER_TO_STANDBY transition.
    *
-   * <p>This is separate from {@link #highestLeadershipTerm} because:
-   * <ul>
-   *   <li>{@code highestLeadershipTerm} = max term observed from ANY leader (for follower-side filtering)</li>
-   *   <li>{@code activeLeaderTerm} = THIS replica's own term when it is the leader (for stamping outgoing messages)</li>
-   * </ul>
-   * If a replica falls back to legacy mode and sees another leader's DoLStamp with a higher term,
-   * highestLeadershipTerm would jump, but using it for stamping would incorrectly tag this replica's
-   * data with the other leader's term.
+   * <p>This is intentionally separate from {@link #highestLeadershipTerm}, which tracks the
+   * max term observed from ANY leader (for follower-side filtering). A replica must not use
+   * highestLeadershipTerm for stamping because observing another leader's higher term via a
+   * DoLStamp would incorrectly tag this replica's data with that term.
    */
   private volatile long activeLeaderTerm = VeniceWriter.DEFAULT_TERM_ID;
 

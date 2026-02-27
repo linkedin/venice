@@ -832,7 +832,7 @@ public class ConfigKeys {
    * leader produces to the version topic after a new leader has taken over.
    *
    * <p>Records with DEFAULT_TERM_ID (-1) are never filtered, ensuring backward compatibility during
-   * mixed rollout. Control messages are also never filtered.
+   * mixed rollout.
    *
    * Default: false (filtering disabled; enable after validating termId propagation)
    */

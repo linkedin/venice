@@ -5502,15 +5502,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     long currentHighest = pcs.getHighestLeadershipTerm();
-    if (recordTermId > currentHighest) {
-      pcs.setHighestLeadershipTerm(recordTermId);
-      return false;
-    }
-    if (recordTermId == currentHighest) {
+    if (recordTermId >= currentHighest) {
+      if (recordTermId > currentHighest) {
+        pcs.setHighestLeadershipTerm(recordTermId);
+      }
       return false;
     }
 
-    // recordTermId < currentHighest → stale leader record
+    // recordTermId < currentHighest: stale leader record
     getHostLevelIngestionStats().recordStaleLeaderRecordFiltered();
     versionedIngestionStats.recordStaleLeaderRecordFiltered(storeName, versionNumber);
     LOGGER.debug(
