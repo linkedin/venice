@@ -13,6 +13,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
@@ -26,6 +27,7 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.httpclient.PortableHttpResponse;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -366,6 +368,92 @@ public class TestDictionaryRetrievalService {
         doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
         // Reset store version status to ONLINE
         doReturn(VersionStatus.ONLINE).when(version).getStatus();
+      }
+    }
+  }
+
+  /**
+   * Regression test: after a successful dictionary download the future must be removed from
+   * downloadingDictionaryFutures. If it is not removed, a subsequent ZK handleStoreChanged event
+   * where the version is transiently absent from store.getVersions() would trigger
+   * handleVersionRetirement and silently evict the freshly-created compressor, causing the router
+   * to stall on a version swap indefinitely.
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testCompressorNotRemovedByRetirementCheckAfterSuccessfulDownload() throws Exception {
+    DictionaryRetrievalService dictionaryRetrievalService = null;
+    try {
+      when(routerConfig.getDictionaryRetrievalTimeMs()).thenReturn(DICTIONARY_RETRIEVAL_TIME_MS);
+
+      dictionaryRetrievalService = spy(
+          new DictionaryRetrievalService(
+              onlineInstanceFinder,
+              routerConfig,
+              Optional.of(sslFactory),
+              metadataRepository,
+              storageNodeClient,
+              compressorFactory,
+              metricsRepository));
+
+      doReturn(CompressionStrategy.ZSTD_WITH_DICT).when(version).getCompressionStrategy();
+      doReturn(VersionStatus.ONLINE).when(version).getStatus();
+      doReturn(STORE_NAME).when(version).getStoreName();
+      doReturn(VERSION_NUMBER).when(version).getNumber();
+      doReturn(false).when(compressorFactory).versionSpecificCompressorExists(KAFKA_TOPIC_NAME);
+
+      doReturn(1).when(onlineInstanceFinder).getNumberOfPartitions(KAFKA_TOPIC_NAME);
+      Instance mockInstance = mock(Instance.class);
+      doReturn("localhost").when(mockInstance).getUrl(anyBoolean());
+      List<Instance> instances = new ArrayList<>();
+      instances.add(mockInstance);
+      doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(KAFKA_TOPIC_NAME, 0);
+
+      // Complete the response future immediately so the download succeeds without a real HTTP call
+      doAnswer(invocation -> {
+        CompletableFuture<PortableHttpResponse> responseFuture = invocation.getArgument(1);
+        responseFuture.complete(mock(PortableHttpResponse.class));
+        return null;
+      }).when(storageNodeClient).sendRequest(any(), any());
+
+      // Return non-null bytes from the response so initCompressorFromDictionary is reached
+      doReturn(new byte[] { 1, 2, 3 }).when(dictionaryRetrievalService).getDictionaryFromResponse(any(), any());
+
+      dictionaryRetrievalService.start();
+      StoreDataChangedListener storeChangeListener = dictionaryRetrievalService.getStoreChangeListener();
+
+      storeChangeListener.handleStoreChanged(store);
+
+      Map<String, CompletableFuture<Void>> downloadingDictionaryFutures =
+          dictionaryRetrievalService.getDownloadingDictionaryFutures();
+
+      // Wait for the download to complete and the future to be removed from the map
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        assertFalse(
+            downloadingDictionaryFutures.containsKey(KAFKA_TOPIC_NAME),
+            "Future should be removed from downloadingDictionaryFutures after successful download");
+      });
+
+      // Simulate the compressor now existing so the consumer thread won't re-queue another download
+      doReturn(true).when(compressorFactory).versionSpecificCompressorExists(KAFKA_TOPIC_NAME);
+
+      // Simulate a ZK update where the version appears absent (the scenario that triggered the bug)
+      doReturn(null).when(store).getVersion(VERSION_NUMBER);
+      storeChangeListener.handleStoreChanged(store);
+
+      // Allow the handleStoreChanged retirement check to run
+      Thread.sleep(500);
+
+      // The compressor must not be removed: because the future was cleaned up on success, the
+      // retirement check skips this topic entirely
+      verify(compressorFactory, never()).removeVersionSpecificCompressor(KAFKA_TOPIC_NAME);
+    } finally {
+      if (dictionaryRetrievalService != null) {
+        dictionaryRetrievalService.stop();
+        dictionaryRetrievalService.close();
+        when(routerConfig.getDictionaryRetrievalTimeMs()).thenReturn(0);
+        doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
+        doReturn(VersionStatus.ONLINE).when(version).getStatus();
+        doReturn(version).when(store).getVersion(VERSION_NUMBER);
       }
     }
   }
