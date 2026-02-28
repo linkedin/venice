@@ -58,12 +58,35 @@ public class QueryTool {
 
     if (flags.containsKey("countByValue")) {
       String fieldsArg = flags.get("fields");
-      if (fieldsArg == null || fieldsArg.isEmpty()) {
+      if (fieldsArg == null || fieldsArg.trim().isEmpty()) {
         System.out.println("ERROR: --countByValue requires --fields=f1,f2,...");
         System.exit(1);
       }
-      int topK = Integer.parseInt(flags.getOrDefault("topK", "10"));
-      String[] fieldNames = fieldsArg.split(",");
+      String topKString = flags.get("topK");
+      int topK;
+      if (topKString == null || topKString.isEmpty()) {
+        topK = 10;
+      } else {
+        try {
+          topK = Integer.parseInt(topKString);
+        } catch (NumberFormatException e) {
+          System.out.println("ERROR: --topK must be a positive integer (got '" + topKString + "')");
+          System.exit(1);
+          return;
+        }
+      }
+      if (topK <= 0) {
+        System.out.println("ERROR: --topK must be a positive integer (got '" + topK + "')");
+        System.exit(1);
+        return;
+      }
+      String[] fieldNames = fieldsArg.split("\\s*,\\s*");
+      for (String fieldName: fieldNames) {
+        if (fieldName.isEmpty()) {
+          System.out.println("ERROR: --fields contains an empty field name");
+          System.exit(1);
+        }
+      }
 
       Map<String, Map<Object, Integer>> result =
           queryStoreForCountByValue(store, keyString, url, isVsonStore, sslConfigFilePathArgs, topK, fieldNames);
@@ -227,10 +250,10 @@ public class QueryTool {
   }
 
   /**
-   * Splits a multi-key string on commas, but only at brace-depth zero.
-   * This correctly handles JSON keys containing commas, e.g.:
-   * {@code {"memberId":123,"useCaseName":"foo"},{"memberId":456}} yields two keys.
-   * For simple keys like {@code 1,2,3} it behaves identically to {@code String.split(",")}.
+   * Splits a multi-key string on commas, but only at nesting depth zero.
+   * Tracks both {@code {}} and {@code []} nesting so that JSON keys containing commas
+   * (e.g. records, arrays, maps) are not incorrectly split. For simple keys like
+   * {@code 1,2,3} it behaves identically to {@code String.split(",")}.
    */
   static List<String> parseKeys(String multiKeyString) {
     if (multiKeyString == null || multiKeyString.trim().isEmpty()) {
@@ -241,9 +264,9 @@ public class QueryTool {
     int start = 0;
     for (int i = 0; i < multiKeyString.length(); i++) {
       char c = multiKeyString.charAt(i);
-      if (c == '{') {
+      if (c == '{' || c == '[') {
         depth++;
-      } else if (c == '}') {
+      } else if (c == '}' || c == ']') {
         depth--;
       } else if (c == ',' && depth == 0) {
         String segment = multiKeyString.substring(start, i).trim();

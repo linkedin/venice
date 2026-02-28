@@ -51,8 +51,8 @@ public class QueryToolTest {
   }
 
   @Test
-  public void testRemoveQuotesSingleQuote() {
-    // A single quote character — starts with " and after removing leading, result is empty, no trailing to strip
+  public void testRemoveQuotesSingleDoubleQuote() {
+    // A single double-quote character — removing surrounding quotes yields an empty string
     assertEquals(QueryTool.removeQuotes("\""), "");
   }
 
@@ -72,14 +72,14 @@ public class QueryToolTest {
 
   @Test
   public void testConvertKeyFloat() {
-    Object result = QueryTool.convertKey("3.14", Schema.create(Schema.Type.FLOAT));
-    assertEquals(result, 3.14f);
+    Object result = QueryTool.convertKey("1.5", Schema.create(Schema.Type.FLOAT));
+    assertEquals(result, 1.5f);
   }
 
   @Test
   public void testConvertKeyDouble() {
-    Object result = QueryTool.convertKey("2.718281828", Schema.create(Schema.Type.DOUBLE));
-    assertEquals(result, 2.718281828);
+    Object result = QueryTool.convertKey("123.456", Schema.create(Schema.Type.DOUBLE));
+    assertEquals(result, 123.456);
   }
 
   @Test
@@ -153,6 +153,16 @@ public class QueryToolTest {
     assertEquals(result.size(), 2);
     assertEquals(result.get(0), "{\"a\":{\"b\":1},\"c\":2}");
     assertEquals(result.get(1), "{\"a\":{\"b\":3},\"c\":4}");
+  }
+
+  @Test
+  public void testParseKeysWithArrayBrackets() {
+    // Keys containing arrays — brackets must not cause incorrect splitting
+    String input = "{\"ids\":[1,2,3],\"name\":\"a\"},{\"ids\":[4,5],\"name\":\"b\"}";
+    List<String> result = QueryTool.parseKeys(input);
+    assertEquals(result.size(), 2);
+    assertEquals(result.get(0), "{\"ids\":[1,2,3],\"name\":\"a\"}");
+    assertEquals(result.get(1), "{\"ids\":[4,5],\"name\":\"b\"}");
   }
 
   @Test
