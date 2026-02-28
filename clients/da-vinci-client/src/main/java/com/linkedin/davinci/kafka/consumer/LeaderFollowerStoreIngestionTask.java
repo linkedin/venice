@@ -4454,6 +4454,37 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     preparePositionCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, false);
   }
 
+  @Override
+  protected void pausePartitionForPubSubHealth(int partitionId, PartitionConsumptionState pcs) {
+    PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
+    boolean isLeader = pcs.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER) && leaderTopic != null
+        && !leaderTopic.isVersionTopic();
+    pubSubHealthPausedPartitions.add(partitionId);
+    if (isLeader) {
+      unsubscribeFromTopic(leaderTopic, pcs);
+    } else {
+      unsubscribeFromTopic(versionTopic, pcs);
+    }
+    reportPubSubHealthException();
+  }
+
+  @Override
+  protected void seekToCheckpointAndResume(PartitionConsumptionState pcs) throws InterruptedException {
+    // The partition was already unsubscribed during pausePartitionForPubSubHealth(),
+    // so we only need to resubscribe at the checkpointed position.
+    PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
+    boolean isLeader = pcs.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER) && leaderTopic != null
+        && !leaderTopic.isVersionTopic();
+    if (isLeader) {
+      LOGGER.info("Re-subscribing leader partition {} at checkpointed position", pcs.getPartition());
+      preparePositionCheckpointAndStartConsumptionAsLeader(leaderTopic, pcs, false);
+    } else {
+      PubSubPosition vtPosition = pcs.getLatestProcessedVtPosition();
+      LOGGER.info("Re-subscribing follower partition {} at position {}", pcs.getPartition(), vtPosition);
+      consumerSubscribe(versionTopic, pcs, vtPosition, localKafkaServer);
+    }
+  }
+
   protected void queueUpVersionTopicWritesWithViewWriters(
       PartitionConsumptionState partitionConsumptionState,
       BiFunction<VeniceViewWriter, Set<Integer>, CompletableFuture<Void>> viewWriterRecordProcessor,

@@ -61,6 +61,9 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubHealthCategory;
+import com.linkedin.venice.pubsub.PubSubHealthChangeListener;
+import com.linkedin.venice.pubsub.PubSubHealthStatus;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -141,7 +144,8 @@ import org.apache.logging.log4j.Logger;
  *
  * Uses the "new" Kafka Consumer.
  */
-public class KafkaStoreIngestionService extends AbstractVeniceService implements StoreIngestionService {
+public class KafkaStoreIngestionService extends AbstractVeniceService
+    implements StoreIngestionService, PubSubHealthChangeListener {
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private static final Logger LOGGER = LogManager.getLogger(KafkaStoreIngestionService.class);
@@ -207,6 +211,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final PubSubContext pubSubContext;
+  private PubSubHealthMonitor pubSubHealthMonitor;
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
   private final KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
@@ -651,7 +656,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
     };
 
-    return ingestionTaskFactory.getNewIngestionTask(
+    StoreIngestionTask task = ingestionTaskFactory.getNewIngestionTask(
         storageService,
         store,
         version,
@@ -662,6 +667,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         cacheBackend,
         getInternalRecordTransformerConfig(storeName),
         zkHelixAdmin);
+    if (pubSubHealthMonitor != null) {
+      task.setPubSubHealthMonitor(pubSubHealthMonitor);
+    }
+    return task;
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {
@@ -1455,6 +1464,51 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public PubSubContext getPubSubContext() {
     return pubSubContext;
+  }
+
+  public void setPubSubHealthMonitor(PubSubHealthMonitor pubSubHealthMonitor) {
+    this.pubSubHealthMonitor = pubSubHealthMonitor;
+    pubSubHealthMonitor.registerListener(this);
+  }
+
+  public PubSubHealthMonitor getPubSubHealthMonitor() {
+    return pubSubHealthMonitor;
+  }
+
+  @Override
+  public void onHealthStatusChanged(String pubSubAddress, PubSubHealthCategory category, PubSubHealthStatus newStatus) {
+    LOGGER.info(
+        "PubSub health status changed: address={}, category={}, newStatus={}",
+        pubSubAddress,
+        category,
+        newStatus);
+
+    if (newStatus != PubSubHealthStatus.HEALTHY) {
+      return; // Pause is triggered at the exception site, not here
+    }
+    if (category != PubSubHealthCategory.BROKER) {
+      return;
+    }
+
+    LOGGER.info("PubSub broker recovered: {}. Resuming paused partitions across all SITs.", pubSubAddress);
+    for (StoreIngestionTask sit: topicNameToIngestionTaskMap.values()) {
+      try {
+        sit.resumePartitionsForPubSubHealth(pubSubAddress);
+      } catch (Exception e) {
+        LOGGER.error("Error resuming partitions for SIT {} on broker recovery", sit.getVersionTopic(), e);
+      }
+    }
+  }
+
+  /**
+   * @return total number of partitions currently paused due to PubSub health issues across all SITs
+   */
+  public int getTotalPausedPartitionCount() {
+    int count = 0;
+    for (StoreIngestionTask sit: topicNameToIngestionTaskMap.values()) {
+      count += sit.getPubSubHealthPausedPartitions().size();
+    }
+    return count;
   }
 
   private boolean ingestionTaskHasAnySubscription(String topic) {

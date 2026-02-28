@@ -6,6 +6,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
@@ -113,11 +115,22 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Def
        */
       throw e;
     }
-    LOGGER.error(
-        "Received {} while StoreIngestionTask is processing the polled consumer record for topic: {}. Will propagate via setLastConsumerException(e).",
-        e.getClass().getSimpleName(),
-        topicPartition);
-    storeIngestionTask.setLastConsumerException(e);
+    if (ExceptionUtils.recursiveClassEquals(e, PubSubClientException.class, PubSubClientRetriableException.class)) {
+      // Downgrade from task-level kill to partition-level exception so that only the affected
+      // partition is paused (when PubSub health-based pause is enabled), instead of killing the
+      // entire ingestion task.
+      LOGGER.warn(
+          "Received PubSub exception {} for topic: {}. Propagating as partition-level exception.",
+          e.getClass().getSimpleName(),
+          topicPartition);
+      storeIngestionTask.setIngestionException(topicPartition.getPartitionNumber(), e);
+    } else {
+      LOGGER.error(
+          "Received {} while StoreIngestionTask is processing the polled consumer record for topic: {}. Will propagate via setLastConsumerException(e).",
+          e.getClass().getSimpleName(),
+          topicPartition);
+      storeIngestionTask.setLastConsumerException(e);
+    }
   }
 
   /**
