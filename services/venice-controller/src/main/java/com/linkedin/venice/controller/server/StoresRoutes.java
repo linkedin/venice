@@ -228,9 +228,9 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, MultiStoreStatusResponse veniceResponse) {
         AdminSparkServer.validateParams(request, CLUSTER_HEALTH_STORES.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
+
         veniceResponse.setCluster(clusterName);
-        Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);
-        veniceResponse.setStoreStatusMap(storeStatusMap);
+        veniceResponse.setStoreStatusMap(storeRequestHandler.getStoreStatuses(clusterName));
       }
     };
   }

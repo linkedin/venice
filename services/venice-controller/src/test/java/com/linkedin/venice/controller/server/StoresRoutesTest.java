@@ -685,6 +685,67 @@ public class StoresRoutesTest {
   }
 
   @Test
+  public void testGetAllStoresStatuses() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    StoreRequestHandler mockRequestHandler = mock(StoreRequestHandler.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+
+    // Mock queryMap for error handling
+    QueryParamsMap queryParamsMap = mock(QueryParamsMap.class);
+    Map<String, String[]> queryMap = new HashMap<>(1);
+    queryMap.put(ControllerApiConstants.CLUSTER, new String[] { TEST_CLUSTER });
+    doReturn(queryMap).when(queryParamsMap).toMap();
+    doReturn(queryParamsMap).when(request).queryMap();
+
+    Route getAllStoresStatusesRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, mockRequestHandler)
+            .getAllStoresStatuses(mockAdmin);
+
+    // Case 1: Success response with multiple stores and statuses
+    Map<String, String> storeStatusMap = new HashMap<>();
+    storeStatusMap.put("store1", "ONLINE");
+    storeStatusMap.put("store2", "DEGRADED");
+    storeStatusMap.put("store3", "UNAVAILABLE");
+    when(mockRequestHandler.getStoreStatuses(TEST_CLUSTER)).thenReturn(storeStatusMap);
+
+    MultiStoreStatusResponse response = ObjectMapperFactory.getInstance()
+        .readValue(
+            getAllStoresStatusesRoute.handle(request, mock(Response.class)).toString(),
+            MultiStoreStatusResponse.class);
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response.getStoreStatusMap().size(), 3);
+    Assert.assertEquals(response.getStoreStatusMap().get("store1"), "ONLINE");
+    Assert.assertEquals(response.getStoreStatusMap().get("store2"), "DEGRADED");
+    Assert.assertEquals(response.getStoreStatusMap().get("store3"), "UNAVAILABLE");
+
+    // Case 2: Empty response
+    when(mockRequestHandler.getStoreStatuses(TEST_CLUSTER)).thenReturn(new HashMap<>());
+
+    response = ObjectMapperFactory.getInstance()
+        .readValue(
+            getAllStoresStatusesRoute.handle(request, mock(Response.class)).toString(),
+            MultiStoreStatusResponse.class);
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
+    Assert.assertTrue(response.getStoreStatusMap().isEmpty());
+
+    // Case 3: Handler throws exception
+    String errorMessage = "Failed to get store statuses";
+    when(mockRequestHandler.getStoreStatuses(TEST_CLUSTER)).thenThrow(new VeniceException(errorMessage));
+
+    response = ObjectMapperFactory.getInstance()
+        .readValue(
+            getAllStoresStatusesRoute.handle(request, mock(Response.class)).toString(),
+            MultiStoreStatusResponse.class);
+    Assert.assertTrue(response.isError());
+    Assert.assertTrue(response.getError().contains(errorMessage));
+  }
+
+  @Test
   public void testGetRepushInfo() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
     StoreRequestHandler mockRequestHandler = mock(StoreRequestHandler.class);

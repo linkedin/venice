@@ -21,12 +21,15 @@ import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreStatusRequest;
+import com.linkedin.venice.protocols.controller.GetStoreStatusResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.RepushInfoGrpc;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceImplBase;
+import com.linkedin.venice.protocols.controller.StoreStatus;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -36,6 +39,7 @@ import com.linkedin.venice.protocols.controller.VersionStatusGrpc;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -158,6 +162,33 @@ public class StoreGrpcServiceImpl extends StoreGrpcServiceImplBase {
         responseObserver,
         clusterName,
         null);
+  }
+
+  /**
+   * Gets the health status of all stores in the specified cluster.
+   * No ACL check; any user can query store health statuses.
+   */
+  @Override
+  public void getStoreStatuses(
+      GetStoreStatusRequest grpcRequest,
+      StreamObserver<GetStoreStatusResponse> responseObserver) {
+    LOGGER.debug("Received getStoreStatuses with args: {}", grpcRequest);
+    String clusterName = grpcRequest.getClusterName();
+    handleRequest(StoreGrpcServiceGrpc.getGetStoreStatusesMethod(), () -> {
+      Map<String, String> storeStatusMap = storeRequestHandler.getStoreStatuses(clusterName);
+
+      // Convert map to repeated StoreStatus entries
+      GetStoreStatusResponse.Builder responseBuilder = GetStoreStatusResponse.newBuilder().setClusterName(clusterName);
+
+      if (storeStatusMap != null) {
+        storeStatusMap.forEach((storeName, status) -> {
+          responseBuilder.addStoreStatuses(
+              StoreStatus.newBuilder().setStoreName(storeName).setStatus(status != null ? status : "").build());
+        });
+      }
+
+      return responseBuilder.build();
+    }, responseObserver, clusterName, null);
   }
 
   /**

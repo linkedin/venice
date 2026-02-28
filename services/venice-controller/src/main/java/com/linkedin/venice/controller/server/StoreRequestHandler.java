@@ -25,6 +25,7 @@ import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
@@ -257,6 +258,23 @@ public class StoreRequestHandler {
 
     LOGGER.info("Found {} stores in cluster: {}", selectedStoreNames.size(), clusterName);
     return ListStoresGrpcResponse.newBuilder().setClusterName(clusterName).addAllStoreNames(selectedStoreNames).build();
+  }
+
+  /**
+   * Gets the health status of all stores in the specified cluster.
+   * @param clusterName the name of the cluster
+   * @return map of store names to their statuses
+   */
+  public Map<String, String> getStoreStatuses(String clusterName) {
+    if (StringUtils.isBlank(clusterName)) {
+      throw new IllegalArgumentException("Cluster name is required");
+    }
+
+    LOGGER.debug("Getting health status for all stores in cluster: {}", clusterName);
+    Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);
+    LOGGER.debug("Found {} stores with health status in cluster: {}", storeStatusMap.size(), clusterName);
+
+    return storeStatusMap;
   }
 
   /**
