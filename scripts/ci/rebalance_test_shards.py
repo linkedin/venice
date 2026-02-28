@@ -186,20 +186,41 @@ def load_current_assignments(repo_root: str) -> dict[str, list[str]]:
     return {}
 
 
+def _tiered_overhead(duration: float, max_overhead: float) -> float:
+    """Compute fork overhead based on test duration.
+
+    Heavy integration tests (>60s) spin up full Venice clusters and incur
+    significant JVM startup cost.  Lighter tests need less overhead.
+    Tiers derived from CI wall-clock analysis (shards with many sub-second
+    tests complete with ~4-5s actual per-fork overhead):
+      >=60s  → full overhead  (cluster-heavy integration tests)
+      10-60s → 75% overhead   (medium integration tests)
+      <10s   → 30% overhead   (unit-style / ZK-only tests)
+    """
+    if duration >= 60:
+        return max_overhead
+    elif duration >= 10:
+        return max_overhead * 0.75
+    else:
+        return max_overhead * 0.3
+
+
 def bin_pack_ffd(
     test_timings: dict[str, float], target_time: float, fork_overhead: float = 0
 ) -> dict[str, list[str]]:
-    """First-Fit Decreasing bin-packing algorithm.
+    """First-Fit Decreasing bin-packing algorithm with post-merge consolidation.
 
     Sort tests by duration descending, then assign each to the first shard
     that has enough remaining capacity. Create a new shard if none fit.
+    After initial packing, merge undersized shards to eliminate waste.
 
     Args:
         test_timings: Map of test class name to estimated duration in seconds.
         target_time: Target max time per shard in seconds.
-        fork_overhead: Per-test-class JVM fork overhead in seconds (added on top
-            of test duration when computing shard capacity). With forkEvery=1,
-            each test class spawns a new JVM which adds startup overhead.
+        fork_overhead: Max per-test-class JVM fork overhead in seconds.
+            Actual overhead is tiered by test duration (heavy tests get full
+            overhead, light tests get less). With forkEvery=1, each test class
+            spawns a new JVM which adds startup overhead.
     """
     # Sort by duration descending
     sorted_tests = sorted(test_timings.items(), key=lambda x: x[1], reverse=True)
@@ -209,7 +230,8 @@ def bin_pack_ffd(
 
     for test_name, duration in sorted_tests:
         placed = False
-        effective_duration = duration + fork_overhead
+        overhead = _tiered_overhead(duration, fork_overhead)
+        effective_duration = duration + overhead
 
         # If a single test exceeds the target, it gets its own shard
         if effective_duration > target_time:
@@ -229,12 +251,68 @@ def bin_pack_ffd(
             shards.append([test_name])
             shard_times.append(effective_duration)
 
+    # Post-merge: consolidate undersized shards to eliminate waste.
+    # Repeatedly merge the two smallest shards if they fit within target.
+    changed = True
+    while changed and len(shards) >= 2:
+        changed = False
+        indexed = sorted(range(len(shards)), key=lambda i: shard_times[i])
+        i_small, i_next = indexed[0], indexed[1]
+        if shard_times[i_small] + shard_times[i_next] <= target_time:
+            lo, hi = sorted([i_small, i_next])
+            shards[lo].extend(shards[hi])
+            shard_times[lo] += shard_times[hi]
+            shards.pop(hi)
+            shard_times.pop(hi)
+            changed = True
+
+    # Spread step: if a small tail shard remains that can't merge with any
+    # other shard, distribute its tests one-by-one into the least-full
+    # existing shards, allowing up to 5% overshoot of the target.
+    overshoot_limit = target_time * 1.05
+    if len(shards) >= 2:
+        indexed = sorted(range(len(shards)), key=lambda i: shard_times[i])
+        smallest_idx = indexed[0]
+        min_fill = target_time * 0.5
+        if shard_times[smallest_idx] < min_fill:
+            # Try to distribute each test from the smallest shard
+            tests_to_spread = list(shards[smallest_idx])
+            all_placed = True
+            for test in tests_to_spread:
+                duration = test_timings[test]
+                overhead = _tiered_overhead(duration, fork_overhead)
+                eff = duration + overhead
+                # Find the least-full shard (excluding the one being emptied)
+                best_i = None
+                best_time = float("inf")
+                for i in range(len(shards)):
+                    if i == smallest_idx:
+                        continue
+                    if shard_times[i] + eff <= overshoot_limit:
+                        if shard_times[i] < best_time:
+                            best_time = shard_times[i]
+                            best_i = i
+                if best_i is not None:
+                    shards[best_i].append(test)
+                    shard_times[best_i] += eff
+                    shards[smallest_idx].remove(test)
+                    shard_times[smallest_idx] -= eff
+                else:
+                    all_placed = False
+            # Remove the emptied shard if all tests were distributed
+            if all_placed or not shards[smallest_idx]:
+                shards.pop(smallest_idx)
+                shard_times.pop(smallest_idx)
+
     # Convert to numbered dict (1-indexed)
     return {str(i + 1): tests for i, tests in enumerate(shards)}
 
 
 def print_shard_summary(
-    shards: dict[str, list[str]], timings: dict[str, float], target_time: float
+    shards: dict[str, list[str]],
+    timings: dict[str, float],
+    target_time: float,
+    fork_overhead: float = 0,
 ):
     """Print a summary of shard assignments."""
     print(f"\n{'='*70}")
@@ -248,13 +326,18 @@ def print_shard_summary(
     for shard_id in sorted(shards.keys(), key=lambda x: int(x)):
         tests = shards[shard_id]
         shard_time = sum(timings.get(t, 0) for t in tests)
+        eff_time = sum(
+            timings.get(t, 0) + _tiered_overhead(timings.get(t, 0), fork_overhead)
+            for t in tests
+        )
         shard_durations.append(shard_time)
         total_time += shard_time
         max_time = max(max_time, shard_time)
         over = " [OVER TARGET]" if shard_time > target_time else ""
         print(
             f"  Shard {shard_id:>3}: {len(tests):>3} tests, "
-            f"{shard_time:>7.1f}s ({shard_time/60:.1f}min){over}"
+            f"{shard_time:>7.1f}s ({shard_time/60:.1f}min) "
+            f"[eff: {eff_time:.0f}s]{over}"
         )
 
     print(f"\n  Total shards: {len(shards)}")
@@ -415,7 +498,7 @@ def main():
     shards = bin_pack_ffd(pack_timings, args.target_time, args.fork_overhead)
 
     # 6. Report
-    print_shard_summary(shards, timings, args.target_time)
+    print_shard_summary(shards, timings, args.target_time, args.fork_overhead)
 
     # Report new tests not in current assignments
     new_tests = discovered - assigned_tests
