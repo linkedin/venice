@@ -216,6 +216,11 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
         DEFAULT_FAIRNESS,
         DEFAULT_MODE,
         rocksDBServerConfig.isAutoTunedRateLimiterEnabled());
+
+    if (rocksDBMemoryStats != null && sharedRMDCache != null
+        && !rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
+      rocksDBMemoryStats.setRMDBlockCache(sharedRMDCache, rocksDBServerConfig.getRocksDBRMDBlockCacheSizeInBytes());
+    }
   }
 
   public long getMemtableSize() {
