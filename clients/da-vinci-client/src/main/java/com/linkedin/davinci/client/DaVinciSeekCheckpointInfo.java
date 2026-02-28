@@ -11,21 +11,35 @@ public class DaVinciSeekCheckpointInfo {
   private Map<Integer, PubSubPosition> postitionMap;
   private Map<Integer, Long> timestampsMap;
   private boolean seekToTail = false;
+  private boolean seekToBeginningOfPush = false;
 
   public DaVinciSeekCheckpointInfo(
       Map<Integer, PubSubPosition> postitionMap,
       Map<Integer, Long> timestampsMap,
       Long allPartitionsTimestamp,
       boolean seekToTail) {
+    this(postitionMap, timestampsMap, allPartitionsTimestamp, seekToTail, false);
+  }
+
+  public DaVinciSeekCheckpointInfo(
+      Map<Integer, PubSubPosition> postitionMap,
+      Map<Integer, Long> timestampsMap,
+      Long allPartitionsTimestamp,
+      boolean seekToTail,
+      boolean seekToBeginningOfPush) {
     this.allPartitionsTimestamp = allPartitionsTimestamp;
     this.postitionMap = postitionMap;
     this.timestampsMap = timestampsMap;
     this.seekToTail = seekToTail;
+    this.seekToBeginningOfPush = seekToBeginningOfPush;
     int validCheckPointCount = 0;
     if (allPartitionsTimestamp != null) {
       validCheckPointCount++;
     }
     if (seekToTail) {
+      validCheckPointCount++;
+    }
+    if (seekToBeginningOfPush) {
       validCheckPointCount++;
     }
     if (timestampsMap != null) {
@@ -61,6 +75,10 @@ public class DaVinciSeekCheckpointInfo {
 
   public boolean isSeekToTail() {
     return seekToTail;
+  }
+
+  public boolean isSeekToBeginningOfPush() {
+    return seekToBeginningOfPush;
   }
 
   public ComplementSet<Integer> getPartitions() {

@@ -1,6 +1,5 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
@@ -104,6 +103,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final boolean includeDeserializedReplicationMetadata;
   private final ReplicationMetadataSchemaRepository replicationMetadataSchemaRepository;
   private final StoreDeserializerCache<GenericRecord> rmdDeserializerCache;
+  private final DaVinciConfig daVinciConfig;
   private final String viewName;
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
@@ -118,8 +118,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
     this.changelogClientConfig = changelogClientConfig;
     this.storeName = changelogClientConfig.getStoreName();
-    DaVinciConfig daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setStorageClass(StorageClass.DISK);
+    this.daVinciConfig = new DaVinciConfig();
+    this.daVinciConfig.setStorageClass(StorageClass.DISK);
     ClientConfig innerClientConfig = changelogClientConfig.getInnerClientConfig();
     this.pubSubMessages = new ArrayBlockingQueue<>(changelogClientConfig.getMaxBufferSize());
     this.partitionToVersionToServe = new VeniceConcurrentHashMap<>();
@@ -142,7 +142,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         .setStoreRecordsInDaVinci(changelogClientConfig.isStateful())
         .setRecordMetadataEnabled(true)
         .build();
-    daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
+    this.daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
     this.daVinciClientFactory = new CachingDaVinciClientFactory(
         changelogClientConfig.getD2Client(),
@@ -321,8 +321,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
-    // ToDo: Start at beginning of topic
-    return this.start(partitions);
+    return this.seekToBeginningOfPush(partitions);
   }
 
   public CompletableFuture<Void> subscribeAll() {
@@ -340,11 +339,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
-    return this.subscribe(partitions);
+    return initializeAndSubscribe(
+        partitions,
+        subscribedPartitions -> daVinciClient.seekToBeginningOfPush(subscribedPartitions));
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush() {
-    return this.subscribe(Collections.emptySet());
+    return this.seekToBeginningOfPush(Collections.emptySet());
   }
 
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
@@ -511,19 +512,23 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     return compactedMessageList;
   }
 
-  private VeniceProperties buildVeniceConfig() {
+  @VisibleForTesting
+  public final VeniceProperties buildVeniceConfig() {
     return new PropertyBuilder().put(changelogClientConfig.getConsumerProperties())
-        // We don't need the block cache, since we only read each key once from disk
-        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0)
         .put(DATA_BASE_PATH, changelogClientConfig.getBootstrapFileSystemPath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(PUSH_STATUS_STORE_ENABLED, !isVersionSpecificClient)
+        .put(PUSH_STATUS_STORE_ENABLED, changelogClientConfig.isStateful())
         .build();
   }
 
   @VisibleForTesting
   public DaVinciRecordTransformerConfig getRecordTransformerConfig() {
     return recordTransformerConfig;
+  }
+
+  @VisibleForTesting
+  public DaVinciConfig getDaVinciConfig() {
+    return daVinciConfig;
   }
 
   class BackgroundReporterThread extends Thread {

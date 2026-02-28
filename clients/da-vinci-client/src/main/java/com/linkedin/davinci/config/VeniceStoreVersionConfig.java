@@ -134,4 +134,5 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
   public VeniceProperties getPersistStorageEngineConfig() {
     return persistStorageEngineConfigs;
   }
+
 }

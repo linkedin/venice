@@ -288,6 +288,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return getStoreBackend().seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, null, null, true), getVersion());
   }
 
+  protected CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitionSet) {
+    throwIfNotReady();
+    addPartitionsToSubscription(ComplementSet.wrap(partitionSet));
+    return getStoreBackend()
+        .seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, null, null, false, true), getVersion());
+  }
+
   protected CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
     throwIfNotReady();
     Map<Integer, PubSubPosition> positionMap = new HashMap<>();

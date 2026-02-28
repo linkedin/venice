@@ -1,6 +1,7 @@
 package com.linkedin.davinci.consumer;
 
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
@@ -306,6 +307,15 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     assertNotNull(message.getReplicationMetadataPayload());
     assertNotNull(message.getDeserializedReplicationMetadata());
     assertEquals(message.getDeserializedReplicationMetadata().get("timestamp"), rmdTimestamp);
+  }
+
+  @Test
+  public void testPushStatusStoreDisabledForVersionSpecificClient() {
+    // Version-specific clients are stateless by default
+    assertFalse(changelogClientConfig.isStateful(), "Version-specific config should be stateless");
+    assertFalse(
+        versionSpecificVeniceChangelogConsumer.buildVeniceConfig().getBoolean(PUSH_STATUS_STORE_ENABLED),
+        "PUSH_STATUS_STORE_ENABLED should be false for version-specific client");
   }
 
   private void verifyPuts() {

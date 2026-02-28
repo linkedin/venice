@@ -1,6 +1,7 @@
 package com.linkedin.venice.consumer;
 
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
@@ -90,6 +91,7 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkUrl);
+    consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
     consumerProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
     consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, blobTransferServerPort);
     consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, blobTransferClientPort);
