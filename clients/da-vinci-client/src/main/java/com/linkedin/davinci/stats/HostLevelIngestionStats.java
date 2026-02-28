@@ -425,12 +425,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.writeComputeCacheHitCount,
         new OccurrenceRate());
 
-    // Using Rate (not OccurrenceRate) to align with the other lookup count sensors for uniform hit ratio computation
     this.writeComputeLookupCount = registerPerStoreAndTotalSensor(
         "write_compute_lookup_count",
         totalStats,
         () -> totalStats.writeComputeLookupCount,
-        new Rate());
+        new OccurrenceRate());
 
     this.checksumVerificationFailureSensor = registerPerStoreAndTotalSensor(
         "checksum_verification_failure",

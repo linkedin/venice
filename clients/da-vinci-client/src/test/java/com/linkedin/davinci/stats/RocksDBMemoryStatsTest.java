@@ -13,7 +13,7 @@ public class RocksDBMemoryStatsTest {
   @Test
   public void testSetRMDBlockCacheRegistersGauges() {
     MetricsRepository metricsRepository = new MetricsRepository();
-    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, "test_store", true);
+    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, "test_store", false);
 
     Cache mockCache = mock(Cache.class);
     when(mockCache.getUsage()).thenReturn(512L);
@@ -33,7 +33,7 @@ public class RocksDBMemoryStatsTest {
   @Test
   public void testSetRMDBlockCacheReportsLiveUsageValues() {
     MetricsRepository metricsRepository = new MetricsRepository();
-    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, "test_store", true);
+    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, "test_store", false);
 
     Cache mockCache = mock(Cache.class);
     when(mockCache.getUsage()).thenReturn(512L);
