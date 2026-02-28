@@ -13,7 +13,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_SOURCE_REGION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_WRITE_COMPUTE_OPERATION;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_WRITE_COMPUTE_OPERATION_PHASE;
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -242,7 +242,7 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
   WRITE_COMPUTE_TIME(
       "ingestion.write_compute.time", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
       "Time to perform write compute operations",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_WRITE_COMPUTE_OPERATION)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_WRITE_COMPUTE_OPERATION_PHASE)
   ),
 
   DCR_LOOKUP_TIME(

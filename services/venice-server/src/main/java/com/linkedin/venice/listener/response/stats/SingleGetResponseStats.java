@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener.response.stats;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
@@ -40,7 +41,7 @@ public class SingleGetResponseStats extends AbstractReadResponseStats {
     stats.recordKeySizeInByte(this.keySize);
   }
 
-  @Override
+  @VisibleForTesting
   public int getResponseValueSize() {
     return this.valueSize;
   }

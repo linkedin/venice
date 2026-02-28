@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener.response.stats;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
@@ -29,7 +30,7 @@ public class MultiGetResponseStatsWithSizeProfiling extends MultiKeyResponseStat
     this.totalValueSize += size;
   }
 
-  @Override
+  @VisibleForTesting
   public int getResponseValueSize() {
     return this.totalValueSize;
   }
@@ -37,6 +38,7 @@ public class MultiGetResponseStatsWithSizeProfiling extends MultiKeyResponseStat
   @Override
   public void merge(ReadResponseStatsRecorder other) {
     super.merge(other);
+    // Merges only the field this subclass introduces: totalValueSize.
     if (other instanceof MultiGetResponseStatsWithSizeProfiling) {
       this.totalValueSize += ((MultiGetResponseStatsWithSizeProfiling) other).totalValueSize;
     }

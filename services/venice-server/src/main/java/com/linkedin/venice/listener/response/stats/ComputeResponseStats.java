@@ -1,8 +1,10 @@
 package com.linkedin.venice.listener.response.stats;
 
 import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeDoubleAndBooleanIfAbove;
+import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeDoubleIfAbove;
 import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeIntIfAbove;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
@@ -88,17 +90,13 @@ public class ComputeResponseStats extends MultiKeyResponseStats {
         this.readComputeLatency,
         isAssembledMultiChunkLargeValue,
         0);
-    consumeDoubleAndBooleanIfAbove(
-        stats::recordReadComputeSerializationLatency,
-        this.readComputeSerializationLatency,
-        isAssembledMultiChunkLargeValue,
-        0);
+    consumeDoubleIfAbove(stats::recordReadComputeSerializationLatency, this.readComputeSerializationLatency, 0);
     if (this.readComputeOutputSize > 0) {
       stats.recordReadComputeEfficiency((double) this.totalValueSize / readComputeOutputSize);
     }
   }
 
-  @Override
+  @VisibleForTesting
   public int getResponseValueSize() {
     return this.totalValueSize;
   }
@@ -106,6 +104,8 @@ public class ComputeResponseStats extends MultiKeyResponseStats {
   @Override
   public void merge(ReadResponseStatsRecorder other) {
     super.merge(other);
+    // Merges only the fields this subclass introduces: compute latencies, totalValueSize,
+    // and per-operation counts.
     if (other instanceof ComputeResponseStats) {
       ComputeResponseStats otherStats = (ComputeResponseStats) other;
       this.readComputeLatency += otherStats.readComputeLatency;

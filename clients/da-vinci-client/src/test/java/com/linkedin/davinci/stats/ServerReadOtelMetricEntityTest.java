@@ -20,7 +20,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_COMPUTE_OPERATION_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_READ_COMPUTE_OPERATION_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -58,7 +58,7 @@ public class ServerReadOtelMetricEntityTest {
         setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_CHUNKING_STATUS);
 
     Set<VeniceMetricsDimensions> storeClusterComputeOp =
-        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_COMPUTE_OPERATION_TYPE);
+        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_READ_COMPUTE_OPERATION_TYPE);
 
     // 4-enum metrics (HTTP status dims)
     assertMetricEntity(
@@ -141,7 +141,7 @@ public class ServerReadOtelMetricEntityTest {
         MetricType.HISTOGRAM,
         MetricUnit.MILLISECOND,
         "Time spent deserializing values for read-compute operations",
-        storeClusterRequestType);
+        storeClusterRequestTypeChunking);
     assertMetricEntity(
         STORAGE_ENGINE_QUERY_SERIALIZATION_TIME.getMetricEntity(),
         "storage_engine.query.serialization_time",

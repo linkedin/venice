@@ -104,6 +104,8 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
 
   @Override
   public void merge(ReadResponseStatsRecorder other) {
+    // Merges only the fields this class introduces: databaseLookupLatency,
+    // multiChunkLargeValueCount, and keyNotFoundCount.
     if (other instanceof AbstractReadResponseStats) {
       AbstractReadResponseStats otherStats = (AbstractReadResponseStats) other;
       this.databaseLookupLatency += otherStats.databaseLookupLatency;

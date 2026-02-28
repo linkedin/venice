@@ -51,13 +51,6 @@ public interface ReadResponseStatsRecorder {
       VeniceResponseStatusCategory veniceCategory);
 
   /**
-   * @return the total response value size in bytes, or -1 if not tracked.
-   */
-  default int getResponseValueSize() {
-    return -1;
-  }
-
-  /**
    * Merge the stats contained in this instance with those contained in the {@param other} instance.
    *
    * @param other instance to merge with.

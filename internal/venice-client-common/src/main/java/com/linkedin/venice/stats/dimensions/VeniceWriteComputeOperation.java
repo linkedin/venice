@@ -1,10 +1,10 @@
 package com.linkedin.venice.stats.dimensions;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_WRITE_COMPUTE_OPERATION;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_WRITE_COMPUTE_OPERATION_PHASE;
 
 
 /**
- * Dimension values for the {@link VeniceMetricsDimensions#VENICE_WRITE_COMPUTE_OPERATION} dimension, representing
+ * Dimension values for the {@link VeniceMetricsDimensions#VENICE_WRITE_COMPUTE_OPERATION_PHASE} dimension, representing
  * the phase of a write compute (partial update) operation during ingestion.
  *
  * <p>Write compute allows clients to send partial updates (e.g., list add/remove, map put/delete) instead
@@ -32,6 +32,6 @@ public enum VeniceWriteComputeOperation implements VeniceDimensionInterface {
    */
   @Override
   public VeniceMetricsDimensions getDimensionName() {
-    return VENICE_WRITE_COMPUTE_OPERATION;
+    return VENICE_WRITE_COMPUTE_OPERATION_PHASE;
   }
 }

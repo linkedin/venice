@@ -65,7 +65,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_SOURCE_REGION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_WRITE_COMPUTE_OPERATION;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_WRITE_COMPUTE_OPERATION_PHASE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateObservableCounterValue;
@@ -101,6 +101,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -119,16 +120,20 @@ public class IngestionOtelStatsTest {
   private InMemoryMetricReader inMemoryMetricReader;
   private IngestionOtelStats ingestionOtelStats;
 
-  @BeforeMethod
-  public void setUp() {
-    inMemoryMetricReader = InMemoryMetricReader.create();
+  private static IngestionOtelStats createStats(InMemoryMetricReader reader) {
     VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setMetricPrefix(TEST_PREFIX)
             .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setOtelAdditionalMetricsReader(reader)
             .build());
-    ingestionOtelStats = new IngestionOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
+    return new IngestionOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
+  }
+
+  @BeforeMethod
+  public void setUp() {
+    inMemoryMetricReader = InMemoryMetricReader.create();
+    ingestionOtelStats = createStats(inMemoryMetricReader);
   }
 
   @Test
@@ -560,7 +565,7 @@ public class IngestionOtelStatsTest {
         12.0,
         buildAttributesWithVersionRoleAndSecondEnum(
             VersionRole.CURRENT,
-            VENICE_WRITE_COMPUTE_OPERATION,
+            VENICE_WRITE_COMPUTE_OPERATION_PHASE,
             VeniceWriteComputeOperation.QUERY),
         WRITE_COMPUTE_TIME.getMetricEntity().getMetricName(),
         TEST_PREFIX);
@@ -636,123 +641,44 @@ public class IngestionOtelStatsTest {
         TEST_PREFIX);
   }
 
-  @Test
-  public void testRecordStorageEngineDeleteTime() {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordStorageEngineDeleteTime(CURRENT_VERSION, 5.0);
-    validateHistogramPointData(
-        inMemoryMetricReader,
-        5.0,
-        5.0,
-        1,
-        5.0,
-        buildAttributesWithVersionRole(VersionRole.CURRENT),
-        STORAGE_ENGINE_DELETE_TIME.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
+  @DataProvider(name = "simpleHistogramMetrics", parallel = true)
+  public static Object[][] simpleHistogramMetrics() {
+    return new Object[][] {
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordStorageEngineDeleteTime(CURRENT_VERSION, v), 5.0,
+            STORAGE_ENGINE_DELETE_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordConsumerActionTime(CURRENT_VERSION, v), 20.0,
+            CONSUMER_ACTION_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordLongRunningTaskCheckTime(CURRENT_VERSION, v), 7.0,
+            LONG_RUNNING_TASK_CHECK_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordViewWriterProduceTime(CURRENT_VERSION, v), 18.0,
+            VIEW_WRITER_PRODUCE_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordViewWriterAckTime(CURRENT_VERSION, v), 25.0,
+            VIEW_WRITER_ACK_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordProducerEnqueueTime(CURRENT_VERSION, v), 3.0,
+            PRODUCER_ENQUEUE_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordProducerCompressTime(CURRENT_VERSION, v), 6.0,
+            PRODUCER_COMPRESS_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordProducerSynchronizeTime(CURRENT_VERSION, v), 14.0,
+            PRODUCER_SYNCHRONIZE_TIME }, };
   }
 
-  @Test
-  public void testRecordConsumerActionTime() {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordConsumerActionTime(CURRENT_VERSION, 20.0);
+  @Test(dataProvider = "simpleHistogramMetrics")
+  public void testSimpleHistogramMetric(
+      BiConsumer<IngestionOtelStats, Double> recorder,
+      double value,
+      IngestionOtelMetricEntity entity) {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    IngestionOtelStats stats = createStats(reader);
+    stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    recorder.accept(stats, value);
     validateHistogramPointData(
-        inMemoryMetricReader,
-        20.0,
-        20.0,
+        reader,
+        value,
+        value,
         1,
-        20.0,
+        value,
         buildAttributesWithVersionRole(VersionRole.CURRENT),
-        CONSUMER_ACTION_TIME.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
-  }
-
-  @Test
-  public void testRecordLongRunningTaskCheckTime() {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordLongRunningTaskCheckTime(CURRENT_VERSION, 7.0);
-    validateHistogramPointData(
-        inMemoryMetricReader,
-        7.0,
-        7.0,
-        1,
-        7.0,
-        buildAttributesWithVersionRole(VersionRole.CURRENT),
-        LONG_RUNNING_TASK_CHECK_TIME.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
-  }
-
-  @Test
-  public void testRecordViewWriterProduceTime() {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordViewWriterProduceTime(CURRENT_VERSION, 18.0);
-    validateHistogramPointData(
-        inMemoryMetricReader,
-        18.0,
-        18.0,
-        1,
-        18.0,
-        buildAttributesWithVersionRole(VersionRole.CURRENT),
-        VIEW_WRITER_PRODUCE_TIME.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
-  }
-
-  @Test
-  public void testRecordViewWriterAckTime() {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordViewWriterAckTime(CURRENT_VERSION, 25.0);
-    validateHistogramPointData(
-        inMemoryMetricReader,
-        25.0,
-        25.0,
-        1,
-        25.0,
-        buildAttributesWithVersionRole(VersionRole.CURRENT),
-        VIEW_WRITER_ACK_TIME.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
-  }
-
-  @Test
-  public void testRecordProducerEnqueueTime() {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordProducerEnqueueTime(CURRENT_VERSION, 3.0);
-    validateHistogramPointData(
-        inMemoryMetricReader,
-        3.0,
-        3.0,
-        1,
-        3.0,
-        buildAttributesWithVersionRole(VersionRole.CURRENT),
-        PRODUCER_ENQUEUE_TIME.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
-  }
-
-  @Test
-  public void testRecordProducerCompressTime() {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordProducerCompressTime(CURRENT_VERSION, 6.0);
-    validateHistogramPointData(
-        inMemoryMetricReader,
-        6.0,
-        6.0,
-        1,
-        6.0,
-        buildAttributesWithVersionRole(VersionRole.CURRENT),
-        PRODUCER_COMPRESS_TIME.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
-  }
-
-  @Test
-  public void testRecordProducerSynchronizeTime() {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordProducerSynchronizeTime(CURRENT_VERSION, 14.0);
-    validateHistogramPointData(
-        inMemoryMetricReader,
-        14.0,
-        14.0,
-        1,
-        14.0,
-        buildAttributesWithVersionRole(VersionRole.CURRENT),
-        PRODUCER_SYNCHRONIZE_TIME.getMetricEntity().getMetricName(),
+        entity.getMetricEntity().getMetricName(),
         TEST_PREFIX);
   }
 
@@ -786,51 +712,33 @@ public class IngestionOtelStatsTest {
         TEST_PREFIX);
   }
 
-  @Test
-  public void testRecordStoreMetadataInconsistentCount() {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordStoreMetadataInconsistentCount(CURRENT_VERSION, 1);
-    validateLongPointDataFromCounter(
-        inMemoryMetricReader,
-        1,
-        buildAttributesWithVersionRole(VersionRole.CURRENT),
-        STORE_METADATA_INCONSISTENT_COUNT.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
+  @DataProvider(name = "simpleCounterMetrics", parallel = true)
+  public static Object[][] simpleCounterMetrics() {
+    return new Object[][] { {
+        (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordStoreMetadataInconsistentCount(CURRENT_VERSION, v),
+        1, STORE_METADATA_INCONSISTENT_COUNT },
+        { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordResubscriptionFailureCount(CURRENT_VERSION, v), 1,
+            RESUBSCRIPTION_FAILURE_COUNT },
+        { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordWriteComputeCacheHitCount(CURRENT_VERSION, v), 1,
+            WRITE_COMPUTE_CACHE_HIT_COUNT },
+        { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s
+            .recordChecksumVerificationFailureCount(CURRENT_VERSION, v), 1, CHECKSUM_VERIFICATION_FAILURE_COUNT }, };
   }
 
-  @Test
-  public void testRecordResubscriptionFailureCount() {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordResubscriptionFailureCount(CURRENT_VERSION, 1);
+  @Test(dataProvider = "simpleCounterMetrics")
+  public void testSimpleCounterMetric(
+      BiConsumer<IngestionOtelStats, Integer> recorder,
+      int value,
+      IngestionOtelMetricEntity entity) {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    IngestionOtelStats stats = createStats(reader);
+    stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    recorder.accept(stats, value);
     validateLongPointDataFromCounter(
-        inMemoryMetricReader,
-        1,
+        reader,
+        value,
         buildAttributesWithVersionRole(VersionRole.CURRENT),
-        RESUBSCRIPTION_FAILURE_COUNT.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
-  }
-
-  @Test
-  public void testRecordWriteComputeCacheHitCount() {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordWriteComputeCacheHitCount(CURRENT_VERSION, 1);
-    validateLongPointDataFromCounter(
-        inMemoryMetricReader,
-        1,
-        buildAttributesWithVersionRole(VersionRole.CURRENT),
-        WRITE_COMPUTE_CACHE_HIT_COUNT.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
-  }
-
-  @Test
-  public void testRecordChecksumVerificationFailureCount() {
-    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordChecksumVerificationFailureCount(CURRENT_VERSION, 1);
-    validateLongPointDataFromCounter(
-        inMemoryMetricReader,
-        1,
-        buildAttributesWithVersionRole(VersionRole.CURRENT),
-        CHECKSUM_VERIFICATION_FAILURE_COUNT.getMetricEntity().getMetricName(),
+        entity.getMetricEntity().getMetricName(),
         TEST_PREFIX);
   }
 
@@ -1492,7 +1400,7 @@ public class IngestionOtelStatsTest {
     // --- HostLevelIngestionStats latency metrics ---
 
     Set<VeniceMetricsDimensions> storeClusterVersionWriteComputeOp =
-        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_WRITE_COMPUTE_OPERATION);
+        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_WRITE_COMPUTE_OPERATION_PHASE);
     Set<VeniceMetricsDimensions> storeClusterVersionRecordType =
         setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_RECORD_TYPE);
     Set<VeniceMetricsDimensions> storeClusterVersionDcrOp =

@@ -176,13 +176,39 @@ public class ServerStatsContext {
     this.responseSize = size;
   }
 
+  /**
+   * Records request-level and response-level metrics for the current request.
+   *
+   * <p>{@code responseStatus} must be non-null when this method is called. Both callers enforce this:
+   * {@link StatsHandler#write} throws {@link VeniceException} if responseStatus is null, and
+   * {@link com.linkedin.venice.listener.grpc.handlers.GrpcOutboundStatsHandler#processRequest} does the same.
+   * The null guard below is purely defensive.
+   *
+   * @param serverHttpRequestStats the per-store stats object; may be null if the store name is unknown
+   */
   public void recordBasicMetrics(ServerHttpRequestStats serverHttpRequestStats) {
-    if (serverHttpRequestStats != null && responseStatus != null) {
-      // Compute HTTP status dimensions once, used by recordMetrics (for value size) and recordResponseSize.
+    if (serverHttpRequestStats == null) {
+      return;
+    }
+
+    // Metrics that do not require responseStatus for dimensions
+    consumeIntIfAbove(serverHttpRequestStats::recordRequestKeyCount, this.requestKeyCount, 0);
+    consumeIntIfAbove(serverHttpRequestStats::recordRequestSizeInBytes, this.requestSizeInBytes, 0);
+    if (this.isRequestTerminatedEarly) {
+      // Tehuti-only: OTel captures this via READ_CALL_COUNT with HTTP 408 status dimension
+      serverHttpRequestStats.recordEarlyTerminatedEarlyRequest();
+    }
+    if (flushLatency >= 0) {
+      serverHttpRequestStats.recordFlushLatency(flushLatency);
+    }
+
+    // Status-dependent metrics require responseStatus for OTel dimensions
+    if (responseStatus != null) {
       int statusCode = responseStatus.code();
       HttpResponseStatusEnum statusEnum = HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum(statusCode);
       HttpResponseStatusCodeCategory statusCategory =
           HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory(statusCode);
+      // In Venice, NOT_FOUND (key absent) is a valid/expected response, not an error.
       VeniceResponseStatusCategory veniceCategory =
           (responseStatus.equals(HttpResponseStatus.OK) || responseStatus.equals(HttpResponseStatus.NOT_FOUND))
               ? VeniceResponseStatusCategory.SUCCESS
@@ -190,16 +216,6 @@ public class ServerStatsContext {
 
       if (this.responseStatsRecorder != null) {
         this.responseStatsRecorder.recordMetrics(serverHttpRequestStats, statusEnum, statusCategory, veniceCategory);
-      }
-
-      consumeIntIfAbove(serverHttpRequestStats::recordRequestKeyCount, this.requestKeyCount, 0);
-      consumeIntIfAbove(serverHttpRequestStats::recordRequestSizeInBytes, this.requestSizeInBytes, 0);
-
-      if (this.isRequestTerminatedEarly) {
-        serverHttpRequestStats.recordEarlyTerminatedEarlyRequest();
-      }
-      if (flushLatency >= 0) {
-        serverHttpRequestStats.recordFlushLatency(flushLatency);
       }
       if (responseSize >= 0) {
         serverHttpRequestStats.recordResponseSize(statusEnum, statusCategory, veniceCategory, responseSize);
@@ -214,7 +230,11 @@ public class ServerStatsContext {
       throw new VeniceException("store name could not be null if request succeeded");
     }
 
-    int statusCode = responseStatus != null ? responseStatus.code() : HttpResponseStatus.OK.code();
+    if (responseStatus == null) {
+      throw new VeniceException("response status could not be null");
+    }
+
+    int statusCode = responseStatus.code();
     HttpResponseStatusEnum statusEnum = HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum(statusCode);
     HttpResponseStatusCodeCategory statusCategory =
         HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory(statusCode);
@@ -225,7 +245,11 @@ public class ServerStatsContext {
   }
 
   public void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
-    int statusCode = responseStatus != null ? responseStatus.code() : 500;
+    if (responseStatus == null) {
+      throw new VeniceException("response status could not be null");
+    }
+
+    int statusCode = responseStatus.code();
     HttpResponseStatusEnum statusEnum = HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum(statusCode);
     HttpResponseStatusCodeCategory statusCategory =
         HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory(statusCode);
@@ -235,12 +259,14 @@ public class ServerStatsContext {
       currentStats.recordErrorRequest(statusEnum, statusCategory, veniceCategory);
       currentStats.recordErrorRequestLatency(statusEnum, statusCategory, veniceCategory, elapsedTime);
       if (isMisroutedStoreVersion) {
+        // Tehuti-only: OTel captures this via READ_CALL_COUNT with HTTP 500 status dimension
         currentStats.recordMisroutedStoreVersionRequest();
       }
     } else {
       stats.recordErrorRequest(statusEnum, statusCategory, veniceCategory);
       stats.recordErrorRequestLatency(statusEnum, statusCategory, veniceCategory, elapsedTime);
       if (isMisroutedStoreVersion) {
+        // Tehuti-only: OTel captures this via READ_CALL_COUNT with HTTP 500 status dimension
         stats.recordMisroutedStoreVersionRequest();
       }
     }

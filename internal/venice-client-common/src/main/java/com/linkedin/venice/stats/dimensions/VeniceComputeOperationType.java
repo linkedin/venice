@@ -21,6 +21,6 @@ public enum VeniceComputeOperationType implements VeniceDimensionInterface {
    */
   @Override
   public VeniceMetricsDimensions getDimensionName() {
-    return VeniceMetricsDimensions.VENICE_COMPUTE_OPERATION_TYPE;
+    return VeniceMetricsDimensions.VENICE_READ_COMPUTE_OPERATION_TYPE;
   }
 }

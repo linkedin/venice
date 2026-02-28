@@ -4,7 +4,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_COMPUTE_OPERATION_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_READ_COMPUTE_OPERATION_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -109,7 +109,7 @@ public enum ServerReadOtelMetricEntity implements ModuleMetricEntityInterface {
   STORAGE_ENGINE_QUERY_DESERIALIZATION_TIME(
       "storage_engine.query.deserialization_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Time spent deserializing values for read-compute operations",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_CHUNKING_STATUS)
   ),
 
   STORAGE_ENGINE_QUERY_SERIALIZATION_TIME(
@@ -121,7 +121,7 @@ public enum ServerReadOtelMetricEntity implements ModuleMetricEntityInterface {
   STORAGE_ENGINE_COMPUTE_OPERATION_COUNT(
       "storage_engine.read.compute.operation_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
       "Count of read-compute operations by operation type",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_COMPUTE_OPERATION_TYPE)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_READ_COMPUTE_OPERATION_TYPE)
   ),
 
   READ_RESPONSE_FLUSH_TIME(
