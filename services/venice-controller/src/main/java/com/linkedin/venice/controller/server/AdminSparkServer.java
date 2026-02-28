@@ -345,7 +345,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getFutureVersion(admin)));
     httpService.get(
         BACKUP_VERSION.getPath(),
-        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getBackupVersion(admin)));
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getBackupVersion(admin, requestHandler)));
     httpService.post(
         SET_TOPIC_COMPACTION.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.setTopicCompaction(admin)));
