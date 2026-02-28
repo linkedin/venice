@@ -130,13 +130,13 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Build with gradle
-        run: ./gradlew assemble --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1
+        run: ./gradlew assemble shadowJar --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1
 
       - name: Build docker images for Venice (latest-dev tag)
         shell: bash
         run: |
           cd ${{ github.workspace }}/docker
-          ./build-venice-docker-images.sh
+          ./build-venice-docker-images.sh venicedb 0.4.336 "venice-controller venice-server venice-router venice-client"
           cd ${{ github.workspace }}
 
       - name: Build docker images for Pulsar test (latest-dev tag)
