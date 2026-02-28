@@ -280,6 +280,21 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   @Override
+  public void putGlobalRtDivState(int partitionId, String brokerUrl, byte[] valueBytes) {
+    this.delegate.putGlobalRtDivState(partitionId, brokerUrl, valueBytes);
+  }
+
+  @Override
+  public Optional<byte[]> getGlobalRtDivState(int partitionId, String brokerUrl) {
+    return this.delegate.getGlobalRtDivState(partitionId, brokerUrl);
+  }
+
+  @Override
+  public void clearGlobalRtDivState(int partitionId, String brokerUrl) {
+    this.delegate.clearGlobalRtDivState(partitionId, brokerUrl);
+  }
+
+  @Override
   public boolean containsPartition(int partitionId) {
     return this.delegate.containsPartition(partitionId);
   }

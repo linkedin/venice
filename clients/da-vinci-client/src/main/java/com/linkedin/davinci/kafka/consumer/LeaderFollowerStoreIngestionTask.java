@@ -3875,7 +3875,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Reads a GlobalRtDivState value from the storage engine. Returns null if the value does not exist.
+   * Reads a GlobalRtDivState value from metadata storage with a legacy fallback to user data storage.
+   * Returns null if the value does not exist.
    *
    * @param keyBytes the serialized key for the value
    * @param readerValueSchemaID the schemaId to use for deserialization
@@ -3884,6 +3885,46 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * @return the deserialized GlobalRtDivState object, or null if the value does not exist
    */
   GlobalRtDivState readGlobalRtDivState(
+      byte[] keyBytes,
+      int readerValueSchemaID,
+      PubSubTopicPartition topicPartition,
+      ChunkedValueManifestContainer manifestContainer) {
+    final String key = new String(keyBytes);
+    final int partitionId = topicPartition.getPartitionNumber();
+    if (key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
+      String brokerUrl = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
+      Optional<byte[]> metadataBytes =
+          storageMetadataService.getGlobalRtDivState(kafkaVersionTopic, partitionId, brokerUrl);
+      if (metadataBytes.isPresent()) {
+        return deserializeGlobalRtDivState(metadataBytes.get(), keyBytes, topicPartition);
+      }
+    }
+
+    ByteBuffer valueBytes =
+        readLegacyGlobalRtDivStateBytes(keyBytes, readerValueSchemaID, topicPartition, manifestContainer);
+    if (valueBytes == null) {
+      return null;
+    }
+    byte[] serializedValueBytes = ByteUtils.extractByteArray(valueBytes);
+
+    GlobalRtDivState globalRtDivState = deserializeGlobalRtDivState(serializedValueBytes, keyBytes, topicPartition);
+    if (globalRtDivState != null && key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
+      // Backward compatibility: migrate legacy user-data value into metadata partition opportunistically.
+      String brokerUrl = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
+      try {
+        storageMetadataService.putGlobalRtDivState(kafkaVersionTopic, partitionId, brokerUrl, serializedValueBytes);
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Failed to migrate legacy Global RT DIV value to metadata storage for key: {}, topic-partition: {}",
+            key,
+            topicPartition,
+            e);
+      }
+    }
+    return globalRtDivState;
+  }
+
+  private ByteBuffer readLegacyGlobalRtDivStateBytes(
       byte[] keyBytes,
       int readerValueSchemaID,
       PubSubTopicPartition topicPartition,
@@ -3911,20 +3952,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           e);
       return null;
     }
-
     if (valueBytes == null) {
       // TODO: evaluate whether these logs can be set to debug
       LOGGER.warn(
           "No value found in the storage engine for key: {}, topic-partition: {}",
           new String(keyBytes),
           topicPartition);
-      return null;
     }
+    return valueBytes;
+  }
 
+  private GlobalRtDivState deserializeGlobalRtDivState(
+      byte[] serializedValueBytes,
+      byte[] keyBytes,
+      PubSubTopicPartition topicPartition) {
     try {
-      return globalRtDivStateSerializer.deserialize(
-          ByteUtils.extractByteArray(valueBytes),
-          AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
+      return globalRtDivStateSerializer
+          .deserialize(serializedValueBytes, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion());
     } catch (Exception e) {
       // TODO: evaluate whether these logs can be set to debug
       LOGGER.error(
