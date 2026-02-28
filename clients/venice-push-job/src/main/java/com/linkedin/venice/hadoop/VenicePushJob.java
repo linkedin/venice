@@ -180,6 +180,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -261,6 +262,8 @@ public class VenicePushJob implements AutoCloseable {
   private final PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
   private PushJobHeartbeatSender pushJobHeartbeatSender = null;
   private volatile boolean pushJobStatusUploadDisabledHasBeenLogged = false;
+  private ScheduledFuture<?> pushJobKillCheckScheduledFuture;
+  private volatile boolean pushJobKilledByController = false;
   private final ScheduledExecutorService timeoutExecutor;
   private static final int VERSION_SWAP_BUFFER_TIME_MINUTES = 20;
 
@@ -827,7 +830,13 @@ public class VenicePushJob implements AutoCloseable {
         LOGGER.info("Incremental Push Version: {}", pushJobSetting.incrementalPushVersion);
         getVeniceWriter(pushJobSetting)
             .broadcastStartOfIncrementalPush(pushJobSetting.incrementalPushVersion, new HashMap<>());
-        runJobAndUpdateStatus();
+        startPushJobKillCheckMonitor();
+        try {
+          runJobAndUpdateStatus();
+        } finally {
+          stopPushJobKillCheckMonitor();
+        }
+        throwIfPushJobKilledByController();
         getVeniceWriter(pushJobSetting)
             .broadcastEndOfIncrementalPush(pushJobSetting.incrementalPushVersion, Collections.emptyMap());
       } else {
@@ -849,7 +858,13 @@ public class VenicePushJob implements AutoCloseable {
            * {@link createNewStoreVersion(PushJobSetting, long, ControllerClient, String, VeniceProperties)}
            */
         }
-        runJobAndUpdateStatus();
+        startPushJobKillCheckMonitor();
+        try {
+          runJobAndUpdateStatus();
+        } finally {
+          stopPushJobKillCheckMonitor();
+        }
+        throwIfPushJobKilledByController();
 
         if (!pushJobSetting.suppressEndOfPushMessage) {
           if (pushJobSetting.sendControlMessagesDirectly) {
@@ -992,6 +1007,59 @@ public class VenicePushJob implements AutoCloseable {
           "Failing push-job for store " + pushJobSetting.storeName + " which is still running after " + timeoutMs
               + " ms (" + TimeUnit.MILLISECONDS.toHours(timeoutMs) + " hours)");
     }, timeoutMs, TimeUnit.MILLISECONDS);
+  }
+
+  /**
+   * Schedules a periodic task that checks whether the push job has been killed by the controller.
+   * This runs during the data writing phase to detect early kills (e.g., when a user push supersedes
+   * a repush) and abort the data writer job promptly instead of wasting resources.
+   */
+  void startPushJobKillCheckMonitor() {
+    String topicToMonitor = getTopicToMonitor(pushJobSetting);
+    long intervalMs = pushJobSetting.pollJobStatusIntervalMs;
+    LOGGER.info("Starting push job kill check monitor for topic: {} with interval: {} ms", topicToMonitor, intervalMs);
+    pushJobKillCheckScheduledFuture = timeoutExecutor.scheduleAtFixedRate(() -> {
+      try {
+        JobStatusQueryResponse response = ControllerClient.retryableRequest(
+            controllerClient,
+            pushJobSetting.controllerStatusPollRetries,
+            client -> client.queryOverallJobStatus(topicToMonitor, Optional.empty(), null, false));
+        if (response.isError()) {
+          LOGGER.warn(
+              "Kill check monitor could not query job status for topic: {}. Error: {}",
+              topicToMonitor,
+              response.getError());
+          return;
+        }
+        ExecutionStatus status = getExecutionStatusFromControllerResponse(response);
+        if (status.isTerminal() && status.isError()) {
+          LOGGER.error(
+              "Kill check monitor detected that push job for topic: {} has been killed. Status: {}",
+              topicToMonitor,
+              status);
+          pushJobKilledByController = true;
+          killDataWriterJob();
+        }
+      } catch (Exception e) {
+        LOGGER.warn("Kill check monitor encountered an error while checking job status", e);
+      }
+    }, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
+  }
+
+  void stopPushJobKillCheckMonitor() {
+    if (pushJobKillCheckScheduledFuture != null) {
+      pushJobKillCheckScheduledFuture.cancel(false);
+      pushJobKillCheckScheduledFuture = null;
+      LOGGER.info("Stopped push job kill check monitor");
+    }
+  }
+
+  private void throwIfPushJobKilledByController() {
+    if (pushJobKilledByController) {
+      throw new VeniceException(
+          "Push job for store " + pushJobSetting.storeName + " (topic: " + pushJobSetting.topic
+              + ") was killed by the controller during the data writing phase.");
+    }
   }
 
   private void buildHDFSSchemaDir() throws IOException {
