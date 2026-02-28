@@ -1,6 +1,10 @@
 package com.linkedin.venice.listener.response.stats;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 
 
 public class SingleGetResponseStats extends AbstractReadResponseStats {
@@ -24,10 +28,21 @@ public class SingleGetResponseStats extends AbstractReadResponseStats {
   }
 
   @Override
-  public void recordMetrics(ServerHttpRequestStats stats) {
-    super.recordMetrics(stats);
+  public void recordMetrics(
+      ServerHttpRequestStats stats,
+      HttpResponseStatusEnum statusEnum,
+      HttpResponseStatusCodeCategory statusCategory,
+      VeniceResponseStatusCategory veniceCategory) {
+    super.recordMetrics(stats, statusEnum, statusCategory, veniceCategory);
 
-    ResponseStatsUtil.consumeIntIfAbove(stats::recordValueSizeInByte, this.valueSize, 0);
+    if (this.valueSize > 0) {
+      stats.recordValueSizeInByte(statusEnum, statusCategory, veniceCategory, this.valueSize);
+    }
     stats.recordKeySizeInByte(this.keySize);
+  }
+
+  @VisibleForTesting
+  public int getResponseValueSize() {
+    return this.valueSize;
   }
 }

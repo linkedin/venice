@@ -89,6 +89,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.stats.dimensions.VeniceWriteComputeOperation;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -797,6 +798,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // For current / backup version, a replica's re-bootstrap timeout should not incur whole SIT closure.
         for (int partition: timeoutPartitions) {
           reportError(errorMsg, partition, ex);
+        }
+        if (isMetricsEmissionEnabled()) {
+          hostLevelIngestionStats.recordIngestionFailure();
+          versionedIngestionStats.recordIngestionFailureCount(
+              getStoreName(),
+              getVersionNumber(),
+              VeniceIngestionFailureReason.SERVING_VERSION_BOOTSTRAP_TIMEOUT);
         }
       } else {
         throw ex;

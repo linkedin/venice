@@ -110,14 +110,20 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceDCROperation} DCR merge operation type (put, update, delete) */
   VENICE_DCR_OPERATION("venice.dcr.operation"),
 
-  /** {@link VeniceWriteComputeOperation} Write compute operation phase (query, update) */
-  VENICE_WRITE_COMPUTE_OPERATION("venice.write_compute.operation"),
+  /** {@link VeniceWriteComputeOperation} Phase of a write-compute (partial update) operation: query or update */
+  VENICE_WRITE_COMPUTE_OPERATION_PHASE("venice.write_compute.operation_phase"),
 
   /** {@link VeniceRecordType} Record type (data, replication_metadata) */
   VENICE_RECORD_TYPE("venice.record.type"),
 
   /** {@link VeniceIngestionFailureReason} Categorized reason for ingestion failure */
-  VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason");
+  VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason"),
+
+  /** {@link VeniceChunkingStatus} */
+  VENICE_CHUNKING_STATUS("venice.chunking.status"),
+
+  /** {@link VeniceComputeOperationType} Type of read-compute operation: dot_product, cosine_similarity, etc. */
+  VENICE_READ_COMPUTE_OPERATION_TYPE("venice.read_compute.operation_type");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

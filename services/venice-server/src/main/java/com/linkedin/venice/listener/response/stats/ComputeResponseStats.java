@@ -1,9 +1,14 @@
 package com.linkedin.venice.listener.response.stats;
 
 import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeDoubleAndBooleanIfAbove;
+import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeDoubleIfAbove;
 import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeIntIfAbove;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 
 
 public class ComputeResponseStats extends MultiKeyResponseStats {
@@ -63,13 +68,17 @@ public class ComputeResponseStats extends MultiKeyResponseStats {
   }
 
   @Override
-  public void recordMetrics(ServerHttpRequestStats stats) {
-    super.recordMetrics(stats);
+  public void recordMetrics(
+      ServerHttpRequestStats stats,
+      HttpResponseStatusEnum statusEnum,
+      HttpResponseStatusCodeCategory statusCategory,
+      VeniceResponseStatusCategory veniceCategory) {
+    super.recordMetrics(stats, statusEnum, statusCategory, veniceCategory);
 
     consumeIntIfAbove(stats::recordCosineSimilarityCount, this.cosineSimilarityCount, 0);
-    consumeIntIfAbove(stats::recordCountOperator, this.countOperatorCount, 0);
+    consumeIntIfAbove(stats::recordCountOperatorCount, this.countOperatorCount, 0);
     consumeIntIfAbove(stats::recordDotProductCount, this.dotProductCount, 0);
-    consumeIntIfAbove(stats::recordHadamardProduct, this.hadamardProductCount, 0);
+    consumeIntIfAbove(stats::recordHadamardProductCount, this.hadamardProductCount, 0);
     boolean isAssembledMultiChunkLargeValue = isAssembledMultiChunkLargeValue();
     consumeDoubleAndBooleanIfAbove(
         stats::recordReadComputeDeserializationLatency,
@@ -81,19 +90,22 @@ public class ComputeResponseStats extends MultiKeyResponseStats {
         this.readComputeLatency,
         isAssembledMultiChunkLargeValue,
         0);
-    consumeDoubleAndBooleanIfAbove(
-        stats::recordReadComputeSerializationLatency,
-        this.readComputeSerializationLatency,
-        isAssembledMultiChunkLargeValue,
-        0);
+    consumeDoubleIfAbove(stats::recordReadComputeSerializationLatency, this.readComputeSerializationLatency, 0);
     if (this.readComputeOutputSize > 0) {
       stats.recordReadComputeEfficiency((double) this.totalValueSize / readComputeOutputSize);
     }
   }
 
+  @VisibleForTesting
+  public int getResponseValueSize() {
+    return this.totalValueSize;
+  }
+
   @Override
   public void merge(ReadResponseStatsRecorder other) {
     super.merge(other);
+    // Merges only the fields this subclass introduces: compute latencies, totalValueSize,
+    // and per-operation counts.
     if (other instanceof ComputeResponseStats) {
       ComputeResponseStats otherStats = (ComputeResponseStats) other;
       this.readComputeLatency += otherStats.readComputeLatency;

@@ -23,6 +23,7 @@ public class MultiKeyResponseStats extends AbstractReadResponseStats {
   @Override
   public void merge(ReadResponseStatsRecorder other) {
     super.merge(other);
+    // Merges only the field this subclass introduces: recordCount.
     if (other instanceof MultiKeyResponseStats) {
       MultiKeyResponseStats otherStats = (MultiKeyResponseStats) other;
       this.recordCount += otherStats.recordCount;

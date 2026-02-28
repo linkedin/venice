@@ -1,6 +1,10 @@
 package com.linkedin.venice.listener.response.stats;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 
@@ -8,6 +12,7 @@ import it.unimi.dsi.fastutil.ints.IntList;
 public class MultiGetResponseStatsWithSizeProfiling extends MultiKeyResponseStats {
   private final IntList keySizes;
   private final IntList valueSizes;
+  private int totalValueSize = 0;
 
   public MultiGetResponseStatsWithSizeProfiling(int maxKeyCount) {
     this.keySizes = new IntArrayList(maxKeyCount);
@@ -22,6 +27,21 @@ public class MultiGetResponseStatsWithSizeProfiling extends MultiKeyResponseStat
   @Override
   public void addValueSize(int size) {
     this.valueSizes.add(size);
+    this.totalValueSize += size;
+  }
+
+  @VisibleForTesting
+  public int getResponseValueSize() {
+    return this.totalValueSize;
+  }
+
+  @Override
+  public void merge(ReadResponseStatsRecorder other) {
+    super.merge(other);
+    // Merges only the field this subclass introduces: totalValueSize.
+    if (other instanceof MultiGetResponseStatsWithSizeProfiling) {
+      this.totalValueSize += ((MultiGetResponseStatsWithSizeProfiling) other).totalValueSize;
+    }
   }
 
   /**
@@ -32,8 +52,13 @@ public class MultiGetResponseStatsWithSizeProfiling extends MultiKeyResponseStat
    * @param stats the {@link ServerHttpRequestStats} object to record stats into.
    */
   @Override
-  public void recordUnmergedMetrics(ServerHttpRequestStats stats) {
-    super.recordUnmergedMetrics(stats);
-    ResponseStatsUtil.recordKeyValueSizes(stats, this.keySizes, this.valueSizes);
+  public void recordUnmergedMetrics(
+      ServerHttpRequestStats stats,
+      HttpResponseStatusEnum statusEnum,
+      HttpResponseStatusCodeCategory statusCategory,
+      VeniceResponseStatusCategory veniceCategory) {
+    super.recordUnmergedMetrics(stats, statusEnum, statusCategory, veniceCategory);
+    ResponseStatsUtil
+        .recordKeyValueSizes(stats, this.keySizes, this.valueSizes, statusEnum, statusCategory, veniceCategory);
   }
 }

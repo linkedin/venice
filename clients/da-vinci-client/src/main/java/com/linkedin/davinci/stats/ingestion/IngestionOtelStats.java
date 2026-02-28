@@ -252,9 +252,11 @@ public class IngestionOtelStats {
       MetricsRepository metricsRepository,
       String storeName,
       String clusterName,
-      String localRegionName) {
+      String localRegionName,
+      boolean ingestionOtelStatsEnabled) {
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelSetup =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
+            .setOtelEnabledOverride(ingestionOtelStatsEnabled)
             .setStoreName(storeName)
             .setClusterName(clusterName)
             .build();

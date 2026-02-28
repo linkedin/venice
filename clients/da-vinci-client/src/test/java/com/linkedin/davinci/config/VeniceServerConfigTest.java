@@ -10,9 +10,11 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_OTEL_STATS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_READ_OTEL_STATS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
@@ -202,5 +204,34 @@ public class VeniceServerConfigTest {
     props.put(SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE, "4");
     config = new VeniceServerConfig(new VeniceProperties(props));
     assertEquals(config.getParallelShutdownThreadPoolSize(), 4);
+  }
+
+  @Test
+  public void testOtelStatsEnabledConfigs() {
+    // Both default to true
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+    assertTrue(config.isReadOtelStatsEnabled());
+    assertTrue(config.isIngestionOtelStatsEnabled());
+
+    // Explicitly disable read OTel stats
+    props.put(SERVER_READ_OTEL_STATS_ENABLED, "false");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isReadOtelStatsEnabled());
+    assertTrue(config.isIngestionOtelStatsEnabled());
+
+    // Explicitly disable ingestion OTel stats
+    props.put(SERVER_READ_OTEL_STATS_ENABLED, "true");
+    props.put(SERVER_INGESTION_OTEL_STATS_ENABLED, "false");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertTrue(config.isReadOtelStatsEnabled());
+    assertFalse(config.isIngestionOtelStatsEnabled());
+
+    // Both disabled
+    props.put(SERVER_READ_OTEL_STATS_ENABLED, "false");
+    props.put(SERVER_INGESTION_OTEL_STATS_ENABLED, "false");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isReadOtelStatsEnabled());
+    assertFalse(config.isIngestionOtelStatsEnabled());
   }
 }

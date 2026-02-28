@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -53,7 +54,9 @@ public class StateModelIngestionProgressNotifier implements VeniceNotifier {
         logger.error(errorMsg);
         // Report ingestion_failure
         String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-        storeIngestionService.recordIngestionFailure(storeName);
+        int version = Version.parseVersionFromKafkaTopicName(resourceName);
+        storeIngestionService
+            .recordIngestionFailure(storeName, version, VeniceIngestionFailureReason.SERVING_VERSION_BOOTSTRAP_TIMEOUT);
         VeniceTimeoutException veniceException = new VeniceTimeoutException(errorMsg);
         storeIngestionService.getStoreIngestionTask(resourceName).reportError(errorMsg, partitionId, veniceException);
       }

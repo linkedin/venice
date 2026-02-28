@@ -6,6 +6,9 @@ import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.cons
 
 import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.LatencyUtils;
 
 
@@ -68,7 +71,11 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
   }
 
   @Override
-  public void recordMetrics(ServerHttpRequestStats stats) {
+  public void recordMetrics(
+      ServerHttpRequestStats stats,
+      HttpResponseStatusEnum statusEnum,
+      HttpResponseStatusCodeCategory statusCategory,
+      VeniceResponseStatusCategory veniceCategory) {
     consumeDoubleAndBooleanIfAbove(
         stats::recordDatabaseLookupLatency,
         this.databaseLookupLatency,
@@ -78,13 +85,17 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
     consumeIntIfAbove(stats::recordStorageExecutionQueueLen, this.storageExecutionQueueLen, UNINITIALIZED);
     consumeIntIfAbove(stats::recordKeyNotFoundCount, this.keyNotFoundCount, 0);
 
-    recordUnmergedMetrics(stats);
+    recordUnmergedMetrics(stats, statusEnum, statusCategory, veniceCategory);
 
     // Other metrics can be recorded by subclasses
   }
 
   @Override
-  public void recordUnmergedMetrics(ServerHttpRequestStats stats) {
+  public void recordUnmergedMetrics(
+      ServerHttpRequestStats stats,
+      HttpResponseStatusEnum statusEnum,
+      HttpResponseStatusCodeCategory statusCategory,
+      VeniceResponseStatusCategory veniceCategory) {
     consumeDoubleIfAbove(
         stats::recordStorageExecutionHandlerSubmissionWaitTime,
         this.storageExecutionSubmissionWaitTime,
@@ -93,6 +104,8 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
 
   @Override
   public void merge(ReadResponseStatsRecorder other) {
+    // Merges only the fields this class introduces: databaseLookupLatency,
+    // multiChunkLargeValueCount, and keyNotFoundCount.
     if (other instanceof AbstractReadResponseStats) {
       AbstractReadResponseStats otherStats = (AbstractReadResponseStats) other;
       this.databaseLookupLatency += otherStats.databaseLookupLatency;

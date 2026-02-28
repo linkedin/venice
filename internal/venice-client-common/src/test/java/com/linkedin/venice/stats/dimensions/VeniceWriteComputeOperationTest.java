@@ -11,7 +11,7 @@ public class VeniceWriteComputeOperationTest extends VeniceDimensionInterfaceTes
 
   @Override
   protected VeniceMetricsDimensions expectedDimensionName() {
-    return VeniceMetricsDimensions.VENICE_WRITE_COMPUTE_OPERATION;
+    return VeniceMetricsDimensions.VENICE_WRITE_COMPUTE_OPERATION_PHASE;
   }
 
   @Override
