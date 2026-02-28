@@ -913,10 +913,6 @@ public class DaVinciBackend implements Closeable {
     return ingestionService.getInternalRecordTransformerConfig(storeName);
   }
 
-  public void registerDisableBlockCache(String storeName, boolean disableBlockCache) {
-    ingestionService.registerDisableBlockCache(storeName, disableBlockCache);
-  }
-
   HeartbeatMonitoringService getHeartbeatMonitoringService() {
     return heartbeatMonitoringService;
   }

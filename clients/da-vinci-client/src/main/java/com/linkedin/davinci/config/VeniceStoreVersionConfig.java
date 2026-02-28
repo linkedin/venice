@@ -33,7 +33,6 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
   private boolean restoreDataPartitions = true;
   private boolean restoreMetadataPartition = true;
   private boolean blobTransferEnabled;
-  private boolean disableBlockCache = false;
 
   public VeniceStoreVersionConfig(
       String storeVersionName,
@@ -136,11 +135,4 @@ public class VeniceStoreVersionConfig extends VeniceServerConfig {
     return persistStorageEngineConfigs;
   }
 
-  public boolean isDisableBlockCache() {
-    return disableBlockCache;
-  }
-
-  public void setDisableBlockCache(boolean disableBlockCache) {
-    this.disableBlockCache = disableBlockCache;
-  }
 }

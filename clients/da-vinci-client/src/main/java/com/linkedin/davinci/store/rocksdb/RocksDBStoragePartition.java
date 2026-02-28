@@ -360,14 +360,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       // and share the same cache across all the RocksDB databases
       BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
       tableConfig.setBlockSize(rocksDBServerConfig.getRocksDBSSTFileBlockSizeInBytes());
-      if (storagePartitionConfig.isDisableBlockCache()) {
-        tableConfig.setNoBlockCache(true);
-        // Cannot cache index and filter blocks when block cache is disabled
-        tableConfig.setCacheIndexAndFilterBlocks(false);
-      } else {
-        tableConfig.setBlockCache(factory.getSharedCache(isRMD));
-        tableConfig.setCacheIndexAndFilterBlocks(rocksDBServerConfig.isRocksDBSetCacheIndexAndFilterBlocks());
-      }
+      tableConfig.setBlockCache(factory.getSharedCache(isRMD));
+      tableConfig.setCacheIndexAndFilterBlocks(rocksDBServerConfig.isRocksDBSetCacheIndexAndFilterBlocks());
       tableConfig.setFormatVersion(rocksDBServerConfig.getBlockBaseFormatVersion());
       options.setTableFormatConfig(tableConfig);
 

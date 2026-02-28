@@ -195,7 +195,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final Optional<ObjectCacheBackend> cacheBackend;
   private final Map<String, InternalDaVinciRecordTransformerConfig> storeNameToInternalRecordTransformerConfig =
       new VeniceConcurrentHashMap<>();
-  private final Map<String, Boolean> storeNameToDisableBlockCache = new VeniceConcurrentHashMap<>();
   private AggVersionedDaVinciRecordTransformerStats recordTransformerStats = null;
 
   private final PubSubProducerAdapterFactory producerAdapterFactory;
@@ -635,9 +634,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         ? VeniceView.parseStoreAndViewFromViewTopic(topicName)
         : Version.parseStoreFromKafkaTopicName(topicName);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
-
-    // Apply per-store disableBlockCache setting
-    veniceStoreVersionConfig.setDisableBlockCache(storeNameToDisableBlockCache.getOrDefault(storeName, false));
 
     StoreVersionInfo storeVersionPair =
         Utils.waitStoreVersionOrThrow(veniceStoreVersionConfig.getStoreVersionName(), metadataRepo);
@@ -1516,10 +1512,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {
     return storeNameToInternalRecordTransformerConfig.get(storeName);
-  }
-
-  public void registerDisableBlockCache(String storeName, boolean disableBlockCache) {
-    storeNameToDisableBlockCache.put(storeName, disableBlockCache);
   }
 
   public void attemptToPrintIngestionInfoFor(String storeName, Integer version, Integer partition, String regionName) {

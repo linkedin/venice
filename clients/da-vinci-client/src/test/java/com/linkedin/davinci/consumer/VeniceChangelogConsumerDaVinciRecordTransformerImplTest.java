@@ -586,14 +586,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         "PUSH_STATUS_STORE_ENABLED should be true for stateful client");
   }
 
-  @Test
-  public void testCDCClientDisablesBlockCacheAutomatically() {
-    // Verify that the DaVinciConfig created for CDC has disableBlockCache = true
-    assertTrue(
-        veniceChangelogConsumer.getDaVinciConfig().isDisableBlockCache(),
-        "CDC client should automatically disable block cache");
-  }
-
   private void verifyPuts(int value, boolean compactionEvent) {
     clearInvocations(changeCaptureStats);
     Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =

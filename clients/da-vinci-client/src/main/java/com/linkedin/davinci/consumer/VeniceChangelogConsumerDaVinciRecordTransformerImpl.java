@@ -120,8 +120,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.storeName = changelogClientConfig.getStoreName();
     this.daVinciConfig = new DaVinciConfig();
     this.daVinciConfig.setStorageClass(StorageClass.DISK);
-    // CDC doesn't need block cache since each key is only read once from disk
-    this.daVinciConfig.setDisableBlockCache(true);
     ClientConfig innerClientConfig = changelogClientConfig.getInnerClientConfig();
     this.pubSubMessages = new ArrayBlockingQueue<>(changelogClientConfig.getMaxBufferSize());
     this.partitionToVersionToServe = new VeniceConcurrentHashMap<>();
