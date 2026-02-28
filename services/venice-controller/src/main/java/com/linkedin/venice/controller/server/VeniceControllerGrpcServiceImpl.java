@@ -4,6 +4,8 @@ import static com.linkedin.venice.controller.grpc.server.ControllerGrpcServerUti
 
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetFutureVersionGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetFutureVersionGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
@@ -51,5 +53,20 @@ public class VeniceControllerGrpcServiceImpl extends VeniceControllerGrpcService
         responseObserver,
         null,
         grpcRequest.getStoreName());
+  }
+
+  @Override
+  public void getFutureVersion(
+      GetFutureVersionGrpcRequest request,
+      StreamObserver<GetFutureVersionGrpcResponse> responseObserver) {
+    LOGGER.debug("Received getFutureVersion with args: {}", request);
+    String clusterName = request.hasStoreInfo() ? request.getStoreInfo().getClusterName() : null;
+    String storeName = request.hasStoreInfo() ? request.getStoreInfo().getStoreName() : null;
+    handleRequest(
+        VeniceControllerGrpcServiceGrpc.getGetFutureVersionMethod(),
+        () -> requestHandler.getFutureVersion(request),
+        responseObserver,
+        clusterName,
+        storeName);
   }
 }
