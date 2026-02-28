@@ -210,36 +210,34 @@ public class PulsarVeniceSinkTest {
     destTopicProducer.close();
     client.close();
 
-    // Wait for all records to be processed by polling for the last one
-    LOGGER.info("Waiting for records to appear in Venice");
-    String lastRecordName = "name" + (numRecordsToSend - 1);
-    Awaitility.await().atMost(60, TimeUnit.SECONDS).pollInterval(2, TimeUnit.SECONDS).untilAsserted(() -> {
-      ExecResult res = execByService(
-          "venice-client",
-          "bash",
-          "-c",
-          "java -jar /opt/venice/bin/venice-thin-client-all.jar " + storeName + " " + lastRecordName + " "
-              + veniceRouterUrl + " false \"\"");
-      assertTrue(res.getStdout().contains("key=" + lastRecordName));
-      assertFalse(res.getStdout().contains("value=null"));
+    // Build batch key list for a single JVM invocation
+    StringBuilder batchKeys = new StringBuilder();
+    for (int i = 0; i < numRecordsToSend; i++) {
+      if (i > 0)
+        batchKeys.append(" ");
+      batchKeys.append("name").append(i);
+    }
+    String batchCmd = "java -jar /opt/venice/bin/venice-thin-client-all.jar --batch " + storeName + " "
+        + veniceRouterUrl + " false \"\" " + batchKeys;
+
+    // Wait for all records to be processed using a single batch query
+    LOGGER.info("Waiting for records to appear in Venice (batch query)");
+    Awaitility.await().atMost(60, TimeUnit.SECONDS).pollInterval(3, TimeUnit.SECONDS).untilAsserted(() -> {
+      ExecResult res = execByService("venice-client", "bash", "-c", batchCmd);
+      assertFalse(res.getStdout().contains("value=null"), "Some records not yet available");
     });
 
-    // All records should be present now — verify each one
+    // Verify all record values from the last successful batch result
     LOGGER.info("Verifying all {} records", numRecordsToSend);
+    ExecResult batchRes = execByService("venice-client", "bash", "-c", batchCmd);
+    String output = batchRes.getStdout();
+    assertFalse(output.contains("value=null"), "Some records have null values");
     for (int i = 0; i < numRecordsToSend; i++) {
       String name = "name" + i;
       int expectedAge = i;
-      ExecResult res = execByService(
-          "venice-client",
-          "bash",
-          "-c",
-          "java -jar /opt/venice/bin/venice-thin-client-all.jar " + storeName + " " + name + " " + veniceRouterUrl + " "
-              + "false" + " " + "\"\"");
-      assertTrue(res.getStdout().contains("key=" + name), "Missing key: " + name);
-      assertFalse(res.getStdout().contains("value=null"), "Null value for: " + name);
       assertTrue(
-          res.getStdout().contains("value=" + "{\"age\": " + expectedAge + ", \"name\": \"" + name + "\"}"),
-          "Wrong value for: " + name);
+          output.contains("value=" + "{\"age\": " + expectedAge + ", \"name\": \"" + name + "\"}"),
+          "Wrong or missing value for: " + name);
     }
 
     LOGGER.info("Deleting Pulsar Venice Sink");
