@@ -176,22 +176,16 @@ public class PulsarVeniceSinkTest {
             + "--name venice -t venice -i t1/n1/input --sink-config '" + sinkConfig + "'");
     assertTrue(createSinkRes.getStdout().contains("Created successfully"));
 
-    // Awaitility.await().atMost(90, TimeUnit.SECONDS).untilAsserted(() -> {
-    // ExecResult res = execByService(
-    // "venice-client",
-    // "bash",
-    // "-c",
-    // "java -jar " + jar + " --describe-store --url " + veniceControllerUrl
-    // + " --cluster " + clusterName
-    // + " --store " + storeName);
-    //
-    // assertTrue(res.getStdout().contains("\"status\" : \"ONLINE\""));
-    // });
-
-    // await() above does not work, issue number https://github.com/linkedin/venice/issues/387
-    // Have to sleep to let the Venice store become writable,
-    // otherwise Sink's write to venice will not fail but the data won't appear in Venice.
-    Thread.sleep(15000);
+    // Wait for the sink to be actively running before sending records
+    LOGGER.info("Waiting for sink to become active");
+    Awaitility.await().atMost(30, TimeUnit.SECONDS).pollInterval(2, TimeUnit.SECONDS).untilAsserted(() -> {
+      ExecResult res = execByService(
+          "proxy",
+          "bash",
+          "-c",
+          "/pulsar/bin/pulsar-admin sinks status --tenant t1 --namespace n1 --name venice");
+      assertTrue(res.getStdout().contains("\"running\" : true"), "Sink not yet running");
+    });
 
     PulsarClient client = PulsarClient.builder()
         .serviceUrl("pulsar://localhost:6650")
@@ -216,24 +210,36 @@ public class PulsarVeniceSinkTest {
     destTopicProducer.close();
     client.close();
 
-    LOGGER.info("Querying Venice to check messages");
+    // Wait for all records to be processed by polling for the last one
+    LOGGER.info("Waiting for records to appear in Venice");
+    String lastRecordName = "name" + (numRecordsToSend - 1);
+    Awaitility.await().atMost(60, TimeUnit.SECONDS).pollInterval(2, TimeUnit.SECONDS).untilAsserted(() -> {
+      ExecResult res = execByService(
+          "venice-client",
+          "bash",
+          "-c",
+          "java -jar /opt/venice/bin/venice-thin-client-all.jar " + storeName + " " + lastRecordName + " "
+              + veniceRouterUrl + " false \"\"");
+      assertTrue(res.getStdout().contains("key=" + lastRecordName));
+      assertFalse(res.getStdout().contains("value=null"));
+    });
+
+    // All records should be present now — verify each one
+    LOGGER.info("Verifying all {} records", numRecordsToSend);
     for (int i = 0; i < numRecordsToSend; i++) {
       String name = "name" + i;
       int expectedAge = i;
-
-      Awaitility.await().atMost(30, TimeUnit.SECONDS).untilAsserted(() -> {
-        // StdErr will have some noise like
-        // "StatusLogger Log4j2 could not find a logging implementation."
-        ExecResult res = execByService(
-            "venice-client",
-            "bash",
-            "-c",
-            "java -jar /opt/venice/bin/venice-thin-client-all.jar " + storeName + " " + name + " " + veniceRouterUrl
-                + " " + "false" + " " + "\"\"");
-        assertTrue(res.getStdout().contains("key=" + name));
-        assertFalse(res.getStdout().contains("value=null"));
-        assertTrue(res.getStdout().contains("value=" + "{\"age\": " + expectedAge + ", \"name\": \"" + name + "\"}"));
-      });
+      ExecResult res = execByService(
+          "venice-client",
+          "bash",
+          "-c",
+          "java -jar /opt/venice/bin/venice-thin-client-all.jar " + storeName + " " + name + " " + veniceRouterUrl + " "
+              + "false" + " " + "\"\"");
+      assertTrue(res.getStdout().contains("key=" + name), "Missing key: " + name);
+      assertFalse(res.getStdout().contains("value=null"), "Null value for: " + name);
+      assertTrue(
+          res.getStdout().contains("value=" + "{\"age\": " + expectedAge + ", \"name\": \"" + name + "\"}"),
+          "Wrong value for: " + name);
     }
 
     LOGGER.info("Deleting Pulsar Venice Sink");
