@@ -243,6 +243,7 @@ public class VenicePushJob implements AutoCloseable {
   private ControllerClient livenessHeartbeatStoreControllerClient;
 
   private DataWriterComputeJob dataWriterComputeJob = null;
+  private long incrementalPushThrottledTimeMs = 0;
 
   private InputDataInfoProvider inputDataInfoProvider;
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
@@ -1193,8 +1194,16 @@ public class VenicePushJob implements AutoCloseable {
       }
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED);
     } finally {
+      if (dataWriterComputeJob != null && dataWriterComputeJob.getTaskTracker() != null) {
+        incrementalPushThrottledTimeMs = dataWriterComputeJob.getTaskTracker().getIncrementalPushThrottledTimeMs();
+      }
       Utils.closeQuietlyWithErrorLogged(dataWriterComputeJob);
     }
+  }
+
+  @VisibleForTesting
+  public long getIncrementalPushThrottledTimeMs() {
+    return incrementalPushThrottledTimeMs;
   }
 
   @VisibleForTesting
@@ -1631,6 +1640,11 @@ public class VenicePushJob implements AutoCloseable {
         } else {
           summaryLogLines.add("Zstd Dictionary creation Failed");
         }
+      }
+
+      long incrementalPushThrottledTimeMs = taskTracker.getIncrementalPushThrottledTimeMs();
+      if (incrementalPushThrottledTimeMs > 0) {
+        summaryLogLines.add("Incremental push total throttle time: " + incrementalPushThrottledTimeMs + " ms");
       }
 
       LOGGER.info("Data writer job summary: \n\t{}", StringUtils.join(summaryLogLines, "\n\t"));

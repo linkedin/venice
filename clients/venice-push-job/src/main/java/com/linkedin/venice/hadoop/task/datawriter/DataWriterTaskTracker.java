@@ -62,6 +62,9 @@ public interface DataWriterTaskTracker extends TaskTracker {
   default void trackPartitionWriterClose() {
   }
 
+  default void trackIncrementalPushThrottledTime(long timeMs) {
+  }
+
   default long getSprayAllPartitionsCount() {
     return 0;
   }
@@ -123,6 +126,10 @@ public interface DataWriterTaskTracker extends TaskTracker {
   }
 
   default long getTotalPutOrDeleteRecordsCount() {
+    return 0;
+  }
+
+  default long getIncrementalPushThrottledTimeMs() {
     return 0;
   }
 }

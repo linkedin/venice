@@ -84,4 +84,9 @@ public class CounterBackedMapReduceDataWriterTaskTracker implements DataWriterTa
   public long getTotalPutOrDeleteRecordsCount() {
     return MRJobCounterHelper.getTotalPutOrDeleteRecordsCount(counters);
   }
+
+  @Override
+  public long getIncrementalPushThrottledTimeMs() {
+    return MRJobCounterHelper.getIncrementalPushThrottleTimeMs(counters);
+  }
 }

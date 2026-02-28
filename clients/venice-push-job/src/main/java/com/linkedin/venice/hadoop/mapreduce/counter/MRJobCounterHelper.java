@@ -25,6 +25,7 @@ public class MRJobCounterHelper {
   private static final String AUTHORIZATION_FAILURES = "authorization failures";
   private static final String RECORD_TOO_LARGE_FAILURES = "record too large failures";
   private static final String UNCOMPRESSED_RECORD_TOO_LARGE_FAILURES = "uncompressed record too large failures";
+  private static final String INCREMENTAL_PUSH_THROTTLE_TIME_MS = "incremental push throttle time (ms)";
 
   private static final String COUNTER_GROUP_DATA_QUALITY = "Data quality";
   private static final String DUPLICATE_KEY_WITH_IDENTICAL_VALUE = "duplicate key with identical value";
@@ -88,6 +89,9 @@ public class MRJobCounterHelper {
   public static final GroupAndCounterNames REPUSH_TTL_FILTER_COUNT_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(MR_JOB_STATUS, REPUSH_TTL_FILTERED_COUNT);
 
+  public static final GroupAndCounterNames INCREMENTAL_PUSH_THROTTLE_TIME_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(COUNTER_GROUP_KAFKA, INCREMENTAL_PUSH_THROTTLE_TIME_MS);
+
   private MRJobCounterHelper() {
     // Util class
   }
@@ -150,6 +154,10 @@ public class MRJobCounterHelper {
 
   public static void incrTotalPutOrDeleteRecordCount(Reporter reporter, long amount) {
     incrAmountWithGroupCounterName(reporter, TOTAL_PUT_OR_DELETE_COUNT_GROUP_COUNTER_NAME, amount);
+  }
+
+  public static void incrIncrementalPushThrottleTime(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, INCREMENTAL_PUSH_THROTTLE_TIME_GROUP_COUNTER_NAME, amount);
   }
 
   public static long getWriteAclAuthorizationFailureCount(Reporter reporter) {
@@ -230,6 +238,14 @@ public class MRJobCounterHelper {
 
   public static long getTotalPutOrDeleteRecordsCount(Counters counters) {
     return getCountFromCounters(counters, TOTAL_PUT_OR_DELETE_COUNT_GROUP_COUNTER_NAME);
+  }
+
+  public static long getIncrementalPushThrottleTimeMs(Reporter reporter) {
+    return getCountWithGroupCounterName(reporter, INCREMENTAL_PUSH_THROTTLE_TIME_GROUP_COUNTER_NAME);
+  }
+
+  public static long getIncrementalPushThrottleTimeMs(Counters counters) {
+    return getCountFromCounters(counters, INCREMENTAL_PUSH_THROTTLE_TIME_GROUP_COUNTER_NAME);
   }
 
   private static long getCountFromCounters(Counters counters, GroupAndCounterNames groupAndCounterNames) {

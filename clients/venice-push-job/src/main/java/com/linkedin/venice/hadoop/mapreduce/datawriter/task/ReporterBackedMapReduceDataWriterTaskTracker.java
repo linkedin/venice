@@ -114,6 +114,16 @@ public class ReporterBackedMapReduceDataWriterTaskTracker implements DataWriterT
   }
 
   @Override
+  public void trackIncrementalPushThrottledTime(long timeMs) {
+    MRJobCounterHelper.incrIncrementalPushThrottleTime(reporter, timeMs);
+  }
+
+  @Override
+  public long getIncrementalPushThrottledTimeMs() {
+    return MRJobCounterHelper.getIncrementalPushThrottleTimeMs(reporter);
+  }
+
+  @Override
   public long getTotalKeySize() {
     return MRJobCounterHelper.getTotalKeySize(reporter);
   }

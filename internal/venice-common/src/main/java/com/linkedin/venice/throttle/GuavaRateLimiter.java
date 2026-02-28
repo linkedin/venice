@@ -21,6 +21,11 @@ public class GuavaRateLimiter implements VeniceRateLimiter {
   }
 
   @Override
+  public void acquirePermit(int units) {
+    rateLimiter.acquire(units);
+  }
+
+  @Override
   public void setQuota(long quota) {
     this.permitsPerSecond = quota;
   }
