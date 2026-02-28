@@ -1,3 +1,5 @@
+import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -143,278 +145,15 @@ def integrationTestConfigs = {
   }
 }
 
-def integrationTestBuckets = [
-    "1": [
-        "com.linkedin.venice.endToEnd.TestIncrementalPush",
-        "com.linkedin.venice.consumer.TestStatelessChangelogConsumerWithCompression",
-        "com.linkedin.venice.endToEnd.DaVinciClientIsolatedAndHybridStoreTest"
-    ],
-    "2": [
-        "com.linkedin.venice.endToEnd.PartialUpdateTest",
-        "com.linkedin.venice.endToEnd.TestRepush"
-    ],
-    "3": [
-        "com.linkedin.venice.consumer.StatefulVeniceChangelogConsumerTest",
-        "com.linkedin.venice.endToEnd.TestActiveActiveVersionSwapMessage",
-        "com.linkedin.venice.endToEnd.OnlineVeniceProducerOrderingIntegrationTest",
-        "com.linkedin.venice.endToEnd.PartialUpdateAAMetadataTest"
-    ],
-    "4": [
-        "com.linkedin.venice.endToEnd.TestDeferredVersionSwap",
-        "com.linkedin.venice.helix.ZkRoutersClusterManagerTest",
-        "com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerTest",
-        "com.linkedin.venice.helix.TestHelixReadOnlyZKSharedSystemStoreRepository"
-    ],
-    "5": [
-        "com.linkedin.venice.endToEnd.DaVinciClientSubscribeTest",
-        "com.linkedin.venice.endToEnd.DaVinciClientRecordTransformerTest",
-        "com.linkedin.venice.router.TestRouterAsyncStart"
-    ],
-    "6": [
-        "com.linkedin.venice.endToEnd.DaVinciClientP2PBlobTransferTest",
-        "com.linkedin.venice.controller.TestParentControllerWithMultiDataCenter",
-        "com.linkedin.venice.integration.utils.SystemExitPrevention"
-    ],
-    "7": [
-        "com.linkedin.venice.consumer.TestChangelogConsumerWithParallelProcessing",
-        "com.linkedin.venice.endToEnd.TestActiveActiveIngestionWithCrossTpParallelProcessing",
-        "com.linkedin.venice.kafka.KafkaConsumptionTest"
-    ],
-    "8": [
-        "com.linkedin.venice.consumer.TestChangelogConsumer",
-        "com.linkedin.venice.consumer.TestVersionSpecificChangelogConsumer",
-        "com.linkedin.venice.consumer.TestFlinkMaterializedViewEndToEndWithMultipleConsumers",
-        "com.linkedin.venice.endToEnd.TestPushJobWithNativeReplication",
-        "com.linkedin.venice.zk.TestMigrateVeniceZKPaths"
-    ],
-    "9": [
-        "com.linkedin.venice.endToEnd.TestDeferredVersionSwapWithFailingRegions",
-        "com.linkedin.venice.endToEnd.TestStoreMigration",
-        "com.linkedin.venice.controller.TestVeniceHelixAdminWithIsolatedEnvironment",
-        "com.linkedin.venice.helix.TestHelixExternalViewRepository",
-        "com.linkedin.venice.fastclient.BatchGetAvroStoreClientTest",
-        "com.linkedin.venice.endToEnd.PushJobDetailsTest"
-    ],
-    "10": [
-        "com.linkedin.venice.endToEnd.TestHybridQuota",
-        "com.linkedin.venice.endToEnd.TestAdminOperationWithPreviousVersion",
-        "com.linkedin.venice.endToEnd.ActiveActiveReplicationForHybridTest",
-        "com.linkedin.venice.endToEnd.TestMultiDataCenterAdminOperations",
-        "com.linkedin.venice.router.api.TestHostFinder"
-    ],
-    "11": [
-        "com.linkedin.venice.endToEnd.DaVinciClientMemoryLimitTest",
-        "com.linkedin.venice.endToEnd.TestHybrid",
-        "com.linkedin.venice.controller.server.TestAdminSparkServer",
-        "com.linkedin.venice.controller.TestDelayedRebalance",
-        "com.linkedin.venice.client.store.TestSslTransportClient",
-        "com.linkedin.venice.helix.TestHelixReadOnlyStoreRepositoryAdapter",
-        "com.linkedin.venice.controller.VeniceParentHelixAdminTest"
-    ],
-    "12": [
-        "com.linkedin.venice.endToEnd.DaVinciClientTest",
-        "com.linkedin.venice.endToEnd.DaVinciClientTestWithHeartbeatReadyToServeCheckTest",
-        "com.linkedin.venice.endToEnd.TestBatchForRocksDB",
-        "com.linkedin.venice.controller.TestHAASController",
-        "com.linkedin.venice.server.VeniceServerTest"
-    ],
-    "13": [
-        "com.linkedin.venice.endToEnd.DaVinciComputeTest",
-        "com.linkedin.venice.endToEnd.TestMaterializedViewEndToEnd",
-        "com.linkedin.venice.endToEnd.TestActiveActiveIngestion",
-        "com.linkedin.venice.endToEnd.TestActiveActiveIngestionWithReadWriteLeaderCompactionTuningAndParallelProcessing",
-        "com.linkedin.venice.pubsub.api.admin.PubSubAdminAdapterTest",
-        "com.linkedin.venice.router.ReplicaFailoverTest",
-        "com.linkedin.venice.helix.ZkStoreConfigAccessorTest"
-    ],
-    "14": [
-        "com.linkedin.venice.pubsub.manager.TopicManagerE2ETest",
-        "com.linkedin.venice.helixrebalance.LeaderFollowerThreadPoolTest",
-        "com.linkedin.venice.ingestionHeartbeat.IngestionHeartBeatTest",
-        "com.linkedin.venice.endToEnd.TestPartialUpdateWithActiveActiveReplication",
-        "com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTaskIntegrationTest",
-        "com.linkedin.venice.controller.TestInstanceRemovable",
-        "com.linkedin.venice.helix.TestHelixReadOnlyStorageEngineRepository",
-        "com.linkedin.venice.helix.TestHelixReadWriteStorageEngineRepository"
-    ],
-    "15": [
-        "com.linkedin.venice.endToEnd.DaVinciClusterAgnosticTest",
-        "com.linkedin.venice.controllerapi.TestControllerClient",
-        "com.linkedin.venice.pubsub.api.consumer.PubSubConsumerAdapterTest",
-        "com.linkedin.venice.endToEnd.TestActiveActiveReplicationForIncPush",
-        "com.linkedin.venice.controller.TestHybridStoreRepartitioningWithMultiDataCenter",
-        "com.linkedin.venice.endToEnd.TestStoreMigrationMultiRegion",
-        "com.linkedin.venice.restart.TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion",
-        "com.linkedin.venice.endToEnd.MetaSystemStoreTest",
-        "com.linkedin.venice.helix.StoragePersonaRepositoryTest",
-        "com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterITest"
-    ],
-    "16": [
-        "com.linkedin.venice.endToEnd.BlobP2PTransferAmongServersTest",
-        "com.linkedin.venice.endToEnd.TestDaVinciRequestBasedMetaRepository",
-        "com.linkedin.venice.endToEnd.DaVinciLiveUpdateSuppressionTest",
-        "com.linkedin.venice.fastclient.AvroStoreClientEndToEndTest",
-        "com.linkedin.venice.endToEnd.TestDeferredVersionSwapWithoutTargetedRegionPush",
-        "com.linkedin.venice.controller.AdminToolE2ETest",
-        "com.linkedin.venice.endToEnd.TestSeparateRealtimeTopicIngestion",
-        "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest",
-        "com.linkedin.venice.router.TestStreaming"
-    ],
-    "17": [
-        "com.linkedin.venice.persona.StoragePersonaAccessorTest",
-        "com.linkedin.venice.endToEnd.TestStoreUpdateStoragePersona",
-        "com.linkedin.venice.endToEnd.TestProducerBatching",
-        "com.linkedin.venice.hadoop.TestVenicePushJob",
-        "com.linkedin.venice.router.TestRouterRetry",
-        "com.linkedin.venice.endToEnd.TestBatchReportIncrementalPush",
-        "com.linkedin.venice.multicluster.TestMetadataOperationInMultiCluster",
-        "com.linkedin.venice.endToEnd.TestMultiDatacenterVenicePushJob",
-        "com.linkedin.venice.endToEnd.ParticipantStoreTest",
-        "com.linkedin.venice.endToEnd.TestVsonStoreBatch",
-        "com.linkedin.venice.restart.TestRestartController",
-        "com.linkedin.venice.endToEnd.TestPushJobWithSourceGridFabricSelection",
-        "com.linkedin.venice.endToEnd.NearlineE2ELatencyTest",
-        "com.linkedin.venice.fastclient.grpc.VeniceGrpcEndToEndTest"
-    ],
-    "18": [
-        "com.linkedin.venice.router.TestBlobDiscovery",
-        "com.linkedin.venice.helix.TestHelixCustomizedViewOfflinePushRepository",
-        "com.linkedin.venice.restart.TestRestartRouter",
-        "com.linkedin.venice.controller.TestEnablingSSLPushInVeniceHelixAdminWithIsolatedEnvironment",
-        "com.linkedin.venice.endToEnd.TestWritePathComputation",
-        "com.linkedin.venice.endToEnd.TestDumpIngestionContext",
-        "com.linkedin.venice.controller.TestAdminToolEndToEnd",
-        "com.linkedin.venice.endToEnd.TestPushJobWithEmergencySourceRegionSelection",
-        "com.linkedin.venice.controller.TestVeniceHelixAdminWithSharedEnvironment",
-        "com.linkedin.venice.endToEnd.TestPushJobVersionCleanup",
-        "com.linkedin.venice.controller.TestTopicRequestOnHybridDelete",
-        "com.linkedin.venice.endToEnd.TestStaleDataVisibility",
-        "com.linkedin.venice.writer.VeniceWriterTest",
-        "com.linkedin.venice.endToEnd.OneTouchDataRecoveryTest",
-        "com.linkedin.venice.helix.TestHelixStatusMessageChannel",
-        "com.linkedin.venice.samza.VeniceSystemFactoryTest",
-        "com.linkedin.venice.kafka.EndToEndKafkaWithSASLTest",
-        "com.linkedin.venice.router.TestReadForHttpClient5"
-    ],
-    "19": [
-        "com.linkedin.venice.endToEnd.TestActiveActiveReplicationWithDelayedLeaderPromotion",
-        "com.linkedin.venice.storagenode.ReadComputeValidationTest",
-        "com.linkedin.venice.restart.TestRestartServerWithChecksumVerification",
-        "com.linkedin.venice.endToEnd.StoreMetadataRecoveryTest",
-        "com.linkedin.venice.controller.TestClusterLevelConfigForNativeReplication",
-        "com.linkedin.venice.pubsub.manager.TopicManagerIntegrationTest",
-        "com.linkedin.venice.controller.TestTopicRequestOnHybridDeleteWithHMC",
-        "com.linkedin.venice.restart.TestRestartServerDuringIngestionForRocksDB",
-        "com.linkedin.venice.helix.HelixPartitionPushStatusAccessorTest",
-        "com.linkedin.venice.endToEnd.TestHybridMultiRegion",
-        "com.linkedin.venice.endToEnd.PartialUpdateClusterConfigTest",
-        "com.linkedin.venice.endToEnd.TestStoreBackupVersionDeletion",
-        "com.linkedin.venice.kafka.ssl.AdminChannelWithSSLTest",
-        "com.linkedin.venice.endToEnd.TestStoreGraveyardCleanupService",
-        "com.linkedin.venice.controller.server.TestAdminSparkServerWithMultiServers",
-        "com.linkedin.venice.endToEnd.TestUnusedValueSchemaCleanup",
-        "com.linkedin.venice.helixrebalance.TestRebalanceByDefaultStrategy",
-        "com.linkedin.venice.storagenode.StorageNodeComputeTest",
-        "com.linkedin.venice.endToEnd.TestHelixCustomizedView"
-    ],
-    "20": [
-        "com.linkedin.venice.controller.TestClusterLevelConfigForActiveActiveReplication",
-        "com.linkedin.venice.helix.TestControllerKMERegistrationFromMessageHeader",
-        "com.linkedin.venice.controller.TestAdminOperationVersionDetection",
-        "com.linkedin.venice.controller.TestIncrementalPush",
-        "com.linkedin.venice.router.TestReadForApacheAsyncClient",
-        "com.linkedin.venice.kafka.ssl.TestProduceWithSSL",
-        "com.linkedin.venice.storagenode.StorageNodeReadTest",
-        "com.linkedin.venice.endToEnd.TestGlobalRtDiv",
-        "com.linkedin.venice.consumer.ConsumerIntegrationTestWithSchemaReader",
-        "com.linkedin.venice.endToEnd.TestHybridStoreDeletion",
-        "com.linkedin.venice.restart.TestRestartServerAfterDeletingSstFiles",
-        "com.linkedin.venice.endToEnd.TestBackupVersionDatabaseOptimization",
-        "com.linkedin.venice.endToEnd.TestLeaderReplicaFailover",
-        "com.linkedin.venice.endToEnd.TestProtocolVersionAutoDetection",
-        "com.linkedin.venice.controller.server.TestBackupControllerResponse",
-        "com.linkedin.venice.endToEnd.TestSuperSetSchemaRegistration",
-        "com.linkedin.venice.endToEnd.TestServerStorePropertiesEndpoint",
-        "com.linkedin.venice.controller.TestHolisticSeverHealthCheck",
-        "com.linkedin.venice.consumer.ConsumerIntegrationTestWithProtocolHeader",
-        "com.linkedin.venice.controller.TestStartMultiControllers",
-        "com.linkedin.venice.restart.TestRestartServer",
-        "com.linkedin.venice.controller.TestDeleteStoreDeletesRealtimeTopic",
-        "com.linkedin.venice.router.TestRouter",
-        "com.linkedin.venice.router.TestConnectionWarmingForApacheAsyncClient",
-        "com.linkedin.venice.throttle.TestRouterReadQuotaThrottler",
-        "com.linkedin.venice.endToEnd.ParentControllerMetadataSystemStoreTest",
-        "com.linkedin.venice.router.TestRetryQuotaRejection",
-        "com.linkedin.venice.endToEnd.TestRocksDBOffsetStore",
-        "com.linkedin.venice.controller.server.TestAdminSparkServerAcl",
-        "com.linkedin.venice.storagenode.TestEarlyTermination",
-        "com.linkedin.venice.client.store.AvroSpecificStoreClientImplTest",
-        "com.linkedin.venice.helix.TestHelixReadWriteStoreRepositoryAdapter"
-    ],
-    "21": [
-        "com.linkedin.venice.client.store.TestD2ServiceDiscovery",
-        "com.linkedin.venice.endToEnd.StoragePersonaTest",
-        "com.linkedin.venice.endToEnd.DataRecoveryTest",
-        "com.linkedin.venice.endToEnd.RocksDBPlainTableTest",
-        "com.linkedin.venice.endToEnd.TestFatalDataValidationExceptionHandling",
-        "com.linkedin.venice.endToEnd.TestControllerGrpcEndpoints",
-        "com.linkedin.venice.client.store.AvroGenericStoreClientImplTest",
-        "com.linkedin.venice.integration.StorageNodeServiceTest",
-        "com.linkedin.venice.helix.TestServerKMERegistrationFromMessageHeader",
-        "com.linkedin.venice.controller.TestD2ControllerClient",
-        "com.linkedin.venice.controller.TestControllerEnforceSSL",
-        "com.linkedin.venice.controller.server.TestAdminSparkServerGetLeader",
-        "com.linkedin.venice.helix.TestHelixReadOnlySchemaRepository",
-        "com.linkedin.venice.hadoop.input.kafka.TestKafkaInputRecordReader",
-        "com.linkedin.venice.helix.TestHelixReadWriteSchemaRepository",
-        "com.linkedin.venice.controller.TestVeniceHelixResources",
-        "com.linkedin.venice.hadoop.input.kafka.TestKafkaInputFormat",
-        "com.linkedin.venice.router.api.TestVeniceDispatcher",
-        "com.linkedin.venice.helix.HelixLiveInstanceMonitorIntegrationTest",
-        "com.linkedin.venice.router.api.TestRouterHeartbeat",
-        "com.linkedin.venice.stats.TestZkClientStatusStats",
-        "com.linkedin.venice.helix.ControllerInstanceTagRefresherTest",
-        "com.linkedin.venice.helix.HelixOfflinePushMonitorAccessorTest",
-        "com.linkedin.venice.controller.server.TestAdminSparkWithMocks",
-        "com.linkedin.venice.helix.CachedResourceZKStateListenerTest",
-        "com.linkedin.venice.controller.TestControllerSecureGrpcServer",
-        "com.linkedin.venice.helix.TestHelixReadOnlyLiveClusterConfigRepository",
-        "com.linkedin.venice.helix.HelixStoreGraveyardTest",
-        "com.linkedin.venice.helix.TestHelixReadWriteLiveClusterConfigRepository",
-        "com.linkedin.venice.helix.ZkAllowlistAccessorTest",
-        "com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManagerIntegrationTest",
-        "com.linkedin.venice.consumer.ConsumerTest",
-        "com.linkedin.venice.controller.TestZkExecutionIdAccessor",
-        "com.linkedin.venice.controller.migration.TestMigrationPushStrategyZKAccessor",
-        "com.linkedin.venice.helix.StoragePersonaStoreDataListenerTest",
-        "com.linkedin.venice.endToEnd.PushStatusStoreTest"
-    ],
-    "22": [
-        "com.linkedin.venice.endToEnd.TestEmptyPush",
-        "com.linkedin.venice.endToEnd.SystemStoreMultiColoTest",
-        "com.linkedin.venice.endToEnd.CheckSumTest",
-        "com.linkedin.venice.endToEnd.TestStuckConsumerRepair",
-        "com.linkedin.venice.fastclient.FastClientGrpcServerReadQuotaTest",
-        "com.linkedin.venice.fastclient.StoreOverloadTest",
-        "com.linkedin.venice.fastclient.meta.RequestBasedMetadataIntegrationTest",
-        "com.linkedin.venice.fastclient.BatchGetAvroStoreClientZstdTest",
-        "com.linkedin.venice.fastclient.BatchGetAvroStoreClientGzipTest",
-        "com.linkedin.venice.fastclient.FastClientIndividualFeatureConfigurationTest",
-        "com.linkedin.venice.fastclient.FastClientDaVinciClientCompatTest",
-        "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest",
-        "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest",
-        "com.linkedin.venice.endToEnd.DaVinciClientP2PBlobTransferTest2"
-    ],
-    "23": [
-        "com.linkedin.venice.router.TestReadPathChaos",
-        "com.linkedin.venice.endToEnd.PartialUpdateNonAATest"
-    ],
-]
+def shardAssignmentsFile = new File(projectDir, "test-shard-assignments.json")
+def shardAssignments = new JsonSlurper().parse(shardAssignmentsFile)
+def integrationTestBuckets = shardAssignments.shards as Map<String, List<String>>
 
 integrationTestBuckets.each { name, patterns ->
   task "integrationTests_${name}" (type: Test) {
     ext {
       suiteStartTime = 0
+      timingResults = []
     }
     filter {
       patterns.each { pattern ->
@@ -431,8 +170,16 @@ integrationTestBuckets.each { name, patterns ->
     }
     afterSuite { descriptor, result ->
       if (descriptor.name.startsWith("com.linkedin")) {
-        println "Test Suite ${descriptor.name} completed (${result.getResultType()}) in ${(System.currentTimeMillis() - suiteStartTime )/1000} s"
+        def durationSeconds = (System.currentTimeMillis() - suiteStartTime) / 1000.0
+        println "Test Suite ${descriptor.name} completed (${result.getResultType()}) in ${durationSeconds} s"
+        timingResults << [name: descriptor.name, durationSeconds: durationSeconds, result: result.getResultType().toString()]
       }
+    }
+    doLast {
+      def timingDir = new File(buildDir, "test-timings")
+      timingDir.mkdirs()
+      def timingFile = new File(timingDir, "integrationTests_${name}.json")
+      timingFile.text = JsonOutput.prettyPrint(JsonOutput.toJson([shard: name, suites: timingResults]))
     }
   }
 }
@@ -440,6 +187,7 @@ integrationTestBuckets.each { name, patterns ->
 task integrationTests_99(type: Test) {
   ext {
     suiteStartTime = 0
+    timingResults = []
   }
   filter {
     integrationTestBuckets.each { name, patterns ->
@@ -458,8 +206,16 @@ task integrationTests_99(type: Test) {
   }
   afterSuite { descriptor, result ->
     if (descriptor.name.startsWith("com.linkedin")) {
-      println "Test Suite ${descriptor.name} completed (${result.getResultType()}) in ${(System.currentTimeMillis() - suiteStartTime )/1000} s"
+      def durationSeconds = (System.currentTimeMillis() - suiteStartTime) / 1000.0
+      println "Test Suite ${descriptor.name} completed (${result.getResultType()}) in ${durationSeconds} s"
+      timingResults << [name: descriptor.name, durationSeconds: durationSeconds, result: result.getResultType().toString()]
     }
+  }
+  doLast {
+    def timingDir = new File(buildDir, "test-timings")
+    timingDir.mkdirs()
+    def timingFile = new File(timingDir, "integrationTests_99.json")
+    timingFile.text = JsonOutput.prettyPrint(JsonOutput.toJson([shard: "99", suites: timingResults]))
   }
 }
 
@@ -493,7 +249,7 @@ task generateGHCI() {
   def common = "--continue --no-daemon "
 
   def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTests_"
-  def integrationTestTimeout = 30 // minutes
+  def integrationTestTimeout = 15 // minutes
   integrationTestBuckets.each { name, patterns ->
     def flowName = "IntegrationTests_" + name
     jobs << flowName

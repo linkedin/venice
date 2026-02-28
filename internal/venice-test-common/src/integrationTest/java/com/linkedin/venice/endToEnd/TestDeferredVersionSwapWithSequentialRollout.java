@@ -13,6 +13,7 @@ import static org.testng.Assert.assertFalse;
 
 import com.linkedin.venice.controller.MockStoreLifecycleHooks;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -26,17 +27,20 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.testng.Assert;
@@ -82,7 +86,7 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testDeferredVersionSwap() throws IOException {
+  public void testDeferredVersionSwap() throws Exception {
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
     // Setup job properties
@@ -96,36 +100,40 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
     lifecycleHooksParams.put("outcome", StoreVersionLifecycleEventOutcome.PROCEED.toString());
     lifecycleHooks.add(new LifecycleHooksRecordImpl(MockStoreLifecycleHooks.class.getName(), lifecycleHooksParams));
     UpdateStoreQueryParams storeParms =
-        new UpdateStoreQueryParams().setStoreLifecycleHooks(lifecycleHooks).setTargetRegionSwapWaitTime(1);
+        new UpdateStoreQueryParams().setStoreLifecycleHooks(lifecycleHooks).setTargetRegionSwapWaitTime(60);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
 
-      // Start push job with target region push enabled
+      // Start push job with target region push enabled (in background since VPJ blocks until swap)
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, REGION1);
-      IntegrationTestPushUtils.runVPJ(props);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 1),
-          parentControllerClient,
-          30,
-          TimeUnit.SECONDS);
+      Thread vpjThread = new Thread(() -> IntegrationTestPushUtils.runVPJ(props));
+      vpjThread.setDaemon(true);
+      vpjThread.start();
+      try {
+        TestUtils.waitForNonDeterministicPushCompletion(
+            Version.composeKafkaTopic(storeName, 1),
+            parentControllerClient,
+            60,
+            TimeUnit.SECONDS);
 
-      // Verify that final version is the same as the target version
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-        Map<String, Integer> coloVersions =
-            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+        // Validate deferred swap stages: target region swaps first, others follow after release
+        assertDeferredSwapStages(parentControllerClient, storeName, 1, REGION1);
 
-        coloVersions.forEach((colo, version) -> {
-          Assert.assertEquals((int) version, 1);
-        });
-      });
+        vpjThread.join(30_000);
+      } finally {
+        if (vpjThread.isAlive()) {
+          vpjThread.interrupt();
+          vpjThread.join(5_000);
+        }
+      }
     }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testDeferredVersionSwapWithFailedValidationSequentialRollout() throws IOException {
+  public void testDeferredVersionSwapWithFailedValidationSequentialRollout() throws Exception {
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
     // Setup job properties
@@ -139,12 +147,13 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
     lifecycleHooksParams.put("outcome", StoreVersionLifecycleEventOutcome.ROLLBACK.toString());
     lifecycleHooks.add(new LifecycleHooksRecordImpl(MockStoreLifecycleHooks.class.getName(), lifecycleHooksParams));
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setStoreLifecycleHooks(lifecycleHooks);
-    storeParms.setTargetRegionSwapWaitTime(1);
+    storeParms.setTargetRegionSwapWaitTime(60);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
 
+      // First push (non-targeted) runs synchronously
       IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
@@ -152,34 +161,49 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
           30,
           TimeUnit.SECONDS);
 
-      // Start push job with target region push enabled
+      // Start push job with target region push enabled (in background since VPJ blocks until swap)
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, REGION1);
+      Thread vpjThread = new Thread(() -> IntegrationTestPushUtils.runVPJ(props));
+      vpjThread.setDaemon(true);
+      vpjThread.start();
       try {
-        IntegrationTestPushUtils.runVPJ(props);
-      } catch (Exception e) {
-        Assert.assertTrue(e.getMessage().contains("rolled back after ingestion completed due to validation failure"));
-      }
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 2),
-          parentControllerClient,
-          30,
-          TimeUnit.SECONDS);
+        TestUtils.waitForNonDeterministicPushCompletion(
+            Version.composeKafkaTopic(storeName, 2),
+            parentControllerClient,
+            60,
+            TimeUnit.SECONDS);
 
-      // Verify that final version is the same as the target version
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-        Map<String, Integer> coloVersions =
-            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-        coloVersions.forEach((colo, version) -> {
-          Assert.assertEquals((int) version, 1);
+        // Wait for target region to swap to v2
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          Map<String, Integer> versions = getColoVersions(parentControllerClient, storeName);
+          Assert.assertEquals((int) versions.get(REGION1), 2, "Target region should have v2");
         });
-      });
 
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.KILLED);
-      });
+        // Release wait time so DeferredVersionSwapService fires -> lifecycle hooks return ROLLBACK
+        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
+
+        // Verify version 2 is killed (rollback)
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+          StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+          Optional<Version> v2 = parentStore.getVersion(2);
+          Assert.assertTrue(v2.isPresent(), "Version 2 should exist");
+          Assert.assertEquals(v2.get().getStatus(), VersionStatus.KILLED);
+        });
+
+        // Verify all regions remain on v1 after rollback
+        Map<String, Integer> coloVersions = getColoVersions(parentControllerClient, storeName);
+        coloVersions.forEach((colo, version) -> {
+          Assert.assertEquals((int) version, 1, "Region " + colo + " should still be on v1 after rollback");
+        });
+
+        vpjThread.join(30_000);
+      } finally {
+        if (vpjThread.isAlive()) {
+          vpjThread.interrupt();
+          vpjThread.join(5_000);
+        }
+      }
     }
   }
 
@@ -193,14 +217,19 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     String keySchemaStr = "\"string\"";
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(1);
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(60);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
 
       parentControllerClient.emptyPush(storeName, "test", 100000);
-      TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.MINUTES, () -> {
+
+      // Release the swap wait time so DeferredVersionSwapService fires as soon as ingestion completes
+      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
+
+      // Wait for all regions to converge to version 1
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
@@ -234,6 +263,64 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
         assertFalse(versionCreationResponse.isError());
       });
     }
+  }
+
+  /**
+   * Validates deferred swap stages:
+   * 1. Target region(s) have new version (push completed there)
+   * 2. Non-target regions still on previous version (swap is deferred)
+   * 3. After releasing wait time, all regions converge to new version
+   */
+  private void assertDeferredSwapStages(
+      ControllerClient parentControllerClient,
+      String storeName,
+      int expectedVersion,
+      String targetRegions) {
+    int previousVersion = expectedVersion - 1;
+    Set<String> targetSet = RegionUtils.parseRegionsFilterList(targetRegions);
+    Set<String> allRegions = new HashSet<>(Arrays.asList(REGION1, REGION2, REGION3));
+
+    // Stage 1: target region(s) should have new version
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Map<String, Integer> versions = getColoVersions(parentControllerClient, storeName);
+      for (String r: targetSet) {
+        Assert.assertEquals(
+            (int) versions.get(r),
+            expectedVersion,
+            "Target region " + r + " should have v" + expectedVersion);
+      }
+    });
+
+    // Stage 2: non-target regions should still be on previous version
+    Map<String, Integer> versions = getColoVersions(parentControllerClient, storeName);
+    for (String r: allRegions) {
+      if (!targetSet.contains(r)) {
+        Assert.assertEquals(
+            (int) versions.get(r),
+            previousVersion,
+            "Non-target region " + r + " should still be on v" + previousVersion);
+      }
+    }
+
+    // Stage 3: release the swap
+    ControllerResponse resp =
+        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
+    Assert.assertFalse(resp.isError(), "Failed to update targetRegionSwapWaitTime: " + resp.getError());
+
+    // Stage 4: all regions converge
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Map<String, Integer> v = getColoVersions(parentControllerClient, storeName);
+      for (String r: allRegions) {
+        Assert.assertEquals(
+            (int) v.get(r),
+            expectedVersion,
+            "Region " + r + " should have v" + expectedVersion + " after swap");
+      }
+    });
+  }
+
+  private Map<String, Integer> getColoVersions(ControllerClient client, String storeName) {
+    return client.getStore(storeName).getStore().getColoToCurrentVersions();
   }
 
   @Test(timeOut = TEST_TIMEOUT)

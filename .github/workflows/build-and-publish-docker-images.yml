@@ -97,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Building Docker images for tag: $TAG_VERSION"
-          bash docker/build-venice-docker-images.sh "ghcr.io/${{ github.repository }}" "$TAG_VERSION"
+          bash docker/build-venice-docker-images.sh "ghcr.io/${{ github.repository }}" "$TAG_VERSION" "$DOCKER_TARGETS"
 
       # Step 6: List generated Docker images
       - name: List generated Docker images
