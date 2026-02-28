@@ -109,6 +109,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_ADMIN_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.admin_message.type");
           break;
+        case VENICE_THREAD_POOL_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.thread_pool.name");
+          break;
         case VENICE_DCR_OPERATION:
           assertEquals(dimension.getDimensionName(format), "venice.dcr.operation");
           break;
@@ -228,6 +231,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_ADMIN_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.adminMessage.type");
           break;
+        case VENICE_THREAD_POOL_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.threadPool.name");
+          break;
         case VENICE_DCR_OPERATION:
           assertEquals(dimension.getDimensionName(format), "venice.dcr.operation");
           break;
@@ -346,6 +352,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_ADMIN_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.AdminMessage.Type");
+          break;
+        case VENICE_THREAD_POOL_NAME:
+          assertEquals(dimension.getDimensionName(format), "Venice.ThreadPool.Name");
           break;
         case VENICE_DCR_OPERATION:
           assertEquals(dimension.getDimensionName(format), "Venice.Dcr.Operation");

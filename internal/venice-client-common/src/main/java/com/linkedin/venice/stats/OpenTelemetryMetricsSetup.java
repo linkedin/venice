@@ -71,6 +71,7 @@ public class OpenTelemetryMetricsSetup {
     private String clusterName;
     private String routeName;
     private RequestRetryType requestRetryType;
+    private String threadPoolName;
     private int helixGroupId = UNASSIGNED_HELIX_GROUP_ID;
 
     public Builder(MetricsRepository metricsRepository) {
@@ -122,6 +123,14 @@ public class OpenTelemetryMetricsSetup {
      */
     public Builder setRequestRetryType(RequestRetryType requestRetryType) {
       this.requestRetryType = requestRetryType;
+      return this;
+    }
+
+    /**
+     * Set the thread pool name dimension.
+     */
+    public Builder setThreadPoolName(String threadPoolName) {
+      this.threadPoolName = threadPoolName;
       return this;
     }
 
@@ -194,6 +203,15 @@ public class OpenTelemetryMetricsSetup {
         baseAttributesBuilder.put(
             otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE),
             requestRetryType.getDimensionValue());
+      }
+
+      // Add thread pool name if provided
+      if (threadPoolName != null) {
+        String sanitizedThreadPoolName = threadPoolName.trim().isEmpty() ? "unknown" : threadPoolName;
+        baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME, sanitizedThreadPoolName);
+        baseAttributesBuilder.put(
+            otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME),
+            sanitizedThreadPoolName);
       }
 
       // Add helix group ID if provided
