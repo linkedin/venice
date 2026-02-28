@@ -112,7 +112,8 @@ public class AggVersionedIngestionStats
     int currentVersion = getCurrentVersion(storeName);
     int futureVersion = getFutureVersion(storeName);
     return otelStatsMap.computeIfAbsent(storeName, k -> {
-      IngestionOtelStats stats = new IngestionOtelStats(getMetricsRepository(), k, clusterName, localRegionName);
+      IngestionOtelStats stats =
+          new IngestionOtelStats(getMetricsRepository(), k, clusterName, localRegionName, emitOtelIngestionStats);
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });

@@ -96,12 +96,14 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
       RequestType requestType,
       boolean isKeyValueProfilingEnabled,
       ServerHttpRequestStats totalStats,
-      boolean isDaVinciClient) {
+      boolean isDaVinciClient,
+      boolean readOtelStatsEnabled) {
     super(isDaVinciClient ? dummySystemStoreMetricRepo : metricsRepository, storeName, requestType);
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .isTotalStats(isTotalStats())
+            .setOtelEnabledOverride(readOtelStatsEnabled)
             .setStoreName(storeName)
             .setClusterName(clusterName)
             .setRequestType(requestType)

@@ -50,7 +50,8 @@ public class AggServerHttpRequestStatsTest {
         false,
         Mockito.mock(ReadOnlyStoreRepository.class),
         true,
-        false);
+        false,
+        true);
     this.batchGetStats = new AggServerHttpRequestStats(
         "test_cluster",
         metricsRepository,
@@ -58,7 +59,8 @@ public class AggServerHttpRequestStatsTest {
         false,
         Mockito.mock(ReadOnlyStoreRepository.class),
         true,
-        false);
+        false,
+        true);
     this.computeStats = new AggServerHttpRequestStats(
         "test_cluster",
         metricsRepository,
@@ -66,7 +68,8 @@ public class AggServerHttpRequestStatsTest {
         false,
         Mockito.mock(ReadOnlyStoreRepository.class),
         true,
-        false);
+        false,
+        true);
 
     this.singleGetStatsWithKVProfiling = new AggServerHttpRequestStats(
         "test_cluster",
@@ -75,7 +78,8 @@ public class AggServerHttpRequestStatsTest {
         true,
         Mockito.mock(ReadOnlyStoreRepository.class),
         true,
-        false);
+        false,
+        true);
   }
 
   @AfterTest

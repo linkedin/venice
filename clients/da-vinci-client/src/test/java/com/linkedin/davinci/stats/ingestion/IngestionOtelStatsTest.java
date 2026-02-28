@@ -127,7 +127,7 @@ public class IngestionOtelStatsTest {
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(reader)
             .build());
-    return new IngestionOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
+    return new IngestionOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
   }
 
   @BeforeMethod
@@ -142,7 +142,7 @@ public class IngestionOtelStatsTest {
   }
 
   @Test
-  public void testConstructorWithOtelDisabled() {
+  public void testConstructorWithGlobalOtelDisabled() {
     VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(false)
@@ -150,14 +150,28 @@ public class IngestionOtelStatsTest {
             .build());
 
     IngestionOtelStats stats =
-        new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
-    assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled");
+        new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+    assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when global OTel is off");
+  }
+
+  @Test
+  public void testConstructorWithIngestionOtelOverrideDisabled() {
+    VeniceMetricsRepository enabledMetricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setMetricPrefix(TEST_PREFIX)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .build());
+
+    IngestionOtelStats stats =
+        new IngestionOtelStats(enabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, false);
+    assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when ingestion override is off");
   }
 
   @Test
   public void testConstructorWithNonVeniceMetricsRepository() {
     MetricsRepository regularRepository = new MetricsRepository();
-    IngestionOtelStats stats = new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
+    IngestionOtelStats stats = new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
     assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled for non-Venice repository");
 
     // RT recording methods should not throw when baseDimensionsMap is null
@@ -846,7 +860,7 @@ public class IngestionOtelStatsTest {
             .setOtelAdditionalMetricsReader(disabledMetricReader)
             .build());
     IngestionOtelStats stats =
-        new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
+        new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
     stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     stats.recordRecordsConsumed(CURRENT_VERSION, ReplicaType.LEADER, 10);
     stats.recordIngestionTime(CURRENT_VERSION, 50.0);

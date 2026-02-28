@@ -86,6 +86,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     boolean isKeyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
     boolean isUnregisterMetricForDeletedStoreEnabled = serverConfig.isUnregisterMetricForDeletedStoreEnabled();
+    boolean readOtelStatsEnabled = serverConfig.isReadOtelStatsEnabled();
 
     this.singleGetStats = new AggServerHttpRequestStats(
         serverConfig.getClusterName(),
@@ -94,7 +95,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         isKeyValueProfilingEnabled,
         storeMetadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
-        isDaVinciClient);
+        isDaVinciClient,
+        readOtelStatsEnabled);
     this.multiGetStats = new AggServerHttpRequestStats(
         serverConfig.getClusterName(),
         metricsRepository,
@@ -102,7 +104,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         isKeyValueProfilingEnabled,
         storeMetadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
-        isDaVinciClient);
+        isDaVinciClient,
+        readOtelStatsEnabled);
     this.computeStats = new AggServerHttpRequestStats(
         serverConfig.getClusterName(),
         metricsRepository,
@@ -110,7 +113,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         isKeyValueProfilingEnabled,
         storeMetadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
-        isDaVinciClient);
+        isDaVinciClient,
+        readOtelStatsEnabled);
 
     if (serverConfig.isComputeFastAvroEnabled()) {
       LOGGER.info("Fast avro for compute is enabled");

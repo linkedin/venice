@@ -68,6 +68,7 @@ public class OpenTelemetryMetricsSetup {
     private String storeName;
     private RequestType requestType;
     private Boolean isTotalStats;
+    private Boolean otelEnabledOverride;
     private String clusterName;
     private String routeName;
     private RequestRetryType requestRetryType;
@@ -98,6 +99,18 @@ public class OpenTelemetryMetricsSetup {
      */
     public Builder isTotalStats(boolean isTotalStats) {
       this.isTotalStats = isTotalStats;
+      return this;
+    }
+
+    /**
+     * Per-category gate for OTel metrics, applied on top of the global OTel config.
+     * OTel metrics are emitted only when <b>both</b> the global config and this override are
+     * enabled. Setting this to {@code false} disables OTel for the stats class being built,
+     * even if the global config is enabled. Setting it to {@code true} has no effect if the
+     * global config is disabled — it cannot re-enable OTel.
+     */
+    public Builder setOtelEnabledOverride(boolean otelEnabledOverride) {
+      this.otelEnabledOverride = otelEnabledOverride;
       return this;
     }
 
@@ -149,6 +162,9 @@ public class OpenTelemetryMetricsSetup {
       boolean emitOtel = veniceMetricsConfig.emitOtelMetrics();
       if (isTotalStats != null && isTotalStats) {
         emitOtel = false; // Don't emit OTel metrics for total stats
+      }
+      if (otelEnabledOverride != null && !otelEnabledOverride) {
+        emitOtel = false;
       }
 
       if (!emitOtel) {
