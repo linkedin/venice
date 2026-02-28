@@ -127,10 +127,10 @@ services:
         condition: service_healthy
     healthcheck:
         test: ["CMD-SHELL", "bash -x bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
-        start_period: 60s
+        start_period: 20s
         interval: 5s
         timeout: 20s
-        retries: 5
+        retries: 10
 
   venice-controller:
     image: "venicedb/venice-controller:latest-dev"
@@ -141,11 +141,11 @@ services:
       kafka:
         condition: service_healthy
     healthcheck:
-        test: ["CMD-SHELL", "sleep 5"]
-        start_period: 20s
-        interval: 5s
-        timeout: 20s
-        retries: 5
+        test: ["CMD-SHELL", "sleep 1"]
+        start_period: 5s
+        interval: 3s
+        timeout: 5s
+        retries: 10
 
   venice-server:
     image: "venicedb/venice-server:latest-dev"
@@ -156,11 +156,11 @@ services:
       venice-controller:
         condition: service_healthy
     healthcheck:
-        test: ["CMD-SHELL", "sleep 5"]
-        start_period: 20s
-        interval: 5s
-        timeout: 20s
-        retries: 5
+        test: ["CMD-SHELL", "sleep 1"]
+        start_period: 5s
+        interval: 3s
+        timeout: 5s
+        retries: 10
 
   venice-router:
     image: "venicedb/venice-router:latest-dev"
@@ -171,11 +171,11 @@ services:
       venice-server:
         condition: service_healthy
     healthcheck:
-        test: ["CMD-SHELL", "sleep 5"]
-        start_period: 20s
-        interval: 5s
-        timeout: 20s
-        retries: 5
+        test: ["CMD-SHELL", "sleep 1"]
+        start_period: 5s
+        interval: 3s
+        timeout: 5s
+        retries: 10
 
   venice-client:
     image: "venicedb/venice-client:latest-dev"
