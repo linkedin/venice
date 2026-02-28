@@ -11,9 +11,11 @@ import com.linkedin.venice.utils.SslUtils;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
@@ -32,6 +34,33 @@ public class QueryTool {
   private static final int REQUIRED_ARGS_COUNT = 5;
 
   public static void main(String[] args) throws Exception {
+    if (args.length > 0 && args[0].equals("--batch")) {
+      // Batch mode: --batch <store> <url> <is_vson_store> <ssl_config_file_path> <key1> [<key2> ...]
+      if (args.length < 6) {
+        System.out.println(
+            "Usage: java -jar venice-thin-client-0.1.jar --batch <store> <url> <is_vson_store> <ssl_config_file_path> <key1> [<key2> ...]");
+        System.exit(1);
+      }
+      String store = removeQuotes(args[1]);
+      String url = removeQuotes(args[2]);
+      boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[3]));
+      String sslConfigFilePath = removeQuotes(args[4]);
+      Optional<String> sslConfigFilePathArgs =
+          StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
+
+      Set<String> keys = new LinkedHashSet<>();
+      for (int i = 5; i < args.length; i++) {
+        keys.add(removeQuotes(args[i]));
+      }
+
+      Map<String, Map<String, String>> results =
+          batchQueryStoreForKeys(store, keys, url, isVsonStore, sslConfigFilePathArgs);
+      for (Map.Entry<String, Map<String, String>> entry: results.entrySet()) {
+        entry.getValue().entrySet().forEach(System.out::println);
+      }
+      return;
+    }
+
     if (args.length < REQUIRED_ARGS_COUNT) {
       System.out.println(
           "Usage: java -jar venice-thin-client-0.1.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path>");
@@ -96,6 +125,64 @@ public class QueryTool {
       outputMap.put("key", keyString);
       outputMap.put("value", value == null ? "null" : value.toString());
       return outputMap;
+    }
+  }
+
+  public static Map<String, Map<String, String>> batchQueryStoreForKeys(
+      String store,
+      Set<String> keyStrings,
+      String url,
+      boolean isVsonStore,
+      Optional<String> sslConfigFile) throws Exception {
+
+    SSLFactory factory = null;
+    if (sslConfigFile.isPresent()) {
+      Properties sslProperties = SslUtils.loadSSLConfig(sslConfigFile.get());
+      String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+      factory = SslUtils.getSSLFactory(sslProperties, sslFactoryClassName);
+    }
+
+    if (url.toLowerCase().trim().startsWith("https") && (factory == null || factory.getSSLContext() == null)) {
+      throw new VeniceException("ERROR: The SSL configuration is not valid to send a request to " + url);
+    }
+
+    Map<String, Map<String, String>> allResults = new LinkedHashMap<>();
+    try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(store)
+            .setVeniceURL(url)
+            .setVsonClient(isVsonStore)
+            .setSslFactory(factory))) {
+      AbstractAvroStoreClient<Object, Object> castClient =
+          (AbstractAvroStoreClient<Object, Object>) ((StatTrackingStoreClient<Object, Object>) client)
+              .getInnerStoreClient();
+      Schema keySchema = castClient.getKeySchema();
+      while (keySchema.getType().equals(Schema.Type.UNION)) {
+        keySchema = VsonAvroSchemaAdapter.stripFromUnion(keySchema);
+      }
+
+      // Convert all keys and maintain insertion order
+      Set<Object> keys = new LinkedHashSet<>();
+      Map<Object, String> keyToString = new LinkedHashMap<>();
+      for (String keyString: keyStrings) {
+        Object key = convertKey(keyString, keySchema);
+        keys.add(key);
+        keyToString.put(key, keyString);
+      }
+
+      // Single batch request for all keys
+      Map<Object, Object> values = client.batchGet(keys).get(30, TimeUnit.SECONDS);
+
+      for (Map.Entry<Object, String> entry: keyToString.entrySet()) {
+        Object key = entry.getKey();
+        String keyString = entry.getValue();
+        Object value = values.get(key);
+
+        Map<String, String> outputMap = new LinkedHashMap<>();
+        outputMap.put("key", keyString);
+        outputMap.put("value", value == null ? "null" : value.toString());
+        allResults.put(keyString, outputMap);
+      }
+      return allResults;
     }
   }
 
