@@ -10,6 +10,7 @@ import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusListener;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
+import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PathResourceRegistry;
@@ -19,6 +20,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -341,6 +343,54 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   @Override
   public void unsubscribePushStatusCreationChange(IZkChildListener childListener) {
     offlinePushStatusAccessor.unsubscribeChildChanges(getOfflinePushStatuesParentPath(), childListener);
+  }
+
+  @Override
+  public void removeStaleReplicasFromPartitionStatus(String kafkaTopic, int partitionId, Set<String> staleInstanceIds) {
+    if (!pushStatusExists(kafkaTopic)) {
+      String msg = "Push status does not exist for topic " + kafkaTopic + " skipping partition status update";
+      throw new VeniceException(msg);
+    }
+    String partitionStatusPath = getPartitionStatusPath(kafkaTopic, partitionId);
+    LOGGER.info(
+        "Removing stale replicas {} from topic {} partition {} in cluster {}",
+        staleInstanceIds,
+        kafkaTopic,
+        partitionId,
+        clusterName);
+
+    // Use compareAndUpdate to safely remove only the specified stale replicas from the latest ZK state.
+    // This avoids a race condition where concurrent updates (e.g., a new server joining) could be lost
+    // if we overwrote the partition status with a stale snapshot.
+    HelixUtils.compareAndUpdate(partitionStatusAccessor, partitionStatusPath, 3, currentData -> {
+      if (currentData == null) {
+        // Node was deleted concurrently; nothing to clean up.
+        return null;
+      }
+
+      // Build a new partition status with all replicas except the stale ones
+      PartitionStatus merged = new PartitionStatus(partitionId);
+      for (ReplicaStatus currentReplica: currentData.getReplicaStatuses()) {
+        if (!staleInstanceIds.contains(currentReplica.getInstanceId())) {
+          merged.updateReplicaStatus(
+              currentReplica.getInstanceId(),
+              currentReplica.getCurrentStatus(),
+              currentReplica.getIncrementalPushVersion());
+
+          // Copy status history to preserve full history
+          merged.getReplicaStatuses()
+              .stream()
+              .filter(rs -> rs.getInstanceId().equals(currentReplica.getInstanceId()))
+              .findFirst()
+              .ifPresent(rs -> rs.setStatusHistory(new ArrayList<>(currentReplica.getStatusHistory())));
+        }
+      }
+
+      return merged;
+    });
+
+    LOGGER
+        .info("Removed stale replicas from topic {} partition {} in cluster {}", kafkaTopic, partitionId, clusterName);
   }
 
   /**

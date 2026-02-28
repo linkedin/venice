@@ -5,19 +5,28 @@ import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.RUNN
 import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.STOPPED;
 
 import com.linkedin.venice.controller.HelixVeniceClusterResources;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -61,6 +70,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
   private final long leakedResourceAllowedLingerTimeInMs;
   private final Thread cleanupThread;
   private final AtomicBoolean stop = new AtomicBoolean(false);
+  private final RoutingDataRepository routingDataRepository;
 
   public LeakedPushStatusCleanUpService(
       String clusterName,
@@ -69,7 +79,8 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
       StoreCleaner storeCleaner,
       AggPushStatusCleanUpStats aggPushStatusCleanUpStats,
       long sleepIntervalInMs,
-      long leakedResourceAllowedLingerTimeInMs) {
+      long leakedResourceAllowedLingerTimeInMs,
+      RoutingDataRepository routingDataRepository) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.metadataRepository = metadataRepository;
@@ -77,6 +88,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
     this.aggPushStatusCleanUpStats = aggPushStatusCleanUpStats;
     this.sleepIntervalInMs = sleepIntervalInMs;
     this.leakedResourceAllowedLingerTimeInMs = leakedResourceAllowedLingerTimeInMs;
+    this.routingDataRepository = routingDataRepository;
     this.cleanupThread = new Thread(new PushStatusCleanUpTask());
   }
 
@@ -115,6 +127,95 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
       });
     }
     return storeToVersions;
+  }
+
+  /**
+   * Clean up stale replica statuses from partition statuses for the given topic.
+   * Stale replicas are those that are no longer assigned to the partition according to current Helix assignment.
+   *
+   * @param kafkaTopic the Kafka topic to clean up stale replicas for
+   */
+  private void cleanupStaleReplicaStatuses(String kafkaTopic) {
+    try {
+      // Check if routing data exists for this topic
+      if (!routingDataRepository.containsKafkaTopic(kafkaTopic)) {
+        LOGGER.debug("No routing data found for topic {}, skipping stale replica cleanup", kafkaTopic);
+        return;
+      }
+
+      // Get current partition assignment from Helix
+      PartitionAssignment partitionAssignment = routingDataRepository.getPartitionAssignments(kafkaTopic);
+      if (partitionAssignment == null) {
+        LOGGER.debug("No partition assignment found for topic {}, skipping stale replica cleanup", kafkaTopic);
+        return;
+      }
+
+      // Get the offline push status
+      OfflinePushStatus offlinePushStatus = offlinePushAccessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
+      if (offlinePushStatus == null) {
+        LOGGER.debug("No offline push status found for topic {}, skipping stale replica cleanup", kafkaTopic);
+        return;
+      }
+
+      int totalStaleReplicasRemoved = 0;
+
+      // For each partition, clean up stale replicas
+      for (PartitionStatus partitionStatus: offlinePushStatus.getPartitionStatuses()) {
+        int partitionId = partitionStatus.getPartitionId();
+
+        // Get current instances assigned to this partition
+        Partition partition = partitionAssignment.getPartition(partitionId);
+        if (partition == null) {
+          LOGGER.warn("Partition assignment for topic {}", Utils.getReplicaId(kafkaTopic, partitionId));
+          continue;
+        }
+
+        // Get set of currently assigned instance IDs
+        Set<String> currentInstanceIds =
+            partition.getAllInstancesSet().stream().map(Instance::getNodeId).collect(Collectors.toSet());
+
+        // Get replica statuses and identify stale ones
+        Collection<ReplicaStatus> replicaStatuses = partitionStatus.getReplicaStatuses();
+        Set<String> existingInstanceIds =
+            replicaStatuses.stream().map(ReplicaStatus::getInstanceId).collect(Collectors.toSet());
+
+        // Find stale replicas (in push status but not in current assignment)
+        Set<String> staleInstanceIds = new HashSet<>(existingInstanceIds);
+        staleInstanceIds.removeAll(currentInstanceIds);
+
+        if (!staleInstanceIds.isEmpty()) {
+          LOGGER.info(
+              "Found {} stale replica(s) in topic {} partition {}: {}. Current instances: {}",
+              staleInstanceIds.size(),
+              kafkaTopic,
+              partitionId,
+              staleInstanceIds,
+              currentInstanceIds);
+
+          // Remove only the stale replicas from the partition status in ZK.
+          // This uses compare-and-set semantics on the latest ZK state to avoid
+          // losing concurrent updates from newly-joined instances.
+          offlinePushAccessor.removeStaleReplicasFromPartitionStatus(kafkaTopic, partitionId, staleInstanceIds);
+
+          totalStaleReplicasRemoved += staleInstanceIds.size();
+          LOGGER.info(
+              "Removed {} stale replica(s) from topic {} partition {}",
+              staleInstanceIds.size(),
+              kafkaTopic,
+              partitionId);
+        }
+      }
+
+      if (totalStaleReplicasRemoved > 0) {
+        LOGGER.info(
+            "Cleaned up {} total stale replica(s) from topic {} in cluster {}",
+            totalStaleReplicasRemoved,
+            kafkaTopic,
+            clusterName);
+      }
+    } catch (Exception e) {
+      LOGGER.error("Error cleaning up stale replica statuses for topic {}", kafkaTopic, e);
+    }
   }
 
   private class PushStatusCleanUpTask implements Runnable {
@@ -196,6 +297,17 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
                   Version.composeKafkaTopic(storeName, versions.iterator().next()),
                   e);
               aggPushStatusCleanUpStats.recordFailedLeakedPushStatusCleanUpCount(leakedPushStatuses.size());
+            }
+          }
+
+          /**
+           * Clean up stale replica statuses for all active push statuses
+           */
+          if (routingDataRepository != null) {
+            for (String kafkaTopic: pushStatusPaths) {
+              if (Version.isVersionTopic(kafkaTopic)) {
+                cleanupStaleReplicaStatuses(kafkaTopic);
+              }
             }
           }
 
