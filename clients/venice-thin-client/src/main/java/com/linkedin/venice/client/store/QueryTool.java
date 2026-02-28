@@ -10,8 +10,14 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -63,7 +69,8 @@ public class QueryTool {
 
     if (args.length < REQUIRED_ARGS_COUNT) {
       System.out.println(
-          "Usage: java -jar venice-thin-client-all.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path>");
+          "Usage: java -jar venice-thin-client-all.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path>"
+              + " [--countByValue --fields=f1,f2 [--topK=N]]");
       System.exit(1);
     }
     String store = removeQuotes(args[STORE]);
@@ -75,8 +82,24 @@ public class QueryTool {
         StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
     System.out.println();
 
-    Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, sslConfigFilePathArgs);
-    outputMap.entrySet().stream().forEach(System.out::println);
+    Map<String, String> flags = parseFlags(args, REQUIRED_ARGS_COUNT);
+
+    if (flags.containsKey("countByValue")) {
+      String fieldsArg = flags.get("fields");
+      if (fieldsArg == null || fieldsArg.isEmpty()) {
+        System.out.println("ERROR: --countByValue requires --fields=f1,f2,...");
+        System.exit(1);
+      }
+      int topK = Integer.parseInt(flags.getOrDefault("topK", "10"));
+      String[] fieldNames = fieldsArg.split(",");
+
+      Map<String, Map<Object, Integer>> result =
+          queryStoreForCountByValue(store, keyString, url, isVsonStore, sslConfigFilePathArgs, topK, fieldNames);
+      result.entrySet().stream().forEach(System.out::println);
+    } else {
+      Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, sslConfigFilePathArgs);
+      outputMap.entrySet().stream().forEach(System.out::println);
+    }
   }
 
   public static Map<String, String> queryStoreForKey(
@@ -154,6 +177,46 @@ public class QueryTool {
     }
   }
 
+  public static Map<String, Map<Object, Integer>> queryStoreForCountByValue(
+      String store,
+      String keysString,
+      String url,
+      boolean isVsonStore,
+      Optional<String> sslConfigFile,
+      int topK,
+      String... fieldNames) throws Exception {
+
+    SSLFactory factory = createAndValidateSslFactory(url, sslConfigFile);
+
+    try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(store)
+            .setVeniceURL(url)
+            .setVsonClient(isVsonStore)
+            .setSslFactory(factory))) {
+      Schema keySchema = resolveKeySchema(getInnerClient(client));
+
+      List<String> keyStrings = parseKeys(keysString);
+      Set<Object> keys = new HashSet<>();
+      for (String ks: keyStrings) {
+        keys.add(convertKey(ks.trim(), keySchema));
+      }
+      System.out.println("Parsed " + keys.size() + " keys. About to run countByValue aggregation.");
+
+      AvroGenericReadComputeStoreClient<Object, Object> computeClient =
+          (AvroGenericReadComputeStoreClient<Object, Object>) client;
+      ComputeAggregationResponse response = computeClient.computeAggregation()
+          .countGroupByValue(topK, fieldNames)
+          .execute(keys)
+          .get(30, TimeUnit.SECONDS);
+
+      Map<String, Map<Object, Integer>> result = new LinkedHashMap<>();
+      for (String fieldName: fieldNames) {
+        result.put(fieldName, response.getValueToCount(fieldName));
+      }
+      return result;
+    }
+  }
+
   private static SSLFactory createAndValidateSslFactory(String url, Optional<String> sslConfigFile) throws Exception {
     SSLFactory factory = null;
     if (sslConfigFile.isPresent()) {
@@ -181,6 +244,7 @@ public class QueryTool {
     return keySchema;
   }
 
+
   public static Object convertKey(String keyString, Schema keySchema) {
     Object key;
     switch (keySchema.getType()) {
@@ -206,7 +270,8 @@ public class QueryTool {
         try {
           key = new GenericDatumReader<>(keySchema, keySchema).read(
               null,
-              AvroCompatibilityHelper.newJsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
+              AvroCompatibilityHelper
+                  .newJsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes(StandardCharsets.UTF_8))));
         } catch (IOException e) {
           throw new VeniceException("Invalid input key:" + keyString, e);
         }
@@ -220,9 +285,65 @@ public class QueryTool {
     if (result.startsWith("\"")) {
       result = result.substring(1);
     }
-    if (str.endsWith("\"")) {
+    if (result.endsWith("\"")) {
       result = result.substring(0, result.length() - 1);
     }
     return result;
+  }
+
+  /**
+   * Splits a multi-key string on commas, but only at brace-depth zero.
+   * This correctly handles JSON keys containing commas, e.g.:
+   * {@code {"memberId":123,"useCaseName":"foo"},{"memberId":456}} yields two keys.
+   * For simple keys like {@code 1,2,3} it behaves identically to {@code String.split(",")}.
+   */
+  static List<String> parseKeys(String multiKeyString) {
+    if (multiKeyString == null || multiKeyString.trim().isEmpty()) {
+      return Collections.emptyList();
+    }
+    List<String> keys = new ArrayList<>();
+    int depth = 0;
+    int start = 0;
+    for (int i = 0; i < multiKeyString.length(); i++) {
+      char c = multiKeyString.charAt(i);
+      if (c == '{') {
+        depth++;
+      } else if (c == '}') {
+        depth--;
+      } else if (c == ',' && depth == 0) {
+        String segment = multiKeyString.substring(start, i).trim();
+        if (!segment.isEmpty()) {
+          keys.add(segment);
+        }
+        start = i + 1;
+      }
+    }
+    String last = multiKeyString.substring(start).trim();
+    if (!last.isEmpty()) {
+      keys.add(last);
+    }
+    return keys;
+  }
+
+  /**
+   * Parses {@code --key=value} and {@code --flag} style arguments from {@code args[startIndex..]} into a map.
+   * Boolean flags (no {@code =}) get the value {@code "true"}.
+   */
+  static Map<String, String> parseFlags(String[] args, int startIndex) {
+    Map<String, String> flags = new HashMap<>();
+    for (int i = startIndex; i < args.length; i++) {
+      String arg = args[i];
+      if (!arg.startsWith("--")) {
+        continue;
+      }
+      arg = arg.substring(2); // strip leading --
+      int eq = arg.indexOf('=');
+      if (eq >= 0) {
+        flags.put(arg.substring(0, eq), arg.substring(eq + 1));
+      } else {
+        flags.put(arg, "true");
+      }
+    }
+    return flags;
   }
 }
