@@ -191,18 +191,18 @@ def _tiered_overhead(duration: float, max_overhead: float) -> float:
 
     Heavy integration tests (>60s) spin up full Venice clusters and incur
     significant JVM startup cost.  Lighter tests need less overhead.
-    Tiers derived from CI wall-clock analysis (shards with many sub-second
-    tests complete with ~4-5s actual per-fork overhead):
+    Tiers derived from CI wall-clock analysis (shard with 49 sub-second
+    tests timed out at 15min, showing ~12s real per-fork overhead):
       >=60s  → full overhead  (cluster-heavy integration tests)
       10-60s → 75% overhead   (medium integration tests)
-      <10s   → 30% overhead   (unit-style / ZK-only tests)
+      <10s   → 60% overhead   (unit-style / ZK-only tests)
     """
     if duration >= 60:
         return max_overhead
     elif duration >= 10:
         return max_overhead * 0.75
     else:
-        return max_overhead * 0.3
+        return max_overhead * 0.6
 
 
 def bin_pack_ffd(
@@ -273,7 +273,7 @@ def bin_pack_ffd(
     if len(shards) >= 2:
         indexed = sorted(range(len(shards)), key=lambda i: shard_times[i])
         smallest_idx = indexed[0]
-        min_fill = target_time * 0.5
+        min_fill = target_time * 0.7
         if shard_times[smallest_idx] < min_fill:
             # Try to distribute each test from the smallest shard
             tests_to_spread = list(shards[smallest_idx])
