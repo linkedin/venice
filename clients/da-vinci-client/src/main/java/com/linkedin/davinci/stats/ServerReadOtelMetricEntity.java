@@ -20,7 +20,7 @@ import java.util.Set;
 
 /**
  * OTel metric entity definitions for server-side read request metrics.
- * These 16 metrics consolidate ~30 Tehuti sensors using dimensions
+ * These 17 metrics consolidate ~30 Tehuti sensors using dimensions
  * (e.g., success/error latency becomes a single metric with HTTP status dimensions).
  */
 public enum ServerReadOtelMetricEntity implements ModuleMetricEntityInterface {
