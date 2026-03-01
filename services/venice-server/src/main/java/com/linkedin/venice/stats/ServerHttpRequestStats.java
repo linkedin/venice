@@ -33,6 +33,7 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -63,12 +64,11 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> responseValueSizeMetric;
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> responseSizeMetric;
   private final MetricEntityStateOneEnum<VeniceChunkingStatus> storageEngineQueryTimeMetric;
-  private final MetricEntityStateOneEnum<VeniceChunkingStatus> readComputeQueryTimeMetric;
+  private final MetricEntityStateBase readComputeQueryTimeMetric;
   private final MetricEntityStateOneEnum<VeniceComputeOperationType> dotProductCountMetric;
   private final MetricEntityStateOneEnum<VeniceComputeOperationType> cosineCountMetric;
   private final MetricEntityStateOneEnum<VeniceComputeOperationType> hadamardCountMetric;
   private final MetricEntityStateOneEnum<VeniceComputeOperationType> countOperatorCountMetric;
-  private final MetricEntityStateBase readComputeExecutionTimeMetric;
   private final MetricEntityStateBase requestKeyCountMetric;
   private final MetricEntityStateBase requestSizeMetric;
   private final MetricEntityStateBase queueWaitTimeMetric;
@@ -119,10 +119,16 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     Attributes baseAttributes = otelData.getBaseAttributes();
 
     Map<VeniceMetricsDimensions, String> computeBaseDimensionsMap = null;
+    Attributes computeBaseAttributes = null;
     if (baseDimensionsMap != null) {
       computeBaseDimensionsMap = new HashMap<>(baseDimensionsMap);
-      // Remove REQUEST_METHOD: These metric names already distinguishes it as a compute request
+      // Remove REQUEST_METHOD: These metric names already distinguish it as a compute request
       computeBaseDimensionsMap.remove(VeniceMetricsDimensions.VENICE_REQUEST_METHOD);
+      AttributesBuilder computeBaseAttributesBuilder = Attributes.builder();
+      for (Map.Entry<VeniceMetricsDimensions, String> entry: computeBaseDimensionsMap.entrySet()) {
+        computeBaseAttributesBuilder.put(otelRepository.getDimensionName(entry.getKey()), entry.getValue());
+      }
+      computeBaseAttributes = computeBaseAttributesBuilder.build();
     }
 
     /**
@@ -203,17 +209,16 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         baseDimensionsMap,
         VeniceChunkingStatus.class);
 
-    // Tehuti-only: OTel recording for compute latency moved to per-operation-type time metrics below.
-    readComputeQueryTimeMetric = MetricEntityStateOneEnum.create(
-        STORAGE_ENGINE_QUERY_TIME.getMetricEntity(),
-        null,
+    readComputeQueryTimeMetric = MetricEntityStateBase.create(
+        STORAGE_ENGINE_READ_COMPUTE_EXECUTION_TIME.getMetricEntity(),
+        otelRepository,
         registerPerStoreAndTotal(totalStats != null ? totalStats.readComputeQueryTimeMetric : null),
         ServerTehutiMetricName.STORAGE_ENGINE_READ_COMPUTE_LATENCY,
         Arrays.asList(
             TehutiUtils
                 .getPercentileStatWithAvgAndMax(getName(), getFullMetricName("storage_engine_read_compute_latency"))),
-        baseDimensionsMap,
-        VeniceChunkingStatus.class);
+        computeBaseDimensionsMap,
+        computeBaseAttributes);
 
     databaseLookupLatencyForSmallValueSensor = registerPerStoreAndTotal(
         "storage_engine_query_latency_for_small_value",
@@ -364,7 +369,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
                 getName(),
                 getFullMetricName("storage_engine_read_compute_serialization_latency"))),
         computeBaseDimensionsMap,
-        null);
+        computeBaseAttributes);
 
     // All four compute op metrics share one OTel entity (STORAGE_ENGINE_READ_COMPUTE_EXECUTION_COUNT)
     // differentiated by the VeniceComputeOperationType dimension. Separate fields are needed
@@ -397,14 +402,6 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
       hadamardCountMetric = null;
       countOperatorCountMetric = null;
     }
-
-    // OTel-only: captures compute execution latency [T4→T5] separately from storage engine
-    // query time. Tehuti uses readComputeQueryTimeMetric above.
-    readComputeExecutionTimeMetric = MetricEntityStateBase.create(
-        STORAGE_ENGINE_READ_COMPUTE_EXECUTION_TIME.getMetricEntity(),
-        otelRepository,
-        computeBaseDimensionsMap,
-        null);
 
     earlyTerminatedEarlyRequestCountSensor = registerPerStoreAndTotal(
         "early_terminated_request_count",
@@ -605,10 +602,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordReadComputeLatency(double latency, boolean assembledMultiChunkLargeValue) {
-    VeniceChunkingStatus chunkingStatus =
-        assembledMultiChunkLargeValue ? VeniceChunkingStatus.CHUNKED : VeniceChunkingStatus.UNCHUNKED;
-    readComputeQueryTimeMetric.record(latency, chunkingStatus);
-    readComputeExecutionTimeMetric.record(latency);
+    readComputeQueryTimeMetric.record(latency);
     if (assembledMultiChunkLargeValue) {
       readComputeLatencyForLargeValueSensor.record(latency);
     } else {
