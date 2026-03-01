@@ -89,6 +89,11 @@ public class QueryTool {
 
     Map<String, String> flags = parseFlags(args, REQUIRED_ARGS_COUNT);
 
+    if (flags.containsKey("countByValue") && flags.containsKey("countByBucket")) {
+      System.out.println("ERROR: --countByValue and --countByBucket are mutually exclusive");
+      System.exit(1);
+    }
+
     if (flags.containsKey("countByValue")) {
       String fieldsArg = flags.get("fields");
       if (fieldsArg == null || fieldsArg.trim().isEmpty()) {
@@ -353,6 +358,12 @@ public class QueryTool {
             "Invalid bucket expression '" + expr.trim() + "': expected format 'name:operator:value'");
       }
       String bucketName = parts[0].trim();
+      if (bucketName.isEmpty()) {
+        throw new VeniceException("Invalid bucket expression '" + expr.trim() + "': bucket name cannot be empty");
+      }
+      if (predicates.containsKey(bucketName)) {
+        throw new VeniceException("Duplicate bucket name '" + bucketName + "'");
+      }
       String operator = parts[1].trim();
       String valueStr = parts[2].trim();
 
@@ -532,6 +543,9 @@ public class QueryTool {
         depth++;
       } else if (c == '}' || c == ']') {
         depth--;
+        if (depth < 0) {
+          throw new VeniceException("Unbalanced brackets in key string at position " + i);
+        }
       } else if (c == ',' && depth == 0) {
         String segment = multiKeyString.substring(start, i).trim();
         if (!segment.isEmpty()) {
@@ -539,6 +553,9 @@ public class QueryTool {
         }
         start = i + 1;
       }
+    }
+    if (depth != 0) {
+      throw new VeniceException("Unbalanced brackets in key string (unclosed nesting)");
     }
     String last = multiKeyString.substring(start).trim();
     if (!last.isEmpty()) {
@@ -559,9 +576,16 @@ public class QueryTool {
         continue;
       }
       arg = arg.substring(2); // strip leading --
+      if (arg.isEmpty()) {
+        continue; // skip bare "--"
+      }
       int eq = arg.indexOf('=');
       if (eq >= 0) {
-        flags.put(arg.substring(0, eq), arg.substring(eq + 1));
+        String key = arg.substring(0, eq);
+        if (key.isEmpty()) {
+          continue; // skip "--=value"
+        }
+        flags.put(key, arg.substring(eq + 1));
       } else {
         flags.put(arg, "true");
       }

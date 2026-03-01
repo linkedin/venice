@@ -426,4 +426,44 @@ public class QueryToolTest {
   public void testBucketPredicatesInvalidDoubleSuffix() {
     QueryTool.createTypedPredicate("gt", "abcd");
   }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testBucketPredicatesEmptyBucketName() {
+    QueryTool.parseBucketPredicates(":gt:100");
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testBucketPredicatesDuplicateName() {
+    QueryTool.parseBucketPredicates("a:gt:100,a:lt:50");
+  }
+
+  // --- parseKeys depth validation ---
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testParseKeysUnbalancedClose() {
+    QueryTool.parseKeys("}");
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testParseKeysUnclosedBrace() {
+    QueryTool.parseKeys("{\"a\":1");
+  }
+
+  // --- parseFlags malformed args ---
+
+  @Test
+  public void testParseFlagsSkipsBareDoubleDash() {
+    String[] args = { "store", "key", "url", "false", "", "--", "--real=yes" };
+    Map<String, String> flags = QueryTool.parseFlags(args, 5);
+    assertEquals(flags.size(), 1);
+    assertEquals(flags.get("real"), "yes");
+  }
+
+  @Test
+  public void testParseFlagsSkipsEmptyKeyEquals() {
+    String[] args = { "store", "key", "url", "false", "", "--=oops", "--good=val" };
+    Map<String, String> flags = QueryTool.parseFlags(args, 5);
+    assertEquals(flags.size(), 1);
+    assertEquals(flags.get("good"), "val");
+  }
 }
