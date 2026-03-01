@@ -293,7 +293,9 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
           baseDimensionsMap,
           baseAttributes);
     } else {
-      // Single-get key count is always 1 and not recorded by tehuti. Following the same conventions.
+      // Single-get key count is always 1. Tehuti skips it (no sensor), but OTel intentionally
+      // records it so that KPS (keys per second) can be measured accurately from a single metric
+      // across all request types without special-casing single-get.
       requestKeyCountMetric = MetricEntityStateBase
           .create(READ_REQUEST_KEY_COUNT.getMetricEntity(), otelRepository, baseDimensionsMap, baseAttributes);
     }

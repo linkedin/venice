@@ -1494,10 +1494,10 @@ public class IngestionOtelStatsTest {
         storeClusterVersion);
     assertMetricEntity(
         PARTIAL_UPDATE_TIME.getMetricEntity(),
-        "ingestion.write_compute.time",
+        "ingestion.partial_update.time",
         MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
         MetricUnit.MILLISECOND,
-        "Time to perform write compute operations",
+        "Time to perform partial update operations",
         storeClusterVersionPartialUpdateOp);
     assertMetricEntity(
         DCR_LOOKUP_TIME.getMetricEntity(),
@@ -1546,10 +1546,10 @@ public class IngestionOtelStatsTest {
         storeClusterVersion);
     assertMetricEntity(
         PARTIAL_UPDATE_CACHE_HIT_COUNT.getMetricEntity(),
-        "ingestion.write_compute.cache.hit_count",
+        "ingestion.partial_update.cache.hit_count",
         MetricType.COUNTER,
         MetricUnit.NUMBER,
-        "Count of write compute cache hits",
+        "Count of partial update cache hits",
         storeClusterVersion);
     assertMetricEntity(
         CHECKSUM_VERIFICATION_FAILURE_COUNT.getMetricEntity(),
