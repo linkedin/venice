@@ -362,15 +362,39 @@ public class QueryTool {
     return predicates;
   }
 
-  private static Predicate createTypedPredicate(String operator, String valueStr) {
-    // Try int first
-    try {
-      int intVal = Integer.parseInt(valueStr);
-      return createIntPredicate(operator, intVal);
-    } catch (NumberFormatException ignored) {
+  static Predicate createTypedPredicate(String operator, String valueStr) {
+    // Check for explicit type suffixes: 100i (int), 100L (long), 1.5d (double)
+    if (!valueStr.isEmpty()) {
+      char lastChar = valueStr.charAt(valueStr.length() - 1);
+      String numericPart = valueStr.substring(0, valueStr.length() - 1);
+      switch (lastChar) {
+        case 'i':
+        case 'I':
+          try {
+            return createIntPredicate(operator, Integer.parseInt(numericPart));
+          } catch (NumberFormatException e) {
+            throw new VeniceException("Invalid int literal in bucket value: '" + valueStr + "'", e);
+          }
+        case 'l':
+        case 'L':
+          try {
+            return createLongPredicate(operator, Long.parseLong(numericPart));
+          } catch (NumberFormatException e) {
+            throw new VeniceException("Invalid long literal in bucket value: '" + valueStr + "'", e);
+          }
+        case 'd':
+        case 'D':
+          try {
+            return createDoublePredicate(operator, Double.parseDouble(numericPart));
+          } catch (NumberFormatException e) {
+            throw new VeniceException("Invalid double literal in bucket value: '" + valueStr + "'", e);
+          }
+        default:
+          break;
+      }
     }
 
-    // Try long
+    // Default: whole numbers → LongPredicate (Avro LONG is far more common than INT)
     try {
       long longVal = Long.parseLong(valueStr);
       return createLongPredicate(operator, longVal);

@@ -332,26 +332,51 @@ public class QueryToolTest {
   // --- parseBucketPredicates tests ---
 
   @Test
-  public void testParseBucketPredicatesIntOperators() {
+  public void testParseBucketPredicatesDefaultsToLong() {
+    // Whole numbers default to LongPredicate (compatible with Avro LONG fields)
     Map<String, Predicate> predicates = QueryTool.parseBucketPredicates("high:gt:100,low:lte:100");
     assertEquals(predicates.size(), 2);
 
     Predicate high = predicates.get("high");
-    assertTrue(high instanceof IntPredicate);
-    assertTrue(high.evaluate(101));
-    assertFalse(high.evaluate(100));
-    assertFalse(high.evaluate(50));
+    assertTrue(high instanceof LongPredicate);
+    assertTrue(high.evaluate(101L));
+    assertFalse(high.evaluate(100L));
 
     Predicate low = predicates.get("low");
-    assertTrue(low instanceof IntPredicate);
-    assertTrue(low.evaluate(100));
-    assertTrue(low.evaluate(50));
-    assertFalse(low.evaluate(101));
+    assertTrue(low instanceof LongPredicate);
+    assertTrue(low.evaluate(100L));
+    assertTrue(low.evaluate(50L));
+    assertFalse(low.evaluate(101L));
   }
 
   @Test
-  public void testParseBucketPredicatesLongValues() {
-    // Value exceeds Integer.MAX_VALUE, should create LongPredicate
+  public void testParseBucketPredicatesLongAllOperators() {
+    // Cover all switch branches for long: eq, gt, gte, lt, lte
+    Predicate eqP = QueryTool.createTypedPredicate("eq", "100");
+    assertTrue(eqP instanceof LongPredicate);
+    assertTrue(eqP.evaluate(100L));
+    assertFalse(eqP.evaluate(99L));
+
+    Predicate gtP = QueryTool.createTypedPredicate("gt", "100");
+    assertTrue(gtP.evaluate(101L));
+    assertFalse(gtP.evaluate(100L));
+
+    Predicate gteP = QueryTool.createTypedPredicate("gte", "100");
+    assertTrue(gteP.evaluate(100L));
+    assertFalse(gteP.evaluate(99L));
+
+    Predicate ltP = QueryTool.createTypedPredicate("lt", "100");
+    assertTrue(ltP.evaluate(99L));
+    assertFalse(ltP.evaluate(100L));
+
+    Predicate lteP = QueryTool.createTypedPredicate("lte", "100");
+    assertTrue(lteP.evaluate(100L));
+    assertFalse(lteP.evaluate(101L));
+  }
+
+  @Test
+  public void testParseBucketPredicatesLongLargeValues() {
+    // Value exceeds Integer.MAX_VALUE
     Map<String, Predicate> predicates = QueryTool.parseBucketPredicates("big:gte:3000000000");
     assertEquals(predicates.size(), 1);
 
@@ -360,6 +385,56 @@ public class QueryToolTest {
     assertTrue(big.evaluate(3000000000L));
     assertTrue(big.evaluate(4000000000L));
     assertFalse(big.evaluate(2999999999L));
+  }
+
+  @Test
+  public void testParseBucketPredicatesExplicitIntSuffix() {
+    // Explicit 'i' suffix forces IntPredicate
+    Map<String, Predicate> predicates = QueryTool.parseBucketPredicates("high:gt:100i,low:lte:100I");
+    assertEquals(predicates.size(), 2);
+
+    Predicate high = predicates.get("high");
+    assertTrue(high instanceof IntPredicate);
+    assertTrue(high.evaluate(101));
+    assertFalse(high.evaluate(100));
+
+    Predicate low = predicates.get("low");
+    assertTrue(low instanceof IntPredicate);
+    assertTrue(low.evaluate(100));
+    assertFalse(low.evaluate(101));
+  }
+
+  @Test
+  public void testParseBucketPredicatesIntAllOperators() {
+    // Cover all switch branches for int: eq, gt, gte, lt, lte
+    Predicate eqP = QueryTool.createTypedPredicate("eq", "100i");
+    assertTrue(eqP instanceof IntPredicate);
+    assertTrue(eqP.evaluate(100));
+    assertFalse(eqP.evaluate(99));
+
+    Predicate gteP = QueryTool.createTypedPredicate("gte", "100i");
+    assertTrue(gteP.evaluate(100));
+    assertFalse(gteP.evaluate(99));
+
+    Predicate ltP = QueryTool.createTypedPredicate("lt", "100i");
+    assertTrue(ltP.evaluate(99));
+    assertFalse(ltP.evaluate(100));
+  }
+
+  @Test
+  public void testParseBucketPredicatesExplicitLongSuffix() {
+    Predicate p = QueryTool.createTypedPredicate("gt", "100L");
+    assertTrue(p instanceof LongPredicate);
+    assertTrue(p.evaluate(101L));
+    assertFalse(p.evaluate(100L));
+  }
+
+  @Test
+  public void testParseBucketPredicatesExplicitDoubleSuffix() {
+    Predicate p = QueryTool.createTypedPredicate("lt", "99.5d");
+    assertTrue(p instanceof DoublePredicate);
+    assertTrue(p.evaluate(99.0));
+    assertFalse(p.evaluate(99.5));
   }
 
   @Test
@@ -372,6 +447,23 @@ public class QueryToolTest {
     assertTrue(big.evaluate(100.0));
     assertFalse(big.evaluate(99.5));
     assertFalse(big.evaluate(50.0));
+  }
+
+  @Test
+  public void testParseBucketPredicatesDoubleAllOperators() {
+    // Cover all switch branches for double: eq, gt, gte, lt, lte
+    Predicate eqP = QueryTool.createTypedPredicate("eq", "99.5");
+    assertTrue(eqP instanceof DoublePredicate);
+    assertTrue(eqP.evaluate(99.5));
+    assertFalse(eqP.evaluate(99.6));
+
+    Predicate gteP = QueryTool.createTypedPredicate("gte", "99.5");
+    assertTrue(gteP.evaluate(99.5));
+    assertFalse(gteP.evaluate(99.4));
+
+    Predicate lteP = QueryTool.createTypedPredicate("lte", "99.5");
+    assertTrue(lteP.evaluate(99.5));
+    assertFalse(lteP.evaluate(99.6));
   }
 
   @Test
@@ -392,5 +484,26 @@ public class QueryToolTest {
   @Test(expectedExceptions = VeniceException.class)
   public void testParseBucketPredicatesInvalidFormat() {
     QueryTool.parseBucketPredicates("missing_parts");
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testParseBucketPredicatesStringInvalidOperator() {
+    // String values only support 'eq', not 'gt'
+    QueryTool.parseBucketPredicates("bad:gt:hello");
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testParseBucketPredicatesInvalidIntSuffix() {
+    QueryTool.createTypedPredicate("gt", "abci");
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testParseBucketPredicatesInvalidLongSuffix() {
+    QueryTool.createTypedPredicate("gt", "abcL");
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testParseBucketPredicatesInvalidDoubleSuffix() {
+    QueryTool.createTypedPredicate("gt", "abcd");
   }
 }
