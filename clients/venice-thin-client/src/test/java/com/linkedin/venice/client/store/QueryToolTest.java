@@ -331,179 +331,99 @@ public class QueryToolTest {
 
   // --- parseBucketPredicates tests ---
 
+  @SuppressWarnings("unchecked")
+  private static void assertPredicate(
+      String op,
+      String valueStr,
+      Class<?> expectedType,
+      Object trueVal,
+      Object falseVal) {
+    Predicate p = QueryTool.createTypedPredicate(op, valueStr);
+    assertTrue(expectedType.isInstance(p), "Expected " + expectedType.getSimpleName());
+    assertTrue(p.evaluate(trueVal), op + " should accept " + trueVal);
+    assertFalse(p.evaluate(falseVal), op + " should reject " + falseVal);
+  }
+
   @Test
-  public void testParseBucketPredicatesDefaultsToLong() {
-    // Whole numbers default to LongPredicate (compatible with Avro LONG fields)
+  public void testBucketPredicatesLong() {
+    // Whole numbers default to LongPredicate — all 5 operators
+    assertPredicate("eq", "100", LongPredicate.class, 100L, 99L);
+    assertPredicate("gt", "100", LongPredicate.class, 101L, 100L);
+    assertPredicate("gte", "100", LongPredicate.class, 100L, 99L);
+    assertPredicate("lt", "100", LongPredicate.class, 99L, 100L);
+    assertPredicate("lte", "100", LongPredicate.class, 100L, 101L);
+    // Explicit 'L' suffix
+    assertPredicate("gt", "100L", LongPredicate.class, 101L, 100L);
+    // Value exceeding Integer.MAX_VALUE
+    assertPredicate("gte", "3000000000", LongPredicate.class, 3000000000L, 2999999999L);
+  }
+
+  @Test
+  public void testBucketPredicatesInt() {
+    // Explicit 'i'/'I' suffix forces IntPredicate — all 5 operators
+    assertPredicate("eq", "100i", IntPredicate.class, 100, 99);
+    assertPredicate("gt", "100i", IntPredicate.class, 101, 100);
+    assertPredicate("gte", "100I", IntPredicate.class, 100, 99);
+    assertPredicate("lt", "100i", IntPredicate.class, 99, 100);
+    assertPredicate("lte", "100i", IntPredicate.class, 100, 101);
+  }
+
+  @Test
+  public void testBucketPredicatesDouble() {
+    // Decimal values → DoublePredicate — all 5 operators
+    assertPredicate("eq", "99.5", DoublePredicate.class, 99.5, 99.6);
+    assertPredicate("gt", "99.5", DoublePredicate.class, 100.0, 99.5);
+    assertPredicate("gte", "99.5", DoublePredicate.class, 99.5, 99.4);
+    assertPredicate("lt", "99.5", DoublePredicate.class, 99.0, 99.5);
+    assertPredicate("lte", "99.5", DoublePredicate.class, 99.5, 99.6);
+    // Explicit 'd' suffix
+    assertPredicate("lt", "99.5d", DoublePredicate.class, 99.0, 99.5);
+  }
+
+  @Test
+  public void testBucketPredicatesStringEq() {
+    Predicate p = QueryTool.createTypedPredicate("eq", "engineer");
+    assertTrue(p.evaluate("engineer"));
+    assertFalse(p.evaluate("manager"));
+  }
+
+  @Test
+  public void testParseBucketPredicatesMultipleBuckets() {
     Map<String, Predicate> predicates = QueryTool.parseBucketPredicates("high:gt:100,low:lte:100");
     assertEquals(predicates.size(), 2);
-
-    Predicate high = predicates.get("high");
-    assertTrue(high instanceof LongPredicate);
-    assertTrue(high.evaluate(101L));
-    assertFalse(high.evaluate(100L));
-
-    Predicate low = predicates.get("low");
-    assertTrue(low instanceof LongPredicate);
-    assertTrue(low.evaluate(100L));
-    assertTrue(low.evaluate(50L));
-    assertFalse(low.evaluate(101L));
-  }
-
-  @Test
-  public void testParseBucketPredicatesLongAllOperators() {
-    // Cover all switch branches for long: eq, gt, gte, lt, lte
-    Predicate eqP = QueryTool.createTypedPredicate("eq", "100");
-    assertTrue(eqP instanceof LongPredicate);
-    assertTrue(eqP.evaluate(100L));
-    assertFalse(eqP.evaluate(99L));
-
-    Predicate gtP = QueryTool.createTypedPredicate("gt", "100");
-    assertTrue(gtP.evaluate(101L));
-    assertFalse(gtP.evaluate(100L));
-
-    Predicate gteP = QueryTool.createTypedPredicate("gte", "100");
-    assertTrue(gteP.evaluate(100L));
-    assertFalse(gteP.evaluate(99L));
-
-    Predicate ltP = QueryTool.createTypedPredicate("lt", "100");
-    assertTrue(ltP.evaluate(99L));
-    assertFalse(ltP.evaluate(100L));
-
-    Predicate lteP = QueryTool.createTypedPredicate("lte", "100");
-    assertTrue(lteP.evaluate(100L));
-    assertFalse(lteP.evaluate(101L));
-  }
-
-  @Test
-  public void testParseBucketPredicatesLongLargeValues() {
-    // Value exceeds Integer.MAX_VALUE
-    Map<String, Predicate> predicates = QueryTool.parseBucketPredicates("big:gte:3000000000");
-    assertEquals(predicates.size(), 1);
-
-    Predicate big = predicates.get("big");
-    assertTrue(big instanceof LongPredicate);
-    assertTrue(big.evaluate(3000000000L));
-    assertTrue(big.evaluate(4000000000L));
-    assertFalse(big.evaluate(2999999999L));
-  }
-
-  @Test
-  public void testParseBucketPredicatesExplicitIntSuffix() {
-    // Explicit 'i' suffix forces IntPredicate
-    Map<String, Predicate> predicates = QueryTool.parseBucketPredicates("high:gt:100i,low:lte:100I");
-    assertEquals(predicates.size(), 2);
-
-    Predicate high = predicates.get("high");
-    assertTrue(high instanceof IntPredicate);
-    assertTrue(high.evaluate(101));
-    assertFalse(high.evaluate(100));
-
-    Predicate low = predicates.get("low");
-    assertTrue(low instanceof IntPredicate);
-    assertTrue(low.evaluate(100));
-    assertFalse(low.evaluate(101));
-  }
-
-  @Test
-  public void testParseBucketPredicatesIntAllOperators() {
-    // Cover all switch branches for int: eq, gt, gte, lt, lte
-    Predicate eqP = QueryTool.createTypedPredicate("eq", "100i");
-    assertTrue(eqP instanceof IntPredicate);
-    assertTrue(eqP.evaluate(100));
-    assertFalse(eqP.evaluate(99));
-
-    Predicate gteP = QueryTool.createTypedPredicate("gte", "100i");
-    assertTrue(gteP.evaluate(100));
-    assertFalse(gteP.evaluate(99));
-
-    Predicate ltP = QueryTool.createTypedPredicate("lt", "100i");
-    assertTrue(ltP.evaluate(99));
-    assertFalse(ltP.evaluate(100));
-  }
-
-  @Test
-  public void testParseBucketPredicatesExplicitLongSuffix() {
-    Predicate p = QueryTool.createTypedPredicate("gt", "100L");
-    assertTrue(p instanceof LongPredicate);
-    assertTrue(p.evaluate(101L));
-    assertFalse(p.evaluate(100L));
-  }
-
-  @Test
-  public void testParseBucketPredicatesExplicitDoubleSuffix() {
-    Predicate p = QueryTool.createTypedPredicate("lt", "99.5d");
-    assertTrue(p instanceof DoublePredicate);
-    assertTrue(p.evaluate(99.0));
-    assertFalse(p.evaluate(99.5));
-  }
-
-  @Test
-  public void testParseBucketPredicatesDoubleValues() {
-    Map<String, Predicate> predicates = QueryTool.parseBucketPredicates("big:gt:99.5");
-    assertEquals(predicates.size(), 1);
-
-    Predicate big = predicates.get("big");
-    assertTrue(big instanceof DoublePredicate);
-    assertTrue(big.evaluate(100.0));
-    assertFalse(big.evaluate(99.5));
-    assertFalse(big.evaluate(50.0));
-  }
-
-  @Test
-  public void testParseBucketPredicatesDoubleAllOperators() {
-    // Cover all switch branches for double: eq, gt, gte, lt, lte
-    Predicate eqP = QueryTool.createTypedPredicate("eq", "99.5");
-    assertTrue(eqP instanceof DoublePredicate);
-    assertTrue(eqP.evaluate(99.5));
-    assertFalse(eqP.evaluate(99.6));
-
-    Predicate gteP = QueryTool.createTypedPredicate("gte", "99.5");
-    assertTrue(gteP.evaluate(99.5));
-    assertFalse(gteP.evaluate(99.4));
-
-    Predicate lteP = QueryTool.createTypedPredicate("lte", "99.5");
-    assertTrue(lteP.evaluate(99.5));
-    assertFalse(lteP.evaluate(99.6));
-  }
-
-  @Test
-  public void testParseBucketPredicatesStringEq() {
-    Map<String, Predicate> predicates = QueryTool.parseBucketPredicates("eng:eq:engineer");
-    assertEquals(predicates.size(), 1);
-
-    Predicate eng = predicates.get("eng");
-    assertTrue(eng.evaluate("engineer"));
-    assertFalse(eng.evaluate("manager"));
+    assertTrue(predicates.get("high").evaluate(101L));
+    assertFalse(predicates.get("high").evaluate(100L));
+    assertTrue(predicates.get("low").evaluate(100L));
+    assertFalse(predicates.get("low").evaluate(101L));
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void testParseBucketPredicatesInvalidOperator() {
-    QueryTool.parseBucketPredicates("bad:foo:123");
-  }
-
-  @Test(expectedExceptions = VeniceException.class)
-  public void testParseBucketPredicatesInvalidFormat() {
+  public void testBucketPredicatesInvalidFormat() {
     QueryTool.parseBucketPredicates("missing_parts");
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void testParseBucketPredicatesStringInvalidOperator() {
-    // String values only support 'eq', not 'gt'
-    QueryTool.parseBucketPredicates("bad:gt:hello");
+  public void testBucketPredicatesUnknownOperator() {
+    QueryTool.createTypedPredicate("foo", "123");
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void testParseBucketPredicatesInvalidIntSuffix() {
+  public void testBucketPredicatesStringUnsupportedOperator() {
+    QueryTool.createTypedPredicate("gt", "hello");
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testBucketPredicatesInvalidIntSuffix() {
     QueryTool.createTypedPredicate("gt", "abci");
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void testParseBucketPredicatesInvalidLongSuffix() {
+  public void testBucketPredicatesInvalidLongSuffix() {
     QueryTool.createTypedPredicate("gt", "abcL");
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void testParseBucketPredicatesInvalidDoubleSuffix() {
+  public void testBucketPredicatesInvalidDoubleSuffix() {
     QueryTool.createTypedPredicate("gt", "abcd");
   }
 }
