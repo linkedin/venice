@@ -18,7 +18,9 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -42,55 +44,53 @@ public class HeartbeatBasedCheckerStatsOtelTest {
     stats = new HeartbeatBasedCheckerStats(metricsRepository);
   }
 
-  @Test
-  public void testRecordCheckJobHasHeartbeatFailed() {
-    stats.recordCheckJobHasHeartbeatFailed();
-
-    // OTel
-    validateCounter(
-        HeartbeatCheckerOtelMetricEntity.BATCH_JOB_HEARTBEAT_CHECK_FAILURE_COUNT.getMetricEntity().getMetricName(),
-        1,
-        Attributes.empty());
-
-    // Tehuti
-    validateTehutiMetric(
-        HeartbeatBasedCheckerStats.HeartbeatCheckerTehutiMetricNameEnum.CHECK_JOB_HAS_HEARTBEAT_FAILED,
-        "Count",
-        1.0);
+  @DataProvider(parallel = true)
+  public static Object[][] singleRecordTestData() {
+    return new Object[][] {
+        { (Consumer<HeartbeatBasedCheckerStats>) HeartbeatBasedCheckerStats::recordCheckJobHasHeartbeatFailed,
+            HeartbeatCheckerOtelMetricEntity.BATCH_JOB_HEARTBEAT_CHECK_FAILURE_COUNT,
+            HeartbeatBasedCheckerStats.HeartbeatCheckerTehutiMetricNameEnum.CHECK_JOB_HAS_HEARTBEAT_FAILED },
+        { (Consumer<HeartbeatBasedCheckerStats>) HeartbeatBasedCheckerStats::recordTimeoutHeartbeatCheck,
+            HeartbeatCheckerOtelMetricEntity.BATCH_JOB_HEARTBEAT_TIMEOUT_COUNT,
+            HeartbeatBasedCheckerStats.HeartbeatCheckerTehutiMetricNameEnum.TIMEOUT_HEARTBEAT_CHECK },
+        { (Consumer<HeartbeatBasedCheckerStats>) HeartbeatBasedCheckerStats::recordNoTimeoutHeartbeatCheck,
+            HeartbeatCheckerOtelMetricEntity.BATCH_JOB_HEARTBEAT_ACTIVE_COUNT,
+            HeartbeatBasedCheckerStats.HeartbeatCheckerTehutiMetricNameEnum.NON_TIMEOUT_HEARTBEAT_CHECK }, };
   }
 
-  @Test
-  public void testRecordTimeoutHeartbeatCheck() {
-    stats.recordTimeoutHeartbeatCheck();
+  @Test(dataProvider = "singleRecordTestData")
+  public void testSingleRecordAndValidate(
+      Consumer<HeartbeatBasedCheckerStats> recorder,
+      HeartbeatCheckerOtelMetricEntity otelMetric,
+      HeartbeatBasedCheckerStats.HeartbeatCheckerTehutiMetricNameEnum tehutiMetric) {
+    // Each parallel invocation creates its own state to avoid thread-safety issues with shared fields
+    InMemoryMetricReader localReader = InMemoryMetricReader.create();
+    VeniceMetricsRepository localRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setMetricEntities(CONTROLLER_SERVICE_METRIC_ENTITIES)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(localReader)
+            .build());
+    HeartbeatBasedCheckerStats localStats = new HeartbeatBasedCheckerStats(localRepo);
 
-    // OTel
-    validateCounter(
-        HeartbeatCheckerOtelMetricEntity.BATCH_JOB_HEARTBEAT_TIMEOUT_COUNT.getMetricEntity().getMetricName(),
+    recorder.accept(localStats);
+
+    // OTel counter
+    OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+        localReader,
         1,
-        Attributes.empty());
+        Attributes.empty(),
+        otelMetric.getMetricEntity().getMetricName(),
+        TEST_METRIC_PREFIX);
 
-    // Tehuti
-    validateTehutiMetric(
-        HeartbeatBasedCheckerStats.HeartbeatCheckerTehutiMetricNameEnum.TIMEOUT_HEARTBEAT_CHECK,
-        "Count",
-        1.0);
-  }
-
-  @Test
-  public void testRecordNoTimeoutHeartbeatCheck() {
-    stats.recordNoTimeoutHeartbeatCheck();
-
-    // OTel
-    validateCounter(
-        HeartbeatCheckerOtelMetricEntity.BATCH_JOB_HEARTBEAT_ACTIVE_COUNT.getMetricEntity().getMetricName(),
-        1,
-        Attributes.empty());
-
-    // Tehuti
-    validateTehutiMetric(
-        HeartbeatBasedCheckerStats.HeartbeatCheckerTehutiMetricNameEnum.NON_TIMEOUT_HEARTBEAT_CHECK,
-        "Count",
-        1.0);
+    // Tehuti counter
+    String tehutiMetricName =
+        AbstractVeniceStats.getSensorFullName(STATS_NAME, tehutiMetric.getMetricName()) + ".Count";
+    assertNotNull(localRepo.getMetric(tehutiMetricName), "Tehuti metric should exist: " + tehutiMetricName);
+    assertEquals(
+        localRepo.getMetric(tehutiMetricName).value(),
+        1.0,
+        "Tehuti metric value mismatch for: " + tehutiMetricName);
   }
 
   @Test
@@ -116,21 +116,12 @@ public class HeartbeatBasedCheckerStatsOtelTest {
   public void testNoNpeWhenOtelDisabled() {
     VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build());
-    HeartbeatBasedCheckerStats disabledStats = new HeartbeatBasedCheckerStats(disabledRepo);
-
-    disabledStats.recordCheckJobHasHeartbeatFailed();
-    disabledStats.recordTimeoutHeartbeatCheck();
-    disabledStats.recordNoTimeoutHeartbeatCheck();
+    verifyNoNpeWithRepository(disabledRepo);
   }
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    MetricsRepository plainRepo = new MetricsRepository();
-    HeartbeatBasedCheckerStats plainStats = new HeartbeatBasedCheckerStats(plainRepo);
-
-    plainStats.recordCheckJobHasHeartbeatFailed();
-    plainStats.recordTimeoutHeartbeatCheck();
-    plainStats.recordNoTimeoutHeartbeatCheck();
+    verifyNoNpeWithRepository(new MetricsRepository());
   }
 
   @Test
@@ -243,5 +234,12 @@ public class HeartbeatBasedCheckerStatsOtelTest {
         metricsRepository.getMetric(tehutiMetricName).value(),
         expectedValue,
         "Tehuti metric value mismatch for: " + tehutiMetricName);
+  }
+
+  private void verifyNoNpeWithRepository(MetricsRepository repo) {
+    HeartbeatBasedCheckerStats localStats = new HeartbeatBasedCheckerStats(repo);
+    localStats.recordCheckJobHasHeartbeatFailed();
+    localStats.recordTimeoutHeartbeatCheck();
+    localStats.recordNoTimeoutHeartbeatCheck();
   }
 }

@@ -127,6 +127,9 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
       LOGGER.warn("Version: {} has {} partitions which are under replicated.", version, underReplicatedPartitions);
       totalStats.recordUnderReplicatePartition(underReplicatedPartitions);
       getStoreStats(version).recordUnderReplicatePartition(underReplicatedPartitions);
+      // underReplicatedPartitionMetric is null only in the test-only constructor (no MetricsRepository).
+      // Skipping OTel recording is safe because that constructor is used exclusively in unit tests
+      // that do not verify OTel behavior.
       if (underReplicatedPartitionMetric != null) {
         String storeName = Version.parseStoreFromKafkaTopicName(version);
         underReplicatedPartitionMetric

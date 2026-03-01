@@ -74,6 +74,15 @@ public class ThreadPoolStats extends AbstractVeniceStats {
         otelData.getBaseAttributes());
   }
 
+  /**
+   * Records the current queue size as a distribution data point for the task distribution metric.
+   * Callers should invoke this on each task submission to capture avg/max queue depth
+   * within the metric reporting window.
+   *
+   * <p>Note: the {@code queuedTasksNumber} parameter is unused; the actual queue size is read
+   * directly from the executor. This parameter exists only for backward compatibility and should
+   * be removed in a future cleanup.
+   */
   public void recordQueuedTasksCount(int queuedTasksNumber) {
     // TODO: remove the argument in the function; you don't need it
     queuedTasksCountMetric.record(this.threadPoolExecutor.getQueue().size());

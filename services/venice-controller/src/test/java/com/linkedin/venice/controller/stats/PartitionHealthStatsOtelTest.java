@@ -129,17 +129,12 @@ public class PartitionHealthStatsOtelTest {
   public void testNoNpeWhenOtelDisabled() {
     VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build());
-    AggPartitionHealthStats disabledStats = createAggStats(disabledRepo);
-
-    disabledStats.reportUnderReplicatedPartition(TEST_TOPIC_NAME, 5);
+    verifyNoNpeWithRepository(disabledRepo);
   }
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    MetricsRepository plainRepo = new MetricsRepository();
-    AggPartitionHealthStats plainStats = createAggStats(plainRepo);
-
-    plainStats.reportUnderReplicatedPartition(TEST_TOPIC_NAME, 5);
+    verifyNoNpeWithRepository(new MetricsRepository());
   }
 
   @Test
@@ -227,5 +222,10 @@ public class PartitionHealthStatsOtelTest {
         metricsRepository.getMetric(tehutiMetricName).value(),
         expectedValue,
         "Tehuti metric value mismatch for: " + tehutiMetricName);
+  }
+
+  private void verifyNoNpeWithRepository(MetricsRepository repo) {
+    AggPartitionHealthStats localStats = createAggStats(repo);
+    localStats.reportUnderReplicatedPartition(TEST_TOPIC_NAME, 5);
   }
 }

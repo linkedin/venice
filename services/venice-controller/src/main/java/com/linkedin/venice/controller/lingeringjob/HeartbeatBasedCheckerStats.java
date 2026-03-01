@@ -9,6 +9,13 @@ import io.tehuti.metrics.stats.Count;
 import java.util.Collections;
 
 
+/**
+ * Tracks metrics for the batch job heartbeat-based lingering job checker.
+ * Records three event types: heartbeat check failures (the heartbeat API call itself failed),
+ * heartbeat timeouts (job exceeded the allowed time since last heartbeat), and active heartbeats
+ * (jobs with a valid, non-expired heartbeat). Each event is recorded as both a Tehuti {@link Count}
+ * and an OTel counter.
+ */
 public class HeartbeatBasedCheckerStats extends AbstractVeniceStats {
   private static final String STATS_NAME = "controller-batch-job-heartbeat-checker";
 

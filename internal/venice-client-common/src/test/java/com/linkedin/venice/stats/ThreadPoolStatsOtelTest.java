@@ -130,25 +130,12 @@ public class ThreadPoolStatsOtelTest {
   public void testNoNpeWhenOtelDisabled() {
     VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build());
-    ThreadPoolExecutor pool = Mockito.mock(ThreadPoolExecutor.class);
-    BlockingQueue<Runnable> queue = Mockito.mock(BlockingQueue.class);
-    Mockito.doReturn(queue).when(pool).getQueue();
-    Mockito.doReturn(0).when(queue).size();
-
-    ThreadPoolStats disabledStats = new ThreadPoolStats(disabledRepo, pool, "disabled-pool");
-    disabledStats.recordQueuedTasksCount(0);
+    verifyNoNpeWithRepository(disabledRepo, "disabled-pool");
   }
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    MetricsRepository plainRepo = new MetricsRepository();
-    ThreadPoolExecutor pool = Mockito.mock(ThreadPoolExecutor.class);
-    BlockingQueue<Runnable> queue = Mockito.mock(BlockingQueue.class);
-    Mockito.doReturn(queue).when(pool).getQueue();
-    Mockito.doReturn(0).when(queue).size();
-
-    ThreadPoolStats plainStats = new ThreadPoolStats(plainRepo, pool, "plain-pool");
-    plainStats.recordQueuedTasksCount(0);
+    verifyNoNpeWithRepository(new MetricsRepository(), "plain-pool");
   }
 
   @Test
@@ -268,5 +255,15 @@ public class ThreadPoolStatsOtelTest {
         metricsRepository.getMetric(tehutiMetricName).value(),
         expectedValue,
         "Tehuti metric value mismatch for: " + tehutiMetricName);
+  }
+
+  private void verifyNoNpeWithRepository(MetricsRepository repo, String poolName) {
+    ThreadPoolExecutor pool = Mockito.mock(ThreadPoolExecutor.class);
+    BlockingQueue<Runnable> queue = Mockito.mock(BlockingQueue.class);
+    Mockito.doReturn(queue).when(pool).getQueue();
+    Mockito.doReturn(0).when(queue).size();
+
+    ThreadPoolStats localStats = new ThreadPoolStats(repo, pool, poolName);
+    localStats.recordQueuedTasksCount(0);
   }
 }
