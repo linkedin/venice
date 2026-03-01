@@ -112,6 +112,8 @@ public enum ServerReadOtelMetricEntity implements ModuleMetricEntityInterface {
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_CHUNKING_STATUS)
   ),
 
+  // No VENICE_CHUNKING_STATUS: serialization happens after chunk reassembly, so chunking
+  // status is not relevant (unlike deserialization which operates on potentially chunked values).
   STORAGE_ENGINE_QUERY_SERIALIZATION_TIME(
       "storage_engine.query.serialization_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Time spent serializing results for read-compute operations",

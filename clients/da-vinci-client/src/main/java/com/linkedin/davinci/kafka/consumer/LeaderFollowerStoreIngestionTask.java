@@ -90,8 +90,8 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
+import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
-import com.linkedin.venice.stats.dimensions.VeniceWriteComputeOperation;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -3458,7 +3458,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           double wcUpdateLatency = LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS);
           hostLevelIngestionStats.recordWriteComputeUpdateLatency(wcUpdateLatency);
           versionedIngestionStats
-              .recordWriteComputeTime(storeName, versionNumber, VeniceWriteComputeOperation.UPDATE, wcUpdateLatency);
+              .recordPartialUpdateTime(storeName, versionNumber, VenicePartialUpdateOperation.UPDATE, wcUpdateLatency);
         } catch (Exception e) {
           setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
           throw new RuntimeException(e);
@@ -3976,14 +3976,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         double wcLookupLatency = LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS);
         hostLevelIngestionStats.recordWriteComputeLookUpLatency(wcLookupLatency);
         versionedIngestionStats
-            .recordWriteComputeTime(storeName, versionNumber, VeniceWriteComputeOperation.QUERY, wcLookupLatency);
+            .recordPartialUpdateTime(storeName, versionNumber, VenicePartialUpdateOperation.QUERY, wcLookupLatency);
       } catch (Exception e) {
         setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
         throw e;
       }
     } else {
       hostLevelIngestionStats.recordWriteComputeCacheHitCount();
-      versionedIngestionStats.recordWriteComputeCacheHitCount(storeName, versionNumber);
+      versionedIngestionStats.recordPartialUpdateCacheHitCount(storeName, versionNumber);
       // construct currValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
         try {

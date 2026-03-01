@@ -4,6 +4,7 @@ import com.linkedin.venice.stats.ServerHttpRequestStats;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import io.netty.handler.codec.http.HttpResponseStatus;
 
 
 /**
@@ -35,6 +36,20 @@ public interface ReadResponseStatsRecorder {
       HttpResponseStatusEnum statusEnum,
       HttpResponseStatusCodeCategory statusCategory,
       VeniceResponseStatusCategory veniceCategory);
+
+  /**
+   * Convenience overload that resolves OTel dimension enums from the raw {@link HttpResponseStatus}.
+   */
+  default void recordMetrics(
+      ServerHttpRequestStats stats,
+      HttpResponseStatus responseStatus,
+      VeniceResponseStatusCategory veniceCategory) {
+    recordMetrics(
+        stats,
+        HttpResponseStatusEnum.transformHttpResponseStatusToHttpResponseStatusEnum(responseStatus),
+        HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory(responseStatus),
+        veniceCategory);
+  }
 
   /**
    * Record metrics which are not mergeable by the {@link #merge(ReadResponseStatsRecorder)} function.

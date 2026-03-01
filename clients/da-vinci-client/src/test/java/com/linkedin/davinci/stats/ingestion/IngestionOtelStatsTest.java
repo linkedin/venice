@@ -33,6 +33,8 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ING
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME_BETWEEN_COMPONENTS;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.LONG_RUNNING_TASK_CHECK_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_CACHE_HIT_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_COMPRESS_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_ENQUEUE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_SYNCHRONIZE_TIME;
@@ -49,8 +51,6 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STO
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNEXPECTED_MESSAGE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
-import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.WRITE_COMPUTE_CACHE_HIT_COUNT;
-import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.WRITE_COMPUTE_TIME;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_EVENT;
@@ -59,13 +59,13 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_DESTINATION_COMPONENT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_FAILURE_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_SOURCE_COMPONENT;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PARTIAL_UPDATE_OPERATION_PHASE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RECORD_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_SOURCE_REGION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_WRITE_COMPUTE_OPERATION_PHASE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateObservableCounterValue;
@@ -88,9 +88,9 @@ import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
-import com.linkedin.venice.stats.dimensions.VeniceWriteComputeOperation;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
@@ -568,9 +568,9 @@ public class IngestionOtelStatsTest {
   }
 
   @Test
-  public void testRecordWriteComputeTime() {
+  public void testRecordPartialUpdateTime() {
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    ingestionOtelStats.recordWriteComputeTime(CURRENT_VERSION, VeniceWriteComputeOperation.QUERY, 12.0);
+    ingestionOtelStats.recordPartialUpdateTime(CURRENT_VERSION, VenicePartialUpdateOperation.QUERY, 12.0);
     validateHistogramPointData(
         inMemoryMetricReader,
         12.0,
@@ -579,9 +579,9 @@ public class IngestionOtelStatsTest {
         12.0,
         buildAttributesWithVersionRoleAndSecondEnum(
             VersionRole.CURRENT,
-            VENICE_WRITE_COMPUTE_OPERATION_PHASE,
-            VeniceWriteComputeOperation.QUERY),
-        WRITE_COMPUTE_TIME.getMetricEntity().getMetricName(),
+            VENICE_PARTIAL_UPDATE_OPERATION_PHASE,
+            VenicePartialUpdateOperation.QUERY),
+        PARTIAL_UPDATE_TIME.getMetricEntity().getMetricName(),
         TEST_PREFIX);
   }
 
@@ -733,8 +733,8 @@ public class IngestionOtelStatsTest {
         1, STORE_METADATA_INCONSISTENT_COUNT },
         { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordResubscriptionFailureCount(CURRENT_VERSION, v), 1,
             RESUBSCRIPTION_FAILURE_COUNT },
-        { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordWriteComputeCacheHitCount(CURRENT_VERSION, v), 1,
-            WRITE_COMPUTE_CACHE_HIT_COUNT },
+        { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordPartialUpdateCacheHitCount(CURRENT_VERSION, v), 1,
+            PARTIAL_UPDATE_CACHE_HIT_COUNT },
         { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s
             .recordChecksumVerificationFailureCount(CURRENT_VERSION, v), 1, CHECKSUM_VERIFICATION_FAILURE_COUNT }, };
   }
@@ -1413,8 +1413,8 @@ public class IngestionOtelStatsTest {
 
     // --- HostLevelIngestionStats latency metrics ---
 
-    Set<VeniceMetricsDimensions> storeClusterVersionWriteComputeOp =
-        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_WRITE_COMPUTE_OPERATION_PHASE);
+    Set<VeniceMetricsDimensions> storeClusterVersionPartialUpdateOp =
+        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_PARTIAL_UPDATE_OPERATION_PHASE);
     Set<VeniceMetricsDimensions> storeClusterVersionRecordType =
         setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_RECORD_TYPE);
     Set<VeniceMetricsDimensions> storeClusterVersionDcrOp =
@@ -1493,12 +1493,12 @@ public class IngestionOtelStatsTest {
         "Time spent waiting for the last leader-produced message to be persisted during partition stop or leader handoff",
         storeClusterVersion);
     assertMetricEntity(
-        WRITE_COMPUTE_TIME.getMetricEntity(),
+        PARTIAL_UPDATE_TIME.getMetricEntity(),
         "ingestion.write_compute.time",
         MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
         MetricUnit.MILLISECOND,
         "Time to perform write compute operations",
-        storeClusterVersionWriteComputeOp);
+        storeClusterVersionPartialUpdateOp);
     assertMetricEntity(
         DCR_LOOKUP_TIME.getMetricEntity(),
         "ingestion.dcr.lookup.time",
@@ -1545,7 +1545,7 @@ public class IngestionOtelStatsTest {
         "Count of resubscription failures during ingestion",
         storeClusterVersion);
     assertMetricEntity(
-        WRITE_COMPUTE_CACHE_HIT_COUNT.getMetricEntity(),
+        PARTIAL_UPDATE_CACHE_HIT_COUNT.getMetricEntity(),
         "ingestion.write_compute.cache.hit_count",
         MetricType.COUNTER,
         MetricUnit.NUMBER,

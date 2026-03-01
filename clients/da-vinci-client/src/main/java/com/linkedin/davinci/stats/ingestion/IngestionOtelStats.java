@@ -32,6 +32,8 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ING
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME_BETWEEN_COMPONENTS;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.LONG_RUNNING_TASK_CHECK_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_CACHE_HIT_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_COMPRESS_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_ENQUEUE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_SYNCHRONIZE_TIME;
@@ -48,8 +50,6 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STO
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNEXPECTED_MESSAGE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
-import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.WRITE_COMPUTE_CACHE_HIT_COUNT;
-import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.WRITE_COMPUTE_TIME;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -68,9 +68,9 @@ import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
-import com.linkedin.venice.stats.dimensions.VeniceWriteComputeOperation;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
@@ -158,7 +158,7 @@ public class IngestionOtelStats {
   private final MetricEntityStateOneEnum<VersionRole> producerSynchronizeTimeMetric;
 
   // Latency metrics with 2nd enum dimension
-  private final MetricEntityStateTwoEnums<VersionRole, VeniceWriteComputeOperation> writeComputeTimeMetric;
+  private final MetricEntityStateTwoEnums<VersionRole, VenicePartialUpdateOperation> partialUpdateTimeMetric;
   private final MetricEntityStateTwoEnums<VersionRole, VeniceRecordType> dcrLookupTimeMetric;
   private final MetricEntityStateTwoEnums<VersionRole, VeniceDCROperation> dcrMergeTimeMetric;
 
@@ -166,7 +166,7 @@ public class IngestionOtelStats {
   private final MetricEntityStateOneEnum<VersionRole> unexpectedMessageCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> storeMetadataInconsistentCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> resubscriptionFailureCountMetric;
-  private final MetricEntityStateOneEnum<VersionRole> writeComputeCacheHitCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> partialUpdateCacheHitCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> checksumVerificationFailureCountMetric;
 
   // Counter metrics with 2nd enum dimension
@@ -230,13 +230,13 @@ public class IngestionOtelStats {
     this.producerEnqueueTimeMetric = null;
     this.producerCompressTimeMetric = null;
     this.producerSynchronizeTimeMetric = null;
-    this.writeComputeTimeMetric = null;
+    this.partialUpdateTimeMetric = null;
     this.dcrLookupTimeMetric = null;
     this.dcrMergeTimeMetric = null;
     this.unexpectedMessageCountMetric = null;
     this.storeMetadataInconsistentCountMetric = null;
     this.resubscriptionFailureCountMetric = null;
-    this.writeComputeCacheHitCountMetric = null;
+    this.partialUpdateCacheHitCountMetric = null;
     this.checksumVerificationFailureCountMetric = null;
     this.ingestionFailureCountMetric = null;
     this.dcrLookupCacheHitCountMetric = null;
@@ -352,8 +352,8 @@ public class IngestionOtelStats {
     producerSynchronizeTimeMetric = createOneEnumMetric(PRODUCER_SYNCHRONIZE_TIME.getMetricEntity());
 
     // Initialize HostLevelIngestionStats OTel metrics - latency with 2nd enum dimension
-    writeComputeTimeMetric =
-        createTwoEnumMetric(WRITE_COMPUTE_TIME.getMetricEntity(), VeniceWriteComputeOperation.class);
+    partialUpdateTimeMetric =
+        createTwoEnumMetric(PARTIAL_UPDATE_TIME.getMetricEntity(), VenicePartialUpdateOperation.class);
     dcrLookupTimeMetric = createTwoEnumMetric(DCR_LOOKUP_TIME.getMetricEntity(), VeniceRecordType.class);
     dcrMergeTimeMetric = createTwoEnumMetric(DCR_MERGE_TIME.getMetricEntity(), VeniceDCROperation.class);
 
@@ -361,7 +361,7 @@ public class IngestionOtelStats {
     unexpectedMessageCountMetric = createOneEnumMetric(UNEXPECTED_MESSAGE_COUNT.getMetricEntity());
     storeMetadataInconsistentCountMetric = createOneEnumMetric(STORE_METADATA_INCONSISTENT_COUNT.getMetricEntity());
     resubscriptionFailureCountMetric = createOneEnumMetric(RESUBSCRIPTION_FAILURE_COUNT.getMetricEntity());
-    writeComputeCacheHitCountMetric = createOneEnumMetric(WRITE_COMPUTE_CACHE_HIT_COUNT.getMetricEntity());
+    partialUpdateCacheHitCountMetric = createOneEnumMetric(PARTIAL_UPDATE_CACHE_HIT_COUNT.getMetricEntity());
     checksumVerificationFailureCountMetric = createOneEnumMetric(CHECKSUM_VERIFICATION_FAILURE_COUNT.getMetricEntity());
 
     // Initialize HostLevelIngestionStats OTel metrics - counters with 2nd enum dimension
@@ -701,8 +701,8 @@ public class IngestionOtelStats {
 
   // Latency methods with 2nd enum dimension
 
-  public void recordWriteComputeTime(int version, VeniceWriteComputeOperation op, double latencyMs) {
-    writeComputeTimeMetric.record(latencyMs, classifyVersion(version, versionInfo), op);
+  public void recordPartialUpdateTime(int version, VenicePartialUpdateOperation op, double latencyMs) {
+    partialUpdateTimeMetric.record(latencyMs, classifyVersion(version, versionInfo), op);
   }
 
   public void recordDcrLookupTime(int version, VeniceRecordType recordType, double latencyMs) {
@@ -727,8 +727,8 @@ public class IngestionOtelStats {
     resubscriptionFailureCountMetric.record(value, classifyVersion(version, versionInfo));
   }
 
-  public void recordWriteComputeCacheHitCount(int version, long value) {
-    writeComputeCacheHitCountMetric.record(value, classifyVersion(version, versionInfo));
+  public void recordPartialUpdateCacheHitCount(int version, long value) {
+    partialUpdateCacheHitCountMetric.record(value, classifyVersion(version, versionInfo));
   }
 
   public void recordChecksumVerificationFailureCount(int version, long value) {

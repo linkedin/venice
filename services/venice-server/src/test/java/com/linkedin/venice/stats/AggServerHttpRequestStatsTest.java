@@ -6,6 +6,7 @@ import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Percentiles;
 import org.mockito.Mockito;
@@ -29,6 +30,14 @@ public class AggServerHttpRequestStatsTest {
   private static final String STORE_BAR = "store_bar";
   private static final String STORE_WITH_SMALL_VALUES = "store_with_small_values";
   private static final String STORE_WITH_LARGE_VALUES = "store_with_large_values";
+
+  private static final HttpResponseStatusEnum OK_STATUS = HttpResponseStatusEnum.OK;
+  private static final HttpResponseStatusCodeCategory OK_CATEGORY = HttpResponseStatusCodeCategory.SUCCESS;
+  private static final VeniceResponseStatusCategory OK_VENICE = VeniceResponseStatusCategory.SUCCESS;
+
+  private static final HttpResponseStatusEnum ERROR_STATUS = HttpResponseStatusEnum.INTERNAL_SERVER_ERROR;
+  private static final HttpResponseStatusCodeCategory ERROR_CATEGORY = HttpResponseStatusCodeCategory.SERVER_ERROR;
+  private static final VeniceResponseStatusCategory ERROR_VENICE = VeniceResponseStatusCategory.FAIL;
 
   @BeforeTest
   public void setUp() {
@@ -99,36 +108,16 @@ public class AggServerHttpRequestStatsTest {
 
     ServerHttpRequestStats computeServerStatsFoo = computeStats.getStoreStats(STORE_FOO);
 
-    singleGetServerStatsFoo.recordSuccessRequest(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS);
-    singleGetServerStatsFoo.recordSuccessRequest(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS);
-    singleGetServerStatsFoo.recordErrorRequest(
-        HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
-        HttpResponseStatusCodeCategory.SERVER_ERROR,
-        VeniceResponseStatusCategory.FAIL);
-    singleGetServerStatsBar.recordErrorRequest(
-        HttpResponseStatusEnum.INTERNAL_SERVER_ERROR,
-        HttpResponseStatusCodeCategory.SERVER_ERROR,
-        VeniceResponseStatusCategory.FAIL);
+    singleGetServerStatsFoo.recordSuccessRequest(OK_STATUS, OK_CATEGORY, OK_VENICE);
+    singleGetServerStatsFoo.recordSuccessRequest(OK_STATUS, OK_CATEGORY, OK_VENICE);
+    singleGetServerStatsFoo.recordErrorRequest(ERROR_STATUS, ERROR_CATEGORY, ERROR_VENICE);
+    singleGetServerStatsBar.recordErrorRequest(ERROR_STATUS, ERROR_CATEGORY, ERROR_VENICE);
 
     singleGetServerStatsFoo.recordKeySizeInByte(100);
-    singleGetServerStatsFoo.recordValueSizeInByte(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS,
-        1000);
+    singleGetServerStatsFoo.recordValueSizeInByte(OK_STATUS, OK_CATEGORY, OK_VENICE, 1000);
 
     singleGetServerStatsWithKvProfilingFoo.recordKeySizeInByte(100);
-    singleGetServerStatsWithKvProfilingFoo.recordValueSizeInByte(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS,
-        1000);
+    singleGetServerStatsWithKvProfilingFoo.recordValueSizeInByte(OK_STATUS, OK_CATEGORY, OK_VENICE, 1000);
 
     computeServerStatsFoo.recordDotProductCount(10);
     computeServerStatsFoo.recordCosineSimilarityCount(10);
@@ -227,15 +216,9 @@ public class AggServerHttpRequestStatsTest {
     ServerHttpRequestStats batchGetSmallStats = batchGetStats.getStoreStats(STORE_WITH_SMALL_VALUES);
     ServerHttpRequestStats batchGetLargeStats = batchGetStats.getStoreStats(STORE_WITH_LARGE_VALUES);
 
-    smallValueStats.recordSuccessRequest(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS);
+    smallValueStats.recordSuccessRequest(OK_STATUS, OK_CATEGORY, OK_VENICE);
     smallValueStats.recordMultiChunkLargeValueCount(0);
-    largeValueStats.recordSuccessRequest(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS);
+    largeValueStats.recordSuccessRequest(OK_STATUS, OK_CATEGORY, OK_VENICE);
     largeValueStats.recordMultiChunkLargeValueCount(1);
 
     // Sanity check
@@ -265,20 +248,11 @@ public class AggServerHttpRequestStatsTest {
         1,
         "storage_engine_large_value_lookup rate should be positive");
 
-    batchGetSmallStats.recordSuccessRequest(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS);
+    batchGetSmallStats.recordSuccessRequest(OK_STATUS, OK_CATEGORY, OK_VENICE);
     batchGetSmallStats.recordMultiChunkLargeValueCount(0);
-    batchGetLargeStats.recordSuccessRequest(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS);
+    batchGetLargeStats.recordSuccessRequest(OK_STATUS, OK_CATEGORY, OK_VENICE);
     batchGetLargeStats.recordMultiChunkLargeValueCount(5);
-    batchGetLargeStats.recordSuccessRequest(
-        HttpResponseStatusEnum.OK,
-        HttpResponseStatusCodeCategory.SUCCESS,
-        VeniceResponseStatusCategory.SUCCESS);
+    batchGetLargeStats.recordSuccessRequest(OK_STATUS, OK_CATEGORY, OK_VENICE);
     batchGetLargeStats.recordMultiChunkLargeValueCount(15);
 
     // Sanity check
@@ -316,5 +290,111 @@ public class AggServerHttpRequestStatsTest {
             .value(),
         10,
         "storage_engine_large_value_lookup rate should be positive");
+  }
+
+  /**
+   * Verifies per-store to total propagation across all metric types used by
+   * {@code registerPerStoreAndTotal}: {@code MetricEntityStateThreeEnums} (success/error counts),
+   * {@code MetricEntityStateBase} (request size, key not found, flush latency),
+   * {@code MetricEntityStateOneEnum} (storage engine query time),
+   * Tehuti-only sensors (early terminated, misrouted), compute op metrics, combined recording
+   * methods, and the 3-arg {@code recordResponseSize}.
+   *
+   * Uses a dedicated store name to avoid interference from other tests that may delete stores.
+   */
+  @Test
+  public void testPerStoreToTotalPropagation() {
+    String store = "store_propagation";
+    ServerHttpRequestStats singleGetPerStore = singleGetStats.getStoreStats(store);
+    ServerHttpRequestStats batchGetPerStore = batchGetStats.getStoreStats(store);
+    ServerHttpRequestStats computePerStore = computeStats.getStoreStats(store);
+
+    // --- MetricEntityStateThreeEnums (success/error request counts) ---
+    singleGetPerStore.recordSuccessRequest(OK_STATUS, OK_CATEGORY, OK_VENICE);
+    singleGetPerStore.recordErrorRequest(ERROR_STATUS, ERROR_CATEGORY, ERROR_VENICE);
+
+    assertPerStoreAndTotal(store, "success_request.OccurrenceRate");
+    assertPerStoreAndTotal(store, "error_request.OccurrenceRate");
+
+    // --- MetricEntityStateBase (request size, key not found, flush latency) ---
+    batchGetPerStore.recordRequestSizeInBytes(512);
+    batchGetPerStore.recordKeyNotFoundCount(3);
+    batchGetPerStore.recordRequestKeyCount(10);
+
+    assertPerStoreAndTotal(store, "multiget_request_size_in_bytes.Avg");
+    assertPerStoreAndTotal(store, "multiget_key_not_found.Rate");
+    assertPerStoreAndTotal(store, "multiget_request_key_count.Rate");
+
+    // --- MetricEntityStateOneEnum (storage engine query time) ---
+    singleGetPerStore.recordDatabaseLookupLatency(25.0, false);
+
+    assertPerStoreAndTotal(store, "storage_engine_query_latency.Avg");
+
+    // --- Tehuti-only sensors (early terminated, misrouted) ---
+    singleGetPerStore.recordEarlyTerminatedEarlyRequest();
+    singleGetPerStore.recordMisroutedStoreVersionRequest();
+
+    assertPerStoreAndTotal(store, "early_terminated_request_count.OccurrenceRate");
+    assertPerStoreAndTotal(store, "misrouted_store_version_request_count.OccurrenceRate");
+
+    // --- Compute op metrics (MetricEntityStateOneEnum via createComputeOpMetric) ---
+    computePerStore.recordDotProductCount(10);
+    computePerStore.recordCosineSimilarityCount(20);
+    computePerStore.recordHadamardProductCount(30);
+    computePerStore.recordCountOperatorCount(40);
+
+    assertPerStoreAndTotal(store, "compute_dot_product_count.Avg");
+    assertPerStoreAndTotal(store, "compute_cosine_similarity_count.Avg");
+    assertPerStoreAndTotal(store, "compute_hadamard_product_count.Avg");
+    assertPerStoreAndTotal(store, "compute_count_operator_count.Avg");
+
+    // --- Combined recording methods and 3-arg recordResponseSize ---
+    // These resolve HttpResponseStatus dimensions internally and record to the same sensors
+    // as the individual methods above, verifying the delegation works correctly.
+    singleGetPerStore.recordSuccessRequestAndLatency(HttpResponseStatus.OK, OK_VENICE, 50.0);
+    singleGetPerStore.recordErrorRequestAndLatency(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE, 100.0);
+    singleGetPerStore.recordResponseSize(HttpResponseStatus.OK, OK_VENICE, 1024);
+
+    assertPerStoreAndTotal(store, "response_size.50thPercentile");
+  }
+
+  /**
+   * Verifies that recordings from different stores propagate to the same total sensor,
+   * and the total reflects the aggregate across all stores.
+   */
+  @Test
+  public void testMultipleStoresPropagateToSameTotal() {
+    String storeA = "store_multi_a";
+    String storeB = "store_multi_b";
+    ServerHttpRequestStats statsA = singleGetStats.getStoreStats(storeA);
+    ServerHttpRequestStats statsB = singleGetStats.getStoreStats(storeB);
+
+    statsA.recordRequestSizeInBytes(100);
+    statsB.recordRequestSizeInBytes(300);
+
+    // Each per-store should have its own value
+    Assert.assertEquals(
+        (int) reporter.query("." + storeA + "--request_size_in_bytes.Max").value(),
+        100,
+        "storeA request_size Max should be 100");
+    Assert.assertEquals(
+        (int) reporter.query("." + storeB + "--request_size_in_bytes.Max").value(),
+        300,
+        "storeB request_size Max should be 300");
+
+    // Total should see the max across both stores
+    Assert.assertEquals(
+        (int) reporter.query(".total--request_size_in_bytes.Max").value(),
+        300,
+        "Total request_size Max should be 300 (max across both stores)");
+  }
+
+  private void assertPerStoreAndTotal(String storeName, String metricSuffix) {
+    Assert.assertTrue(
+        reporter.query("." + storeName + "--" + metricSuffix).value() > 0,
+        "Per-store " + metricSuffix + " should be positive");
+    Assert.assertTrue(
+        reporter.query(".total--" + metricSuffix).value() > 0,
+        "Total " + metricSuffix + " should propagate from per-store recording");
   }
 }

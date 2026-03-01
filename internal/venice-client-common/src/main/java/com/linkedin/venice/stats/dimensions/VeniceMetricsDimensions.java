@@ -110,8 +110,8 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceDCROperation} DCR merge operation type (put, update, delete) */
   VENICE_DCR_OPERATION("venice.dcr.operation"),
 
-  /** {@link VeniceWriteComputeOperation} Phase of a write-compute (partial update) operation: query or update */
-  VENICE_WRITE_COMPUTE_OPERATION_PHASE("venice.write_compute.operation_phase"),
+  /** {@link VenicePartialUpdateOperation} Phase of a partial update (write compute) operation: query or update */
+  VENICE_PARTIAL_UPDATE_OPERATION_PHASE("venice.partial_update.operation_phase"),
 
   /** {@link VeniceRecordType} Record type (data, replication_metadata) */
   VENICE_RECORD_TYPE("venice.record.type"),

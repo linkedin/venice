@@ -13,6 +13,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -186,18 +187,10 @@ public class OpenTelemetryMetricsSetupTest {
     Attributes baseAttributes = result.getBaseAttributes();
     assertNotNull(baseAttributes);
     assertEquals(baseAttributes.size(), 4);
-    assertEquals(
-        baseAttributes.get(io.opentelemetry.api.common.AttributeKey.stringKey("venice.store.name")),
-        storeName);
-    assertEquals(
-        baseAttributes.get(io.opentelemetry.api.common.AttributeKey.stringKey("venice.request.method")),
-        requestType.getDimensionValue());
-    assertEquals(
-        baseAttributes.get(io.opentelemetry.api.common.AttributeKey.stringKey("venice.cluster.name")),
-        clusterName);
-    assertEquals(
-        baseAttributes.get(io.opentelemetry.api.common.AttributeKey.stringKey("venice.route.name")),
-        routeName);
+    assertEquals(baseAttributes.get(AttributeKey.stringKey("venice.store.name")), storeName);
+    assertEquals(baseAttributes.get(AttributeKey.stringKey("venice.request.method")), requestType.getDimensionValue());
+    assertEquals(baseAttributes.get(AttributeKey.stringKey("venice.cluster.name")), clusterName);
+    assertEquals(baseAttributes.get(AttributeKey.stringKey("venice.route.name")), routeName);
   }
 
   @Test

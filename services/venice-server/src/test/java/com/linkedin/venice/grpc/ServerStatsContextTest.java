@@ -64,11 +64,8 @@ public class ServerStatsContextTest {
   }
 
   private void verifyNoResponseSizeRecording(ServerHttpRequestStats stats) {
-    verify(stats, never()).recordResponseSize(
-        any(HttpResponseStatusEnum.class),
-        any(HttpResponseStatusCodeCategory.class),
-        any(VeniceResponseStatusCategory.class),
-        anyInt());
+    verify(stats, never())
+        .recordResponseSize(any(HttpResponseStatus.class), any(VeniceResponseStatusCategory.class), anyInt());
   }
 
   private void verifyNoValueSizeRecording(ServerHttpRequestStats stats) {
@@ -106,8 +103,7 @@ public class ServerStatsContextTest {
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.successRequest(stats, 10.5);
 
-    verify(stats).recordSuccessRequest(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS);
-    verify(stats).recordSuccessRequestLatency(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 10.5);
+    verify(stats).recordSuccessRequestAndLatency(HttpResponseStatus.OK, OK_VENICE_STATUS, 10.5);
   }
 
   @Test
@@ -117,15 +113,27 @@ public class ServerStatsContextTest {
     context.setMisroutedStoreVersion(true);
     context.errorRequest(stats, 12.3);
 
-    verify(stats).recordErrorRequest(ERROR_HTTP_STATUS, ERROR_HTTP_STATUS_CATEGORY, ERROR_VENICE_STATUS);
-    verify(stats).recordErrorRequestLatency(ERROR_HTTP_STATUS, ERROR_HTTP_STATUS_CATEGORY, ERROR_VENICE_STATUS, 12.3);
+    verify(stats).recordErrorRequestAndLatency(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE_STATUS, 12.3);
     verify(stats).recordMisroutedStoreVersionRequest();
+  }
 
+  /**
+   * When stats is null (store unknown), errorRequest resolves to {@link ServerStatsContext#UNKNOWN_STORE_NAME}
+   * so that both Tehuti and OTel error metrics are recorded.
+   */
+  @Test
+  public void testErrorRequestWithNullStatsResolvesToUnknownStore() {
+    ServerHttpRequestStats unknownStoreStats = mock(ServerHttpRequestStats.class);
+    doReturn(unknownStoreStats).when(singleGetStats).getStoreStats(ServerStatsContext.UNKNOWN_STORE_NAME);
+
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    context.setMisroutedStoreVersion(true);
     context.errorRequest(null, 12.3);
-    verify(singleGetStats).recordErrorRequest(ERROR_HTTP_STATUS, ERROR_HTTP_STATUS_CATEGORY, ERROR_VENICE_STATUS);
-    verify(singleGetStats)
-        .recordErrorRequestLatency(ERROR_HTTP_STATUS, ERROR_HTTP_STATUS_CATEGORY, ERROR_VENICE_STATUS, 12.3);
-    verify(singleGetStats).recordMisroutedStoreVersionRequest();
+
+    verify(singleGetStats).getStoreStats(ServerStatsContext.UNKNOWN_STORE_NAME);
+    verify(unknownStoreStats)
+        .recordErrorRequestAndLatency(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE_STATUS, 12.3);
+    verify(unknownStoreStats).recordMisroutedStoreVersionRequest();
   }
 
   @Test
@@ -218,14 +226,13 @@ public class ServerStatsContextTest {
     context.recordBasicMetrics(stats);
 
     // Unified response size (both Tehuti and OTel)
-    verify(stats).recordResponseSize(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 500);
+    verify(stats).recordResponseSize(HttpResponseStatus.OK, OK_VENICE_STATUS, 500);
     // Unified value size per-key via SingleGetResponseStats.recordMetrics (both Tehuti and OTel)
     verify(stats).recordValueSizeInByte(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 200);
 
     // successRequest only records count and latency (not size)
     context.successRequest(stats, 10.5);
-    verify(stats).recordSuccessRequest(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS);
-    verify(stats).recordSuccessRequestLatency(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 10.5);
+    verify(stats).recordSuccessRequestAndLatency(HttpResponseStatus.OK, OK_VENICE_STATUS, 10.5);
   }
 
   /**
@@ -244,14 +251,13 @@ public class ServerStatsContextTest {
     context.recordBasicMetrics(stats);
 
     // Unified response size (both Tehuti and OTel)
-    verify(stats).recordResponseSize(ERROR_HTTP_STATUS, ERROR_HTTP_STATUS_CATEGORY, ERROR_VENICE_STATUS, 100);
+    verify(stats).recordResponseSize(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE_STATUS, 100);
     // Unified value size per-key (both Tehuti and OTel)
     verify(stats).recordValueSizeInByte(ERROR_HTTP_STATUS, ERROR_HTTP_STATUS_CATEGORY, ERROR_VENICE_STATUS, 50);
 
     // errorRequest only records count and latency (not size)
     context.errorRequest(stats, 15.0);
-    verify(stats).recordErrorRequest(ERROR_HTTP_STATUS, ERROR_HTTP_STATUS_CATEGORY, ERROR_VENICE_STATUS);
-    verify(stats).recordErrorRequestLatency(ERROR_HTTP_STATUS, ERROR_HTTP_STATUS_CATEGORY, ERROR_VENICE_STATUS, 15.0);
+    verify(stats).recordErrorRequestAndLatency(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE_STATUS, 15.0);
   }
 
   @Test
@@ -284,7 +290,7 @@ public class ServerStatsContextTest {
     verify(stats).recordValueSizeInByte(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 300);
 
     // Unified response size (both Tehuti and OTel)
-    verify(stats).recordResponseSize(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 800);
+    verify(stats).recordResponseSize(HttpResponseStatus.OK, OK_VENICE_STATUS, 800);
   }
 
   /**
@@ -308,11 +314,7 @@ public class ServerStatsContextTest {
     context.recordBasicMetrics(stats);
 
     // Unified response size (both Tehuti and OTel)
-    verify(stats).recordResponseSize(
-        HttpResponseStatusEnum.TOO_MANY_REQUESTS,
-        HttpResponseStatusCodeCategory.CLIENT_ERROR,
-        VeniceResponseStatusCategory.FAIL,
-        500);
+    verify(stats).recordResponseSize(HttpResponseStatus.TOO_MANY_REQUESTS, VeniceResponseStatusCategory.FAIL, 500);
     // Unified value size per-key via SingleGetResponseStats.recordMetrics (both Tehuti and OTel)
     verify(stats).recordValueSizeInByte(
         HttpResponseStatusEnum.TOO_MANY_REQUESTS,
@@ -322,14 +324,56 @@ public class ServerStatsContextTest {
     verify(stats).recordKeySizeInByte(50);
 
     // success/error count and latency are NOT recorded for 429
-    verify(stats, never()).recordSuccessRequest(
-        any(HttpResponseStatusEnum.class),
-        any(HttpResponseStatusCodeCategory.class),
-        any(VeniceResponseStatusCategory.class));
-    verify(stats, never()).recordErrorRequest(
-        any(HttpResponseStatusEnum.class),
-        any(HttpResponseStatusCodeCategory.class),
-        any(VeniceResponseStatusCategory.class));
+    verify(stats, never()).recordSuccessRequestAndLatency(
+        any(HttpResponseStatus.class),
+        any(VeniceResponseStatusCategory.class),
+        anyDouble());
+    verify(stats, never()).recordErrorRequestAndLatency(
+        any(HttpResponseStatus.class),
+        any(VeniceResponseStatusCategory.class),
+        anyDouble());
+  }
+
+  /**
+   * In Venice, NOT_FOUND (key absent) is a valid/expected outcome, not an error.
+   * Verify that response size uses {@link VeniceResponseStatusCategory#SUCCESS}
+   * (not FAIL) when the response status is 404. Value size is not recorded because
+   * a missing key has zero-size value, and {@link SingleGetResponseStats} skips recording
+   * value sizes that are not positive.
+   */
+  @Test
+  public void testNotFoundIsClassifiedAsSuccess() {
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.NOT_FOUND);
+    context.setResponseSize(64);
+
+    SingleGetResponseStats responseStats = new SingleGetResponseStats();
+    context.setReadResponseStats(responseStats);
+
+    ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
+    context.recordBasicMetrics(stats);
+
+    // NOT_FOUND uses SUCCESS venice category, not FAIL
+    verify(stats).recordResponseSize(HttpResponseStatus.NOT_FOUND, VeniceResponseStatusCategory.SUCCESS, 64);
+    // No value to record for a missing key
+    verifyNoValueSizeRecording(stats);
+  }
+
+  /**
+   * When stats is null (store unknown), recordBasicMetrics returns early without NPE.
+   * This happens in StatsHandler when storeName is null (request failed before store resolution).
+   * The critical error count and latency metrics are still captured by {@link ServerStatsContext#errorRequest},
+   * which resolves unknown stores to {@link ServerStatsContext#UNKNOWN_STORE_NAME}.
+   */
+  @Test
+  public void testRecordBasicMetricsWithNullStatsIsNoOp() {
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.OK);
+    context.setRequestKeyCount(10);
+    context.setRequestSize(512);
+    context.setResponseSize(256);
+    context.setFlushLatency(5.0);
+
+    // Should return early without NPE — no interactions to verify since stats is null
+    context.recordBasicMetrics(null);
   }
 
   /**
@@ -347,7 +391,7 @@ public class ServerStatsContextTest {
 
     verify(stats).recordFlushLatency(25.5);
     verify(stats).recordEarlyTerminatedEarlyRequest();
-    verify(stats).recordResponseSize(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 1024);
+    verify(stats).recordResponseSize(HttpResponseStatus.OK, OK_VENICE_STATUS, 1024);
   }
 
   /**
@@ -401,7 +445,7 @@ public class ServerStatsContextTest {
     context.recordBasicMetrics(stats);
 
     // Response size IS recorded (responseSize=50 > 0)
-    verify(stats).recordResponseSize(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 50);
+    verify(stats).recordResponseSize(HttpResponseStatus.OK, OK_VENICE_STATUS, 50);
     // Value size is NOT recorded (valueSize=0, guard in SingleGetResponseStats: valueSize > 0)
     verifyNoValueSizeRecording(stats);
   }
@@ -553,8 +597,7 @@ public class ServerStatsContextTest {
 
     // Error count and latency are still recorded in errorRequest
     context.errorRequest(stats, 8.0);
-    verify(stats).recordErrorRequest(ERROR_HTTP_STATUS, ERROR_HTTP_STATUS_CATEGORY, ERROR_VENICE_STATUS);
-    verify(stats).recordErrorRequestLatency(ERROR_HTTP_STATUS, ERROR_HTTP_STATUS_CATEGORY, ERROR_VENICE_STATUS, 8.0);
+    verify(stats).recordErrorRequestAndLatency(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE_STATUS, 8.0);
   }
 
   /**

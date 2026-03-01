@@ -112,8 +112,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_DCR_OPERATION:
           assertEquals(dimension.getDimensionName(format), "venice.dcr.operation");
           break;
-        case VENICE_WRITE_COMPUTE_OPERATION_PHASE:
-          assertEquals(dimension.getDimensionName(format), "venice.write_compute.operation_phase");
+        case VENICE_PARTIAL_UPDATE_OPERATION_PHASE:
+          assertEquals(dimension.getDimensionName(format), "venice.partial_update.operation_phase");
           break;
         case VENICE_RECORD_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.record.type");
@@ -237,8 +237,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_DCR_OPERATION:
           assertEquals(dimension.getDimensionName(format), "venice.dcr.operation");
           break;
-        case VENICE_WRITE_COMPUTE_OPERATION_PHASE:
-          assertEquals(dimension.getDimensionName(format), "venice.writeCompute.operationPhase");
+        case VENICE_PARTIAL_UPDATE_OPERATION_PHASE:
+          assertEquals(dimension.getDimensionName(format), "venice.partialUpdate.operationPhase");
           break;
         case VENICE_RECORD_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.record.type");
@@ -362,8 +362,8 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_DCR_OPERATION:
           assertEquals(dimension.getDimensionName(format), "Venice.Dcr.Operation");
           break;
-        case VENICE_WRITE_COMPUTE_OPERATION_PHASE:
-          assertEquals(dimension.getDimensionName(format), "Venice.WriteCompute.OperationPhase");
+        case VENICE_PARTIAL_UPDATE_OPERATION_PHASE:
+          assertEquals(dimension.getDimensionName(format), "Venice.PartialUpdate.OperationPhase");
           break;
         case VENICE_RECORD_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.Record.Type");

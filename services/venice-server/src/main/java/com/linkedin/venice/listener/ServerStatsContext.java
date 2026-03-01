@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeIntIfAbove;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.getVeniceResponseStatusCategory;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.RouterRequest;
@@ -8,8 +9,6 @@ import com.linkedin.venice.listener.response.stats.ReadResponseStatsRecorder;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
-import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
-import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
@@ -23,6 +22,14 @@ import io.netty.handler.codec.http.HttpResponseStatus;
  * direct copy of StatsHandler, without Netty Channel Read/Write logic.
  */
 public class ServerStatsContext {
+  /**
+   * Sentinel store name used when the actual store name is unknown (e.g., request failed before
+   * store resolution). Using a sentinel instead of {@code null} ensures both Tehuti and OTel
+   * metrics are recorded rather than otel getting silently dropped as otel needs non-null values
+   * for all dimensions rather than having a diff metric for such cases.
+   */
+  public static final String UNKNOWN_STORE_NAME = "unknown_store";
+
   private ReadResponseStatsRecorder responseStatsRecorder;
   private long startTimeInNS;
   private HttpResponseStatus responseStatus;
@@ -182,9 +189,13 @@ public class ServerStatsContext {
    * <p>{@code responseStatus} must be non-null when this method is called. Both callers enforce this:
    * {@link StatsHandler#write} throws {@link VeniceException} if responseStatus is null, and
    * {@link com.linkedin.venice.listener.grpc.handlers.GrpcOutboundStatsHandler#processRequest} does the same.
-   * The null guard below is purely defensive.
+   * The null guard on responseStatus below is purely defensive.
    *
-   * @param serverHttpRequestStats the per-store stats object; may be null if the store name is unknown
+   * @param serverHttpRequestStats the per-store stats object; may be null if the store name is unknown,
+   *        in which case this method is a no-op. This is acceptable because when the store is unknown the
+   *        request failed before store resolution, so most fields here (keyCount, requestSize, responseStats)
+   *        won't have meaningful values. The critical error count and latency metrics are still captured by
+   *        {@link #errorRequest}, which resolves unknown stores to {@link #UNKNOWN_STORE_NAME}.
    */
   public void recordBasicMetrics(ServerHttpRequestStats serverHttpRequestStats) {
     if (serverHttpRequestStats == null) {
@@ -204,21 +215,13 @@ public class ServerStatsContext {
 
     // Status-dependent metrics require responseStatus for OTel dimensions
     if (responseStatus != null) {
-      int statusCode = responseStatus.code();
-      HttpResponseStatusEnum statusEnum = HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum(statusCode);
-      HttpResponseStatusCodeCategory statusCategory =
-          HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory(statusCode);
-      // In Venice, NOT_FOUND (key absent) is a valid/expected response, not an error.
-      VeniceResponseStatusCategory veniceCategory =
-          (responseStatus.equals(HttpResponseStatus.OK) || responseStatus.equals(HttpResponseStatus.NOT_FOUND))
-              ? VeniceResponseStatusCategory.SUCCESS
-              : VeniceResponseStatusCategory.FAIL;
+      VeniceResponseStatusCategory veniceCategory = getVeniceResponseStatusCategory(responseStatus);
 
       if (this.responseStatsRecorder != null) {
-        this.responseStatsRecorder.recordMetrics(serverHttpRequestStats, statusEnum, statusCategory, veniceCategory);
+        this.responseStatsRecorder.recordMetrics(serverHttpRequestStats, responseStatus, veniceCategory);
       }
       if (responseSize >= 0) {
-        serverHttpRequestStats.recordResponseSize(statusEnum, statusCategory, veniceCategory, responseSize);
+        serverHttpRequestStats.recordResponseSize(responseStatus, veniceCategory, responseSize);
       }
     }
   }
@@ -234,41 +237,31 @@ public class ServerStatsContext {
       throw new VeniceException("response status could not be null");
     }
 
-    int statusCode = responseStatus.code();
-    HttpResponseStatusEnum statusEnum = HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum(statusCode);
-    HttpResponseStatusCodeCategory statusCategory =
-        HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory(statusCode);
-    VeniceResponseStatusCategory veniceCategory = VeniceResponseStatusCategory.SUCCESS;
-
-    stats.recordSuccessRequest(statusEnum, statusCategory, veniceCategory);
-    stats.recordSuccessRequestLatency(statusEnum, statusCategory, veniceCategory, elapsedTime);
+    stats.recordSuccessRequestAndLatency(responseStatus, VeniceResponseStatusCategory.SUCCESS, elapsedTime);
   }
 
+  /**
+   * Records error request metrics. When {@code stats} is null (store unknown), resolves a
+   * per-store stats object using {@link #UNKNOWN_STORE_NAME} so that both Tehuti and OTel
+   * metrics are recorded rather than OTel getting silently dropped.
+   *
+   * <p>This method does not have to be synchronized since Tehuti Sensor.record() is internally
+   * synchronized and OTel SDK recording methods are thread-safe. Please re-consider if new
+   * logic is added.
+   */
   public void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
+    if (stats == null) {
+      stats = currentStats.getStoreStats(UNKNOWN_STORE_NAME);
+    }
+
     if (responseStatus == null) {
       throw new VeniceException("response status could not be null");
     }
 
-    int statusCode = responseStatus.code();
-    HttpResponseStatusEnum statusEnum = HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum(statusCode);
-    HttpResponseStatusCodeCategory statusCategory =
-        HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory(statusCode);
-    VeniceResponseStatusCategory veniceCategory = VeniceResponseStatusCategory.FAIL;
-
-    if (stats == null) {
-      currentStats.recordErrorRequest(statusEnum, statusCategory, veniceCategory);
-      currentStats.recordErrorRequestLatency(statusEnum, statusCategory, veniceCategory, elapsedTime);
-      if (isMisroutedStoreVersion) {
-        // Tehuti-only: OTel captures this via READ_CALL_COUNT with HTTP 500 status dimension
-        currentStats.recordMisroutedStoreVersionRequest();
-      }
-    } else {
-      stats.recordErrorRequest(statusEnum, statusCategory, veniceCategory);
-      stats.recordErrorRequestLatency(statusEnum, statusCategory, veniceCategory, elapsedTime);
-      if (isMisroutedStoreVersion) {
-        // Tehuti-only: OTel captures this via READ_CALL_COUNT with HTTP 500 status dimension
-        stats.recordMisroutedStoreVersionRequest();
-      }
+    stats.recordErrorRequestAndLatency(responseStatus, VeniceResponseStatusCategory.FAIL, elapsedTime);
+    if (isMisroutedStoreVersion) {
+      // Tehuti-only: OTel captures this via READ_CALL_COUNT with HTTP 500 status dimension
+      stats.recordMisroutedStoreVersionRequest();
     }
   }
 
