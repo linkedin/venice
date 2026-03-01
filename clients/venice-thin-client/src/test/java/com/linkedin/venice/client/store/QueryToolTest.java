@@ -5,7 +5,13 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.client.store.predicate.DoublePredicate;
+import com.linkedin.venice.client.store.predicate.IntPredicate;
+import com.linkedin.venice.client.store.predicate.LongPredicate;
+import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Arrays;
 import java.util.Collections;
@@ -321,5 +327,70 @@ public class QueryToolTest {
     Map<String, String> flags = QueryTool.parseFlags(args, 5);
     assertEquals(flags.size(), 1);
     assertEquals(flags.get("real"), "yes");
+  }
+
+  // --- parseBucketPredicates tests ---
+
+  @Test
+  public void testParseBucketPredicatesIntOperators() {
+    Map<String, Predicate> predicates = QueryTool.parseBucketPredicates("high:gt:100,low:lte:100");
+    assertEquals(predicates.size(), 2);
+
+    Predicate high = predicates.get("high");
+    assertTrue(high instanceof IntPredicate);
+    assertTrue(high.evaluate(101));
+    assertFalse(high.evaluate(100));
+    assertFalse(high.evaluate(50));
+
+    Predicate low = predicates.get("low");
+    assertTrue(low instanceof IntPredicate);
+    assertTrue(low.evaluate(100));
+    assertTrue(low.evaluate(50));
+    assertFalse(low.evaluate(101));
+  }
+
+  @Test
+  public void testParseBucketPredicatesLongValues() {
+    // Value exceeds Integer.MAX_VALUE, should create LongPredicate
+    Map<String, Predicate> predicates = QueryTool.parseBucketPredicates("big:gte:3000000000");
+    assertEquals(predicates.size(), 1);
+
+    Predicate big = predicates.get("big");
+    assertTrue(big instanceof LongPredicate);
+    assertTrue(big.evaluate(3000000000L));
+    assertTrue(big.evaluate(4000000000L));
+    assertFalse(big.evaluate(2999999999L));
+  }
+
+  @Test
+  public void testParseBucketPredicatesDoubleValues() {
+    Map<String, Predicate> predicates = QueryTool.parseBucketPredicates("big:gt:99.5");
+    assertEquals(predicates.size(), 1);
+
+    Predicate big = predicates.get("big");
+    assertTrue(big instanceof DoublePredicate);
+    assertTrue(big.evaluate(100.0));
+    assertFalse(big.evaluate(99.5));
+    assertFalse(big.evaluate(50.0));
+  }
+
+  @Test
+  public void testParseBucketPredicatesStringEq() {
+    Map<String, Predicate> predicates = QueryTool.parseBucketPredicates("eng:eq:engineer");
+    assertEquals(predicates.size(), 1);
+
+    Predicate eng = predicates.get("eng");
+    assertTrue(eng.evaluate("engineer"));
+    assertFalse(eng.evaluate("manager"));
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testParseBucketPredicatesInvalidOperator() {
+    QueryTool.parseBucketPredicates("bad:foo:123");
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testParseBucketPredicatesInvalidFormat() {
+    QueryTool.parseBucketPredicates("missing_parts");
   }
 }
