@@ -106,24 +106,33 @@ public enum ServerReadOtelMetricEntity implements ModuleMetricEntityInterface {
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
 
-  STORAGE_ENGINE_QUERY_DESERIALIZATION_TIME(
-      "storage_engine.query.deserialization_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+  // Compute-only: VENICE_REQUEST_METHOD removed (always COMPUTE). VENICE_CHUNKING_STATUS retained
+  // because deserialization operates on potentially chunked values.
+  STORAGE_ENGINE_READ_COMPUTE_DESERIALIZATION_TIME(
+      "storage_engine.read.compute.deserialization_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Time spent deserializing values for read-compute operations",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_CHUNKING_STATUS)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_CHUNKING_STATUS)
   ),
 
-  // No VENICE_CHUNKING_STATUS: serialization happens after chunk reassembly, so chunking
-  // status is not relevant (unlike deserialization which operates on potentially chunked values).
-  STORAGE_ENGINE_QUERY_SERIALIZATION_TIME(
-      "storage_engine.query.serialization_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
-      "Time spent serializing results for read-compute operations",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
+  // Compute-only: serialization happens after chunk reassembly, so neither chunking status
+  // nor request method adds information.
+  STORAGE_ENGINE_READ_COMPUTE_SERIALIZATION_TIME(
+      "storage_engine.read.compute.serialization_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+      "Time spent serializing results for read-compute operations", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
   ),
 
-  STORAGE_ENGINE_COMPUTE_OPERATION_COUNT(
-      "storage_engine.read.compute.operation_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
-      "Count of read-compute operations by operation type",
+  STORAGE_ENGINE_READ_COMPUTE_EXECUTION_COUNT(
+      "storage_engine.read.compute.execution_count", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+      "Count of read-compute executions by operation type",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_READ_COMPUTE_OPERATION_TYPE)
+  ),
+
+  // Does not differentiate by VENICE_READ_COMPUTE_OPERATION_TYPE: ComputeUtils.computeResult()
+  // runs all operations in a single loop without per-operation timing. Add the dimension here
+  // and instrument per-operation timing in ComputeUtils if per-type latency breakdown is needed.
+  STORAGE_ENGINE_READ_COMPUTE_EXECUTION_TIME(
+      "storage_engine.read.compute.execution_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+      "Time spent executing read-compute operations", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
   ),
 
   READ_RESPONSE_FLUSH_TIME(

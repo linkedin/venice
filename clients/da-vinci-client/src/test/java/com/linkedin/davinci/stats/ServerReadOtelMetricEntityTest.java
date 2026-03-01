@@ -9,13 +9,14 @@ import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.READ_RESPONS
 import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.READ_RESPONSE_KEY_NOT_FOUND_COUNT;
 import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.READ_RESPONSE_SIZE;
 import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.READ_RESPONSE_VALUE_SIZE;
-import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.STORAGE_ENGINE_COMPUTE_OPERATION_COUNT;
 import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.STORAGE_ENGINE_QUERY_CHUNKED_VALUE_COUNT;
-import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.STORAGE_ENGINE_QUERY_DESERIALIZATION_TIME;
-import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.STORAGE_ENGINE_QUERY_SERIALIZATION_TIME;
 import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.STORAGE_ENGINE_QUERY_TIME;
 import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.STORAGE_ENGINE_QUEUE_SIZE;
 import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.STORAGE_ENGINE_QUEUE_WAIT_TIME;
+import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.STORAGE_ENGINE_READ_COMPUTE_DESERIALIZATION_TIME;
+import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.STORAGE_ENGINE_READ_COMPUTE_EXECUTION_COUNT;
+import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.STORAGE_ENGINE_READ_COMPUTE_EXECUTION_TIME;
+import static com.linkedin.davinci.stats.ServerReadOtelMetricEntity.STORAGE_ENGINE_READ_COMPUTE_SERIALIZATION_TIME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CHUNKING_STATUS;
@@ -38,7 +39,7 @@ import org.testng.annotations.Test;
 public class ServerReadOtelMetricEntityTest {
   @Test
   public void testMetricEntityCount() {
-    assertEquals(ServerReadOtelMetricEntity.values().length, 16, "Expected 16 metric entities");
+    assertEquals(ServerReadOtelMetricEntity.values().length, 17, "Expected 17 metric entities");
   }
 
   @Test
@@ -56,6 +57,11 @@ public class ServerReadOtelMetricEntityTest {
 
     Set<VeniceMetricsDimensions> storeClusterRequestTypeChunking =
         setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_CHUNKING_STATUS);
+
+    Set<VeniceMetricsDimensions> storeCluster = setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME);
+
+    Set<VeniceMetricsDimensions> storeClusterChunking =
+        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_CHUNKING_STATUS);
 
     Set<VeniceMetricsDimensions> storeClusterComputeOp =
         setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_READ_COMPUTE_OPERATION_TYPE);
@@ -136,19 +142,19 @@ public class ServerReadOtelMetricEntityTest {
         "Number of pending tasks in the storage execution handler queue",
         storeClusterRequestType);
     assertMetricEntity(
-        STORAGE_ENGINE_QUERY_DESERIALIZATION_TIME.getMetricEntity(),
-        "storage_engine.query.deserialization_time",
+        STORAGE_ENGINE_READ_COMPUTE_DESERIALIZATION_TIME.getMetricEntity(),
+        "storage_engine.read.compute.deserialization_time",
         MetricType.HISTOGRAM,
         MetricUnit.MILLISECOND,
         "Time spent deserializing values for read-compute operations",
-        storeClusterRequestTypeChunking);
+        storeClusterChunking);
     assertMetricEntity(
-        STORAGE_ENGINE_QUERY_SERIALIZATION_TIME.getMetricEntity(),
-        "storage_engine.query.serialization_time",
+        STORAGE_ENGINE_READ_COMPUTE_SERIALIZATION_TIME.getMetricEntity(),
+        "storage_engine.read.compute.serialization_time",
         MetricType.HISTOGRAM,
         MetricUnit.MILLISECOND,
         "Time spent serializing results for read-compute operations",
-        storeClusterRequestType);
+        storeCluster);
     assertMetricEntity(
         READ_RESPONSE_FLUSH_TIME.getMetricEntity(),
         "read.response.flush_time",
@@ -171,14 +177,21 @@ public class ServerReadOtelMetricEntityTest {
         "Per-request count of values requiring multi-chunk large value reassembly in the storage engine",
         storeClusterRequestType);
 
-    // 1-enum metric (compute op type)
+    // 1-enum metrics (compute op type)
     assertMetricEntity(
-        STORAGE_ENGINE_COMPUTE_OPERATION_COUNT.getMetricEntity(),
-        "storage_engine.read.compute.operation_count",
+        STORAGE_ENGINE_READ_COMPUTE_EXECUTION_COUNT.getMetricEntity(),
+        "storage_engine.read.compute.execution_count",
         MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
         MetricUnit.NUMBER,
-        "Count of read-compute operations by operation type",
+        "Count of read-compute executions by operation type",
         storeClusterComputeOp);
+    assertMetricEntity(
+        STORAGE_ENGINE_READ_COMPUTE_EXECUTION_TIME.getMetricEntity(),
+        "storage_engine.read.compute.execution_time",
+        MetricType.HISTOGRAM,
+        MetricUnit.MILLISECOND,
+        "Time spent executing read-compute operations",
+        storeCluster);
   }
 
   private static void assertMetricEntity(
