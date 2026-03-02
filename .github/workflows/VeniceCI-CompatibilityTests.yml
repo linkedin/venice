@@ -129,18 +129,12 @@ jobs:
       - name: Free up disk space in the background
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Compile and assemble
-        run: ./gradlew assemble --parallel --continue --no-daemon
-
-      - name: Build shadow jars and Docker images
+      - name: Build NAR, shadow jars, and Docker images
         shell: bash
         run: |
-          # Pulsar Docker image only needs the NAR from assemble — start it now in background
-          docker build --tag=pulsar/venice-test:latest-dev -f tests/docker-images/pulsar-sink/Dockerfile . &
-          pulsar_docker_pid=$!
-
-          # Build only the shadow jars needed for the 4 Docker images
-          ./gradlew --parallel --no-daemon \
+          # Single Gradle invocation: NAR for Pulsar connector + shadow jars for Venice Docker images
+          ./gradlew --parallel --build-cache --no-daemon \
+            :integrations:venice-pulsar:nar \
             :services:venice-controller:shadowJar \
             :services:venice-server:shadowJar \
             :services:venice-router:shadowJar \
@@ -149,12 +143,14 @@ jobs:
             :clients:venice-push-job:shadowJar \
             :clients:venice-client:shadowJar
 
-          # Build Venice Docker images (shadow jars now ready)
+          # Build Pulsar and Venice Docker images in parallel
+          docker build --tag=pulsar/venice-test:latest-dev -f tests/docker-images/pulsar-sink/Dockerfile . &
+          pulsar_docker_pid=$!
+
           cd docker
           ./build-venice-docker-images.sh venicedb latest-dev "venice-controller venice-server venice-router venice-client"
           cd ..
 
-          # Wait for Pulsar Docker image build
           wait $pulsar_docker_pid || { echo "Pulsar Docker build failed"; exit 1; }
 
       - name: Run the test
