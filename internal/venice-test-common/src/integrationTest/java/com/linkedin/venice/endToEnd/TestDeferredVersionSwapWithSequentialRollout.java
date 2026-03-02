@@ -42,6 +42,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -109,7 +110,14 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
       // Start push job with target region push enabled (in background since VPJ blocks until swap)
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, REGION1);
-      Thread vpjThread = new Thread(() -> IntegrationTestPushUtils.runVPJ(props));
+      AtomicReference<Throwable> vpjError = new AtomicReference<>();
+      Thread vpjThread = new Thread(() -> {
+        try {
+          IntegrationTestPushUtils.runVPJ(props);
+        } catch (Throwable t) {
+          vpjError.set(t);
+        }
+      });
       vpjThread.setDaemon(true);
       vpjThread.start();
       try {
@@ -123,6 +131,10 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
         assertDeferredSwapStages(parentControllerClient, storeName, 1, REGION1);
 
         vpjThread.join(30_000);
+        Assert.assertFalse(vpjThread.isAlive(), "VPJ thread did not terminate in time");
+        if (vpjError.get() != null) {
+          throw new AssertionError("VPJ background thread failed", vpjError.get());
+        }
       } finally {
         if (vpjThread.isAlive()) {
           vpjThread.interrupt();
@@ -164,7 +176,14 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
       // Start push job with target region push enabled (in background since VPJ blocks until swap)
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, REGION1);
-      Thread vpjThread = new Thread(() -> IntegrationTestPushUtils.runVPJ(props));
+      AtomicReference<Throwable> vpjError = new AtomicReference<>();
+      Thread vpjThread = new Thread(() -> {
+        try {
+          IntegrationTestPushUtils.runVPJ(props);
+        } catch (Throwable t) {
+          vpjError.set(t);
+        }
+      });
       vpjThread.setDaemon(true);
       vpjThread.start();
       try {
@@ -177,6 +196,7 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
         // Wait for target region to swap to v2
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
           Map<String, Integer> versions = getColoVersions(parentControllerClient, storeName);
+          Assert.assertNotNull(versions.get(REGION1), "Target region not yet in version map");
           Assert.assertEquals((int) versions.get(REGION1), 2, "Target region should have v2");
         });
 
@@ -200,6 +220,10 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
         });
 
         vpjThread.join(30_000);
+        Assert.assertFalse(vpjThread.isAlive(), "VPJ thread did not terminate in time");
+        if (vpjError.get() != null) {
+          throw new AssertionError("VPJ background thread failed", vpjError.get());
+        }
       } finally {
         if (vpjThread.isAlive()) {
           vpjThread.interrupt();
@@ -288,6 +312,7 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Map<String, Integer> versions = getColoVersions(parentControllerClient, storeName);
       for (String r: targetSet) {
+        Assert.assertNotNull(versions.get(r), "Region " + r + " not yet in version map");
         Assert.assertEquals(
             (int) versions.get(r),
             expectedVersion,
@@ -299,6 +324,7 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
     Map<String, Integer> versions = getColoVersions(parentControllerClient, storeName);
     for (String r: allRegions) {
       if (!targetSet.contains(r)) {
+        Assert.assertNotNull(versions.get(r), "Region " + r + " not in version map");
         Assert.assertEquals(
             (int) versions.get(r),
             previousVersion,
@@ -315,6 +341,7 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Map<String, Integer> v = getColoVersions(parentControllerClient, storeName);
       for (String r: allRegions) {
+        Assert.assertNotNull(v.get(r), "Region " + r + " not yet in version map");
         Assert.assertEquals(
             (int) v.get(r),
             expectedVersion,

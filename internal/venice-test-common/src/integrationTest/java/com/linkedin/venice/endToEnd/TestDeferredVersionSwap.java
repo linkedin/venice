@@ -39,6 +39,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -117,7 +118,14 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
 
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, targetRegions);
-      Thread vpjThread = new Thread(() -> IntegrationTestPushUtils.runVPJ(props));
+      AtomicReference<Throwable> vpjError = new AtomicReference<>();
+      Thread vpjThread = new Thread(() -> {
+        try {
+          IntegrationTestPushUtils.runVPJ(props);
+        } catch (Throwable t) {
+          vpjError.set(t);
+        }
+      });
       vpjThread.setDaemon(true);
       vpjThread.start();
       try {
@@ -132,6 +140,10 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
 
         // Wait for VPJ to complete naturally after swap release
         vpjThread.join(30_000);
+        Assert.assertFalse(vpjThread.isAlive(), "VPJ thread did not terminate in time");
+        if (vpjError.get() != null) {
+          throw new AssertionError("VPJ background thread failed", vpjError.get());
+        }
       } finally {
         if (vpjThread.isAlive()) {
           vpjThread.interrupt();
@@ -159,7 +171,14 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
 
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, REGION1);
-      Thread vpjThread = new Thread(() -> IntegrationTestPushUtils.runVPJ(props));
+      AtomicReference<Throwable> vpjError = new AtomicReference<>();
+      Thread vpjThread = new Thread(() -> {
+        try {
+          IntegrationTestPushUtils.runVPJ(props);
+        } catch (Throwable t) {
+          vpjError.set(t);
+        }
+      });
       vpjThread.setDaemon(true);
       vpjThread.start();
       try {
@@ -186,6 +205,10 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
         assertDeferredSwapStages(parentControllerClient, storeName, 1, REGION1);
 
         vpjThread.join(30_000);
+        Assert.assertFalse(vpjThread.isAlive(), "VPJ thread did not terminate in time");
+        if (vpjError.get() != null) {
+          throw new AssertionError("VPJ background thread failed", vpjError.get());
+        }
       } finally {
         if (vpjThread.isAlive()) {
           vpjThread.interrupt();
@@ -231,7 +254,14 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
       // Start push job with target region push enabled (in background since VPJ blocks until swap)
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, REGION1);
-      Thread vpjThread = new Thread(() -> IntegrationTestPushUtils.runVPJ(props));
+      AtomicReference<Throwable> vpjError = new AtomicReference<>();
+      Thread vpjThread = new Thread(() -> {
+        try {
+          IntegrationTestPushUtils.runVPJ(props);
+        } catch (Throwable t) {
+          vpjError.set(t);
+        }
+      });
       vpjThread.setDaemon(true);
       vpjThread.start();
       try {
@@ -254,6 +284,7 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
           // Wait for target region to swap to v2 (DeferredVersionSwapService processes target first)
           TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
             Map<String, Integer> versions = getColoVersions(parentControllerClient, storeName);
+            Assert.assertNotNull(versions.get(REGION1), "Target region not yet in version map");
             Assert.assertEquals((int) versions.get(REGION1), 2, "Target region should have v2");
           });
 
@@ -279,6 +310,10 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
         }
 
         vpjThread.join(30_000);
+        Assert.assertFalse(vpjThread.isAlive(), "VPJ thread did not terminate in time");
+        if (vpjError.get() != null) {
+          throw new AssertionError("VPJ background thread failed", vpjError.get());
+        }
       } finally {
         if (vpjThread.isAlive()) {
           vpjThread.interrupt();
@@ -307,6 +342,7 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Map<String, Integer> versions = getColoVersions(parentControllerClient, storeName);
       for (String r: targetSet) {
+        Assert.assertNotNull(versions.get(r), "Region " + r + " not yet in version map");
         Assert.assertEquals(
             (int) versions.get(r),
             expectedVersion,
@@ -318,6 +354,7 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
     Map<String, Integer> versions = getColoVersions(parentControllerClient, storeName);
     for (String r: allRegions) {
       if (!targetSet.contains(r)) {
+        Assert.assertNotNull(versions.get(r), "Region " + r + " not in version map");
         Assert.assertEquals(
             (int) versions.get(r),
             previousVersion,
@@ -334,6 +371,7 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Map<String, Integer> v = getColoVersions(parentControllerClient, storeName);
       for (String r: allRegions) {
+        Assert.assertNotNull(v.get(r), "Region " + r + " not yet in version map");
         Assert.assertEquals(
             (int) v.get(r),
             expectedVersion,
@@ -371,7 +409,14 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
       String storeName,
       int version,
       ControllerClient parentControllerClient) throws Exception {
-    Thread vpjThread = new Thread(() -> IntegrationTestPushUtils.runVPJ(props));
+    AtomicReference<Throwable> vpjError = new AtomicReference<>();
+    Thread vpjThread = new Thread(() -> {
+      try {
+        IntegrationTestPushUtils.runVPJ(props);
+      } catch (Throwable t) {
+        vpjError.set(t);
+      }
+    });
     vpjThread.setDaemon(true);
     vpjThread.start();
     try {
@@ -381,6 +426,10 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
           90,
           TimeUnit.SECONDS);
       vpjThread.join(30_000);
+      Assert.assertFalse(vpjThread.isAlive(), "VPJ thread did not terminate in time");
+      if (vpjError.get() != null) {
+        throw new AssertionError("VPJ background thread failed", vpjError.get());
+      }
     } finally {
       if (vpjThread.isAlive()) {
         vpjThread.interrupt();
