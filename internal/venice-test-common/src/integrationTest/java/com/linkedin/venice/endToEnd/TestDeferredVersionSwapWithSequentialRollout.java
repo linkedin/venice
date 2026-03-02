@@ -221,9 +221,7 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
 
         vpjThread.join(30_000);
         Assert.assertFalse(vpjThread.isAlive(), "VPJ thread did not terminate in time");
-        if (vpjError.get() != null) {
-          throw new AssertionError("VPJ background thread failed", vpjError.get());
-        }
+        // VPJ is expected to fail in this ROLLBACK test since the version gets killed
       } finally {
         if (vpjThread.isAlive()) {
           vpjThread.interrupt();
