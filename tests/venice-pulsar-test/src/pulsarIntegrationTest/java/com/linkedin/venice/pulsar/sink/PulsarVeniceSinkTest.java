@@ -156,6 +156,15 @@ public class PulsarVeniceSinkTest {
     updateVeniceStoreQuotas(veniceControllerUrl, jar, clusterName, storeName);
     initVeniceStore(veniceControllerUrl, jar, clusterName, storeName);
 
+    // Wait for the store to become queryable before proceeding
+    LOGGER.info("Waiting for Venice store to be ready");
+    String readinessCmd = "java -jar " + jar + " --describe-store --url " + veniceControllerUrl + " --cluster "
+        + clusterName + " --store " + storeName;
+    Awaitility.await().atMost(30, TimeUnit.SECONDS).pollInterval(2, TimeUnit.SECONDS).untilAsserted(() -> {
+      ExecResult res = execByService("venice-client", "bash", "-c", readinessCmd);
+      assertTrue(res.getStdout().contains(storeName), "Store not yet ready");
+    });
+
     LOGGER.info("Setting up Pulsar");
     createNamespace();
     setRetention();

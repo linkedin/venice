@@ -9,6 +9,15 @@ repository="${1:-venicedb}"
 oss_release="${2:-$(git describe --tags --always 2>/dev/null || echo dev)}"
 read -ra targets <<< "${3:-venice-controller venice-server venice-router venice-client venice-client-jupyter}"
 
+# Validate targets against known set
+known_targets="venice-controller venice-server venice-router venice-client venice-client-jupyter"
+for target in "${targets[@]}"; do
+  if [[ ! " $known_targets " =~ " $target " ]]; then
+    echo "ERROR: Unknown target '$target'. Valid targets: $known_targets" >&2
+    exit 1
+  fi
+done
+
 # Check whether all required shadow jars for the selected targets already exist
 need_shadowjar=false
 for target in "${targets[@]}"; do
