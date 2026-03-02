@@ -54,7 +54,7 @@ jobs:
             --json databaseId \
             -q '.[0].databaseId')
 
-          if [ -z "$RUN_ID" ]; then
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
             echo "ERROR: No successful E2E workflow run found."
             exit 1
           fi
