@@ -181,7 +181,9 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
         });
 
         // Release wait time so DeferredVersionSwapService fires -> lifecycle hooks return ROLLBACK
-        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
+        ControllerResponse updateResp =
+            parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
+        Assert.assertFalse(updateResp.isError(), "Failed to update targetRegionSwapWaitTime: " + updateResp.getError());
 
         // Verify version 2 is killed (rollback)
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
@@ -226,7 +228,9 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
       parentControllerClient.emptyPush(storeName, "test", 100000);
 
       // Release the swap wait time so DeferredVersionSwapService fires as soon as ingestion completes
-      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
+      ControllerResponse updateResp =
+          parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
+      Assert.assertFalse(updateResp.isError(), "Failed to update targetRegionSwapWaitTime: " + updateResp.getError());
 
       // Wait for all regions to converge to version 1
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
@@ -382,24 +386,25 @@ public class TestDeferredVersionSwapWithSequentialRollout extends AbstractMultiR
         dc1Cluster.stopVeniceController(controllerPort);
         dc1Cluster.restartVeniceController(controllerPort);
 
-        // Wait for controller to be ready
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          StoreResponse storeResponse =
-              new ControllerClient(CLUSTER_NAMES[0], dc1Region.getControllerConnectString()).getStore(storeName);
-          Assert.assertFalse(storeResponse.isError(), "Controller not ready: " + storeResponse.getError());
-        });
+        // Wait for controller to be ready and verify version status is still PUSHED after restart
+        try (ControllerClient dc1PostRestartClient =
+            new ControllerClient(CLUSTER_NAMES[0], dc1Region.getControllerConnectString())) {
+          TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            StoreResponse storeResponse = dc1PostRestartClient.getStore(storeName);
+            Assert.assertFalse(storeResponse.isError(), "Controller not ready: " + storeResponse.getError());
+          });
 
-        // Verify version status is still PUSHED in dc-1 AFTER controller restart
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-          StoreResponse storeResponse =
-              new ControllerClient(CLUSTER_NAMES[0], dc1Region.getControllerConnectString()).getStore(storeName);
-          Assert.assertFalse(storeResponse.isError(), "Failed to get store: " + storeResponse.getError());
-          StoreInfo storeInfo = storeResponse.getStore();
-          Optional<Version> versionOpt = storeInfo.getVersion(1);
-          Assert.assertTrue(versionOpt.isPresent(), "Version 1 should exist");
-          VersionStatus statusAfterRestart = versionOpt.get().getStatus();
-          Assert.assertEquals(statusAfterRestart, VersionStatus.PUSHED);
-        });
+          // Verify version status is still PUSHED in dc-1 AFTER controller restart
+          TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+            StoreResponse storeResponse = dc1PostRestartClient.getStore(storeName);
+            Assert.assertFalse(storeResponse.isError(), "Failed to get store: " + storeResponse.getError());
+            StoreInfo storeInfo = storeResponse.getStore();
+            Optional<Version> versionOpt = storeInfo.getVersion(1);
+            Assert.assertTrue(versionOpt.isPresent(), "Version 1 should exist");
+            VersionStatus statusAfterRestart = versionOpt.get().getStatus();
+            Assert.assertEquals(statusAfterRestart, VersionStatus.PUSHED);
+          });
+        }
 
       }
     }

@@ -177,9 +177,10 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
 
         for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
           VeniceHelixAdmin childAdmin = childDatacenter.getLeaderController(CLUSTER_NAMES[0]).getVeniceHelixAdmin();
-          ControllerClient childControllerClient =
-              new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
-          updateVersionStatus(childAdmin, storeName, VersionStatus.ONLINE, childControllerClient);
+          try (ControllerClient childControllerClient =
+              new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString())) {
+            updateVersionStatus(childAdmin, storeName, VersionStatus.ONLINE, childControllerClient);
+          }
         }
 
         assertDeferredSwapStages(parentControllerClient, storeName, 1, REGION1);
@@ -223,7 +224,9 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
       runVPJInBackground(props, storeName, 1, parentControllerClient);
 
       // Set targetRegionSwapWaitTime after first push so it doesn't interfere with non-targeted push
-      parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(60));
+      ControllerResponse updateResp =
+          parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(60));
+      Assert.assertFalse(updateResp.isError(), "Failed to set targetRegionSwapWaitTime: " + updateResp.getError());
 
       // Start push job with target region push enabled (in background since VPJ blocks until swap)
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
@@ -256,7 +259,11 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
 
           // Release wait time so DeferredVersionSwapService fires immediately
           // -> lifecycle hooks return ROLLBACK -> version killed
-          parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
+          ControllerResponse rollbackResp = parentControllerClient
+              .updateStore(storeName, new UpdateStoreQueryParams().setTargetRegionSwapWaitTime(0));
+          Assert.assertFalse(
+              rollbackResp.isError(),
+              "Failed to update targetRegionSwapWaitTime: " + rollbackResp.getError());
 
           TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
             StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();

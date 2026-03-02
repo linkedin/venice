@@ -151,12 +151,13 @@ public class TestDeferredVersionSwapDvc {
 
       // Check that child version status is marked as ONLINE if it didn't fail
       for (VeniceMultiClusterWrapper childDatacenter: multiRegionMultiClusterWrapper.getChildRegions()) {
-        ControllerClient childControllerClient =
-            new ControllerClient(srcClusterName, childDatacenter.getControllerConnectString());
-        StoreResponse store = childControllerClient.getStore(storeName);
-        Optional<Version> version = store.getStore().getVersion(1);
-        assertNotNull(version);
-        assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
+        try (ControllerClient childControllerClient =
+            new ControllerClient(srcClusterName, childDatacenter.getControllerConnectString())) {
+          StoreResponse store = childControllerClient.getStore(storeName);
+          Optional<Version> version = store.getStore().getVersion(1);
+          assertNotNull(version);
+          assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
+        }
       }
     }
 
@@ -199,6 +200,8 @@ public class TestDeferredVersionSwapDvc {
                 .getInnerStoreClient();
         Assert.assertTrue(castClient.toString().contains(destD2ServiceName));
       });
+    } finally {
+      D2TestUtils.shutdownD2Client(d2Client);
     }
   }
 
@@ -237,8 +240,7 @@ public class TestDeferredVersionSwapDvc {
       });
     }
 
-    verifyThatPushStatusStoreIsOnline(storeName);
-    verifyThatMetaStoreIsOnline(storeName);
+    verifySystemStoresAreOnline(storeName);
 
     // Create dvc client in target region
     List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
@@ -314,29 +316,23 @@ public class TestDeferredVersionSwapDvc {
     }
   }
 
-  private void verifyThatPushStatusStoreIsOnline(String storeName) {
+  private void verifySystemStoresAreOnline(String storeName) {
+    String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
-      String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
-      ControllerClient childControllerClient =
-          new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = childControllerClient.getStore(pushStatusStoreName);
-        Assert.assertFalse(storeResponse.isError());
-        Assert.assertTrue(storeResponse.getStore().getCurrentVersion() > 0, pushStatusStoreName + " is not ready");
-      });
-    }
-  }
-
-  private void verifyThatMetaStoreIsOnline(String storeName) {
-    for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
-      String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-      ControllerClient childControllerClient =
-          new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = childControllerClient.getStore(metaStoreName);
-        Assert.assertFalse(storeResponse.isError());
-        Assert.assertTrue(storeResponse.getStore().getCurrentVersion() > 0, metaStoreName + " is not ready");
-      });
+      try (ControllerClient childControllerClient =
+          new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString())) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(pushStatusStoreName);
+          Assert.assertFalse(storeResponse.isError());
+          Assert.assertTrue(storeResponse.getStore().getCurrentVersion() > 0, pushStatusStoreName + " is not ready");
+        });
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(metaStoreName);
+          Assert.assertFalse(storeResponse.isError());
+          Assert.assertTrue(storeResponse.getStore().getCurrentVersion() > 0, metaStoreName + " is not ready");
+        });
+      }
     }
   }
 }
