@@ -1,0 +1,121 @@
+# Automated CI shard rebalancing
+#
+# Downloads test timing data from the latest successful E2E test run and
+# re-packs shards using First-Fit Decreasing bin-packing to keep each
+# shard under the target time (~10 min).  If the assignments change, a
+# PR is opened automatically.
+#
+# Schedule: Monday 6 AM UTC (~10 PM–1 AM Sunday US time zones)
+
+name: Rebalance CI Shards
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Monday 6 AM UTC
+  workflow_dispatch:       # Allow manual triggering
+
+jobs:
+  rebalance:
+    name: Rebalance CI Shards
+    runs-on: ubuntu-latest
+    if: github.repository == 'linkedin/venice'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: 17
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Download timing data from latest successful E2E run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Finding latest successful E2E workflow run..."
+          RUN_ID=$(gh run list \
+            --workflow=VeniceCI-E2ETests.yml \
+            --branch=main \
+            --status=success \
+            --limit=1 \
+            --json databaseId \
+            -q '.[0].databaseId')
+
+          if [ -z "$RUN_ID" ]; then
+            echo "ERROR: No successful E2E workflow run found."
+            exit 1
+          fi
+
+          echo "Downloading timing artifacts from run $RUN_ID..."
+          mkdir -p timing-data
+          gh run download "$RUN_ID" --pattern 'test-timing-*' --dir timing-data/
+
+          echo "Downloaded timing data:"
+          find timing-data -type f -name '*.json' | head -60
+
+      - name: Run rebalance script
+        run: |
+          python scripts/ci/rebalance_test_shards.py \
+            --timing-dir timing-data/ \
+            --timing-overrides scripts/ci/timing-overrides.json \
+            --target-time 600
+
+      - name: Regenerate CI workflow
+        run: ./gradlew generateGHCI
+
+      - name: Check for changes
+        id: check-changes
+        run: |
+          if git diff --quiet internal/venice-test-common/test-shard-assignments.json .github/workflows/VeniceCI-E2ETests.yml; then
+            echo "No shard assignment changes detected."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Shard assignments changed — will create PR."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create PR with updated shard assignments
+        if: steps.check-changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="auto/rebalance-ci-shards-$(date +%Y%m%d)"
+
+          git checkout -b "$BRANCH"
+          git add internal/venice-test-common/test-shard-assignments.json
+          git add .github/workflows/VeniceCI-E2ETests.yml
+          git commit -m "[CI] Rebalance integration test shards (automated)"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "[CI] Rebalance integration test shards" \
+            --body "$(cat <<'BODY'
+          ## Summary
+          - Automated weekly rebalance of CI integration test shards
+          - Uses timing data from the latest successful E2E workflow run
+          - Target: ~10 min per shard (600s + fork overhead)
+
+          ## How this works
+          The `rebalance-ci-shards` workflow downloads test timing artifacts
+          uploaded by each E2E shard, then runs `scripts/ci/rebalance_test_shards.py`
+          to re-pack shards using First-Fit Decreasing bin-packing.
+
+          ## Test plan
+          - [ ] CI E2E shards pass — all tests discovered and run
+          - [ ] No test class appears in shard 99 (catch-all) that should be in a named shard
+          BODY
+          )" \
+            --base main \
+            --head "$BRANCH"
