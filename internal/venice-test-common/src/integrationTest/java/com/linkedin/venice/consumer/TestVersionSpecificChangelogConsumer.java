@@ -64,6 +64,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
@@ -187,6 +188,8 @@ public class TestVersionSpecificChangelogConsumer {
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+    // Capture timestamp before consumer initialization to validate sequence IDs
+    long initTimestampNs = Utils.getCurrentTimeInNanosForSeeding();
     VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
     testCloseables.add(changeLogConsumer);
@@ -201,7 +204,8 @@ public class TestVersionSpecificChangelogConsumer {
         numKeys,
         createControlMessageCountMap(partitionCount, 0),
         partitionCount,
-        false);
+        false,
+        initTimestampNs);
 
     // Restart client to ensure it seeks to the beginning of the topic and all record metadata is available
     changeLogConsumer.close();
@@ -244,6 +248,7 @@ public class TestVersionSpecificChangelogConsumer {
 
     // Restart a new client
     changeLogConsumer.close();
+    long newClientTimestampNs = Utils.getCurrentTimeInNanosForSeeding();
     VeniceChangelogConsumer<Integer, Utf8> newChangeLogConsumer =
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true);
     testCloseables.add(newChangeLogConsumer);
@@ -256,7 +261,8 @@ public class TestVersionSpecificChangelogConsumer {
         numKeys,
         createControlMessageCountMap(partitionCount, partitionCount),
         partitionCount,
-        true);
+        true,
+        newClientTimestampNs);
 
     // Push version 3 with deferred version swap and subscribe to the future version
     newChangeLogConsumer.close();
@@ -271,20 +277,22 @@ public class TestVersionSpecificChangelogConsumer {
         90,
         TimeUnit.SECONDS);
 
+    long v3ConsumerTimestampNs = Utils.getCurrentTimeInNanosForSeeding();
     VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer3 =
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, version, true);
     testCloseables.add(changeLogConsumer3);
     changeLogConsumer3.subscribeAll().get();
 
     // Client should see version 3 data
-    // 3 EOP for v3; and 3 VS for v1->v2
+    // 3 EOP for v3; and 3 VS messages for v3 since we already waited for v3 to complete and become current
     pollAndVerify(
         changeLogConsumer3,
         3,
         numKeys,
         createControlMessageCountMap(partitionCount, partitionCount),
         partitionCount,
-        true);
+        true,
+        v3ConsumerTimestampNs);
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
@@ -380,16 +388,37 @@ public class TestVersionSpecificChangelogConsumer {
       HashMap<Integer, Integer> expectedControlMessagesCountPerType,
       int partitionCount,
       boolean verifyHeartbeatMessages) throws InterruptedException {
+    pollAndVerify(
+        changeLogConsumer,
+        version,
+        expectedNumMessages,
+        expectedControlMessagesCountPerType,
+        partitionCount,
+        verifyHeartbeatMessages,
+        -1L);
+  }
+
+  private void pollAndVerify(
+      VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer,
+      int version,
+      int expectedNumMessages,
+      HashMap<Integer, Integer> expectedControlMessagesCountPerType,
+      int partitionCount,
+      boolean verifyHeartbeatMessages,
+      long initializationTimestampNs) throws InterruptedException {
     Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap();
     Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> controlMessageMap = new HashMap();
     Map<Integer, Long> heartbeatTimestampMap = new HashMap<>();
+    Map<Integer, List<Long>> partitionToSequenceIdList = new HashMap<>();
+    // AtomicInteger so it accumulates across retries inside waitForNonDeterministicAssertion rather than
+    // resetting to 0 each retry and overwriting earlier entries in controlMessageMap.
+    AtomicInteger controlMessagesCount = new AtomicInteger(0);
 
     int expectedTotalControlMessageCount =
         expectedControlMessagesCountPerType.values().stream().mapToInt(Integer::intValue).sum();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
           changeLogConsumer.poll(1000);
-      int controlMessagesCount = 0;
       for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
         if (message.getKey() != null) {
           pubSubMessagesMap.put(message.getKey(), message);
@@ -400,10 +429,11 @@ public class TestVersionSpecificChangelogConsumer {
           if (controlMessage.getControlMessageType() == ControlMessageType.START_OF_SEGMENT.getValue()) {
             heartbeatTimestampMap.put(message.getPartition(), message.getPubSubMessageTime());
           } else {
-            controlMessageMap.put(controlMessagesCount, message);
-            controlMessagesCount++;
+            controlMessageMap.put(controlMessagesCount.getAndIncrement(), message);
           }
         }
+        partitionToSequenceIdList.computeIfAbsent(message.getPartition(), k -> new ArrayList<>())
+            .add(message.getPosition().getConsumerSequenceId());
       }
       assertEquals(pubSubMessagesMap.size(), expectedNumMessages);
       assertEquals(controlMessageMap.size(), expectedTotalControlMessageCount);
@@ -417,6 +447,29 @@ public class TestVersionSpecificChangelogConsumer {
       assertNotNull(message.getPosition());
       assertTrue(message.getWriterSchemaId() > 0);
       assertNotNull(message.getReplicationMetadataPayload());
+    }
+
+    // Verify sequence IDs are monotonically increasing per partition
+    for (int i = 0; i < partitionCount; i++) {
+      List<Long> sequenceIdList = partitionToSequenceIdList.get(i);
+      // Verify the first sequence id is greater than initializationTimestampNs
+      long firstSequenceId = sequenceIdList.get(0);
+      assertTrue(
+          firstSequenceId >= initializationTimestampNs,
+          String.format(
+              "First sequence id: %s, initializationTimestampNs: %s",
+              firstSequenceId,
+              initializationTimestampNs));
+      for (int j = 1; j < sequenceIdList.size(); j++) {
+        assertTrue(
+            sequenceIdList.get(j) > sequenceIdList.get(j - 1),
+            String.format(
+                "Message: %s, sequence id: %s, message: %s, sequence id: %s",
+                j,
+                sequenceIdList.get(j),
+                j - 1,
+                sequenceIdList.get(j - 1)));
+      }
     }
 
     int endOfPushCount = 0;

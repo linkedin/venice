@@ -12,6 +12,7 @@ import static com.linkedin.venice.utils.IntegrationTestChunkingUtils.validateVal
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithoutFlush;
 import static com.linkedin.venice.utils.IntegrationTestReadUtils.readValue;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
@@ -35,6 +36,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -44,11 +46,22 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -61,11 +74,15 @@ import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.File;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -82,6 +99,14 @@ import org.testng.annotations.Test;
  */
 public class PartialUpdateTest extends AbstractMultiRegionTest {
   private static final int TEST_TIMEOUT_MS = 180_000;
+  private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
+
+  @Override
+  protected Properties getExtraServerProperties() {
+    Properties properties = new Properties();
+    properties.setProperty(ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, "true");
+    return properties;
+  }
 
   /**
    * This integration test verifies that in A/A + partial update enabled store, UPDATE on a key that was written in the
@@ -501,6 +526,226 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
     String metricName = AbstractVeniceStats.getSensorFullName(storeName, ASSEMBLED_RMD_SIZE_IN_BYTES) + ".Max";
     double assembledRmdSize = MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
     assertTrue(assembledRmdSize >= 290000 && assembledRmdSize <= 740000);
+  }
+
+  /**
+   * Verifies that orphan chunks from previous updates are properly deleted when multiple same-key
+   * updates arrive in the same consumer poll and are processed by IngestionBatchProcessor.
+   *
+   * The fix under test is {@code linkBackManifestFromTransientRecord}: when the 1st batch update
+   * produces a new chunked value (M2), the 2nd batch update must know about M2's chunks so it can
+   * delete them. Without the fix, only M1's chunks (from before the batch) would be deleted; with
+   * the fix, M2's intermediate chunks are also deleted.
+   *
+   * We verify this by consuming the version topic and counting chunk DELETE records produced during
+   * the batch window. With the fix, the total chunk DELETEs must exceed M1's chunk count (because
+   * M2's chunks are also deleted by the 2nd update).
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS * 3)
+  public void testBatchProcessorOrphanChunkDeletion() throws Exception {
+    final String storeName = Utils.getUniqueString("orphanChunk");
+    String parentControllerUrl = getParentControllerUrl();
+    String keySchemaStr = "{\"type\" : \"string\"}";
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+    Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setWriteComputationEnabled(true)
+              .setActiveActiveReplicationEnabled(true)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    VeniceClusterWrapper veniceCluster = getClusterDC0();
+
+    String key = "key1";
+    String primitiveFieldName = "name";
+    String listFieldName = "floatArray";
+    // Each update adds 10000 floats (~40KB). We need enough updates so the assembled value exceeds
+    // the 950KB chunking threshold. 30 updates * 10000 floats * 4 bytes = ~1.2MB, safely above threshold.
+    int singleUpdateEntryCount = 10000;
+    int initialUpdateCount = 30;
+
+    try (VeniceSystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+        AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+
+      // Step 1: Send enough flushed updates to build a chunked value.
+      for (int i = 0; i < initialUpdateCount; i++) {
+        producePartialUpdateToArray(
+            storeName,
+            veniceProducer,
+            partialUpdateSchema,
+            key,
+            primitiveFieldName,
+            listFieldName,
+            singleUpdateEntryCount,
+            i);
+      }
+
+      // Verify all initial updates are visible.
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, true, () -> {
+        try {
+          GenericRecord valueRecord = readValue(storeReader, key);
+          assertNotNull(valueRecord, "Value should not be null after initial updates");
+          assertEquals(valueRecord.get(primitiveFieldName).toString(), "Tottenham");
+          assertEquals(
+              ((List<Float>) (valueRecord.get(listFieldName))).size(),
+              initialUpdateCount * singleUpdateEntryCount);
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+      // Step 2: Capture old manifests (M1) — value should now be chunked.
+      String kafkaTopic_v1 = Version.composeKafkaTopic(storeName, 1);
+      VeniceServerWrapper serverWrapper = multiRegionMultiClusterWrapper.getChildRegions()
+          .get(0)
+          .getClusters()
+          .get(CLUSTER_NAME)
+          .getVeniceServers()
+          .get(0);
+      StorageEngine storageEngine = serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic_v1);
+      ChunkedValueManifest oldValueManifest = getChunkValueManifest(storageEngine, 0, key, false);
+      ChunkedValueManifest oldRmdManifest = getChunkValueManifest(storageEngine, 0, key, true);
+      assertNotNull(oldValueManifest, "Value should be chunked after initial updates exceed chunk threshold");
+      int m1ChunkCount = oldValueManifest.keysWithChunkIdSuffix.size()
+          + (oldRmdManifest == null ? 0 : oldRmdManifest.keysWithChunkIdSuffix.size());
+
+      // Step 3: Record the VT end position before the batch so we can isolate batch-produced records.
+      PubSubBrokerWrapper pubSubBrokerWrapper = veniceCluster.getPubSubBrokerWrapper();
+      PubSubTopicPartition vtPartition =
+          new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic(kafkaTopic_v1), 0);
+      Properties consumerProps = new Properties();
+      consumerProps.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
+      PubSubPosition preBatchVtEndPosition;
+      try (PubSubConsumerAdapter offsetConsumer = pubSubBrokerWrapper.getPubSubClientsFactory()
+          .getConsumerAdapterFactory()
+          .create(
+              new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(consumerProps))
+                  .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+                  .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+                  .setConsumerName("offsetProbe")
+                  .build())) {
+        preBatchVtEndPosition =
+            offsetConsumer.endPositions(Collections.singletonList(vtPartition), Duration.ofSeconds(10))
+                .get(vtPartition);
+        assertNotNull(preBatchVtEndPosition, "VT should have records after initial updates");
+      }
+
+      // Step 4: Send 2 updates WITHOUT flush — they buffer in the Samza producer.
+      producePartialUpdateToArrayWithoutFlush(
+          storeName,
+          veniceProducer,
+          partialUpdateSchema,
+          key,
+          primitiveFieldName,
+          listFieldName,
+          singleUpdateEntryCount,
+          initialUpdateCount);
+      producePartialUpdateToArrayWithoutFlush(
+          storeName,
+          veniceProducer,
+          partialUpdateSchema,
+          key,
+          primitiveFieldName,
+          listFieldName,
+          singleUpdateEntryCount,
+          initialUpdateCount + 1);
+
+      // Step 5: Flush — both records hit Kafka RT together, enter IngestionBatchProcessor path.
+      veniceProducer.flush(storeName);
+
+      // Step 6: Verify client sees the cumulative result of all updates.
+      int totalUpdateCount = initialUpdateCount + 2;
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, () -> {
+        try {
+          GenericRecord valueRecord = readValue(storeReader, key);
+          assertNotNull(valueRecord, "Value should not be null after all updates");
+          assertEquals(valueRecord.get(primitiveFieldName).toString(), "Tottenham");
+          assertEquals(
+              ((List<Float>) (valueRecord.get(listFieldName))).size(),
+              totalUpdateCount * singleUpdateEntryCount);
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+      // Step 7: Consume VT from the pre-batch offset and count chunk DELETE records.
+      // VeniceWriter produces a DELETE to the VT for each old chunk key it cleans up.
+      // With the fix: both batch updates delete old chunks (M1 + intermediate M2).
+      // Without the fix: only the first batch update deletes old chunks (M1 only).
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        int chunkDeleteCount = 0;
+        try (PubSubConsumerAdapter vtConsumer = pubSubBrokerWrapper.getPubSubClientsFactory()
+            .getConsumerAdapterFactory()
+            .create(
+                new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(consumerProps))
+                    .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+                    .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+                    .setConsumerName("chunkDeleteCounter")
+                    .build())) {
+          vtConsumer.subscribe(vtPartition, preBatchVtEndPosition);
+          Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = vtConsumer.poll(30 * Time.MS_PER_SECOND);
+          for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messages.entrySet()) {
+            for (DefaultPubSubMessage msg: entry.getValue()) {
+              if (msg.getKey().isControlMessage()) {
+                continue;
+              }
+              KafkaMessageEnvelope envelope = msg.getValue();
+              if (MessageType.valueOf(envelope) == MessageType.DELETE) {
+                chunkDeleteCount++;
+              }
+            }
+          }
+        }
+        // With the fix, there must be MORE chunk DELETEs than just M1's chunks, because the 2nd
+        // batch update also deletes the intermediate M2's chunks via linkBackManifestFromTransientRecord.
+        assertTrue(
+            chunkDeleteCount > m1ChunkCount,
+            "Expected chunk DELETE count (" + chunkDeleteCount + ") to exceed M1 chunk count (" + m1ChunkCount
+                + "). The 2nd batch update should also delete intermediate chunks from the 1st batch update.");
+      });
+    }
+  }
+
+  private void producePartialUpdateToArrayWithoutFlush(
+      String storeName,
+      SystemProducer veniceProducer,
+      Schema partialUpdateSchema,
+      String key,
+      String primitiveFieldName,
+      String arrayField,
+      int singleUpdateEntryCount,
+      int updateCount) {
+    UpdateBuilderImpl updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+    updateBuilder.setNewFieldValue(primitiveFieldName, "Tottenham");
+    List<Float> newEntries = new ArrayList<>();
+    for (int j = 0; j < singleUpdateEntryCount; j++) {
+      float value = (float) (updateCount * singleUpdateEntryCount + j);
+      newEntries.add(value);
+    }
+    updateBuilder.setElementsToAddToListField(arrayField, newEntries);
+    GenericRecord partialUpdateRecord = updateBuilder.build();
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key, partialUpdateRecord, updateCount * 10L + 1);
   }
 
   private void producePartialUpdateToArray(
