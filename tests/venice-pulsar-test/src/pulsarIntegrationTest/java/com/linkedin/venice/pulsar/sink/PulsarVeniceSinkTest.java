@@ -162,7 +162,10 @@ public class PulsarVeniceSinkTest {
         + clusterName + " --store " + storeName;
     Awaitility.await().atMost(30, TimeUnit.SECONDS).pollInterval(2, TimeUnit.SECONDS).untilAsserted(() -> {
       ExecResult res = execByService("venice-client", "bash", "-c", readinessCmd);
-      assertTrue(res.getStdout().contains(storeName), "Store not yet ready");
+      String stdout = res.getStdout();
+      assertTrue(
+          stdout.contains("currentVersion") && !stdout.contains("\"currentVersion\" : 0"),
+          "Store not yet ready (no active version): " + stdout);
     });
 
     LOGGER.info("Setting up Pulsar");

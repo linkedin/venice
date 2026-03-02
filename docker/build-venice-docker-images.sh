@@ -127,6 +127,14 @@ declare -A image_descriptions=(
   ["venice-client-jupyter"]="Venice Client Jupyter: Includes most of the same things as venice-client with the addition of a demo workflow using Spark and Jupyter."
 )
 
+# Ensure copied artifacts are cleaned up on exit (success or failure)
+cleanup() {
+  for t in "${targets[@]}"; do
+    rm -f "$t"/*.jar "$t"/*.py
+  done
+}
+trap cleanup EXIT
+
 # Build each target with labels — in parallel
 pids=()
 for target in "${targets[@]}"; do
@@ -142,11 +150,6 @@ done
 # Wait for all builds and fail if any failed
 for pid in "${pids[@]}"; do
     wait "$pid" || { echo "Docker build failed (pid $pid)"; exit 1; }
-done
-
-# Clean up copied artifacts
-for target in "${targets[@]}"; do
-  rm -f "$target"/*.jar "$target"/*.py
 done
 
 popd
