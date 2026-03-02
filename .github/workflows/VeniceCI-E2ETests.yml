@@ -54,43 +54,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -190,43 +154,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_2
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -326,43 +254,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_3
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -462,43 +354,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_4
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -598,43 +454,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_5
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -734,43 +554,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_6
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -870,43 +654,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_7
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1006,43 +754,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_8
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1142,43 +854,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_9
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1278,43 +954,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_10
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1414,43 +1054,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_11
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1550,43 +1154,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_12
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1686,43 +1254,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_13
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1822,43 +1354,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_14
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1958,43 +1454,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_15
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2094,43 +1554,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_16
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2230,43 +1654,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_17
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2366,43 +1754,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_18
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2502,43 +1854,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_19
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2638,43 +1954,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_20
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2774,43 +2054,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_21
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2910,43 +2154,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_22
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -3046,43 +2254,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_23
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -3182,43 +2354,7 @@ jobs:
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_99
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash

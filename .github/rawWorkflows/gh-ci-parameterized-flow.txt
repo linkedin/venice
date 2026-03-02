@@ -40,43 +40,7 @@
         run: ./gradlew $GradleArguments
       - name: Check Test Class Duration Limits
         if: always()
-        shell: bash
-        run: |
-          python3 -c "
-          import xml.etree.ElementTree as ET, glob, sys, os
-          threshold = 600
-          violations = []
-          for f in sorted(glob.glob('**/build/test-watchdog-timeouts/*.timeout', recursive=True)):
-              with open(f) as fh:
-                  parts = fh.read().strip().split('|')
-                  if len(parts) == 3:
-                      violations.append((parts[0], float(parts[1]), 'killed by watchdog'))
-          for f in sorted(glob.glob('**/build/test-results/integrationTest*/TEST-*.xml', recursive=True)):
-              try:
-                  root = ET.parse(f).getroot()
-                  name = root.get('name', '')
-                  time = float(root.get('time', '0'))
-                  if time > threshold:
-                      violations.append((name, time, 'completed'))
-              except ET.ParseError:
-                  pass
-          if violations:
-              print('## Test Class Duration Violations')
-              print('')
-              print('| Test Class | Duration | Status |')
-              print('|------------|----------|--------|')
-              for name, time, status in sorted(violations, key=lambda x: -x[1]):
-                  mins = int(time // 60)
-                  secs = int(time % 60)
-                  print(f'| {name} | {mins}m{secs}s | {status} |')
-              print(f'')
-              print(f'**{len(violations)} test class(es) exceeded the {threshold // 60}-minute limit.** Split slow test classes or optimize test methods.')
-              sys.exit(1)
-          else:
-              print('## Test Class Duration Check')
-              print('')
-              print('All test classes completed within the time limit.')
-          " 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+        run: python3 scripts/ci/check_test_duration.py
       - name: Package Build Artifacts
         if: always()
         shell: bash
