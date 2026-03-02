@@ -36,7 +36,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Avro Compatibility Tests
-        run: ./gradlew -DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue
+        run: ./gradlew -DmaxParallelForks=2 --parallel --build-cache :internal:venice-avro-compatibility-test:test --continue
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -83,7 +83,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run DuckDB Integration Tests
-        run: ./gradlew -DforkEvery=1 -DmaxParallelForks=1 :integrations:venice-duckdb:integrationTest --continue
+        run: ./gradlew -DforkEvery=1 -DmaxParallelForks=1 --parallel --build-cache :integrations:venice-duckdb:integrationTest --continue
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -129,22 +129,29 @@ jobs:
       - name: Free up disk space in the background
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Build with gradle
-        run: ./gradlew assemble --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1
-
-      - name: Build docker images for Venice (latest-dev tag)
+      - name: Build NAR, shadow jars, and Docker images
         shell: bash
         run: |
-          cd ${{ github.workspace }}/docker
-          ./build-venice-docker-images.sh
-          cd ${{ github.workspace }}
+          # Single Gradle invocation: NAR for Pulsar connector + shadow jars for Venice Docker images
+          ./gradlew --parallel --build-cache --no-daemon \
+            :integrations:venice-pulsar:nar \
+            :services:venice-controller:shadowJar \
+            :services:venice-server:shadowJar \
+            :services:venice-router:shadowJar \
+            :clients:venice-admin-tool:shadowJar \
+            :clients:venice-thin-client:shadowJar \
+            :clients:venice-push-job:shadowJar \
+            :clients:venice-client:shadowJar
 
-      - name: Build docker images for Pulsar test (latest-dev tag)
-        shell: bash
-        run: |
-          cd ${{ github.workspace }}/tests/docker-images/pulsar-sink
-          docker build --tag=pulsar/venice-test:latest-dev ${{ github.workspace }} -f ./Dockerfile
-          cd ${{ github.workspace }}
+          # Build Pulsar and Venice Docker images in parallel
+          docker build --tag=pulsar/venice-test:latest-dev -f tests/docker-images/pulsar-sink/Dockerfile . &
+          pulsar_docker_pid=$!
+
+          cd docker
+          ./build-venice-docker-images.sh venicedb latest-dev "venice-controller venice-server venice-router venice-client"
+          cd ..
+
+          wait $pulsar_docker_pid || { echo "Pulsar Docker build failed"; exit 1; }
 
       - name: Run the test
         shell: bash
