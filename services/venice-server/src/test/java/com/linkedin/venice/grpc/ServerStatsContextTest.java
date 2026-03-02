@@ -17,6 +17,7 @@ import com.linkedin.venice.listener.response.ParallelMultiKeyResponseWrapper;
 import com.linkedin.venice.listener.response.stats.ComputeResponseStats;
 import com.linkedin.venice.listener.response.stats.ComputeResponseStatsWithSizeProfiling;
 import com.linkedin.venice.listener.response.stats.MultiGetResponseStatsWithSizeProfiling;
+import com.linkedin.venice.listener.response.stats.MultiKeyResponseStats;
 import com.linkedin.venice.listener.response.stats.ReadResponseStatsRecorder;
 import com.linkedin.venice.listener.response.stats.SingleGetResponseStats;
 import com.linkedin.venice.read.RequestType;
@@ -38,11 +39,13 @@ public class ServerStatsContextTest {
   private AggServerHttpRequestStats computeStats;
 
   // Test dimension constants for HTTP 200 OK (success)
+  private static final HttpResponseStatus OK_RESPONSE_STATUS = HttpResponseStatus.OK;
   private static final HttpResponseStatusEnum OK_HTTP_STATUS = HttpResponseStatusEnum.OK;
   private static final HttpResponseStatusCodeCategory OK_HTTP_STATUS_CATEGORY = HttpResponseStatusCodeCategory.SUCCESS;
   private static final VeniceResponseStatusCategory OK_VENICE_STATUS = VeniceResponseStatusCategory.SUCCESS;
 
   // Test dimension constants for HTTP 500 Internal Server Error (failure)
+  private static final HttpResponseStatus ERROR_RESPONSE_STATUS = HttpResponseStatus.INTERNAL_SERVER_ERROR;
   private static final HttpResponseStatusEnum ERROR_HTTP_STATUS = HttpResponseStatusEnum.INTERNAL_SERVER_ERROR;
   private static final HttpResponseStatusCodeCategory ERROR_HTTP_STATUS_CATEGORY =
       HttpResponseStatusCodeCategory.SERVER_ERROR;
@@ -99,21 +102,21 @@ public class ServerStatsContextTest {
 
   @Test
   public void testSuccessRequest() {
-    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.OK);
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, OK_RESPONSE_STATUS);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.successRequest(stats, 10.5);
 
-    verify(stats).recordSuccessRequestAndLatency(HttpResponseStatus.OK, OK_VENICE_STATUS, 10.5);
+    verify(stats).recordSuccessRequestAndLatency(OK_RESPONSE_STATUS, OK_VENICE_STATUS, 10.5);
   }
 
   @Test
   public void testErrorRequest() {
-    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, ERROR_RESPONSE_STATUS);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setMisroutedStoreVersion(true);
     context.errorRequest(stats, 12.3);
 
-    verify(stats).recordErrorRequestAndLatency(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE_STATUS, 12.3);
+    verify(stats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 12.3);
     verify(stats).recordMisroutedStoreVersionRequest();
   }
 
@@ -126,13 +129,12 @@ public class ServerStatsContextTest {
     ServerHttpRequestStats unknownStoreStats = mock(ServerHttpRequestStats.class);
     doReturn(unknownStoreStats).when(singleGetStats).getStoreStats(ServerStatsContext.UNKNOWN_STORE_NAME);
 
-    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, ERROR_RESPONSE_STATUS);
     context.setMisroutedStoreVersion(true);
     context.errorRequest(null, 12.3);
 
     verify(singleGetStats).getStoreStats(ServerStatsContext.UNKNOWN_STORE_NAME);
-    verify(unknownStoreStats)
-        .recordErrorRequestAndLatency(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE_STATUS, 12.3);
+    verify(unknownStoreStats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 12.3);
     verify(unknownStoreStats).recordMisroutedStoreVersionRequest();
   }
 
@@ -151,26 +153,12 @@ public class ServerStatsContextTest {
     assertEquals(123, context.getRequestKeyCount());
   }
 
-  @Test
-  public void setRequestType() {
-    ServerStatsContext context = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
-
-    context.setRequestType(RequestType.SINGLE_GET);
-    assertEquals(singleGetStats, context.getCurrentStats());
-
-    context.setRequestType(RequestType.MULTI_GET);
-    assertEquals(multiGetStats, context.getCurrentStats());
-
-    context.setRequestType(RequestType.COMPUTE);
-    assertEquals(computeStats, context.getCurrentStats());
-  }
-
   /**
    * Verifies all metrics recorded by recordBasicMetrics for a compute request.
    */
   @Test
   public void testRecordBasicMetrics() {
-    ServerStatsContext context = createContext(RequestType.COMPUTE, HttpResponseStatus.OK);
+    ServerStatsContext context = createContext(RequestType.COMPUTE, OK_RESPONSE_STATUS);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setRequestKeyCount(105);
     context.setRequestSize(1000);
@@ -215,7 +203,7 @@ public class ServerStatsContextTest {
    */
   @Test
   public void testRecordBasicMetricsRecordsSizeForSuccessRequest() {
-    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.OK);
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, OK_RESPONSE_STATUS);
     context.setResponseSize(500);
 
     SingleGetResponseStats responseStats = new SingleGetResponseStats();
@@ -226,13 +214,13 @@ public class ServerStatsContextTest {
     context.recordBasicMetrics(stats);
 
     // Unified response size (both Tehuti and OTel)
-    verify(stats).recordResponseSize(HttpResponseStatus.OK, OK_VENICE_STATUS, 500);
+    verify(stats).recordResponseSize(OK_RESPONSE_STATUS, OK_VENICE_STATUS, 500);
     // Unified value size per-key via SingleGetResponseStats.recordMetrics (both Tehuti and OTel)
     verify(stats).recordValueSizeInByte(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 200);
 
     // successRequest only records count and latency (not size)
     context.successRequest(stats, 10.5);
-    verify(stats).recordSuccessRequestAndLatency(HttpResponseStatus.OK, OK_VENICE_STATUS, 10.5);
+    verify(stats).recordSuccessRequestAndLatency(OK_RESPONSE_STATUS, OK_VENICE_STATUS, 10.5);
   }
 
   /**
@@ -240,7 +228,7 @@ public class ServerStatsContextTest {
    */
   @Test
   public void testRecordBasicMetricsRecordsSizeForErrorRequest() {
-    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, ERROR_RESPONSE_STATUS);
     context.setResponseSize(100);
 
     SingleGetResponseStats responseStats = new SingleGetResponseStats();
@@ -251,18 +239,18 @@ public class ServerStatsContextTest {
     context.recordBasicMetrics(stats);
 
     // Unified response size (both Tehuti and OTel)
-    verify(stats).recordResponseSize(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE_STATUS, 100);
+    verify(stats).recordResponseSize(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 100);
     // Unified value size per-key (both Tehuti and OTel)
     verify(stats).recordValueSizeInByte(ERROR_HTTP_STATUS, ERROR_HTTP_STATUS_CATEGORY, ERROR_VENICE_STATUS, 50);
 
     // errorRequest only records count and latency (not size)
     context.errorRequest(stats, 15.0);
-    verify(stats).recordErrorRequestAndLatency(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE_STATUS, 15.0);
+    verify(stats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 15.0);
   }
 
   @Test
   public void testMultiGetWithSizeProfilingRecordsMetrics() {
-    ServerStatsContext context = createContext(RequestType.MULTI_GET, HttpResponseStatus.OK);
+    ServerStatsContext context = createContext(RequestType.MULTI_GET, OK_RESPONSE_STATUS);
     context.setResponseSize(800);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
 
@@ -290,7 +278,7 @@ public class ServerStatsContextTest {
     verify(stats).recordValueSizeInByte(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 300);
 
     // Unified response size (both Tehuti and OTel)
-    verify(stats).recordResponseSize(HttpResponseStatus.OK, OK_VENICE_STATUS, 800);
+    verify(stats).recordResponseSize(OK_RESPONSE_STATUS, OK_VENICE_STATUS, 800);
   }
 
   /**
@@ -366,7 +354,7 @@ public class ServerStatsContextTest {
    */
   @Test
   public void testRecordBasicMetricsWithNullStatsIsNoOp() {
-    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.OK);
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, OK_RESPONSE_STATUS);
     context.setRequestKeyCount(10);
     context.setRequestSize(512);
     context.setResponseSize(256);
@@ -381,7 +369,7 @@ public class ServerStatsContextTest {
    */
   @Test
   public void testRecordBasicMetricsFlushLatencyEarlyTerminationResponseSize() {
-    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.OK);
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, OK_RESPONSE_STATUS);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setFlushLatency(25.5);
     context.setRequestTerminatedEarly();
@@ -391,7 +379,7 @@ public class ServerStatsContextTest {
 
     verify(stats).recordFlushLatency(25.5);
     verify(stats).recordEarlyTerminatedEarlyRequest();
-    verify(stats).recordResponseSize(HttpResponseStatus.OK, OK_VENICE_STATUS, 1024);
+    verify(stats).recordResponseSize(OK_RESPONSE_STATUS, OK_VENICE_STATUS, 1024);
   }
 
   /**
@@ -399,7 +387,7 @@ public class ServerStatsContextTest {
    */
   @Test
   public void testRecordBasicMetricsWithoutResponseStatsRecorder() {
-    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.OK);
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, OK_RESPONSE_STATUS);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setRequestKeyCount(5);
     context.setRequestSize(256);
@@ -418,7 +406,7 @@ public class ServerStatsContextTest {
    */
   @Test
   public void testRecordBasicMetricsSkipsSizeRecordingWhenNotSet() {
-    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.OK);
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, OK_RESPONSE_STATUS);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     // responseSize is left at default (-1), no responseStatsRecorder set
 
@@ -433,7 +421,7 @@ public class ServerStatsContextTest {
    */
   @Test
   public void testRecordBasicMetricsSkipsValueSizeWhenZero() {
-    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.OK);
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, OK_RESPONSE_STATUS);
     context.setResponseSize(50);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
 
@@ -445,7 +433,7 @@ public class ServerStatsContextTest {
     context.recordBasicMetrics(stats);
 
     // Response size IS recorded (responseSize=50 > 0)
-    verify(stats).recordResponseSize(HttpResponseStatus.OK, OK_VENICE_STATUS, 50);
+    verify(stats).recordResponseSize(OK_RESPONSE_STATUS, OK_VENICE_STATUS, 50);
     // Value size is NOT recorded (valueSize=0, guard in SingleGetResponseStats: valueSize > 0)
     verifyNoValueSizeRecording(stats);
   }
@@ -578,7 +566,7 @@ public class ServerStatsContextTest {
    */
   @Test
   public void testErrorRequestBoundarySkipsSizeRecording() {
-    ServerStatsContext context = createContext(RequestType.SINGLE_GET, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    ServerStatsContext context = createContext(RequestType.SINGLE_GET, ERROR_RESPONSE_STATUS);
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     // responseSize defaults to -1 (not set)
 
@@ -597,7 +585,7 @@ public class ServerStatsContextTest {
 
     // Error count and latency are still recorded in errorRequest
     context.errorRequest(stats, 8.0);
-    verify(stats).recordErrorRequestAndLatency(HttpResponseStatus.INTERNAL_SERVER_ERROR, ERROR_VENICE_STATUS, 8.0);
+    verify(stats).recordErrorRequestAndLatency(ERROR_RESPONSE_STATUS, ERROR_VENICE_STATUS, 8.0);
   }
 
   /**
@@ -647,5 +635,33 @@ public class ServerStatsContextTest {
     verify(mockStats).recordKeySizeInByte(20);
     verify(mockStats).recordValueSizeInByte(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 100);
     verify(mockStats).recordValueSizeInByte(OK_HTTP_STATUS, OK_HTTP_STATUS_CATEGORY, OK_VENICE_STATUS, 200);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testMergeThrowsOnIncompatibleTypeForAbstractReadResponseStats() {
+    MultiKeyResponseStats stats = new MultiKeyResponseStats();
+    ReadResponseStatsRecorder incompatible = mock(ReadResponseStatsRecorder.class);
+    stats.merge(incompatible);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testMergeThrowsOnIncompatibleTypeForMultiKeyResponseStats() {
+    MultiKeyResponseStats stats = new MultiKeyResponseStats();
+    SingleGetResponseStats incompatible = new SingleGetResponseStats();
+    stats.merge(incompatible);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testMergeThrowsOnIncompatibleTypeForMultiGetResponseStats() {
+    MultiGetResponseStatsWithSizeProfiling stats = new MultiGetResponseStatsWithSizeProfiling(3);
+    MultiKeyResponseStats incompatible = new MultiKeyResponseStats();
+    stats.merge(incompatible);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testMergeThrowsOnIncompatibleTypeForComputeResponseStats() {
+    ComputeResponseStats stats = new ComputeResponseStats();
+    MultiKeyResponseStats incompatible = new MultiKeyResponseStats();
+    stats.merge(incompatible);
   }
 }

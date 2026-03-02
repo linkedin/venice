@@ -24,9 +24,14 @@ public class MultiKeyResponseStats extends AbstractReadResponseStats {
   public void merge(ReadResponseStatsRecorder other) {
     super.merge(other);
     // Merges only the field this subclass introduces: recordCount.
+    // ParallelMultiKeyResponseWrapper creates all chunks with the same type,
+    // so 'other' will always be a MultiKeyResponseStats here.
     if (other instanceof MultiKeyResponseStats) {
       MultiKeyResponseStats otherStats = (MultiKeyResponseStats) other;
       this.recordCount += otherStats.recordCount;
+    } else {
+      throw new IllegalArgumentException(
+          "Expected MultiKeyResponseStats but got " + other.getClass().getSimpleName() + "; recordCount not merged");
     }
   }
 }

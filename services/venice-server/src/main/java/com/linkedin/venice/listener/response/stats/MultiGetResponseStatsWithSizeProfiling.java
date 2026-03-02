@@ -38,11 +38,15 @@ public class MultiGetResponseStatsWithSizeProfiling extends MultiKeyResponseStat
   @Override
   public void merge(ReadResponseStatsRecorder other) {
     super.merge(other);
-    // Merges only the field this subclass introduces: totalValueSize. The instanceof check
-    // is safe because ParallelMultiKeyResponseWrapper creates all chunks with the same type,
+    // Merges only the field this subclass introduces: totalValueSize.
+    // ParallelMultiKeyResponseWrapper creates all chunks with the same type,
     // so 'other' will always be a MultiGetResponseStatsWithSizeProfiling here.
     if (other instanceof MultiGetResponseStatsWithSizeProfiling) {
       this.totalValueSize += ((MultiGetResponseStatsWithSizeProfiling) other).totalValueSize;
+    } else {
+      throw new IllegalArgumentException(
+          "Expected MultiGetResponseStatsWithSizeProfiling but got " + other.getClass().getSimpleName()
+              + "; totalValueSize not merged");
     }
   }
 

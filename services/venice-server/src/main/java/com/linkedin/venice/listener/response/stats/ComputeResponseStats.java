@@ -105,7 +105,8 @@ public class ComputeResponseStats extends MultiKeyResponseStats {
   public void merge(ReadResponseStatsRecorder other) {
     super.merge(other);
     // Merges only the fields this subclass introduces: compute latencies, totalValueSize,
-    // and per-operation counts.
+    // and per-operation counts. ParallelMultiKeyResponseWrapper creates all chunks with the
+    // same type, so 'other' will always be a ComputeResponseStats here.
     if (other instanceof ComputeResponseStats) {
       ComputeResponseStats otherStats = (ComputeResponseStats) other;
       this.readComputeLatency += otherStats.readComputeLatency;
@@ -117,6 +118,9 @@ public class ComputeResponseStats extends MultiKeyResponseStats {
       this.cosineSimilarityCount += otherStats.cosineSimilarityCount;
       this.hadamardProductCount += otherStats.hadamardProductCount;
       this.countOperatorCount += otherStats.countOperatorCount;
+    } else {
+      throw new IllegalArgumentException(
+          "Expected ComputeResponseStats but got " + other.getClass().getSimpleName() + "; compute fields not merged");
     }
   }
 }

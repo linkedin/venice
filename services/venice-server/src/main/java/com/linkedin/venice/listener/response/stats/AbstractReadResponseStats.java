@@ -105,12 +105,18 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
   @Override
   public void merge(ReadResponseStatsRecorder other) {
     // Merges only the fields this class introduces: databaseLookupLatency,
-    // multiChunkLargeValueCount, and keyNotFoundCount.
+    // multiChunkLargeValueCount, and keyNotFoundCount. ParallelMultiKeyResponseWrapper
+    // creates all chunks with the same type, so 'other' will always be an
+    // AbstractReadResponseStats here.
     if (other instanceof AbstractReadResponseStats) {
       AbstractReadResponseStats otherStats = (AbstractReadResponseStats) other;
       this.databaseLookupLatency += otherStats.databaseLookupLatency;
       this.multiChunkLargeValueCount += otherStats.multiChunkLargeValueCount;
       this.keyNotFoundCount += otherStats.keyNotFoundCount;
+    } else {
+      throw new IllegalArgumentException(
+          "Expected AbstractReadResponseStats but got " + other.getClass().getSimpleName()
+              + "; response stats not merged");
     }
   }
 
