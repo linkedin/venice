@@ -311,9 +311,14 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
 
         vpjThread.join(30_000);
         Assert.assertFalse(vpjThread.isAlive(), "VPJ thread did not terminate in time");
-        // In the ROLLBACK path, VPJ is expected to fail since the version gets killed
-        if (targetVersion == 2 && vpjError.get() != null) {
-          throw new AssertionError("VPJ background thread failed", vpjError.get());
+        if (targetVersion == 2) {
+          // PROCEED path: VPJ should succeed
+          if (vpjError.get() != null) {
+            throw new AssertionError("VPJ background thread failed", vpjError.get());
+          }
+        } else {
+          // ROLLBACK path: VPJ is expected to fail since the version gets killed
+          Assert.assertNotNull(vpjError.get(), "VPJ should have failed due to rollback killing the version");
         }
       } finally {
         if (vpjThread.isAlive()) {
