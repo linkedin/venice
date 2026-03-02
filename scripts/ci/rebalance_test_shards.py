@@ -4,7 +4,7 @@ Rebalance Venice CI integration test shards using First-Fit Decreasing bin-packi
 
 Input modes:
   --artifacts-dir  : Parse JUnit/TestNG XML files from extracted CI artifact archives
-  --timing-json    : Parse structured timing JSON files produced by the Gradle timing hook
+  --timing-dir     : Parse structured timing JSON files produced by the Gradle timing hook
 
 Output:
   Writes internal/venice-test-common/test-shard-assignments.json
@@ -30,7 +30,6 @@ import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import datetime, timezone
-from pathlib import Path
 
 
 def parse_junit_xml_files(artifacts_dir: str) -> dict[str, float]:
@@ -55,13 +54,15 @@ def parse_junit_xml_files(artifacts_dir: str) -> dict[str, float]:
                 if name and name.startswith("com.linkedin"):
                     timings[name].append(float(time_str))
 
-            # Also check for nested testsuites (JUnit format)
+            # Also check for nested testsuites (JUnit format), skipping
+            # the root element which was already handled above.
             for suite in root.iter("testsuite"):
+                if suite is root:
+                    continue
                 name = suite.get("name", "")
                 time_str = suite.get("time", "0")
                 if name and name.startswith("com.linkedin"):
-                    if name not in timings or float(time_str) not in timings[name]:
-                        timings[name].append(float(time_str))
+                    timings[name].append(float(time_str))
 
         except ET.ParseError as e:
             print(f"WARNING: Failed to parse {xml_file}: {e}", file=sys.stderr)
@@ -451,6 +452,8 @@ def main():
     if args.timing_overrides:
         with open(args.timing_overrides) as f:
             overrides = json.load(f)
+        # Filter out metadata keys (e.g. _comment) that aren't test class names
+        overrides = {k: v for k, v in overrides.items() if not k.startswith("_")}
         print(f"Applying {len(overrides)} timing overrides from {args.timing_overrides}")
         for name, duration in overrides.items():
             timings[name] = duration
