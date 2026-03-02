@@ -137,9 +137,35 @@ def integrationTestConfigs = {
   minHeapSize = '4g'
   maxHeapSize = '8g'
 
+  // Per-class watchdog timeout (10 minutes default; set to 0 to disable locally)
+  systemProperty 'venice.test.class.timeout.ms', System.getProperty('venice.test.class.timeout.ms', '600000')
+
   // Disable JaCoCo for integration tests
   jacoco {
     enabled = false
+  }
+}
+
+gradle.buildFinished {
+  def markerDir = new File(buildDir, "test-watchdog-timeouts")
+  if (markerDir.exists()) {
+    def markers = markerDir.listFiles()?.findAll { it.name.endsWith('.timeout') }
+    if (markers) {
+      println "\n" + "=" * 80
+      println "TEST CLASS TIMEOUT VIOLATIONS"
+      println "=" * 80
+      markers.sort().each { marker ->
+        def parts = marker.text.trim().split('\\|')
+        if (parts.length == 3) {
+          def elapsed = parts[1] as int
+          def limit = parts[2] as int
+          println "  ${parts[0]}: killed after ${elapsed.intdiv(60)}m${elapsed % 60}s (limit: ${limit.intdiv(60)}m${limit % 60}s)"
+        }
+      }
+      println "\nSplit slow test classes or optimize test methods."
+      println "Set -Dvenice.test.class.timeout.ms=0 to disable locally."
+      println "=" * 80 + "\n"
+    }
   }
 }
 
