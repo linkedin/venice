@@ -14,6 +14,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientUtils;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
@@ -201,7 +202,7 @@ public class TestDeferredVersionSwapDvc {
         Assert.assertTrue(castClient.toString().contains(destD2ServiceName));
       });
     } finally {
-      D2TestUtils.shutdownD2Client(d2Client);
+      D2ClientUtils.shutdownClient(d2Client);
     }
   }
 
