@@ -1906,7 +1906,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * Current version can be killed if {@link AggKafkaConsumerService} discovers there are some issues with
          * the producing topics, and here will report metrics for such case.
          */
-        handleIngestionException(e, -1);
+        handleIngestionException(e, VeniceIngestionFailureReason.TASK_KILLED, -1);
       }
     } catch (VeniceChecksumException e) {
       /**
@@ -1921,11 +1921,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             ingestionTaskName,
             e);
       } else {
-        handleIngestionException(e, e.getErrorPartitionId());
+        handleIngestionException(
+            e,
+            VeniceIngestionFailureReason.CHECKSUM_VERIFICATION_FAILURE,
+            e.getErrorPartitionId());
       }
     } catch (VeniceTimeoutException e) {
       versionedIngestionStats.setIngestionTaskPushTimeoutGauge(storeName, versionNumber);
-      handleIngestionException(e, -1);
+      handleIngestionException(e, VeniceIngestionFailureReason.FUTURE_VERSION_PUSH_TIMEOUT, -1);
     } catch (Exception e) {
       // After reporting error to controller, controller will ignore the message from this replica if job is aborted.
       // So even this storage node recover eventually, controller will not confused.
@@ -1938,7 +1941,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LOGGER.info("{} interrupted, skipping error reporting because server is shutting down", ingestionTaskName, e);
         return;
       }
-      handleIngestionException(e, -1);
+      handleIngestionException(e, VeniceIngestionFailureReason.GENERAL, -1);
     } catch (Throwable t) {
       handleIngestionThrowable(t);
     } finally {
@@ -2078,15 +2081,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     syncOffset(pcs);
   }
 
-  private void handleIngestionException(Exception e, int errorPartitionId) {
+  private void handleIngestionException(Exception e, VeniceIngestionFailureReason reason, int errorPartitionId) {
     // TODO: Remove the logged exception stack trace, once it's verified the downstream reporters all log it
     String errorType = e.getClass().getSimpleName();
     LOGGER.error("Ingestion failed for {} due to {}. Will propagate to reporters.", ingestionTaskName, errorType, e);
     reportError(partitionConsumptionStateMap.values(), errorPartitionId, "Caught Exception during ingestion.", e);
     if (isRunning.get()) {
       hostLevelIngestionStats.recordIngestionFailure();
-      versionedIngestionStats
-          .recordIngestionFailureCount(storeName, versionNumber, VeniceIngestionFailureReason.GENERAL);
+      versionedIngestionStats.recordIngestionFailureCount(storeName, versionNumber, reason);
     }
   }
 

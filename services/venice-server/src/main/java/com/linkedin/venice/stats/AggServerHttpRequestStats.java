@@ -3,6 +3,9 @@ package com.linkedin.venice.stats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.tehuti.metrics.MetricsRepository;
 
 
@@ -18,11 +21,16 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
       boolean isKeyValueProfilingEnabled,
       ReadOnlyStoreRepository metadataRepository,
       boolean unregisterMetricForDeletedStoreEnabled,
-      boolean isDaVinciClient) {
+      boolean isDaVinciClient,
+      boolean readOtelStatsEnabled) {
     super(
         clusterName,
         metricsRepository,
-        new ServerHttpRequestStatsSupplier(requestType, isKeyValueProfilingEnabled, isDaVinciClient),
+        new ServerHttpRequestStatsSupplier(
+            requestType,
+            isKeyValueProfilingEnabled,
+            isDaVinciClient,
+            readOtelStatsEnabled),
         metadataRepository,
         unregisterMetricForDeletedStoreEnabled,
         false);
@@ -31,16 +39,18 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
   static class ServerHttpRequestStatsSupplier implements StatsSupplier<ServerHttpRequestStats> {
     private final RequestType requestType;
     private final boolean isKeyValueProfilingEnabled;
-
-    private boolean isDaVinciClient;
+    private final boolean isDaVinciClient;
+    private final boolean readOtelStatsEnabled;
 
     ServerHttpRequestStatsSupplier(
         RequestType requestType,
         boolean isKeyValueProfilingEnabled,
-        boolean isDaVinciClient) {
+        boolean isDaVinciClient,
+        boolean readOtelStatsEnabled) {
       this.requestType = requestType;
       this.isKeyValueProfilingEnabled = isKeyValueProfilingEnabled;
       this.isDaVinciClient = isDaVinciClient;
+      this.readOtelStatsEnabled = readOtelStatsEnabled;
     }
 
     @Override
@@ -57,19 +67,28 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
       return new ServerHttpRequestStats(
           metricsRepository,
           storeName,
+          clusterName,
           requestType,
           isKeyValueProfilingEnabled,
           totalStats,
-          isDaVinciClient);
+          isDaVinciClient,
+          readOtelStatsEnabled);
     }
   }
 
-  public void recordErrorRequest() {
-    totalStats.recordErrorRequest();
+  public void recordErrorRequest(
+      HttpResponseStatusEnum statusEnum,
+      HttpResponseStatusCodeCategory statusCategory,
+      VeniceResponseStatusCategory veniceCategory) {
+    totalStats.recordErrorRequest(statusEnum, statusCategory, veniceCategory);
   }
 
-  public void recordErrorRequestLatency(double latency) {
-    totalStats.recordErrorRequestLatency(latency);
+  public void recordErrorRequestLatency(
+      HttpResponseStatusEnum statusEnum,
+      HttpResponseStatusCodeCategory statusCategory,
+      VeniceResponseStatusCategory veniceCategory,
+      double latency) {
+    totalStats.recordErrorRequestLatency(statusEnum, statusCategory, veniceCategory, latency);
   }
 
   public void recordMisroutedStoreVersionRequest() {

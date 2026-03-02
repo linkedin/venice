@@ -2443,6 +2443,15 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_OTEL_STATS_ENABLED = "server.ingestion.otel.stats.enabled";
 
   /**
+   * Whether to emit OTel metrics for server read stats. When enabled (and the global OTel flag is also enabled),
+   * per-store read OTel metrics are recorded. Enabled by default so that turning on OTel for servers
+   * automatically includes read stats. Can be set to {@code false} to disable read OTel stats
+   * independently — useful if read OTel metrics cause issues and need to be turned off separately
+   * without affecting other server/DaVinci OTel metrics.
+   */
+  public static final String SERVER_READ_OTEL_STATS_ENABLED = "server.read.otel.stats.enabled";
+
+  /**
    * A config to control which status store to use for fetching incremental push job status from the controller. This config
    * should be removed once the migration of push status to push status system store is complete.
    * True: use push system status store
