@@ -80,7 +80,7 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
   @Override
   protected Properties getExtraControllerProperties() {
     Properties controllerProps = new Properties();
-    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 1000);
+    controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, 100);
     controllerProps.put(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, true);
     return controllerProps;
   }
