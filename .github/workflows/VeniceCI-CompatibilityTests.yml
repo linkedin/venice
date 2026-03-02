@@ -129,22 +129,33 @@ jobs:
       - name: Free up disk space in the background
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Build with gradle
-        run: ./gradlew assemble shadowJar --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1
+      - name: Compile and assemble
+        run: ./gradlew assemble --parallel --continue --no-daemon
 
-      - name: Build docker images for Venice (latest-dev tag)
+      - name: Build shadow jars and Docker images
         shell: bash
         run: |
-          cd ${{ github.workspace }}/docker
+          # Pulsar Docker image only needs the NAR from assemble — start it now in background
+          docker build --tag=pulsar/venice-test:latest-dev -f tests/docker-images/pulsar-sink/Dockerfile . &
+          pulsar_docker_pid=$!
+
+          # Build only the shadow jars needed for the 4 Docker images
+          ./gradlew --parallel --no-daemon \
+            :services:venice-controller:shadowJar \
+            :services:venice-server:shadowJar \
+            :services:venice-router:shadowJar \
+            :clients:venice-admin-tool:shadowJar \
+            :clients:venice-thin-client:shadowJar \
+            :clients:venice-push-job:shadowJar \
+            :clients:venice-client:shadowJar
+
+          # Build Venice Docker images (shadow jars now ready)
+          cd docker
           ./build-venice-docker-images.sh venicedb latest-dev "venice-controller venice-server venice-router venice-client"
-          cd ${{ github.workspace }}
+          cd ..
 
-      - name: Build docker images for Pulsar test (latest-dev tag)
-        shell: bash
-        run: |
-          cd ${{ github.workspace }}/tests/docker-images/pulsar-sink
-          docker build --tag=pulsar/venice-test:latest-dev ${{ github.workspace }} -f ./Dockerfile
-          cd ${{ github.workspace }}
+          # Wait for Pulsar Docker image build
+          wait $pulsar_docker_pid || { echo "Pulsar Docker build failed"; exit 1; }
 
       - name: Run the test
         shell: bash

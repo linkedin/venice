@@ -42,7 +42,33 @@ for target in "${targets[@]}"; do
 done
 
 if $need_shadowjar; then
-  ./gradlew shadowJar
+  # Build only the shadow jars needed for the selected targets
+  shadowjar_tasks=()
+  for target in "${targets[@]}"; do
+    case "$target" in
+      venice-client)
+        shadowjar_tasks+=(
+          :clients:venice-push-job:shadowJar
+          :clients:venice-thin-client:shadowJar
+          :clients:venice-client:shadowJar
+          :clients:venice-admin-tool:shadowJar
+        )
+        ;;
+      venice-client-jupyter)
+        shadowjar_tasks+=(
+          :clients:venice-push-job:shadowJar
+          :clients:venice-thin-client:shadowJar
+          :clients:venice-admin-tool:shadowJar
+        )
+        ;;
+      venice-server)    shadowjar_tasks+=(:services:venice-server:shadowJar) ;;
+      venice-controller) shadowjar_tasks+=(:services:venice-controller:shadowJar) ;;
+      venice-router)   shadowjar_tasks+=(:services:venice-router:shadowJar) ;;
+    esac
+  done
+  # Deduplicate and run
+  IFS=$'\n' shadowjar_tasks=($(printf "%s\n" "${shadowjar_tasks[@]}" | sort -u)); unset IFS
+  ./gradlew --parallel "${shadowjar_tasks[@]}"
 else
   echo "All required shadow jars for selected targets already exist, skipping ./gradlew shadowJar"
 fi
