@@ -136,7 +136,7 @@ jobs:
         shell: bash
         run: |
           cd ${{ github.workspace }}/docker
-          ./build-venice-docker-images.sh venicedb 0.4.336 "venice-controller venice-server venice-router venice-client"
+          ./build-venice-docker-images.sh venicedb latest-dev "venice-controller venice-server venice-router venice-client"
           cd ${{ github.workspace }}
 
       - name: Build docker images for Pulsar test (latest-dev tag)

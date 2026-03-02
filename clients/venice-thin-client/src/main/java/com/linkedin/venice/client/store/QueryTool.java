@@ -38,7 +38,7 @@ public class QueryTool {
       // Batch mode: --batch <store> <url> <is_vson_store> <ssl_config_file_path> <key1> [<key2> ...]
       if (args.length < 6) {
         System.out.println(
-            "Usage: java -jar venice-thin-client-0.1.jar --batch <store> <url> <is_vson_store> <ssl_config_file_path> <key1> [<key2> ...]");
+            "Usage: java -jar venice-thin-client-all.jar --batch <store> <url> <is_vson_store> <ssl_config_file_path> <key1> [<key2> ...]");
         System.exit(1);
       }
       String store = removeQuotes(args[1]);
@@ -63,7 +63,7 @@ public class QueryTool {
 
     if (args.length < REQUIRED_ARGS_COUNT) {
       System.out.println(
-          "Usage: java -jar venice-thin-client-0.1.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path>");
+          "Usage: java -jar venice-thin-client-all.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path>");
       System.exit(1);
     }
     String store = removeQuotes(args[STORE]);
@@ -86,17 +86,7 @@ public class QueryTool {
       boolean isVsonStore,
       Optional<String> sslConfigFile) throws Exception {
 
-    SSLFactory factory = null;
-    if (sslConfigFile.isPresent()) {
-      Properties sslProperties = SslUtils.loadSSLConfig(sslConfigFile.get());
-      String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-      factory = SslUtils.getSSLFactory(sslProperties, sslFactoryClassName);
-    }
-
-    // Verify the ssl engine is set up correctly.
-    if (url.toLowerCase().trim().startsWith("https") && (factory == null || factory.getSSLContext() == null)) {
-      throw new VeniceException("ERROR: The SSL configuration is not valid to send a request to " + url);
-    }
+    SSLFactory factory = createAndValidateSslFactory(url, sslConfigFile);
 
     Map<String, String> outputMap = new LinkedHashMap<>();
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
@@ -104,17 +94,10 @@ public class QueryTool {
             .setVeniceURL(url)
             .setVsonClient(isVsonStore)
             .setSslFactory(factory))) {
-      AbstractAvroStoreClient<Object, Object> castClient =
-          (AbstractAvroStoreClient<Object, Object>) ((StatTrackingStoreClient<Object, Object>) client)
-              .getInnerStoreClient();
-      Schema keySchema = castClient.getKeySchema();
+      AbstractAvroStoreClient<Object, Object> castClient = getInnerClient(client);
+      Schema keySchema = resolveKeySchema(castClient);
 
-      Object key = null;
-      // Transfer vson schema to avro schema.
-      while (keySchema.getType().equals(Schema.Type.UNION)) {
-        keySchema = VsonAvroSchemaAdapter.stripFromUnion(keySchema);
-      }
-      key = convertKey(keyString, keySchema);
+      Object key = convertKey(keyString, keySchema);
       System.out.println("Key string parsed successfully. About to make the query.");
 
       Object value = client.get(key).get(15, TimeUnit.SECONDS);
@@ -135,16 +118,7 @@ public class QueryTool {
       boolean isVsonStore,
       Optional<String> sslConfigFile) throws Exception {
 
-    SSLFactory factory = null;
-    if (sslConfigFile.isPresent()) {
-      Properties sslProperties = SslUtils.loadSSLConfig(sslConfigFile.get());
-      String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-      factory = SslUtils.getSSLFactory(sslProperties, sslFactoryClassName);
-    }
-
-    if (url.toLowerCase().trim().startsWith("https") && (factory == null || factory.getSSLContext() == null)) {
-      throw new VeniceException("ERROR: The SSL configuration is not valid to send a request to " + url);
-    }
+    SSLFactory factory = createAndValidateSslFactory(url, sslConfigFile);
 
     Map<String, Map<String, String>> allResults = new LinkedHashMap<>();
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
@@ -152,13 +126,7 @@ public class QueryTool {
             .setVeniceURL(url)
             .setVsonClient(isVsonStore)
             .setSslFactory(factory))) {
-      AbstractAvroStoreClient<Object, Object> castClient =
-          (AbstractAvroStoreClient<Object, Object>) ((StatTrackingStoreClient<Object, Object>) client)
-              .getInnerStoreClient();
-      Schema keySchema = castClient.getKeySchema();
-      while (keySchema.getType().equals(Schema.Type.UNION)) {
-        keySchema = VsonAvroSchemaAdapter.stripFromUnion(keySchema);
-      }
+      Schema keySchema = resolveKeySchema(getInnerClient(client));
 
       // Convert all keys and maintain insertion order
       Set<Object> keys = new LinkedHashSet<>();
@@ -184,6 +152,33 @@ public class QueryTool {
       }
       return allResults;
     }
+  }
+
+  private static SSLFactory createAndValidateSslFactory(String url, Optional<String> sslConfigFile) throws Exception {
+    SSLFactory factory = null;
+    if (sslConfigFile.isPresent()) {
+      Properties sslProperties = SslUtils.loadSSLConfig(sslConfigFile.get());
+      String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+      factory = SslUtils.getSSLFactory(sslProperties, sslFactoryClassName);
+    }
+    if (url.toLowerCase().trim().startsWith("https") && (factory == null || factory.getSSLContext() == null)) {
+      throw new VeniceException("ERROR: The SSL configuration is not valid to send a request to " + url);
+    }
+    return factory;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static AbstractAvroStoreClient<Object, Object> getInnerClient(AvroGenericStoreClient<Object, Object> client) {
+    return (AbstractAvroStoreClient<Object, Object>) ((StatTrackingStoreClient<Object, Object>) client)
+        .getInnerStoreClient();
+  }
+
+  private static Schema resolveKeySchema(AbstractAvroStoreClient<Object, Object> client) {
+    Schema keySchema = client.getKeySchema();
+    while (keySchema.getType().equals(Schema.Type.UNION)) {
+      keySchema = VsonAvroSchemaAdapter.stripFromUnion(keySchema);
+    }
+    return keySchema;
   }
 
   public static Object convertKey(String keyString, Schema keySchema) {

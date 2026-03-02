@@ -141,9 +141,9 @@ services:
       kafka:
         condition: service_healthy
     healthcheck:
-        test: ["CMD-SHELL", "sleep 1"]
-        start_period: 5s
-        interval: 3s
+        test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/5555' 2>/dev/null"]
+        start_period: 10s
+        interval: 5s
         timeout: 5s
         retries: 10
 
@@ -156,9 +156,9 @@ services:
       venice-controller:
         condition: service_healthy
     healthcheck:
-        test: ["CMD-SHELL", "sleep 1"]
-        start_period: 5s
-        interval: 3s
+        test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/54093' 2>/dev/null"]
+        start_period: 10s
+        interval: 5s
         timeout: 5s
         retries: 10
 
@@ -171,9 +171,9 @@ services:
       venice-server:
         condition: service_healthy
     healthcheck:
-        test: ["CMD-SHELL", "sleep 1"]
-        start_period: 5s
-        interval: 3s
+        test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/7777' 2>/dev/null"]
+        start_period: 10s
+        interval: 5s
         timeout: 5s
         retries: 10
 

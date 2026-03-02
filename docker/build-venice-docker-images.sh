@@ -1,19 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
 CURRENTDIR=$(dirname "$0")
 
-pushd $CURRENTDIR/..
+pushd "$CURRENTDIR/.."
 
-# Skip shadowJar if jars already exist (e.g., caller already ran assemble + shadowJar)
-if ls services/venice-server/build/libs/venice-server-all.jar >/dev/null 2>&1; then
-  echo "Shadow jars already exist, skipping ./gradlew shadowJar"
-else
+repository="${1:-venicedb}"
+oss_release="${2:-$(git describe --tags --always 2>/dev/null || echo dev)}"
+read -ra targets <<< "${3:-venice-controller venice-server venice-router venice-client venice-client-jupyter}"
+
+# Check whether all required shadow jars for the selected targets already exist
+need_shadowjar=false
+for target in "${targets[@]}"; do
+  case "$target" in
+    venice-client)
+      for jar in clients/venice-push-job/build/libs/venice-push-job-all.jar \
+                 clients/venice-thin-client/build/libs/venice-thin-client-all.jar \
+                 clients/venice-client/build/libs/venice-client-all.jar \
+                 clients/venice-admin-tool/build/libs/venice-admin-tool-all.jar; do
+        [ -f "$jar" ] || { need_shadowjar=true; break; }
+      done
+      ;;
+    venice-client-jupyter)
+      for jar in clients/venice-push-job/build/libs/venice-push-job-all.jar \
+                 clients/venice-thin-client/build/libs/venice-thin-client-all.jar \
+                 clients/venice-admin-tool/build/libs/venice-admin-tool-all.jar; do
+        [ -f "$jar" ] || { need_shadowjar=true; break; }
+      done
+      ;;
+    venice-server)
+      [ -f "services/venice-server/build/libs/venice-server-all.jar" ] || need_shadowjar=true
+      ;;
+    venice-controller)
+      [ -f "services/venice-controller/build/libs/venice-controller-all.jar" ] || need_shadowjar=true
+      ;;
+    venice-router)
+      [ -f "services/venice-router/build/libs/venice-router-all.jar" ] || need_shadowjar=true
+      ;;
+  esac
+  $need_shadowjar && break
+done
+
+if $need_shadowjar; then
   ./gradlew shadowJar
+else
+  echo "All required shadow jars for selected targets already exist, skipping ./gradlew shadowJar"
 fi
 
 cd docker
-
-repository="${1:-venicedb}"
-oss_release="${2:-0.4.336}"
-read -ra targets <<< "${3:-venice-controller venice-server venice-router venice-client venice-client-jupyter}"
 
 set -x
 echo "Building docker images for repository $repository, version $oss_release"

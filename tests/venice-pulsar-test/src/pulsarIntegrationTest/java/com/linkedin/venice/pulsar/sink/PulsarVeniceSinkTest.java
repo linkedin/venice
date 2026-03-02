@@ -224,7 +224,9 @@ public class PulsarVeniceSinkTest {
     LOGGER.info("Waiting for records to appear in Venice (batch query)");
     Awaitility.await().atMost(60, TimeUnit.SECONDS).pollInterval(3, TimeUnit.SECONDS).untilAsserted(() -> {
       ExecResult res = execByService("venice-client", "bash", "-c", batchCmd);
-      assertFalse(res.getStdout().contains("value=null"), "Some records not yet available");
+      String stdout = res.getStdout();
+      assertTrue(stdout.contains("key=name0"), "Batch query did not return expected results");
+      assertFalse(stdout.contains("value=null"), "Some records not yet available");
     });
 
     // Verify all record values from the last successful batch result
