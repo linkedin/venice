@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'linkedin/venice'
     permissions:
+      actions: read
       contents: write
       pull-requests: write
     steps:
@@ -91,7 +92,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          BRANCH="auto/rebalance-ci-shards-$(date +%Y%m%d)"
+          BRANCH="auto/rebalance-ci-shards-$(date +%Y%m%d-%H%M%S)"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git checkout -b "$BRANCH"
           git add internal/venice-test-common/test-shard-assignments.json
