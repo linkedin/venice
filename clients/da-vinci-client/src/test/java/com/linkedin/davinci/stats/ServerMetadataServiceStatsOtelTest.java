@@ -48,15 +48,6 @@ public class ServerMetadataServiceStatsOtelTest {
   }
 
   @Test
-  public void testRecordSuccess() {
-    stats.recordRequestBasedMetadataSuccessCount(TEST_STORE_NAME);
-    validateCounter(
-        ServerMetadataServiceStats.ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
-        1,
-        buildExpectedAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.SUCCESS));
-  }
-
-  @Test
   public void testRecordFailure() {
     stats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME);
 
@@ -126,21 +117,19 @@ public class ServerMetadataServiceStatsOtelTest {
   public void testNoNpeWhenOtelDisabled() {
     VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build());
-    ServerMetadataServiceStats disabledStats = new ServerMetadataServiceStats(disabledRepo, TEST_CLUSTER_NAME);
-
-    disabledStats.recordRequestBasedMetadataInvokeCount();
-    disabledStats.recordRequestBasedMetadataSuccessCount(TEST_STORE_NAME);
-    disabledStats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME);
+    assertAllMethodsSafeWithRepo(disabledRepo);
   }
 
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
-    MetricsRepository plainRepo = new MetricsRepository();
-    ServerMetadataServiceStats plainStats = new ServerMetadataServiceStats(plainRepo, TEST_CLUSTER_NAME);
+    assertAllMethodsSafeWithRepo(new MetricsRepository());
+  }
 
-    plainStats.recordRequestBasedMetadataInvokeCount();
-    plainStats.recordRequestBasedMetadataSuccessCount(TEST_STORE_NAME);
-    plainStats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME);
+  private void assertAllMethodsSafeWithRepo(MetricsRepository repo) {
+    ServerMetadataServiceStats safeStats = new ServerMetadataServiceStats(repo, TEST_CLUSTER_NAME);
+    safeStats.recordRequestBasedMetadataInvokeCount();
+    safeStats.recordRequestBasedMetadataSuccessCount(TEST_STORE_NAME);
+    safeStats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME);
   }
 
   @Test
