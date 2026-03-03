@@ -1029,7 +1029,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         return ingestionTask
             .unSubscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
       } else {
-        LOGGER.warn("Ignoring stop consumption message for Topic {} Partition {}", topic, partitionId);
+        LOGGER.warn("Ignoring stop consumption message for replica: {}", Utils.getReplicaId(topic, partitionId));
         return CompletableFuture.completedFuture(null);
       }
     }
@@ -1535,9 +1535,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       PartitionConsumptionState partitionConsumptionState = storeIngestionTask.getPartitionConsumptionState(partition);
       if (partitionConsumptionState == null) {
         INGESTION_DEBUGGER_LOGGER.error(
-            "PartitionConsumptionState is not available for version topic: {}, partition {} when preparing ingestion info",
-            versionTopic,
-            partition);
+            "PartitionConsumptionState is not available for replica: {} when preparing ingestion info",
+            Utils.getReplicaId(versionTopic, partition));
         return;
       }
       PubSubTopic ingestingTopic = versionTopic;

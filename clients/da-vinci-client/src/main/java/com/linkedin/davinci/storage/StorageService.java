@@ -503,7 +503,10 @@ public class StorageService extends AbstractVeniceService {
     }
     storageEngine.dropPartition(partition);
     Set<Integer> remainingPartitions = storageEngine.getPartitionIds();
-    LOGGER.info("Dropped partition {} of {}, remaining partitions={}", partition, kafkaTopic, remainingPartitions);
+    LOGGER.info(
+        "Dropped replica: {}, remaining partitions={}",
+        Utils.getReplicaId(kafkaTopic, partition),
+        remainingPartitions);
 
     if (remainingPartitions.isEmpty() && removeEmptyStorageEngine) {
       removeStorageEngine(kafkaTopic);

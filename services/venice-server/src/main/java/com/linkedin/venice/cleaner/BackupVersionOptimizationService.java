@@ -10,6 +10,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.BackupVersionOptimizationServiceStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -153,7 +154,10 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
               engine.reopenStoragePartition(partitionId);
               stats.recordBackupVersionDatabaseOptimization();
             } catch (Exception e) {
-              LOGGER.error("Failed to optimize database for resource: {}, partition: {}", resourceName, partitionId, e);
+              LOGGER.error(
+                  "Failed to optimize database for replica: {}",
+                  Utils.getReplicaId(resourceName, partitionId),
+                  e);
               errored = true;
             }
           }

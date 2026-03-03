@@ -125,7 +125,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
       return kafkaConsumerService.assignConsumerFor(versionTopic, pubSubTopicPartition);
     } else {
       LOGGER.error(
-          "No consumer service found for version topic {} and partition {} when assigning consumer.",
+          "No consumer service found for version topic {} and topic-partition {} when assigning consumer.",
           versionTopic,
           pubSubTopicPartition);
       return null;
@@ -147,7 +147,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
       topicPartitionToConsumerService.remove(new TopicPartitionForIngestion(versionTopic, pubSubTopicPartition));
     } else {
       LOGGER.warn(
-          "No consumer service found for version topic {} and partition {} when unsubscribing.",
+          "No consumer service found for version topic {} and topic-partition {} when unsubscribing.",
           versionTopic,
           pubSubTopicPartition);
     }
@@ -215,7 +215,7 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
           .getIngestionInfoFor(versionTopic, pubSubTopicPartition, respectRedundantLoggingFilter);
     } else {
       LOGGER.warn(
-          "No consumer service found for version topic {} and partition {} when fetching ingestion info"
+          "No consumer service found for version topic {} and topic-partition {} when fetching ingestion info"
               + " from consumer.",
           versionTopic,
           pubSubTopicPartition);
