@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import java.util.Optional;
 import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -72,5 +73,22 @@ public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implem
         topicName,
         recordToReturn);
     return recordToReturn;
+  }
+
+  @Override
+  public void putGlobalRtDivState(String topicName, int partitionId, String brokerUrl, byte[] valueBytes)
+      throws VeniceException {
+    delegateStorageMetadataService.putGlobalRtDivState(topicName, partitionId, brokerUrl, valueBytes.clone());
+  }
+
+  @Override
+  public Optional<byte[]> getGlobalRtDivState(String topicName, int partitionId, String brokerUrl)
+      throws VeniceException {
+    return delegateStorageMetadataService.getGlobalRtDivState(topicName, partitionId, brokerUrl).map(byte[]::clone);
+  }
+
+  @Override
+  public void clearGlobalRtDivState(String topicName, int partitionId, String brokerUrl) {
+    delegateStorageMetadataService.clearGlobalRtDivState(topicName, partitionId, brokerUrl);
   }
 }

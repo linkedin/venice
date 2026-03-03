@@ -37,6 +37,7 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
@@ -45,6 +46,7 @@ import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -100,6 +102,7 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
@@ -1450,5 +1453,98 @@ public class LeaderFollowerStoreIngestionTaskTest {
     clusterIdToAlias.put(2, "");
     String empty = RegionUtils.normalizeRegionName(clusterIdToAlias.get(2));
     assertEquals(empty, RegionUtils.UNKNOWN_REGION, "Empty alias should normalize to 'unknown' region");
+  }
+
+  /**
+   * Tests that {@link StoreIngestionTask#putGlobalRtDivStateInMetadata} throws a VeniceException
+   * when the key does not start with the expected prefix, and delegates to storageMetadataService
+   * when the key is valid.
+   */
+  @Test
+  public void testPutGlobalRtDivStateInMetadata() throws Exception {
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).putGlobalRtDivStateInMetadata(anyInt(), any(), any());
+
+    Put put = new Put();
+    put.putValue = ByteBuffer.wrap("test-value".getBytes());
+
+    // Invalid key (missing prefix) should throw VeniceException immediately, before any field access
+    byte[] invalidKey = "INVALID_KEY.localhost:9092".getBytes();
+    Assert.assertThrows(VeniceException.class, () -> ingestionTask.putGlobalRtDivStateInMetadata(0, invalidKey, put));
+
+    // Valid key should call storageMetadataService.putGlobalRtDivState
+    StorageMetadataService mockSms = mock(StorageMetadataService.class);
+    String versionTopic = "testStore_v1";
+    injectField(ingestionTask, StoreIngestionTask.class, "storageMetadataService", mockSms);
+    injectField(ingestionTask, StoreIngestionTask.class, "kafkaVersionTopic", versionTopic);
+
+    String brokerUrl = "localhost:9092";
+    byte[] validKey = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl).getBytes();
+    ingestionTask.putGlobalRtDivStateInMetadata(0, validKey, put);
+
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    verify(mockSms, times(1)).putGlobalRtDivState(eq(versionTopic), eq(0), eq(brokerUrl), valueCaptor.capture());
+  }
+
+  /**
+   * Tests the new metadata-first lookup in {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState}:
+   * - When metadata storage has a value, it is returned without hitting legacy storage.
+   * - When metadata storage is empty, the method falls through to the legacy path.
+   * - When the key does not start with the GLOBAL_RT_DIV_KEY_PREFIX, the metadata lookup is skipped.
+   */
+  @Test
+  public void testReadGlobalRtDivStateMetadataPath() throws Exception {
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask)
+        .readGlobalRtDivState(any(), anyInt(), any(), any(ChunkedValueManifestContainer.class));
+
+    StorageMetadataService mockSms = mock(StorageMetadataService.class);
+    String versionTopic = "testStore_v1";
+    InternalAvroSpecificSerializer<GlobalRtDivState> serializer =
+        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getSerializer();
+
+    injectField(ingestionTask, StoreIngestionTask.class, "storageMetadataService", mockSms);
+    injectField(ingestionTask, StoreIngestionTask.class, "kafkaVersionTopic", versionTopic);
+    injectField(ingestionTask, LeaderFollowerStoreIngestionTask.class, "globalRtDivStateSerializer", serializer);
+
+    String brokerUrl = "localhost:9092";
+    byte[] keyBytes = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl).getBytes();
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    doReturn(0).when(topicPartition).getPartitionNumber();
+    ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
+
+    // Serialize a real GlobalRtDivState for the round-trip test
+    GlobalRtDivState expectedState =
+        new GlobalRtDivState(brokerUrl, Collections.emptyMap(), InMemoryPubSubPosition.of(5).toWireFormatBuffer());
+    byte[] serializedState = serializer.serialize(null, expectedState);
+
+    // Case 1: metadata present → returns deserialized state without touching legacy storage
+    doReturn(Optional.of(serializedState)).when(mockSms).getGlobalRtDivState(versionTopic, 0, brokerUrl);
+    GlobalRtDivState result =
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
+    assertNotNull(result);
+    assertEquals(result.srcUrl.toString(), brokerUrl);
+
+    // Case 2: metadata absent → falls through to legacy; legacy returns null (compressor field is null on mock),
+    // so the method returns null
+    doReturn(Optional.empty()).when(mockSms).getGlobalRtDivState(versionTopic, 0, brokerUrl);
+    GlobalRtDivState fallThroughResult =
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
+    Assert.assertNull(fallThroughResult);
+
+    // Case 3: key does not start with the prefix → metadata lookup skipped, goes straight to legacy (returns null)
+    byte[] nonPrefixKey = "REGULAR_KEY.localhost:9092".getBytes();
+    GlobalRtDivState nonPrefixResult =
+        ingestionTask.readGlobalRtDivState(nonPrefixKey, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
+    Assert.assertNull(nonPrefixResult);
+    // storageMetadataService.getGlobalRtDivState should NOT have been called for the non-prefix key
+    verify(mockSms, times(0)).getGlobalRtDivState(versionTopic, 0, "REGULAR_KEY.localhost:9092");
+  }
+
+  private static void injectField(Object target, Class<?> declaringClass, String fieldName, Object value)
+      throws Exception {
+    Field field = declaringClass.getDeclaredField(fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
   }
 }

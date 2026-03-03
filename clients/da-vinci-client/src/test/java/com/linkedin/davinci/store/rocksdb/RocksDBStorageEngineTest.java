@@ -288,4 +288,59 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     Assert.assertTrue(result);
 
   }
+
+  @Test
+  public void testGetAndPutGlobalRtDivState() {
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
+    int partitionId = PARTITION_ID;
+    String brokerUrl = "localhost:9092";
+    byte[] valueBytes = "test-global-rt-div-value".getBytes();
+
+    // Put and get round-trip
+    rocksDBStorageEngine.putGlobalRtDivState(partitionId, brokerUrl, valueBytes);
+    Assert.assertTrue(rocksDBStorageEngine.getGlobalRtDivState(partitionId, brokerUrl).isPresent());
+    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivState(partitionId, brokerUrl).get(), valueBytes);
+
+    // Clear and verify absent
+    rocksDBStorageEngine.clearGlobalRtDivState(partitionId, brokerUrl);
+    Assert.assertFalse(rocksDBStorageEngine.getGlobalRtDivState(partitionId, brokerUrl).isPresent());
+
+    // Different brokerUrls are stored independently
+    byte[] value1 = "value1".getBytes();
+    byte[] value2 = "value2".getBytes();
+    rocksDBStorageEngine.putGlobalRtDivState(partitionId, "broker1:9092", value1);
+    rocksDBStorageEngine.putGlobalRtDivState(partitionId, "broker2:9092", value2);
+    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivState(partitionId, "broker1:9092").get(), value1);
+    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivState(partitionId, "broker2:9092").get(), value2);
+
+    // Clean up
+    rocksDBStorageEngine.clearGlobalRtDivState(partitionId, "broker1:9092");
+    rocksDBStorageEngine.clearGlobalRtDivState(partitionId, "broker2:9092");
+  }
+
+  @Test
+  public void testIllegalPartitionIdInGlobalRtDivState() {
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
+    String brokerUrl = "localhost:9092";
+    byte[] valueBytes = "value".getBytes();
+
+    // Negative partition id should throw
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.putGlobalRtDivState(-1, brokerUrl, valueBytes));
+    Assert.assertThrows(IllegalArgumentException.class, () -> rocksDBStorageEngine.getGlobalRtDivState(-1, brokerUrl));
+    Assert
+        .assertThrows(IllegalArgumentException.class, () -> rocksDBStorageEngine.clearGlobalRtDivState(-1, brokerUrl));
+
+    // Metadata partition id should throw
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.putGlobalRtDivState(METADATA_PARTITION_ID, brokerUrl, valueBytes));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.getGlobalRtDivState(METADATA_PARTITION_ID, brokerUrl));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.clearGlobalRtDivState(METADATA_PARTITION_ID, brokerUrl));
+  }
 }
