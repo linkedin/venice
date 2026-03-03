@@ -19,7 +19,13 @@ import java.util.Map;
  */
 public class OpenTelemetryMetricsSetup {
   /**
-   * Result object containing the setup OpenTelemetry components
+   * Result object containing the setup OpenTelemetry components.
+   *
+   * <p>When {@link #emitOpenTelemetryMetrics()} returns {@code false}, the OTel-specific
+   * getters ({@link #getOtelRepository()}, {@link #getBaseDimensionsMap()}, {@link #getBaseAttributes()})
+   * return {@code null}. Callers must check {@link #emitOpenTelemetryMetrics()} before accessing
+   * these values, or pass them directly to {@code MetricEntityStateBase.create()} /
+   * {@code AsyncMetricEntityStateBase.create()} which handle null safely.
    */
   public static class OpenTelemetryMetricsSetupInfo {
     private final boolean emitOpenTelemetryMetrics;
@@ -42,14 +48,17 @@ public class OpenTelemetryMetricsSetup {
       return emitOpenTelemetryMetrics;
     }
 
+    /** Returns {@code null} when {@link #emitOpenTelemetryMetrics()} is {@code false}. */
     public VeniceOpenTelemetryMetricsRepository getOtelRepository() {
       return otelRepository;
     }
 
+    /** Returns {@code null} when {@link #emitOpenTelemetryMetrics()} is {@code false}. */
     public Map<VeniceMetricsDimensions, String> getBaseDimensionsMap() {
       return baseDimensionsMap;
     }
 
+    /** Returns {@code null} when {@link #emitOpenTelemetryMetrics()} is {@code false}. */
     public Attributes getBaseAttributes() {
       return baseAttributes;
     }
@@ -223,7 +232,8 @@ public class OpenTelemetryMetricsSetup {
 
       // Add thread pool name if provided
       if (threadPoolName != null) {
-        String sanitizedThreadPoolName = threadPoolName.trim().isEmpty() ? "unknown" : threadPoolName;
+        String trimmed = threadPoolName.trim();
+        String sanitizedThreadPoolName = trimmed.isEmpty() ? "unknown" : trimmed;
         baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME, sanitizedThreadPoolName);
         baseAttributesBuilder.put(
             otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME),

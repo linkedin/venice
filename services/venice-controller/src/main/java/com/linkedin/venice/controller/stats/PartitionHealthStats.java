@@ -70,7 +70,9 @@ public class PartitionHealthStats extends AbstractVeniceStats {
   }
 
   public void recordUnderReplicatePartition(int num) {
-    underReplicatedPartitionMetric.record(num);
+    if (underReplicatedPartitionMetric != null) {
+      underReplicatedPartitionMetric.record(num);
+    }
   }
 
   enum PartitionHealthTehutiMetricNameEnum implements TehutiMetricNameEnum {

@@ -131,6 +131,46 @@ public class ThreadPoolStatsOtelTest {
   }
 
   @Test
+  public void testBlankThreadPoolNameSanitizedToUnknown() {
+    verifyThreadPoolNameDimension("   ", "unknown");
+  }
+
+  @Test
+  public void testThreadPoolNameWithWhitespaceIsTrimmed() {
+    verifyThreadPoolNameDimension(" my-pool ", "my-pool");
+  }
+
+  private void verifyThreadPoolNameDimension(String inputName, String expectedDimensionValue) {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    Collection<MetricEntity> metricEntities =
+        ModuleMetricEntityInterface.getUniqueMetricEntities(ThreadPoolOtelMetricEntity.class);
+    VeniceMetricsRepository repo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+            .setMetricEntities(metricEntities)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(reader)
+            .build());
+
+    ThreadPoolExecutor pool = Mockito.mock(ThreadPoolExecutor.class);
+    BlockingQueue<Runnable> queue = Mockito.mock(BlockingQueue.class);
+    Mockito.doReturn(queue).when(pool).getQueue();
+    Mockito.doReturn(2).when(pool).getActiveCount();
+    Mockito.doReturn(0).when(queue).size();
+
+    new ThreadPoolStats(repo, pool, inputName);
+
+    Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_THREAD_POOL_NAME.getDimensionNameInDefaultFormat(), expectedDimensionValue)
+        .build();
+    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
+        reader,
+        2,
+        expectedAttributes,
+        ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_COUNT.getMetricEntity().getMetricName(),
+        TEST_METRIC_PREFIX);
+  }
+
+  @Test
   public void testNoNpeWhenOtelDisabled() {
     VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build());

@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.stats;
 
 import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES;
+import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static org.testng.Assert.assertEquals;
@@ -19,8 +20,10 @@ import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -160,6 +163,42 @@ public class PartitionHealthStatsOtelTest {
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
     verifyNoNpeWithRepository(new MetricsRepository());
+  }
+
+  @Test
+  public void testTotalStatsDoNotEmitOtelMetrics() {
+    // Per-cluster total stats name follows the pattern "total.<clusterName>" from AbstractVeniceAggStats.
+    // OTel should be suppressed for total/aggregate stats to avoid duplicate metric inflation.
+    String totalStatsName = STORE_NAME_FOR_TOTAL_STAT + "." + TEST_CLUSTER_NAME;
+    PartitionHealthStats totalStats = new PartitionHealthStats(metricsRepository, totalStatsName, TEST_CLUSTER_NAME);
+
+    totalStats.recordUnderReplicatePartition(5);
+
+    // OTel: no gauge data points should exist for this metric (total stats suppresses OTel)
+    String metricName =
+        PartitionHealthStats.PartitionHealthOtelMetricEntity.PARTITION_UNDER_REPLICATED_COUNT.getMetricEntity()
+            .getMetricName();
+    String fullMetricName = TEST_METRIC_PREFIX + "." + metricName;
+    Collection<MetricData> allMetrics = inMemoryMetricReader.collectAllMetrics();
+    boolean found = false;
+    for (MetricData md: allMetrics) {
+      if (md.getName().equals(fullMetricName)) {
+        found = true;
+        break;
+      }
+    }
+    assertTrue(!found, "OTel metric should NOT be emitted for total stats, but found: " + fullMetricName);
+
+    // Tehuti: should still work
+    String statsPrefix = "." + totalStatsName;
+    String sensorName =
+        PartitionHealthStats.PartitionHealthTehutiMetricNameEnum.UNDER_REPLICATED_PARTITION.getMetricName();
+    String tehutiMetricName = AbstractVeniceStats.getSensorFullName(statsPrefix, sensorName) + ".Gauge";
+    assertNotNull(metricsRepository.getMetric(tehutiMetricName), "Tehuti metric should exist: " + tehutiMetricName);
+    assertEquals(
+        metricsRepository.getMetric(tehutiMetricName).value(),
+        5.0,
+        "Tehuti metric value mismatch for total stats");
   }
 
   @Test
