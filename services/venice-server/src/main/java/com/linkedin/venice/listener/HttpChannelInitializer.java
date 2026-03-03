@@ -201,6 +201,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   @Override
   public void initChannel(SocketChannel ch) {
     if (sslFactory.isPresent()) {
+      ch.attr(ServerConnectionStatsHandler.CHANNEL_INIT_START_TS).set(System.nanoTime());
       SslInitializer sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
       if (sslHandshakeExecutor != null) {
         sslInitializer
