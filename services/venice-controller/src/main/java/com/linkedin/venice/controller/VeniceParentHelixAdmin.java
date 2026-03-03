@@ -2401,20 +2401,26 @@ public class VeniceParentHelixAdmin implements Admin {
         truncateKafkaTopic(kafkaTopic);
       }
 
+      // Verify that all regions are serving the future version after roll forward
+      // before marking status as ONLINE
+      Map<String, Integer> coloToCurrentVersion = getCurrentVersionsForMultiColos(clusterName, storeName);
+      boolean allRegionsServingFutureVersion = true;
+      for (Map.Entry<String, Integer> entry: coloToCurrentVersion.entrySet()) {
+        if (!entry.getValue().equals(futureVersionBeforeRollForward)) {
+          allRegionsServingFutureVersion = false;
+          LOGGER.warn(
+              "Region {} is serving version {} instead of future version {} for store {}",
+              entry.getKey(),
+              entry.getValue(),
+              futureVersionBeforeRollForward,
+              storeName);
+        }
+      }
+
       HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
         ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
         Store parentStore = repository.getStore(storeName);
-
-        // Verify that all regions are serving the future version after roll forward
-        // before marking status as ONLINE
-        Map<String, Integer> coloToCurrentVersion = getCurrentVersionsForMultiColos(clusterName, storeName);
-        boolean allRegionsServingFutureVersion = true;
-        for (Map.Entry<String, Integer> entry: coloToCurrentVersion.entrySet()) {
-          if (!entry.getValue().equals(futureVersionBeforeRollForward)) {
-            allRegionsServingFutureVersion = false;
-          }
-        }
 
         Version parentVersion = parentStore.getVersion(futureVersionBeforeRollForward);
         if (parentVersion != null && StringUtils.isEmpty(parentVersion.getTargetSwapRegion())
@@ -2428,12 +2434,15 @@ public class VeniceParentHelixAdmin implements Admin {
               parentStore.getName(),
               version,
               ONLINE);
+        } else if (!allRegionsServingFutureVersion) {
+          LOGGER.info(
+              "Not all regions are serving future version {} for store {}. Per-region versions: {}. "
+                  + "Skipping parent version status update to ONLINE.",
+              futureVersionBeforeRollForward,
+              storeName,
+              coloToCurrentVersion);
         }
       }
-      LOGGER.info(
-          "Roll forward to future version {} is successful in all regions for store {}",
-          futureVersionBeforeRollForward,
-          storeName);
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
