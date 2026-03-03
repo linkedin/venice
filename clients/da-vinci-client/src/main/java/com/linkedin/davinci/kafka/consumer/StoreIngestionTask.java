@@ -5387,7 +5387,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (pcs == null) {
         LOGGER.warn(
             "Topic-partition: {} does not exist in pcs map, will not resubscribe.",
-            Utils.getReplicaId(versionTopic, partition));
+            getReplicaId(versionTopic, partition));
         continue;
       }
       /**
