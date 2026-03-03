@@ -966,8 +966,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       });
     } else {
       /**
-       * The version push doesn't exist in this server node at all; it's possible the push for largest version has
-       * already been killed, so instead, emit metrics for the largest known batch push in this node.
+       * The version push doesn't exist in this server node at all; it's possible the push for the largest version has
+       * already been killed, so instead, enable Tehuti metrics for the largest known version in this node.
        */
       updateStatsEmission(taskMap, storeName);
     }

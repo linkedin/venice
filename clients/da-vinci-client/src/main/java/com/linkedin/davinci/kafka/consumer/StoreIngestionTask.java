@@ -249,6 +249,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String ingestionTaskName;
   protected final Properties kafkaProps;
   protected final AtomicBoolean isRunning;
+  /**
+   * Controls whether Tehuti host-level aggregate metrics are emitted by this ingestion task.
+   * Only the task for the largest (most recent) store version should have this enabled,
+   * to prevent double-counting across versions in the host-level aggregates.
+   *
+   * <p>Toggled by {@link KafkaStoreIngestionService#updateStatsEmission} via
+   * {@link #enableTehutiMetrics()} / {@link #disableTehutiMetrics()}.
+   *
+   * <p>This is independent of {@link #recordLevelMetricEnabled}, which is a per-record
+   * performance optimization that suppresses expensive metrics during current version bootstrap.
+   */
   protected final AtomicBoolean emitTehutiMetrics;
   protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
   protected final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;

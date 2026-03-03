@@ -313,7 +313,7 @@ public abstract class KafkaStoreIngestionServiceTest {
 
     /**
     * Test when the latest push job for mock store is killed; the previous latest ongoing push job should enable
-    * metrics emission.
+    * Tehuti metrics emission.
     */
     topicNameToIngestionTaskMap.remove(mostRecentTopic);
     kafkaStoreIngestionService.updateStatsEmission(topicNameToIngestionTaskMap, mockStoreName);

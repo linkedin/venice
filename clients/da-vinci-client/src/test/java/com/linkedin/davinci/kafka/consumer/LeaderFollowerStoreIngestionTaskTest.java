@@ -67,6 +67,7 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -85,7 +86,10 @@ import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.stats.dimensions.VeniceRecordType;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
@@ -102,7 +106,9 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -110,6 +116,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
@@ -1365,6 +1372,214 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Field field = StoreIngestionTask.class.getDeclaredField(fieldName);
     field.setAccessible(true);
     field.set(target, value);
+  }
+
+  /** Holds a mocked task and the common mock/field objects used across gating tests. */
+  private static class MockTaskContext {
+    final LeaderFollowerStoreIngestionTask task;
+    final AggVersionedIngestionStats versionedStats;
+    final HostLevelIngestionStats hostLevelStats;
+    final AtomicBoolean emitTehutiMetrics;
+
+    MockTaskContext(
+        LeaderFollowerStoreIngestionTask task,
+        AggVersionedIngestionStats versionedStats,
+        HostLevelIngestionStats hostLevelStats,
+        AtomicBoolean emitTehutiMetrics) {
+      this.task = task;
+      this.versionedStats = versionedStats;
+      this.hostLevelStats = hostLevelStats;
+      this.emitTehutiMetrics = emitTehutiMetrics;
+    }
+  }
+
+  /**
+   * Creates a mocked {@link LeaderFollowerStoreIngestionTask} with the common fields set for
+   * OTel/Tehuti gating tests: versionedIngestionStats, hostLevelIngestionStats, emitTehutiMetrics,
+   * storeName ("testStore"), and versionNumber (3).
+   */
+  private static MockTaskContext createMockTaskForGatingTests() throws NoSuchFieldException, IllegalAccessException {
+    LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
+    AggVersionedIngestionStats versionedStats = mock(AggVersionedIngestionStats.class);
+    HostLevelIngestionStats hostLevelStats = mock(HostLevelIngestionStats.class);
+    AtomicBoolean emitTehutiMetrics = new AtomicBoolean(false);
+    setField(task, "versionedIngestionStats", versionedStats);
+    setField(task, "hostLevelIngestionStats", hostLevelStats);
+    setField(task, "emitTehutiMetrics", emitTehutiMetrics);
+    setField(task, "storeName", "testStore");
+    setField(task, "versionNumber", 3);
+    return new MockTaskContext(task, versionedStats, hostLevelStats, emitTehutiMetrics);
+  }
+
+  @Test
+  public void testRecordMaxIdleTimeGating() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    setField(ctx.task, "partitionConsumptionStateMap", pcsMap);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(System.currentTimeMillis() - 5000).when(pcs).getLatestPolledMessageTimestampInMs();
+    pcsMap.put(0, pcs);
+
+    Method recordMaxIdleTime = StoreIngestionTask.class.getDeclaredMethod("recordMaxIdleTime");
+    recordMaxIdleTime.setAccessible(true);
+
+    // emitTehutiMetrics=false: OTel fires, Tehuti does not
+    recordMaxIdleTime.invoke(ctx.task);
+    verify(ctx.versionedStats, times(1)).recordMaxIdleTimeOtel(eq("testStore"), eq(3), anyLong());
+    verify(ctx.versionedStats, never()).recordMaxIdleTimeTehuti(anyString(), anyInt(), anyLong());
+
+    // emitTehutiMetrics=true: both fire
+    ctx.emitTehutiMetrics.set(true);
+    recordMaxIdleTime.invoke(ctx.task);
+    verify(ctx.versionedStats, times(2)).recordMaxIdleTimeOtel(eq("testStore"), eq(3), anyLong());
+    verify(ctx.versionedStats, times(1)).recordMaxIdleTimeTehuti(eq("testStore"), eq(3), anyLong());
+  }
+
+  @Test
+  public void testProcessConsumerActionsGating() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    PriorityBlockingQueue<ConsumerAction> emptyQueue = new PriorityBlockingQueue<>();
+    setField(ctx.task, "consumerActionsQueue", emptyQueue);
+
+    doCallRealMethod().when(ctx.task).processConsumerActions(any(Store.class));
+
+    // emitTehutiMetrics=false: OTel fires, Tehuti does not
+    ctx.task.processConsumerActions(mock(Store.class));
+    verify(ctx.versionedStats, times(1)).recordConsumerActionTime(eq("testStore"), eq(3), anyDouble());
+    verify(ctx.hostLevelStats, never()).recordProcessConsumerActionLatency(anyDouble());
+
+    // emitTehutiMetrics=true: both fire
+    ctx.emitTehutiMetrics.set(true);
+    ctx.task.processConsumerActions(mock(Store.class));
+    verify(ctx.versionedStats, times(2)).recordConsumerActionTime(eq("testStore"), eq(3), anyDouble());
+    verify(ctx.hostLevelStats, times(1)).recordProcessConsumerActionLatency(anyDouble());
+  }
+
+  @Test
+  public void testShouldProcessRecordUnexpectedMessageGating() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    setField(ctx.task, "partitionConsumptionStateMap", pcsMap);
+    setField(ctx.task, "kafkaVersionTopic", "testStore_v3");
+
+    // Set up versionTopic field and pub sub topic repository for the LF shouldProcessRecord override
+    PubSubTopic versionTopic = new PubSubTopicImpl("testStore_v3");
+    setField(ctx.task, "versionTopic", versionTopic);
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    setField(ctx.task, "pubSubTopicRepository", pubSubTopicRepository);
+
+    // Set up a batch-only STANDBY partition that has received EOP
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(false).when(pcs).isErrorReported();
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(true).when(pcs).isBatchOnly();
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(pcs).getLatestProcessedVtPosition();
+    pcsMap.put(0, pcs);
+
+    // Create a non-control-message record for partition 0 (same topic as versionTopic)
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
+    KafkaKey dataKey = new KafkaKey(MessageType.PUT, new byte[] { 1, 2, 3 });
+    KafkaMessageEnvelope envelope = new KafkaMessageEnvelope();
+    envelope.payloadUnion = new Put();
+    DefaultPubSubMessage record = new ImmutablePubSubMessage(dataKey, envelope, topicPartition, null, 0, 100);
+
+    doCallRealMethod().when(ctx.task).shouldProcessRecord(any(DefaultPubSubMessage.class));
+
+    // emitTehutiMetrics=false: OTel fires, Tehuti does not
+    ctx.task.shouldProcessRecord(record);
+    verify(ctx.versionedStats, times(1)).recordUnexpectedMessageCount(eq("testStore"), eq(3));
+    verify(ctx.hostLevelStats, never()).recordUnexpectedMessage();
+
+    // emitTehutiMetrics=true: both fire
+    ctx.emitTehutiMetrics.set(true);
+    ctx.task.shouldProcessRecord(record);
+    verify(ctx.versionedStats, times(2)).recordUnexpectedMessageCount(eq("testStore"), eq(3));
+    verify(ctx.hostLevelStats, times(1)).recordUnexpectedMessage();
+  }
+
+  @Test
+  public void testRecordAssembledRecordSizeGating() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    setField(ctx.task, "isRmdChunked", false);
+
+    // Use a real serializer and create a valid ChunkedValueManifest
+    ChunkedValueManifestSerializer serializer = new ChunkedValueManifestSerializer(true);
+    setField(ctx.task, "manifestSerializer", serializer);
+
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.keysWithChunkIdSuffix = new ArrayList<>();
+    manifest.schemaId = 1;
+    manifest.size = 500;
+    ByteBuffer valueBytes = serializer.serialize(manifest);
+
+    doCallRealMethod().when(ctx.task).recordAssembledRecordSize(anyInt(), any(ByteBuffer.class), any(), anyLong());
+    // Enable the ratio path: stub getMaxRecordSizeBytes to a positive limit so ratio > 0
+    doCallRealMethod().when(ctx.task).calculateAssembledRecordSizeRatio(anyLong());
+    doCallRealMethod().when(ctx.task).recordAssembledRecordSizeRatio(anyDouble(), anyLong());
+    doReturn(1000).when(ctx.task).getMaxRecordSizeBytes();
+
+    long currentTimeMs = System.currentTimeMillis();
+    // With recordSize=600 (100 + manifest.size) and maxRecordSizeBytes=1000, ratio = 0.6
+    double expectedRatio = 600.0 / 1000;
+
+    // emitTehutiMetrics=false: OTel fires, Tehuti does not
+    ctx.task.recordAssembledRecordSize(100, valueBytes.duplicate(), null, currentTimeMs);
+    verify(ctx.versionedStats, times(1))
+        .recordAssembledSize(eq("testStore"), eq(3), eq(VeniceRecordType.DATA), eq(600L));
+    verify(ctx.hostLevelStats, never()).recordAssembledRecordSize(anyLong(), anyLong());
+    // Ratio: OTel fires, Tehuti does not
+    verify(ctx.versionedStats, times(1)).recordAssembledSizeRatio(eq("testStore"), eq(3), eq(expectedRatio));
+    verify(ctx.hostLevelStats, never()).recordAssembledRecordSizeRatio(anyDouble(), anyLong());
+
+    // emitTehutiMetrics=true: both fire
+    ctx.emitTehutiMetrics.set(true);
+    ctx.task.recordAssembledRecordSize(100, valueBytes.duplicate(), null, currentTimeMs);
+    verify(ctx.versionedStats, times(2))
+        .recordAssembledSize(eq("testStore"), eq(3), eq(VeniceRecordType.DATA), eq(600L));
+    verify(ctx.hostLevelStats, times(1)).recordAssembledRecordSize(eq(600L), eq(currentTimeMs));
+    // Ratio: both fire
+    verify(ctx.versionedStats, times(2)).recordAssembledSizeRatio(eq("testStore"), eq(3), eq(expectedRatio));
+    verify(ctx.hostLevelStats, times(1)).recordAssembledRecordSizeRatio(eq(expectedRatio), eq(currentTimeMs));
+  }
+
+  @Test
+  public void testRecordAssembledRmdSizeGating() throws Exception {
+    MockTaskContext ctx = createMockTaskForGatingTests();
+    setField(ctx.task, "isRmdChunked", false);
+
+    ChunkedValueManifestSerializer serializer = new ChunkedValueManifestSerializer(true);
+    setField(ctx.task, "manifestSerializer", serializer);
+
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.keysWithChunkIdSuffix = new ArrayList<>();
+    manifest.schemaId = 1;
+    manifest.size = 500;
+    ByteBuffer valueBytes = serializer.serialize(manifest);
+
+    // Non-chunked RMD: rmdSize = rmdBytes.remaining() (no deserialization)
+    ByteBuffer rmdBytes = ByteBuffer.wrap(new byte[150]);
+
+    doCallRealMethod().when(ctx.task).recordAssembledRecordSize(anyInt(), any(ByteBuffer.class), any(), anyLong());
+    doCallRealMethod().when(ctx.task).calculateAssembledRecordSizeRatio(anyLong());
+    doCallRealMethod().when(ctx.task).recordAssembledRecordSizeRatio(anyDouble(), anyLong());
+    doReturn(1000).when(ctx.task).getMaxRecordSizeBytes();
+
+    long currentTimeMs = System.currentTimeMillis();
+
+    // emitTehutiMetrics=false: OTel fires for both DATA and RMD, Tehuti does not
+    ctx.task.recordAssembledRecordSize(100, valueBytes.duplicate(), rmdBytes.duplicate(), currentTimeMs);
+    verify(ctx.versionedStats, times(1))
+        .recordAssembledSize(eq("testStore"), eq(3), eq(VeniceRecordType.REPLICATION_METADATA), eq(150L));
+    verify(ctx.hostLevelStats, never()).recordAssembledRmdSize(anyLong(), anyLong());
+
+    // emitTehutiMetrics=true: both OTel and Tehuti fire for RMD
+    ctx.emitTehutiMetrics.set(true);
+    ctx.task.recordAssembledRecordSize(100, valueBytes.duplicate(), rmdBytes.duplicate(), currentTimeMs);
+    verify(ctx.versionedStats, times(2))
+        .recordAssembledSize(eq("testStore"), eq(3), eq(VeniceRecordType.REPLICATION_METADATA), eq(150L));
+    verify(ctx.hostLevelStats, times(1)).recordAssembledRmdSize(eq(150L), eq(currentTimeMs));
   }
 
   @Test
