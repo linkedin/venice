@@ -2909,7 +2909,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long syncBytesInterval = getSyncBytesInterval(partitionConsumptionState);
     boolean recordsProcessedAboveSyncIntervalThreshold = (syncBytesInterval > 0
         && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
+    // Capture completion state before the ready-to-serve check so we can detect a transition.
+    boolean wasComplete = partitionConsumptionState.isComplete();
     getDefaultReadyToServeChecker().apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
+    // Re-evaluate record-level metrics only when the current partition just transitioned to complete, so that records
+    // in the same batch as EOP get full metrics without waiting for the next loop cycle. The guard avoids repeatedly
+    // scanning all partition states on every record while metrics are still disabled.
+    if (!recordLevelMetricEnabled.get() && !wasComplete && partitionConsumptionState.isComplete()) {
+      mayResumeRecordLevelMetricsForCurrentVersion();
+    }
 
     /**
      * Syncing offset checking in syncOffset() should be the very last step for processing a record.
