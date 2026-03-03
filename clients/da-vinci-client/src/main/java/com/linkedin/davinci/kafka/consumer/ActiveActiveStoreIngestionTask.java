@@ -47,6 +47,9 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
+import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
+import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -375,6 +378,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
       getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount(currentTimeForMetricsMs);
+      versionedIngestionStats
+          .recordDcrLookupCacheHitCount(storeName, versionNumber, VeniceRecordType.REPLICATION_METADATA);
       return new RmdWithValueSchemaId(
           cachedRecord.getValueSchemaId(),
           getRmdProtocolVersionId(),
@@ -411,9 +416,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final long lookupStartTimeInNS = System.nanoTime();
     ValueRecord result = databaseLookupWithConcurrencyLimit(
         () -> getRmdWithValueSchemaByteBufferFromStorageInternal(partition, key, rmdManifestContainer));
-    getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
-        LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
-        currentTimeForMetricsMs);
+    double rmdLookupLatency = LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS);
+    getHostLevelIngestionStats()
+        .recordIngestionReplicationMetadataLookUpLatency(rmdLookupLatency, currentTimeForMetricsMs);
+    versionedIngestionStats
+        .recordDcrLookupTime(storeName, versionNumber, VeniceRecordType.REPLICATION_METADATA, rmdLookupLatency);
     if (result == null) {
       return null;
     }
@@ -508,15 +515,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         // Kafka cluster. TODO: evaluate whether it is enough this way, or we need to add a new
         // config to represent the mapping from Kafka server URLs to colo ID.
         );
-        getHostLevelIngestionStats()
-            .recordIngestionActiveActivePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
+        double putMergeLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs);
+        getHostLevelIngestionStats().recordIngestionActiveActivePutLatency(putMergeLatency);
+        versionedIngestionStats.recordDcrMergeTime(storeName, versionNumber, VeniceDCROperation.PUT, putMergeLatency);
         break;
 
       case DELETE:
         mergeConflictResult = mergeConflictResolver
             .delete(oldValueByteBufferProvider, rmdWithValueSchemaID, writeTimestamp, kafkaClusterId);
-        getHostLevelIngestionStats()
-            .recordIngestionActiveActiveDeleteLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
+        double deleteMergeLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs);
+        getHostLevelIngestionStats().recordIngestionActiveActiveDeleteLatency(deleteMergeLatency);
+        versionedIngestionStats
+            .recordDcrMergeTime(storeName, versionNumber, VeniceDCROperation.DELETE, deleteMergeLatency);
         break;
 
       case UPDATE:
@@ -529,8 +539,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             writeTimestamp,
             kafkaClusterId,
             valueManifestContainer);
-        getHostLevelIngestionStats()
-            .recordIngestionActiveActiveUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs));
+        double updateMergeLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeDCRTimestampInNs);
+        getHostLevelIngestionStats().recordIngestionActiveActiveUpdateLatency(updateMergeLatency);
+        versionedIngestionStats
+            .recordDcrMergeTime(storeName, versionNumber, VeniceDCROperation.UPDATE, updateMergeLatency);
         break;
       default:
         throw new VeniceMessageException(
@@ -751,11 +763,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               RawBytesStoreDeserializerCache.getInstance(),
               compressor.get(),
               valueManifestContainer));
-      hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
-          LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS),
-          currentTimeForMetricsMs);
+      double valueLookupLatency = LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS);
+      hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(valueLookupLatency, currentTimeForMetricsMs);
+      versionedIngestionStats.recordDcrLookupTime(storeName, versionNumber, VeniceRecordType.DATA, valueLookupLatency);
     } else {
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
+      versionedIngestionStats.recordDcrLookupCacheHitCount(storeName, versionNumber, VeniceRecordType.DATA);
       // construct originalValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
         if (valueManifestContainer != null) {
@@ -959,6 +972,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 sourceTopicPartition,
                 rtStartPosition);
             hostLevelIngestionStats.recordIngestionFailure();
+            versionedIngestionStats.recordIngestionFailureCount(
+                storeName,
+                versionNumber,
+                VeniceIngestionFailureReason.REMOTE_BROKER_UNREACHABLE);
             /**
              *  Add to repair queue. We won't attempt to resubscribe for brokers we couldn't compute an upstream offset
              *  accurately for. We will not persist the wrong position into OffsetRecord, we'll reattempt subscription later.

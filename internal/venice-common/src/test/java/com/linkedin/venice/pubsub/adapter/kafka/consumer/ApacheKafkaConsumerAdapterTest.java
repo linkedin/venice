@@ -967,4 +967,41 @@ public class ApacheKafkaConsumerAdapterTest {
         "pause should complete after poll returned, proving mutual exclusion");
   }
 
+  @Test
+  public void testAdvancePositionBasic() {
+    ApacheKafkaOffsetPosition start = new ApacheKafkaOffsetPosition(10L);
+    PubSubPosition result = kafkaConsumerAdapter.advancePosition(pubSubTopicPartition, start, 5);
+    assertNotNull(result);
+    assertEquals(result.getNumericOffset(), 15L);
+  }
+
+  @Test
+  public void testAdvancePositionByZero() {
+    ApacheKafkaOffsetPosition start = new ApacheKafkaOffsetPosition(42L);
+    PubSubPosition result = kafkaConsumerAdapter.advancePosition(pubSubTopicPartition, start, 0);
+    assertNotNull(result);
+    assertEquals(result.getNumericOffset(), 42L);
+  }
+
+  @Test
+  public void testAdvancePositionNullArgs() {
+    ApacheKafkaOffsetPosition start = new ApacheKafkaOffsetPosition(10L);
+    expectThrows(NullPointerException.class, () -> kafkaConsumerAdapter.advancePosition(null, start, 5));
+    expectThrows(NullPointerException.class, () -> kafkaConsumerAdapter.advancePosition(pubSubTopicPartition, null, 5));
+  }
+
+  @Test
+  public void testAdvancePositionNegativeN() {
+    ApacheKafkaOffsetPosition start = new ApacheKafkaOffsetPosition(10L);
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> kafkaConsumerAdapter.advancePosition(pubSubTopicPartition, start, -1));
+  }
+
+  @Test
+  public void testAdvancePositionOverflow() {
+    ApacheKafkaOffsetPosition start = new ApacheKafkaOffsetPosition(Long.MAX_VALUE);
+    expectThrows(ArithmeticException.class, () -> kafkaConsumerAdapter.advancePosition(pubSubTopicPartition, start, 1));
+  }
+
 }

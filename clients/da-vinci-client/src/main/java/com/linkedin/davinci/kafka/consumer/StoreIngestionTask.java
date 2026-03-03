@@ -122,6 +122,8 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.server.VersionRole;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
+import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
@@ -1312,9 +1314,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         beforeProcessingRecordTimestampNs); // blocking call
 
     if (measureTime && recordLevelMetricEnabled.get()) {
-      hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
-          LatencyUtils.getElapsedTimeFromNSToMS(queuePutStartTimeInNS),
-          currentTimeForMetricsMs);
+      double queuePutLatency = LatencyUtils.getElapsedTimeFromNSToMS(queuePutStartTimeInNS);
+      hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(queuePutLatency, currentTimeForMetricsMs);
+      versionedIngestionStats.recordConsumerQueuePutTime(storeName, versionNumber, queuePutLatency);
     }
   }
 
@@ -1480,11 +1482,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (metricsEnabled) {
       if (totalBytesRead > 0) {
         hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
+        versionedIngestionStats.recordBytesConsumedAsUncompressedSize(storeName, versionNumber, totalBytesRead);
       }
       if (elapsedTimeForPuttingIntoQueue.getValue() > 0) {
-        hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
-            elapsedTimeForPuttingIntoQueue.getValue(),
-            beforeProcessingBatchRecordsTimestampMs);
+        double queuePutLatency = elapsedTimeForPuttingIntoQueue.getValue();
+        hostLevelIngestionStats
+            .recordConsumerRecordsQueuePutLatency(queuePutLatency, beforeProcessingBatchRecordsTimestampMs);
+        versionedIngestionStats.recordConsumerQueuePutTime(storeName, versionNumber, queuePutLatency);
       }
 
       hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
@@ -1575,11 +1579,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (metricsEnabled) {
       if (totalBytesRead > 0) {
         hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
+        versionedIngestionStats.recordBytesConsumedAsUncompressedSize(storeName, versionNumber, totalBytesRead);
       }
       if (elapsedTimeForPuttingIntoQueue.getValue() > 0) {
-        hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
-            elapsedTimeForPuttingIntoQueue.getValue(),
-            beforeProcessingBatchRecordsTimestampMs);
+        double queuePutLatency = elapsedTimeForPuttingIntoQueue.getValue();
+        hostLevelIngestionStats
+            .recordConsumerRecordsQueuePutLatency(queuePutLatency, beforeProcessingBatchRecordsTimestampMs);
+        versionedIngestionStats.recordConsumerQueuePutTime(storeName, versionNumber, queuePutLatency);
       }
 
       hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
@@ -1765,6 +1771,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (Exception e) {
       LOGGER.error("Error happened during resubscription when store version ingestion role changed.", e);
       hostLevelIngestionStats.recordResubscriptionFailure();
+      versionedIngestionStats.recordResubscriptionFailureCount(storeName, versionNumber);
       throw e;
     }
   }
@@ -2036,6 +2043,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     reportError(partitionConsumptionStateMap.values(), errorPartitionId, "Caught Exception during ingestion.", e);
     if (isRunning.get()) {
       hostLevelIngestionStats.recordIngestionFailure();
+      versionedIngestionStats
+          .recordIngestionFailureCount(storeName, versionNumber, VeniceIngestionFailureReason.GENERAL);
     }
   }
 
@@ -2214,7 +2223,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
     if (metricsEnabled) {
-      hostLevelIngestionStats.recordProcessConsumerActionLatency(LatencyUtils.getElapsedTimeFromMsToMs(startTime));
+      double actionLatency = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
+      hostLevelIngestionStats.recordProcessConsumerActionLatency(actionLatency);
+      versionedIngestionStats.recordConsumerActionTime(storeName, versionNumber, actionLatency);
     }
   }
 
@@ -2335,6 +2346,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     } catch (VeniceInconsistentStoreMetadataException e) {
       hostLevelIngestionStats.recordInconsistentStoreMetadata();
+      versionedIngestionStats.recordStoreMetadataInconsistentCount(storeName, versionNumber);
       // clear the local store metadata and the replica will be rebuilt from scratch upon retry as part of
       // processConsumerActions.
       storageMetadataService.clearOffset(kafkaVersionTopic, partition);
@@ -2702,6 +2714,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // emit metric for unexpected messages
       if (emitMetrics.get()) {
         hostLevelIngestionStats.recordUnexpectedMessage();
+        versionedIngestionStats.recordUnexpectedMessageCount(storeName, versionNumber);
       }
 
       // Report such kind of message once per minute to reduce logging volume
@@ -3037,6 +3050,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public void recordChecksumVerificationFailure() {
     hostLevelIngestionStats.recordChecksumVerificationFailure();
+    versionedIngestionStats.recordChecksumVerificationFailureCount(storeName, versionNumber);
   }
 
   /**
@@ -3055,6 +3069,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ChunkedValueManifest valueManifest = manifestSerializer.deserialize(valueByteArray, CHUNK_MANIFEST_SCHEMA_ID);
       int recordSize = keyLen + valueManifest.getSize();
       hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
+      versionedIngestionStats.recordAssembledSize(storeName, versionNumber, VeniceRecordType.DATA, recordSize);
       recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
 
       if (rmdBytes == null || rmdBytes.remaining() == 0) {
@@ -3068,6 +3083,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         rmdSize = rmdManifest.getSize();
       }
       hostLevelIngestionStats.recordAssembledRmdSize(rmdSize, currentTimeMs);
+      versionedIngestionStats
+          .recordAssembledSize(storeName, versionNumber, VeniceRecordType.REPLICATION_METADATA, rmdSize);
     } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
       LOGGER.error("Failed to deserialize ChunkedValueManifest to record the assembled record or RMD size", e);
     }
@@ -4257,8 +4274,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           valueSchemaId = writerSchemaId;
         }
         if (emitRecordLevelMetrics) {
-          hostLevelIngestionStats
-              .recordStorageEnginePutLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs), currentTimeMs);
+          double putLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);
+          hostLevelIngestionStats.recordStorageEnginePutLatency(putLatency, currentTimeMs);
+          versionedIngestionStats.recordStorageEnginePutTime(storeName, versionNumber, putLatency);
         }
         break;
 
@@ -4308,8 +4326,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         keyLen = keyBytes.length;
         deleteFromStorageEngine(producedPartition, keyBytes, delete);
         if (metricsEnabled && recordLevelMetricEnabled.get()) {
-          hostLevelIngestionStats
-              .recordStorageEngineDeleteLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs), currentTimeMs);
+          double deleteLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);
+          hostLevelIngestionStats.recordStorageEngineDeleteLatency(deleteLatency, currentTimeMs);
+          versionedIngestionStats.recordStorageEngineDeleteTime(storeName, versionNumber, deleteLatency);
         }
         break;
 
@@ -4350,6 +4369,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (emitRecordLevelMetrics) {
       hostLevelIngestionStats.recordKeySize(keyLen, currentTimeMs);
       hostLevelIngestionStats.recordValueSize(valueLen, currentTimeMs);
+      versionedIngestionStats.recordKeySize(storeName, versionNumber, keyLen);
+      versionedIngestionStats.recordValueSize(storeName, versionNumber, valueLen);
     }
 
     return keyLen + valueLen;

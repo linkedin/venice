@@ -147,7 +147,7 @@ public class TestP2PFileTransferServerHandler {
 
       if (outbound instanceof FullHttpResponse) {
         FullHttpResponse httpResponse = (FullHttpResponse) outbound;
-        if (httpResponse.status().code() == TOO_MANY_REQUESTS) {
+        if (httpResponse.status().code() == TOO_MANY_REQUESTS.getCode()) {
           foundTooManyRequestsResponse = true;
           break;
         }

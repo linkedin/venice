@@ -105,7 +105,19 @@ public enum VeniceMetricsDimensions {
   VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT("venice.admin_message.processing.component"),
 
   /** AdminMessageType */
-  VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type");
+  VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type"),
+
+  /** {@link VeniceDCROperation} DCR merge operation type (put, update, delete) */
+  VENICE_DCR_OPERATION("venice.dcr.operation"),
+
+  /** {@link VeniceWriteComputeOperation} Write compute operation phase (query, update) */
+  VENICE_WRITE_COMPUTE_OPERATION("venice.write_compute.operation"),
+
+  /** {@link VeniceRecordType} Record type (data, replication_metadata) */
+  VENICE_RECORD_TYPE("venice.record.type"),
+
+  /** {@link VeniceIngestionFailureReason} Categorized reason for ingestion failure */
+  VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
