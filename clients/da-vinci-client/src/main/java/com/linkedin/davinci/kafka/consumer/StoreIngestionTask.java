@@ -5378,7 +5378,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (System.currentTimeMillis() - previousResubscribeTime < SECONDS
           .toMillis(allowedResubscribeIntervalInSeconds)) {
         LOGGER.info(
-            "Skip resubscribe request for replica: {} as it has been resubscribed recently at: {}",
+            "Skip resubscribe request for topic-partition: {} as it has been resubscribed recently at: {}",
             getReplicaId(versionTopic, partition),
             previousResubscribeTime);
         continue;
@@ -5386,7 +5386,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
       if (pcs == null) {
         LOGGER.warn(
-            "Replica: {} does not exist in pcs map, will not resubscribe.",
+            "Topic-partition: {} does not exist in pcs map, will not resubscribe.",
             Utils.getReplicaId(versionTopic, partition));
         continue;
       }

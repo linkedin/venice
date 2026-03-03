@@ -504,7 +504,7 @@ public class StorageService extends AbstractVeniceService {
     storageEngine.dropPartition(partition);
     Set<Integer> remainingPartitions = storageEngine.getPartitionIds();
     LOGGER.info(
-        "Dropped replica: {}, remaining partitions={}",
+        "Dropped topic-partition: {}, remaining partitions={}",
         Utils.getReplicaId(kafkaTopic, partition),
         remainingPartitions);
 

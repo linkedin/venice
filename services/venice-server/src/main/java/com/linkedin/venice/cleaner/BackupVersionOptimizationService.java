@@ -155,7 +155,7 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
               stats.recordBackupVersionDatabaseOptimization();
             } catch (Exception e) {
               LOGGER.error(
-                  "Failed to optimize database for replica: {}",
+                  "Failed to optimize database for topic-partition: {}",
                   Utils.getReplicaId(resourceName, partitionId),
                   e);
               errored = true;

@@ -206,9 +206,11 @@ public class BlobSnapshotManager {
       snapshotTimestamps.get(topicName).put(partitionId, System.currentTimeMillis());
       // update the snapshot offset record to reflect the latest snapshot offset
       snapshotMetadataRecords.get(topicName).put(partitionId, metadataBeforeRecreateSnapshot);
-      LOGGER.info("Successfully recreated snapshot for replica: {}.", Utils.getReplicaId(topicName, partitionId));
+      LOGGER
+          .info("Successfully recreated snapshot for topic-partition: {}.", Utils.getReplicaId(topicName, partitionId));
     } catch (Exception e) {
-      String errorMessage = "Failed to create snapshot for replica: " + Utils.getReplicaId(topicName, partitionId);
+      String errorMessage =
+          "Failed to create snapshot for topic-partition: " + Utils.getReplicaId(topicName, partitionId);
       LOGGER.error(errorMessage, e);
       throw new VeniceException(errorMessage);
     }
@@ -250,19 +252,19 @@ public class BlobSnapshotManager {
 
     AtomicInteger concurrentUsers = concurrentPartitionUsers.get(partitionId);
     if (concurrentUsers == null) {
-      throw new VeniceException("Replica " + Utils.getReplicaId(topicName, partitionId) + " not found");
+      throw new VeniceException("Topic-partition " + Utils.getReplicaId(topicName, partitionId) + " not found");
     }
     long result = concurrentUsers.decrementAndGet();
     if (result < 0) {
       LOGGER.warn(
-          "Concurrent user count for replica: {} is negative: {}. This should not happen, but resetting to 0.",
+          "Concurrent user count for topic-partition: {} is negative: {}. This should not happen, but resetting to 0.",
           Utils.getReplicaId(topicName, partitionId),
           result);
       concurrentUsers.set(0);
     }
 
     LOGGER.info(
-        "Concurrent user count for replica: {} decreased to {}",
+        "Concurrent user count for topic-partition: {} decreased to {}",
         Utils.getReplicaId(topicName, partitionId),
         concurrentUsers.get());
   }
@@ -435,21 +437,23 @@ public class BlobSnapshotManager {
         return;
       }
 
-      LOGGER.info("Cleaning up stale snapshot for replica: {}", Utils.getReplicaId(topicName, partitionId));
+      LOGGER.info("Cleaning up stale snapshot for topic-partition: {}", Utils.getReplicaId(topicName, partitionId));
 
       try {
         cleanupSnapshot(topicName, partitionId);
       } catch (PersistenceFailureException e) {
         LOGGER.warn(
-            "Failed to clean up snapshot for replica: {} due to partition no longer exists, only removing from tracking.",
+            "Failed to clean up snapshot for topic-partition: {} due to partition no longer exists, only removing from tracking.",
             Utils.getReplicaId(topicName, partitionId));
       }
 
       removeTrackingValues(topicName, partitionId);
 
-      LOGGER.info("Successfully cleaned up snapshot for replica: {}", Utils.getReplicaId(topicName, partitionId));
+      LOGGER
+          .info("Successfully cleaned up snapshot for topic-partition: {}", Utils.getReplicaId(topicName, partitionId));
     } catch (Exception e) {
-      LOGGER.error("Failed to clean up snapshot for replica: {}", Utils.getReplicaId(topicName, partitionId), e);
+      LOGGER
+          .error("Failed to clean up snapshot for topic-partition: {}", Utils.getReplicaId(topicName, partitionId), e);
     }
   }
 
@@ -483,7 +487,7 @@ public class BlobSnapshotManager {
                 cleanupOutOfRetentionSnapshot(topicName, partitionId);
               } catch (Exception e) {
                 LOGGER.error(
-                    "Error during scheduled cleanup for replica: {}",
+                    "Error during scheduled cleanup for topic-partition: {}",
                     Utils.getReplicaId(topicName, partitionId),
                     e);
               }
