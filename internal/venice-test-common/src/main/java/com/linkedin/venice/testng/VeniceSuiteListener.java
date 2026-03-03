@@ -31,7 +31,15 @@ public class VeniceSuiteListener implements ISuiteListener {
   }
 
   private void startWatchdog(String suiteName) {
-    long timeoutMs = Long.parseLong(System.getProperty(TIMEOUT_PROPERTY, "0"));
+    long timeoutMs;
+    try {
+      timeoutMs = Long.parseLong(System.getProperty(TIMEOUT_PROPERTY, "0"));
+    } catch (NumberFormatException e) {
+      System.err.println(
+          "Invalid value for " + TIMEOUT_PROPERTY + "='" + System.getProperty(TIMEOUT_PROPERTY)
+              + "'. Expected numeric milliseconds. Watchdog disabled.");
+      return;
+    }
     if (timeoutMs <= 0) {
       return;
     }
@@ -84,9 +92,14 @@ public class VeniceSuiteListener implements ISuiteListener {
     return suite.getName();
   }
 
+  private static File getMarkerDir() {
+    String buildDir = System.getProperty("venice.test.buildDir", "build");
+    return new File(buildDir, "test-watchdog-timeouts");
+  }
+
   private static void writeTimeoutMarker(String suiteName, long limitSeconds, long elapsedSeconds) {
     try {
-      File markerDir = new File("build/test-watchdog-timeouts");
+      File markerDir = getMarkerDir();
       markerDir.mkdirs();
       File marker = new File(markerDir, suiteName + ".timeout");
       try (FileWriter fw = new FileWriter(marker)) {

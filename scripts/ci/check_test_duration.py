@@ -13,7 +13,7 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 
-THRESHOLD_SECONDS = 600  # 10 minutes
+THRESHOLD_SECONDS = int(os.environ.get("TEST_DURATION_THRESHOLD_SECONDS", "600"))
 
 
 def main():
@@ -25,7 +25,16 @@ def main():
         with open(f) as fh:
             parts = fh.read().strip().split("|")
             if len(parts) == 3:
-                violations.append((parts[0], float(parts[1]), "killed by watchdog"))
+                try:
+                    duration = float(parts[1])
+                except (ValueError, IndexError):
+                    print(f"Warning: malformed watchdog marker '{f}': {parts}", file=sys.stderr)
+                    violations.append((parts[0] if parts else f, 0.0, "invalid watchdog marker"))
+                    continue
+                violations.append((parts[0], duration, "killed by watchdog"))
+            else:
+                print(f"Warning: malformed watchdog marker '{f}': expected 3 fields, got {len(parts)}", file=sys.stderr)
+                violations.append((parts[0] if parts else f, 0.0, "invalid watchdog marker"))
 
     # Check JUnit XML reports (test completed but exceeded the threshold)
     for f in sorted(glob.glob(os.path.join(search_root, "**/build/test-results/integrationTest*/TEST-*.xml"), recursive=True)):
@@ -35,8 +44,9 @@ def main():
             time = float(root.get("time", "0"))
             if time > THRESHOLD_SECONDS:
                 violations.append((name, time, "completed"))
-        except ET.ParseError:
-            pass
+        except ET.ParseError as e:
+            print(f"Warning: failed to parse JUnit XML report '{f}': {e}", file=sys.stderr)
+            violations.append((f, 0.0, "junit report parse error"))
 
     if not violations:
         sys.exit(0)
