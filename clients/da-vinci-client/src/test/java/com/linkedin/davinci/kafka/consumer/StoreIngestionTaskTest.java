@@ -270,6 +270,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -304,7 +305,7 @@ import org.testng.annotations.Test;
  * Beware that most of the test cases in this suite depend on {@link StoreIngestionTaskTest#TEST_TIMEOUT_MS}
  * Adjust it based on environment if timeout failure occurs.
  */
-@Test(singleThreaded = true)
+@Test(singleThreaded = true, timeOut = 120_000)
 public abstract class StoreIngestionTaskTest {
   enum NodeType {
     LEADER, FOLLOWER, DA_VINCI
@@ -1008,7 +1009,19 @@ public abstract class StoreIngestionTaskTest {
     } finally {
       storeIngestionTaskUnderTest.close();
       if (testSubscribeTaskFuture != null) {
-        testSubscribeTaskFuture.get(RUN_TEST_FUNCTION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        try {
+          testSubscribeTaskFuture.get(RUN_TEST_FUNCTION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (TimeoutException | InterruptedException e) {
+          // Cancel the SIT thread to prevent it from blocking the shared single-thread taskPollingService
+          // executor. TimeoutException: shutdown exceeded RUN_TEST_FUNCTION_TIMEOUT_SECONDS.
+          // InterruptedException: TestNG timeOut interrupted the test thread. Either way, the SIT thread
+          // must be interrupted to avoid cascading hangs in subsequent tests.
+          testSubscribeTaskFuture.cancel(true);
+          if (e instanceof InterruptedException) {
+            Thread.currentThread().interrupt();
+          }
+          throw e;
+        }
       }
     }
   }
