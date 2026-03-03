@@ -264,7 +264,7 @@ public class BlobSnapshotManager {
     LOGGER.info(
         "Concurrent user count for replica: {} decreased to {}",
         Utils.getReplicaId(topicName, partitionId),
-        result);
+        concurrentUsers.get());
   }
 
   protected int getConcurrentSnapshotUsers(String topicName, int partitionId) {
