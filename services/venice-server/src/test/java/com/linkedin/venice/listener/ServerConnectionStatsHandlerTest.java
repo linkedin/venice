@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -8,18 +9,21 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.ServerConnectionStats;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 import io.netty.util.Attribute;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLSession;
 import javax.security.auth.x500.X500Principal;
+import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -96,5 +100,57 @@ public class ServerConnectionStatsHandlerTest {
     verify(serverConnectionStats, times(1)).decrementRouterConnectionCount();
     verify(serverConnectionStats, times(1)).decrementClientConnectionCount();
     verify(serverConnectionStats, times(2)).newConnectionRequest();
+  }
+
+  @Test
+  public void testConnectionSetupLatencyRecordedOnHandshakeSuccess() throws Exception {
+    ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
+    ServerConnectionStatsHandler handler =
+        new ServerConnectionStatsHandler(null, serverConnectionStats, "venice-router");
+
+    // Simulate initChannel setting the start timestamp
+    Attribute<Long> initStartTsAttr = mock(Attribute.class);
+    long startTs = System.nanoTime();
+    when(channel.attr(ServerConnectionStatsHandler.CHANNEL_INIT_START_TS)).thenReturn(initStartTsAttr);
+    when(initStartTsAttr.getAndSet(null)).thenReturn(startTs);
+
+    // Fire a successful handshake event
+    handler.userEventTriggered(context, SslHandshakeCompletionEvent.SUCCESS);
+
+    // Verify latency was recorded with a non-negative value
+    ArgumentCaptor<Double> latencyCaptor = ArgumentCaptor.forClass(Double.class);
+    verify(serverConnectionStats, times(1)).recordNewConnectionSetupLatency(latencyCaptor.capture());
+    assertTrue(latencyCaptor.getValue() >= 0, "Latency should be non-negative");
+  }
+
+  @Test
+  public void testConnectionSetupLatencyNotRecordedOnHandshakeFailure() throws Exception {
+    ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
+    ServerConnectionStatsHandler handler =
+        new ServerConnectionStatsHandler(null, serverConnectionStats, "venice-router");
+
+    // Fire a failed handshake event
+    SslHandshakeCompletionEvent failedEvent =
+        new SslHandshakeCompletionEvent(new javax.net.ssl.SSLHandshakeException("test failure"));
+    handler.userEventTriggered(context, failedEvent);
+
+    // Verify latency was NOT recorded
+    verify(serverConnectionStats, never()).recordNewConnectionSetupLatency(anyDouble());
+  }
+
+  @Test
+  public void testConnectionSetupLatencyNotRecordedWhenTimestampMissing() throws Exception {
+    ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
+    ServerConnectionStatsHandler handler =
+        new ServerConnectionStatsHandler(null, serverConnectionStats, "venice-router");
+
+    // No timestamp was set (e.g., non-SSL path)
+    Attribute<Long> initStartTsAttr = mock(Attribute.class);
+    when(channel.attr(ServerConnectionStatsHandler.CHANNEL_INIT_START_TS)).thenReturn(initStartTsAttr);
+    when(initStartTsAttr.getAndSet(null)).thenReturn(null);
+
+    handler.userEventTriggered(context, SslHandshakeCompletionEvent.SUCCESS);
+
+    verify(serverConnectionStats, never()).recordNewConnectionSetupLatency(anyDouble());
   }
 }
