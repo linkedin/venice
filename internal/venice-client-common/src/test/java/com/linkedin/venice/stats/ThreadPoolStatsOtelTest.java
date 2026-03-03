@@ -60,16 +60,20 @@ public class ThreadPoolStatsOtelTest {
   public void testAsyncGaugeActiveThreadCount() {
     // Async gauges are collected during metric read
     validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_COUNT.getMetricEntity().getMetricName(), 5);
+    // Tehuti LambdaStat should also report the same value
+    validateTehutiMetric("active_thread_number", "LambdaStat", 5.0);
   }
 
   @Test
   public void testAsyncGaugeMaxThreadCount() {
     validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_MAX_COUNT.getMetricEntity().getMetricName(), 10);
+    validateTehutiMetric("max_thread_number", "LambdaStat", 10.0);
   }
 
   @Test
   public void testAsyncGaugeQueueTaskCount() {
     validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_COUNT.getMetricEntity().getMetricName(), 3);
+    validateTehutiMetric("queued_task_count_gauge", "LambdaStat", 3.0);
   }
 
   @Test
@@ -93,7 +97,7 @@ public class ThreadPoolStatsOtelTest {
   @Test
   public void testRecordQueuedTasksCount() {
     Mockito.doReturn(7).when(mockQueue).size();
-    stats.recordQueuedTasksCount(0); // argument is ignored, uses actual queue size
+    stats.recordQueuedTasksCount();
 
     // OTel histogram
     validateHistogram(
@@ -112,9 +116,9 @@ public class ThreadPoolStatsOtelTest {
   @Test
   public void testRecordMultipleQueuedTasksCounts() {
     Mockito.doReturn(5).when(mockQueue).size();
-    stats.recordQueuedTasksCount(0);
+    stats.recordQueuedTasksCount();
     Mockito.doReturn(15).when(mockQueue).size();
-    stats.recordQueuedTasksCount(0);
+    stats.recordQueuedTasksCount();
 
     // OTel histogram: min=5, max=15, count=2, sum=20
     validateHistogram(
@@ -156,6 +160,10 @@ public class ThreadPoolStatsOtelTest {
     }
   }
 
+  /**
+   * Validates all {@link ThreadPoolOtelMetricEntity} entries match expected definitions.
+   * Registration in SERVICE_METRIC_ENTITIES is verified by RouterMetricEntityTest and ServerMetricEntityTest.
+   */
   @Test
   public void testThreadPoolOtelMetricEntity() {
     Map<ThreadPoolOtelMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
@@ -264,6 +272,6 @@ public class ThreadPoolStatsOtelTest {
     Mockito.doReturn(0).when(queue).size();
 
     ThreadPoolStats localStats = new ThreadPoolStats(repo, pool, poolName);
-    localStats.recordQueuedTasksCount(0);
+    localStats.recordQueuedTasksCount();
   }
 }

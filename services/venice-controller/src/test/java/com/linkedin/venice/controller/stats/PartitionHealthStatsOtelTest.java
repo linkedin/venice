@@ -115,14 +115,39 @@ public class PartitionHealthStatsOtelTest {
   }
 
   @Test
-  public void testZeroUnderReplicatedNotRecorded() {
+  public void testZeroUnderReplicatedRecordsBothOtelAndTehuti() {
     AggPartitionHealthStats aggStats = createAggStats(metricsRepository);
 
-    // Zero count should not record (existing behavior)
+    // Zero count: both OTel and per-store Tehuti should record to reflect recovery.
+    // Only total Tehuti stats are skipped (no warn log for healthy partitions).
     aggStats.reportUnderReplicatedPartition(TEST_TOPIC_NAME, 0);
 
-    // OTel: no metrics should be recorded
-    assertTrue(inMemoryMetricReader.collectAllMetrics().isEmpty());
+    // OTel: gauge records zero to show the partition is healthy
+    validateGauge(
+        PartitionHealthStats.PartitionHealthOtelMetricEntity.PARTITION_UNDER_REPLICATED_COUNT.getMetricEntity()
+            .getMetricName(),
+        0,
+        clusterAndStoreAttributes());
+
+    // Tehuti: per-store sensor also records zero
+    validateTehutiMetric(TEST_TOPIC_NAME, "Max", 0.0);
+    validateTehutiMetric(TEST_TOPIC_NAME, "Gauge", 0.0);
+  }
+
+  @Test
+  public void testOtelGaugeReflectsRecovery() {
+    AggPartitionHealthStats aggStats = createAggStats(metricsRepository);
+    String metricName =
+        PartitionHealthStats.PartitionHealthOtelMetricEntity.PARTITION_UNDER_REPLICATED_COUNT.getMetricEntity()
+            .getMetricName();
+
+    // Initially under-replicated
+    aggStats.reportUnderReplicatedPartition(TEST_TOPIC_NAME, 5);
+    validateGauge(metricName, 5, clusterAndStoreAttributes());
+
+    // Partition recovers — gauge should drop to 0
+    aggStats.reportUnderReplicatedPartition(TEST_TOPIC_NAME, 0);
+    validateGauge(metricName, 0, clusterAndStoreAttributes());
   }
 
   @Test
@@ -135,6 +160,20 @@ public class PartitionHealthStatsOtelTest {
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
     verifyNoNpeWithRepository(new MetricsRepository());
+  }
+
+  @Test
+  public void testPartitionHealthTehutiMetricNameEnum() {
+    // Verify the Tehuti metric name matches the original camelCase sensor name for backward compatibility
+    assertEquals(
+        PartitionHealthStats.PartitionHealthTehutiMetricNameEnum.UNDER_REPLICATED_PARTITION.getMetricName(),
+        "underReplicatedPartition",
+        "Tehuti metric name must match the original sensor name to preserve dashboard compatibility");
+
+    assertEquals(
+        PartitionHealthStats.PartitionHealthTehutiMetricNameEnum.values().length,
+        1,
+        "New PartitionHealthTehutiMetricNameEnum values were added but not included in this test");
   }
 
   @Test
@@ -214,9 +253,9 @@ public class PartitionHealthStatsOtelTest {
 
   private void validateTehutiMetric(String versionName, String statSuffix, double expectedValue) {
     String statsPrefix = "." + versionName;
-    String tehutiMetricName =
-        AbstractVeniceStats.getSensorFullName(statsPrefix, PartitionHealthStats.UNDER_REPLICATED_PARTITION_SENSOR) + "."
-            + statSuffix;
+    String sensorName =
+        PartitionHealthStats.PartitionHealthTehutiMetricNameEnum.UNDER_REPLICATED_PARTITION.getMetricName();
+    String tehutiMetricName = AbstractVeniceStats.getSensorFullName(statsPrefix, sensorName) + "." + statSuffix;
     assertNotNull(metricsRepository.getMetric(tehutiMetricName), "Tehuti metric should exist: " + tehutiMetricName);
     assertEquals(
         metricsRepository.getMetric(tehutiMetricName).value(),

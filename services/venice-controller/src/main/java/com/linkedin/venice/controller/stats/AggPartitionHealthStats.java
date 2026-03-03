@@ -1,7 +1,5 @@
 package com.linkedin.venice.controller.stats;
 
-import static com.linkedin.venice.controller.stats.ControllerStatsDimensionUtils.dimensionMapBuilder;
-
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -13,13 +11,8 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
-import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
-import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
-import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -37,8 +30,6 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
 
   private final PushMonitor pushMonitor;
 
-  private final MetricEntityStateGeneric underReplicatedPartitionMetric;
-
   /**
    * Only for test usage.
    */
@@ -49,7 +40,6 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
     super(clusterName, null, (metricRepo, resourceName, cluster) -> new PartitionHealthStats(resourceName), true);
     this.storeRepository = storeRepository;
     this.pushMonitor = pushMonitor;
-    this.underReplicatedPartitionMetric = null;
   }
 
   public AggPartitionHealthStats(
@@ -61,16 +51,6 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
     super(clusterName, metricsRepository, PartitionHealthStats::new, true);
     this.storeRepository = storeRepository;
     this.pushMonitor = pushMonitor;
-
-    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
-        OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(clusterName).build();
-    VeniceOpenTelemetryMetricsRepository otelRepository = otelData.getOtelRepository();
-    Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
-
-    underReplicatedPartitionMetric = MetricEntityStateGeneric.create(
-        PartitionHealthStats.PartitionHealthOtelMetricEntity.PARTITION_UNDER_REPLICATED_COUNT.getMetricEntity(),
-        otelRepository,
-        baseDimensionsMap);
 
     // Monitor changes for all topics.
     routingDataRepository.subscribeRoutingDataChange(Utils.WILDCARD_MATCH_ANY, this);
@@ -123,18 +103,13 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
   }
 
   protected void reportUnderReplicatedPartition(String version, int underReplicatedPartitions) {
+    // Always record to per-store stats so the OTel gauge reflects recovery (zero) in dashboards.
+    // The MetricEntityStateBase in PartitionHealthStats handles both Tehuti and OTel recording.
+    getStoreStats(version).recordUnderReplicatePartition(underReplicatedPartitions);
+
     if (underReplicatedPartitions > 0) {
       LOGGER.warn("Version: {} has {} partitions which are under replicated.", version, underReplicatedPartitions);
       totalStats.recordUnderReplicatePartition(underReplicatedPartitions);
-      getStoreStats(version).recordUnderReplicatePartition(underReplicatedPartitions);
-      // underReplicatedPartitionMetric is null only in the test-only constructor (no MetricsRepository).
-      // Skipping OTel recording is safe because that constructor is used exclusively in unit tests
-      // that do not verify OTel behavior.
-      if (underReplicatedPartitionMetric != null) {
-        String storeName = Version.parseStoreFromKafkaTopicName(version);
-        underReplicatedPartitionMetric
-            .record(underReplicatedPartitions, dimensionMapBuilder().store(storeName).build());
-      }
     }
   }
 }
