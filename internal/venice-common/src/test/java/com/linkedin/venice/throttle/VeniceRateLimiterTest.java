@@ -37,9 +37,12 @@ public class VeniceRateLimiterTest {
 
   @Test
   public void testDefaultAcquirePermitReturnsImmediatelyWhenPermitAvailable() {
+    AtomicInteger callCount = new AtomicInteger(0);
+
     VeniceRateLimiter limiter = new VeniceRateLimiter() {
       @Override
       public boolean tryAcquirePermit(int units) {
+        callCount.incrementAndGet();
         return true; // Always available
       }
 
@@ -53,11 +56,10 @@ public class VeniceRateLimiterTest {
       }
     };
 
-    long startNanos = System.nanoTime();
     limiter.acquirePermit(1);
-    long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
 
-    assertTrue(elapsedMs < 50, "Should return immediately when permit is available, elapsed: " + elapsedMs + "ms");
+    // Verify it returned after a single call (no polling)
+    assertTrue(callCount.get() == 1, "Should call tryAcquirePermit exactly once when permit is available");
   }
 
   @Test

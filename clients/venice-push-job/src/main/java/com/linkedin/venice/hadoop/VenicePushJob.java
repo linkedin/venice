@@ -1642,9 +1642,9 @@ public class VenicePushJob implements AutoCloseable {
         }
       }
 
-      long incrementalPushThrottledTimeMs = taskTracker.getIncrementalPushThrottledTimeMs();
-      if (incrementalPushThrottledTimeMs > 0) {
-        summaryLogLines.add("Incremental push total throttle time: " + incrementalPushThrottledTimeMs + " ms");
+      long taskIncrementalPushThrottledTimeMs = taskTracker.getIncrementalPushThrottledTimeMs();
+      if (taskIncrementalPushThrottledTimeMs > 0) {
+        summaryLogLines.add("Incremental push total throttle time: " + taskIncrementalPushThrottledTimeMs + " ms");
       }
 
       LOGGER.info("Data writer job summary: \n\t{}", StringUtils.join(summaryLogLines, "\n\t"));

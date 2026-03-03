@@ -470,6 +470,8 @@ public final class VenicePushJobConstants {
 
   /**
    * Time window in milliseconds over which throttling is measured. Defaults to 1 second.
+   * This parameter is only applicable when using TOKEN_BUCKET_INCREMENTAL_REFILL or
+   * TOKEN_BUCKET_GREEDY_REFILL rate limiter types.
    */
   public static final String INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS =
       "incremental.push.write.quota.time.window.ms";

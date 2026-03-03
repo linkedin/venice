@@ -883,6 +883,13 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       case TOKEN_BUCKET_INCREMENTAL_REFILL:
       case TOKEN_BUCKET_GREEDY_REFILL:
         long timeWindowMs = props.getLong(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, 1000);
+        if (timeWindowMs <= 0) {
+          LOGGER.warn(
+              "Invalid incremental push time window {} ms for store {}, falling back to default 1000 ms",
+              timeWindowMs,
+              storeName);
+          timeWindowMs = 1000;
+        }
         int capacityMultiple = rateLimiterType == VeniceRateLimiter.RateLimiterType.TOKEN_BUCKET_GREEDY_REFILL ? 5 : 2;
         this.recordsThrottler = TokenBucket
             .tokenBucketFromRcuPerSecond(recordsPerSecond, 1.0, timeWindowMs, capacityMultiple, Clock.systemUTC());

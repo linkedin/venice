@@ -191,6 +191,81 @@ public class AbstractPartitionWriterThrottlingTest {
         "TokenBucket effective rate should be ~1000 rec/s, got: " + effectiveRatePerSec);
   }
 
+  @Test
+  public void testThrottlingDisabledForZeroQuota() {
+    Properties props = createBaseProperties();
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "0");
+    setupMockConfigProvider(props);
+
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    assertNull(partitionWriter.getRecordsThrottler(), "Throttler should not be created for quota=0");
+  }
+
+  @Test
+  public void testThrottlingDisabledForNegativeQuota() {
+    Properties props = createBaseProperties();
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "-1");
+    setupMockConfigProvider(props);
+
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    assertNull(partitionWriter.getRecordsThrottler(), "Throttler should not be created for quota=-1");
+  }
+
+  @Test
+  public void testMinimumValidQuota() {
+    Properties props = createBaseProperties();
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1");
+    setupMockConfigProvider(props);
+
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    assertNotNull(partitionWriter.getRecordsThrottler(), "Throttler should be created for quota=1");
+    assertTrue(partitionWriter.isIncrementalPushThrottlingEnabled(), "Throttling should be enabled for quota=1");
+  }
+
+  @Test
+  public void testInvalidRateLimiterTypeFallsBackToGuava() {
+    Properties props = createBaseProperties();
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
+    props.setProperty(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, "COMPLETELY_BOGUS_TYPE");
+    setupMockConfigProvider(props);
+
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    VeniceRateLimiter throttler = partitionWriter.getRecordsThrottler();
+    assertNotNull(throttler, "Throttler should be created with fallback");
+    assertTrue(
+        throttler instanceof GuavaRateLimiter,
+        "Invalid type should fall back to GuavaRateLimiter, got: " + throttler.getClass().getSimpleName());
+  }
+
+  @Test
+  public void testTokenBucketWithInvalidTimeWindowFallsBackToDefault() {
+    Properties props = createBaseProperties();
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "1000");
+    props.setProperty(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, "TOKEN_BUCKET_INCREMENTAL_REFILL");
+    props.setProperty(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS, "0");
+    setupMockConfigProvider(props);
+
+    partitionWriter = new TestablePartitionWriter(mockConfigProvider, mockVeniceWriter);
+    partitionWriter.configure(mockConfigProvider);
+
+    VeniceRateLimiter throttler = partitionWriter.getRecordsThrottler();
+    assertNotNull(throttler, "Throttler should be created despite invalid time window");
+    assertTrue(throttler instanceof TokenBucket, "Should still be TokenBucket with fallback time window");
+  }
+
   private void setupMockConfigProvider(Properties props) {
     when(mockConfigProvider.getJobProps()).thenReturn(props);
   }
