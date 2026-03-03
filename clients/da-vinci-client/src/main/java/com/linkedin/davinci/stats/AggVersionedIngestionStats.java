@@ -402,12 +402,11 @@ public class AggVersionedIngestionStats
         stat -> stat.recordNearlineProducerToLocalBrokerLatency(value, timestamp));
   }
 
-  public void recordMaxIdleTimeTehuti(String storeName, int version, long idleTimeMs) {
-    getStats(storeName, version).recordIdleTime(idleTimeMs);
-  }
-
-  public void recordMaxIdleTimeOtel(String storeName, int version, long idleTimeMs) {
+  public void recordMaxIdleTime(String storeName, int version, long idleTimeMs, boolean emitTehuti) {
     getIngestionOtelStats(storeName).recordIdleTime(version, idleTimeMs);
+    if (emitTehuti) {
+      getStats(storeName, version).recordIdleTime(idleTimeMs);
+    }
   }
 
   public void recordBatchProcessingRequest(String storeName, int version, int size, long timestamp) {

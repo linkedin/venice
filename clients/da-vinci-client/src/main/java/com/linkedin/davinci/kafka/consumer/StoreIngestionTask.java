@@ -1341,7 +1341,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (measureTime) {
       double queuePutLatency = LatencyUtils.getElapsedTimeFromNSToMS(queuePutStartTimeInNS);
       versionedIngestionStats.recordConsumerQueuePutTime(storeName, versionNumber, queuePutLatency);
-      if (emitTehutiMetrics.get()) {
+      if (isEmitTehutiMetricsEnabled()) {
         hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(queuePutLatency, currentTimeForMetricsMs);
       }
     }
@@ -1623,22 +1623,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long totalBytesRead,
       ValueHolder<Double> elapsedTimeForPuttingIntoQueue,
       long beforeProcessingBatchRecordsTimestampMs) {
+    boolean shouldEmitTehuti = isEmitTehutiMetricsEnabled();
     if (totalBytesRead > 0) {
       versionedIngestionStats.recordBytesConsumedAsUncompressedSize(storeName, versionNumber, totalBytesRead);
-    }
-    if (elapsedTimeForPuttingIntoQueue.getValue() > 0) {
-      versionedIngestionStats
-          .recordConsumerQueuePutTime(storeName, versionNumber, elapsedTimeForPuttingIntoQueue.getValue());
-    }
-    if (emitTehutiMetrics.get()) {
-      if (totalBytesRead > 0) {
+      if (shouldEmitTehuti) {
         hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
       }
-      if (elapsedTimeForPuttingIntoQueue.getValue() > 0) {
-        hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
-            elapsedTimeForPuttingIntoQueue.getValue(),
-            beforeProcessingBatchRecordsTimestampMs);
+    }
+    double queuePutLatency = elapsedTimeForPuttingIntoQueue.getValue();
+    if (queuePutLatency > 0) {
+      versionedIngestionStats.recordConsumerQueuePutTime(storeName, versionNumber, queuePutLatency);
+      if (shouldEmitTehuti) {
+        hostLevelIngestionStats
+            .recordConsumerRecordsQueuePutLatency(queuePutLatency, beforeProcessingBatchRecordsTimestampMs);
       }
+    }
+    if (shouldEmitTehuti) {
       hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
     }
   }
@@ -1764,7 +1764,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // record before consumer unsub as it might lead to stale metrics after unsub
     recordMaxIdleTime();
-    if (emitTehutiMetrics.get()) {
+    if (isEmitTehutiMetricsEnabled()) {
       recordQuotaMetrics();
     }
 
@@ -1886,10 +1886,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
     long idleTimeMs = curTime - oldest;
-    versionedIngestionStats.recordMaxIdleTimeOtel(storeName, versionNumber, idleTimeMs);
-    if (emitTehutiMetrics.get()) {
-      versionedIngestionStats.recordMaxIdleTimeTehuti(storeName, versionNumber, idleTimeMs);
-    }
+    versionedIngestionStats.recordMaxIdleTime(storeName, versionNumber, idleTimeMs, isEmitTehutiMetricsEnabled());
   }
 
   private void recordQuotaMetrics() {
@@ -2270,6 +2267,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Records the total processing latency to both OTel (always) and Tehuti (gated by {@link #emitTehutiMetrics}).
    */
   void processConsumerActions(Store store) throws InterruptedException {
+    // Unconditional: OTel always records consumer action time
     long startTime = System.currentTimeMillis();
     for (;;) {
       // Do not want to remove a message from the queue unless it has been processed.
@@ -2308,7 +2306,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     double actionLatency = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
     versionedIngestionStats.recordConsumerActionTime(storeName, versionNumber, actionLatency);
-    if (emitTehutiMetrics.get()) {
+    if (isEmitTehutiMetricsEnabled()) {
       hostLevelIngestionStats.recordProcessConsumerActionLatency(actionLatency);
     }
   }
@@ -2797,7 +2795,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       // emit metric for unexpected messages
       versionedIngestionStats.recordUnexpectedMessageCount(storeName, versionNumber);
-      if (emitTehutiMetrics.get()) {
+      if (isEmitTehutiMetricsEnabled()) {
         hostLevelIngestionStats.recordUnexpectedMessage();
       }
 
@@ -3154,12 +3152,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected void recordAssembledRecordSize(int keyLen, ByteBuffer valueBytes, ByteBuffer rmdBytes, long currentTimeMs) {
     try {
-      boolean emitTehutiMetrics = this.emitTehutiMetrics.get();
+      boolean shouldEmitTehuti = isEmitTehutiMetricsEnabled();
       byte[] valueByteArray = ByteUtils.extractByteArray(valueBytes);
       ChunkedValueManifest valueManifest = manifestSerializer.deserialize(valueByteArray, CHUNK_MANIFEST_SCHEMA_ID);
       int recordSize = keyLen + valueManifest.getSize();
       versionedIngestionStats.recordAssembledSize(storeName, versionNumber, VeniceRecordType.DATA, recordSize);
-      if (emitTehutiMetrics) {
+      if (shouldEmitTehuti) {
         hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
       }
       recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
@@ -3176,7 +3174,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       versionedIngestionStats
           .recordAssembledSize(storeName, versionNumber, VeniceRecordType.REPLICATION_METADATA, rmdSize);
-      if (emitTehutiMetrics) {
+      if (shouldEmitTehuti) {
         hostLevelIngestionStats.recordAssembledRmdSize(rmdSize, currentTimeMs);
       }
     } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
@@ -4231,11 +4229,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         ? MessageType.valueOf(kafkaValue)
         : leaderProducedRecordContext.getMessageType());
 
-    boolean recordLevelMetricEnabled = this.recordLevelMetricEnabled.get();
+    boolean recordMetrics = this.recordLevelMetricEnabled.get();
     boolean traceEnabled = LOGGER.isTraceEnabled();
     // Avoid nanoTime overhead when neither record-level metrics nor trace logging is needed
-    long startTimeNs = (recordLevelMetricEnabled || traceEnabled) ? System.nanoTime() : 0;
-    boolean tehutiRecordMetricsEnabled = emitTehutiMetrics.get() && recordLevelMetricEnabled;
+    long startTimeNs = (recordMetrics || traceEnabled) ? System.nanoTime() : 0;
+    boolean tehutiRecordMetrics = isEmitTehutiMetricsEnabled() && recordMetrics;
 
     switch (messageType) {
       case PUT:
@@ -4253,8 +4251,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         keyLen = keyBytes.length;
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
-        if (recordLevelMetricEnabled && put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID
-            && messageType == MessageType.PUT) {
+        if (recordMetrics && put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID && messageType == MessageType.PUT) {
           // This must be done before the recordTransformer modifies the putValue, otherwise the size will be incorrect.
           recordAssembledRecordSize(keyLen, put.getPutValue(), put.getReplicationMetadataPayload(), currentTimeMs);
         }
@@ -4369,10 +4366,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (writerSchemaId > 0) {
           valueSchemaId = writerSchemaId;
         }
-        if (recordLevelMetricEnabled) {
+        if (recordMetrics) {
           double putLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);
           versionedIngestionStats.recordStorageEnginePutTime(storeName, versionNumber, putLatency);
-          if (tehutiRecordMetricsEnabled) {
+          if (tehutiRecordMetrics) {
             hostLevelIngestionStats.recordStorageEnginePutLatency(putLatency, currentTimeMs);
           }
         }
@@ -4423,10 +4420,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         keyLen = keyBytes.length;
         deleteFromStorageEngine(producedPartition, keyBytes, delete);
-        if (recordLevelMetricEnabled) {
+        if (recordMetrics) {
           double deleteLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);
           versionedIngestionStats.recordStorageEngineDeleteTime(storeName, versionNumber, deleteLatency);
-          if (tehutiRecordMetricsEnabled) {
+          if (tehutiRecordMetrics) {
             hostLevelIngestionStats.recordStorageEngineDeleteLatency(deleteLatency, currentTimeMs);
           }
         }
@@ -4466,10 +4463,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           kafkaKey.getKey());
     }
 
-    if (recordLevelMetricEnabled) {
+    if (recordMetrics) {
       versionedIngestionStats.recordKeySize(storeName, versionNumber, keyLen);
       versionedIngestionStats.recordValueSize(storeName, versionNumber, valueLen);
-      if (tehutiRecordMetricsEnabled) {
+      if (tehutiRecordMetrics) {
         hostLevelIngestionStats.recordKeySize(keyLen, currentTimeMs);
         hostLevelIngestionStats.recordValueSize(valueLen, currentTimeMs);
       }

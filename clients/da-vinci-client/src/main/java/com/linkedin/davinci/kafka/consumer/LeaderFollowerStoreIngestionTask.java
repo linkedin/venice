@@ -2370,7 +2370,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected final void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs) {
     if (getMaxRecordSizeBytes() != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE && ratio > 0) {
       versionedIngestionStats.recordAssembledSizeRatio(storeName, versionNumber, ratio);
-      if (emitTehutiMetrics.get()) {
+      if (isEmitTehutiMetricsEnabled()) {
         hostLevelIngestionStats.recordAssembledRecordSizeRatio(ratio, currentTimeMs);
       }
     }

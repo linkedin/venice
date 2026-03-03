@@ -4885,28 +4885,24 @@ public abstract class StoreIngestionTaskTest {
       int tehutiEmitMetricsGated = 0;
       int tehutiNotGatedByEmitMetrics = 0;
       int otelNotGatedByEmitMetrics = 0;
-      // recordConsumedRecordEndToEndProcessingLatency is gated by recordLevelMetricEnabled (not emitTehutiMetrics),
-      // so it is called on every produce regardless of emitTehutiMetrics state.
-      int perProduceCount = 0;
       verifyStats(stats, tehutiEmitMetricsGated, tehutiNotGatedByEmitMetrics, otelNotGatedByEmitMetrics);
 
       produce.run();
       verifyStats(stats, ++tehutiEmitMetricsGated, ++tehutiNotGatedByEmitMetrics, ++otelNotGatedByEmitMetrics);
-      perProduceCount++;
 
       storeIngestionTaskUnderTest.disableTehutiMetrics();
       produce.run();
       verifyStats(stats, tehutiEmitMetricsGated, ++tehutiNotGatedByEmitMetrics, ++otelNotGatedByEmitMetrics);
-      perProduceCount++; // still called: gated by recordLevelMetricEnabled, not emitTehutiMetrics
 
       storeIngestionTaskUnderTest.enableTehutiMetrics();
       produce.run();
       verifyStats(stats, ++tehutiEmitMetricsGated, ++tehutiNotGatedByEmitMetrics, ++otelNotGatedByEmitMetrics);
-      perProduceCount++;
 
       long currentTimeMs = System.currentTimeMillis();
       long errorMargin = 10_000;
-      verify(mockVersionedStorageIngestionStats, timeout(1000).times(perProduceCount))
+      // recordConsumedRecordEndToEndProcessingLatency is gated by recordLevelMetricEnabled (not emitTehutiMetrics),
+      // so it fires on every produce — same count as otelNotGatedByEmitMetrics in this test.
+      verify(mockVersionedStorageIngestionStats, timeout(1000).times(otelNotGatedByEmitMetrics))
           .recordConsumedRecordEndToEndProcessingLatency(
               anyString(),
               anyInt(),

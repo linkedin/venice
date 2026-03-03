@@ -1273,7 +1273,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testIngestionTimeoutHandling() throws InterruptedException, NoSuchFieldException, IllegalAccessException {
+  public void testIngestionTimeoutHandling() throws Exception {
     LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
 
     // Set up fields accessed directly by the real checkLongRunningTaskState method
@@ -1369,9 +1369,18 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
   private static void setField(Object target, String fieldName, Object value)
       throws NoSuchFieldException, IllegalAccessException {
-    Field field = StoreIngestionTask.class.getDeclaredField(fieldName);
-    field.setAccessible(true);
-    field.set(target, value);
+    Class<?> cls = StoreIngestionTask.class;
+    while (cls != null) {
+      try {
+        Field field = cls.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
+        return;
+      } catch (NoSuchFieldException e) {
+        cls = cls.getSuperclass();
+      }
+    }
+    throw new NoSuchFieldException(fieldName + " not found in " + StoreIngestionTask.class.getName() + " hierarchy");
   }
 
   /** Holds a mocked task and the common mock/field objects used across gating tests. */
@@ -1408,6 +1417,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     setField(task, "emitTehutiMetrics", emitTehutiMetrics);
     setField(task, "storeName", "testStore");
     setField(task, "versionNumber", 3);
+    doCallRealMethod().when(task).isEmitTehutiMetricsEnabled();
     return new MockTaskContext(task, versionedStats, hostLevelStats, emitTehutiMetrics);
   }
 
@@ -1426,14 +1436,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // emitTehutiMetrics=false: OTel fires, Tehuti does not
     recordMaxIdleTime.invoke(ctx.task);
-    verify(ctx.versionedStats, times(1)).recordMaxIdleTimeOtel(eq("testStore"), eq(3), anyLong());
-    verify(ctx.versionedStats, never()).recordMaxIdleTimeTehuti(anyString(), anyInt(), anyLong());
+    verify(ctx.versionedStats, times(1)).recordMaxIdleTime(eq("testStore"), eq(3), anyLong(), eq(false));
 
-    // emitTehutiMetrics=true: both fire
+    // emitTehutiMetrics=true: both fire (emitTehuti=true passed to single method)
     ctx.emitTehutiMetrics.set(true);
     recordMaxIdleTime.invoke(ctx.task);
-    verify(ctx.versionedStats, times(2)).recordMaxIdleTimeOtel(eq("testStore"), eq(3), anyLong());
-    verify(ctx.versionedStats, times(1)).recordMaxIdleTimeTehuti(eq("testStore"), eq(3), anyLong());
+    verify(ctx.versionedStats, times(1)).recordMaxIdleTime(eq("testStore"), eq(3), anyLong(), eq(true));
   }
 
   @Test
