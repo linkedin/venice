@@ -779,10 +779,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           break;
       }
     }
-    if (isMetricsEmissionEnabled()) {
-      double checkLatency = LatencyUtils.getElapsedTimeFromNSToMS(checkStartTimeInNS);
+    double checkLatency = LatencyUtils.getElapsedTimeFromNSToMS(checkStartTimeInNS);
+    versionedIngestionStats.recordLongRunningTaskCheckTime(storeName, versionNumber, checkLatency);
+    if (isEmitTehutiMetricsEnabled()) {
       hostLevelIngestionStats.recordCheckLongRunningTasksLatency(checkLatency);
-      versionedIngestionStats.recordLongRunningTaskCheckTime(storeName, versionNumber, checkLatency);
     }
 
     if (pushTimeout) {
@@ -799,12 +799,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         for (int partition: timeoutPartitions) {
           reportError(errorMsg, partition, ex);
         }
-        if (isMetricsEmissionEnabled()) {
+        versionedIngestionStats.recordIngestionFailureCount(
+            getStoreName(),
+            getVersionNumber(),
+            VeniceIngestionFailureReason.SERVING_VERSION_BOOTSTRAP_TIMEOUT);
+        if (isEmitTehutiMetricsEnabled()) {
           hostLevelIngestionStats.recordIngestionFailure();
-          versionedIngestionStats.recordIngestionFailureCount(
-              getStoreName(),
-              getVersionNumber(),
-              VeniceIngestionFailureReason.SERVING_VERSION_BOOTSTRAP_TIMEOUT);
         }
       } else {
         throw ex;
@@ -2324,6 +2324,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  /**
+   * Records leader/follower throughput breakdown. These Tehuti host-level calls are intentionally NOT gated by
+   * {@link #emitTehutiMetrics} — they are throughput rate counters (same as {@code recordTotalRecordsConsumed} and
+   * {@code recordTotalBytesConsumed}) that must aggregate across all versions to provide accurate host-level rates.
+   */
   @Override
   protected void recordProcessedRecordStats(
       PartitionConsumptionState partitionConsumptionState,
@@ -2360,11 +2365,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return (double) recordSize / getMaxRecordSizeBytes();
   }
 
+  /** Records the ratio of assembled record size to the configured maximum. */
   @Override
   protected final void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs) {
     if (getMaxRecordSizeBytes() != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE && ratio > 0) {
-      hostLevelIngestionStats.recordAssembledRecordSizeRatio(ratio, currentTimeMs);
       versionedIngestionStats.recordAssembledSizeRatio(storeName, versionNumber, ratio);
+      if (emitTehutiMetrics.get()) {
+        hostLevelIngestionStats.recordAssembledRecordSizeRatio(ratio, currentTimeMs);
+      }
     }
   }
 

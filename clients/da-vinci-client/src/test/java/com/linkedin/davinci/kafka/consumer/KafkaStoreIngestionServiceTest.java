@@ -301,13 +301,13 @@ public abstract class KafkaStoreIngestionServiceTest {
     topicNameToIngestionTaskMap.forEach((topicName, task) -> {
       if (Version.parseStoreFromKafkaTopicName(topicName).equals(mockStoreName)) {
         if (topicName.equals(mostRecentTopic)) {
-          verify(task).enableMetricsEmission();
+          verify(task).enableTehutiMetrics();
         } else {
-          verify(task).disableMetricsEmission();
+          verify(task).disableTehutiMetrics();
         }
       } else { // checks store with similar name will not be call
-        verify(task, never()).enableMetricsEmission();
-        verify(task, never()).disableMetricsEmission();
+        verify(task, never()).enableTehutiMetrics();
+        verify(task, never()).disableTehutiMetrics();
       }
     });
 
@@ -320,7 +320,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     String latestOngoingPushJob = mockStoreName + "_v" + (taskNum - 1);
     topicNameToIngestionTaskMap.forEach((topicName, task) -> {
       if (topicName.equals(latestOngoingPushJob)) {
-        verify(task).enableMetricsEmission();
+        verify(task).enableTehutiMetrics();
       }
     });
     kafkaStoreIngestionService.close();
