@@ -1610,13 +1610,7 @@ public abstract class StoreIngestionTaskTest {
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
           .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
-      /**
-       * Verify host-level metrics
-       *
-       * N.B.: the below verification for {@link HostLevelIngestionStats#recordTotalBytesConsumed(long)} is flaky, and
-       *       sometimes comes up with 1 fewer invocation than desired (in both branches of the if). The retries mask
-       *       the issue as the rate of flakiness is low. But there does seem to be something going on here...
-       */
+      // Verify host-level metrics
       if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
         verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(3)).recordTotalBytesConsumed(anyLong());
       } else {
