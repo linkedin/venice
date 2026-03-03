@@ -3,10 +3,12 @@ package com.linkedin.venice.listener;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.stats.ServerConnectionStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LatencyUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.ssl.SslHandler;
+import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 import io.netty.util.Attribute;
 import io.netty.util.AttributeKey;
 import java.security.cert.Certificate;
@@ -27,6 +29,7 @@ import org.apache.logging.log4j.Logger;
 public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(ServerConnectionStatsHandler.class);
   public static final AttributeKey<Boolean> CHANNEL_ACTIVATED = AttributeKey.valueOf("channelActivated");
+  public static final AttributeKey<Long> CHANNEL_INIT_START_TS = AttributeKey.valueOf("channelInitStartTs");
   private final IdentityParser identityParser;
   private final ServerConnectionStats serverConnectionStats;
   private final String routerPrincipalName;
@@ -95,6 +98,17 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
      */
     serverConnectionStats.newConnectionRequest();
     super.channelActive(ctx);
+  }
+
+  @Override
+  public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+    if (evt instanceof SslHandshakeCompletionEvent && ((SslHandshakeCompletionEvent) evt).isSuccess()) {
+      Long initStartTs = ctx.channel().attr(CHANNEL_INIT_START_TS).getAndSet(null);
+      if (initStartTs != null) {
+        serverConnectionStats.recordNewConnectionSetupLatency(LatencyUtils.getElapsedTimeFromNSToMS(initStartTs));
+      }
+    }
+    super.userEventTriggered(ctx, evt);
   }
 
   @Override

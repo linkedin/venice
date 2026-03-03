@@ -101,7 +101,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
         errorPartitionStats.recordErrorPartitionProcessingTime(System.currentTimeMillis() - startTime);
       } catch (Exception e) {
         logger.error("Unexpected exception while running {}", taskId, e);
-        errorPartitionStats.recordErrorPartitionResetAttemptErrored();
+        errorPartitionStats.recordErrorPartitionProcessingError();
       }
     }
     logger.info("Stopped {}", taskId);
@@ -129,7 +129,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
         if (errorInstances.isEmpty()) {
           if (checkPartitionRecovered(partition, partitionResetCountMap)) {
             partitionResetCountMap.remove(partition.getId());
-            errorPartitionStats.recordErrorPartitionRecoveredFromReset();
+            errorPartitionStats.recordErrorPartitionRecoveredFromReset(store.getName());
           }
         } else {
           // We are only interested in resetting error partitions with exactly 1 error replica. This is because we have
@@ -144,7 +144,7 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
           if (currentResetCount == errorPartitionAutoResetLimit) {
             // This partition is unrecoverable from reset either due to reset limit or too many error replicas.
             partitionResetCountMap.put(partition.getId(), errorPartitionAutoResetLimit + 1);
-            errorPartitionStats.recordErrorPartitionUnrecoverableFromReset();
+            errorPartitionStats.recordErrorPartitionUnrecoverableFromReset(store.getName());
             if (pushStatus == null) {
               // Every time getting offline push status is a read lock. This might cause problems
               // if we call the get very frequently.
@@ -195,17 +195,17 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
       errorPartitionResetTracker.put(resourceName, partitionResetCountMap);
       resetMap.forEach((k, v) -> {
         helixAdminClient.resetPartition(clusterName, k, resourceName, v);
-        errorPartitionStats.recordErrorPartitionResetAttempt(v.size());
+        errorPartitionStats.recordErrorPartitionResetAttempt(v.size(), store.getName());
       });
     } catch (VeniceNoHelixResourceException noHelixResourceException) {
       logger.error("Resource: {} is missing unexpectedly", resourceName, noHelixResourceException);
-      errorPartitionStats.recordErrorPartitionResetAttemptErrored();
+      errorPartitionStats.recordErrorPartitionResetAttemptErrored(store.getName());
     } catch (Exception e) {
       logger.error(
           "Unexpected exception while processing partitions for resource: {} for error partition reset",
           resourceName,
           e);
-      errorPartitionStats.recordErrorPartitionResetAttemptErrored();
+      errorPartitionStats.recordErrorPartitionResetAttemptErrored(store.getName());
     }
   }
 

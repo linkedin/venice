@@ -98,6 +98,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -858,6 +859,7 @@ public class TestUtils {
   public static StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(String storeName, boolean isHybrid) {
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(false).when(mockVeniceServerConfig).isHybridQuotaEnabled();
+    doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
     doReturn(true).when(mockVeniceProperties).isEmpty();
     doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();

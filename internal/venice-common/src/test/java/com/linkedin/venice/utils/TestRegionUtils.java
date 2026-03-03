@@ -3,6 +3,8 @@ package com.linkedin.venice.utils;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
@@ -71,6 +73,14 @@ public class TestRegionUtils {
   }
 
   @Test
+  public void testNormalizeRegionName() {
+    Assert.assertEquals(RegionUtils.normalizeRegionName("dc-0"), "dc-0");
+    Assert.assertEquals(RegionUtils.normalizeRegionName(null), RegionUtils.UNKNOWN_REGION);
+    Assert.assertEquals(RegionUtils.normalizeRegionName(""), RegionUtils.UNKNOWN_REGION);
+    Assert.assertEquals(RegionUtils.normalizeRegionName(RegionUtils.UNKNOWN_REGION), RegionUtils.UNKNOWN_REGION);
+  }
+
+  @Test
   public void testIsRegionPartOfRegionsFilterList() {
     String regionFilter = "dc-0,dc-1,dc-2";
 
@@ -84,5 +94,35 @@ public class TestRegionUtils {
     Assert.assertTrue(RegionUtils.isRegionPartOfRegionsFilterList(TEST_DC_1, ""));
     Assert.assertTrue(RegionUtils.isRegionPartOfRegionsFilterList(TEST_DC_2, ""));
     Assert.assertTrue(RegionUtils.isRegionPartOfRegionsFilterList(TEST_DC_3, ""));
+  }
+
+  @Test
+  public void testGetLocalKafkaClusterId() {
+    Int2ObjectMap<String> clusterIdToAlias = new Int2ObjectOpenHashMap<>();
+    clusterIdToAlias.put(0, TEST_DC_1);
+    clusterIdToAlias.put(1, TEST_DC_2);
+    clusterIdToAlias.put(2, TEST_DC_3);
+
+    // Match found
+    Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(clusterIdToAlias, TEST_DC_1), 0);
+    Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(clusterIdToAlias, TEST_DC_2), 1);
+    Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(clusterIdToAlias, TEST_DC_3), 2);
+
+    // No match
+    Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(clusterIdToAlias, "dc-99"), -1);
+
+    // Separate RT topic cluster should not match the primary alias
+    String sepAlias = TEST_DC_2 + "_sep";
+    clusterIdToAlias.put(3, sepAlias);
+    Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(clusterIdToAlias, TEST_DC_2), 1);
+    Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(clusterIdToAlias, sepAlias), 3);
+
+    // Null or empty region name
+    Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(clusterIdToAlias, null), -1);
+    Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(clusterIdToAlias, ""), -1);
+
+    // Empty map
+    Int2ObjectMap<String> emptyMap = new Int2ObjectOpenHashMap<>();
+    Assert.assertEquals(RegionUtils.getLocalKafkaClusterId(emptyMap, TEST_DC_1), -1);
   }
 }

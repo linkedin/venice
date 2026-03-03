@@ -13,10 +13,12 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_
 
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.annotation.VisibleForTesting;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -28,7 +30,15 @@ import com.linkedin.venice.vpj.pubsub.input.splitter.PubSubTopicPartitionSplitSt
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -42,8 +52,17 @@ import java.util.List;
  *   <li>Determining the number of partitions for a topic and generating splits using the appropriate
  *       {@link PubSubTopicPartitionSplitStrategy}.</li>
  * </ul>
+ *
+ * <p>Split planning is optimized in two ways:
+ * <ol>
+ *   <li><b>Batch position fetching</b>: Start and end positions for all partitions are fetched in
+ *       two bulk calls instead of 2N individual calls, drastically reducing pubsub queries.</li>
+ *   <li><b>Parallel split computation</b>: After batch-fetching positions, per-partition split
+ *       computation (which is pure CPU work) is parallelized across available processors.</li>
+ * </ol>
  */
 public class PubSubSplitPlanner {
+  private static final Logger LOGGER = LogManager.getLogger(PubSubSplitPlanner.class);
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   public List<PubSubPartitionSplit> plan(VeniceProperties jobConfig) {
@@ -92,16 +111,83 @@ public class PubSubSplitPlanner {
         Duration.ofMinutes(1),
         Collections.singletonList(Exception.class));
 
-    List<PubSubPartitionSplit> out = new ArrayList<>();
-    SplitRequest.Builder reqBuilder = new SplitRequest.Builder().topicManager(tm)
-        .splitType(partitionSplitStrategy)
-        .maxSplits(maxSplitsPerPartition)
-        .recordsPerSplit(recordsPerSplit)
-        .timeWindowInMs(timeWindowMs);
-    for (int p = 0; p < partitionCount; p++) {
-      PubSubTopicPartition tp = new PubSubTopicPartitionImpl(topic, p);
-      out.addAll(partitionSplitStrategy.split(reqBuilder.pubSubTopicPartition(tp).build()));
+    if (partitionCount <= 0) {
+      return Collections.emptyList();
     }
-    return out;
+
+    // Batch-fetch start and end positions for ALL partitions in 2 bulk calls
+    // instead of 2 * partitionCount individual calls.
+    Map<PubSubTopicPartition, PubSubPosition> startPositions = tm.getStartPositionsForTopicWithRetries(topic);
+    Map<PubSubTopicPartition, PubSubPosition> endPositions = tm.getEndPositionsForTopicWithRetries(topic);
+
+    // Index by partition number for reliable lookup regardless of PubSubTopicPartition.equals() impl.
+    Map<Integer, PubSubPosition> startByPartition = new HashMap<>(startPositions.size());
+    startPositions.forEach((tp, pos) -> startByPartition.put(tp.getPartitionNumber(), pos));
+    Map<Integer, PubSubPosition> endByPartition = new HashMap<>(endPositions.size());
+    endPositions.forEach((tp, pos) -> endByPartition.put(tp.getPartitionNumber(), pos));
+
+    // Validate that batch-fetched maps contain positions for all expected partitions
+    for (int p = 0; p < partitionCount; p++) {
+      if (!startByPartition.containsKey(p) || !endByPartition.containsKey(p)) {
+        throw new VeniceException(
+            "Batch-fetched positions are incomplete for topic " + topic + ": partition " + p + " is missing from "
+                + (!startByPartition.containsKey(p) ? "start" : "end") + " positions map. Expected " + partitionCount
+                + " partitions, got " + startByPartition.size() + " start and " + endByPartition.size() + " end.");
+      }
+    }
+
+    LOGGER.info(
+        "Batch-fetched positions for {} partitions of topic: {}. Planning splits using {} strategy with {} threads.",
+        partitionCount,
+        topic,
+        partitionSplitStrategy,
+        Math.min(partitionCount, Runtime.getRuntime().availableProcessors()));
+
+    // After batch-fetching, per-partition split computation is pure CPU work
+    // (offset arithmetic in advancePosition). Parallelize across available processors.
+    int threads = Math.min(partitionCount, Runtime.getRuntime().availableProcessors());
+    ExecutorService executor = Executors.newFixedThreadPool(threads);
+    try {
+      List<Future<List<PubSubPartitionSplit>>> futures = new ArrayList<>(partitionCount);
+      for (int p = 0; p < partitionCount; p++) {
+        PubSubTopicPartition tp = new PubSubTopicPartitionImpl(topic, p);
+        PubSubPosition start = startByPartition.get(p);
+        PubSubPosition end = endByPartition.get(p);
+
+        futures.add(executor.submit(() -> {
+          long records = RetryUtils.executeWithMaxAttempt(
+              () -> tm.diffPosition(tp, end, start),
+              5,
+              Duration.ofMinutes(3),
+              Collections.singletonList(Exception.class));
+
+          SplitRequest req = new SplitRequest.Builder().topicManager(tm)
+              .splitType(partitionSplitStrategy)
+              .maxSplits(maxSplitsPerPartition)
+              .recordsPerSplit(recordsPerSplit)
+              .timeWindowInMs(timeWindowMs)
+              .pubSubTopicPartition(tp)
+              .startPosition(start)
+              .endPosition(end)
+              .numberOfRecords(records)
+              .build();
+
+          return partitionSplitStrategy.split(req);
+        }));
+      }
+
+      List<PubSubPartitionSplit> out = new ArrayList<>();
+      for (Future<List<PubSubPartitionSplit>> f: futures) {
+        out.addAll(f.get());
+      }
+      return out;
+    } catch (ExecutionException e) {
+      throw new VeniceException("Failed to plan splits for topic: " + topic, e.getCause());
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Split planning interrupted for topic: " + topic, e);
+    } finally {
+      executor.shutdownNow();
+    }
   }
 }

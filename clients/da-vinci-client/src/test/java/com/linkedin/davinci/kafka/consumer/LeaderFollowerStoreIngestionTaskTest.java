@@ -87,13 +87,17 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ReferenceCounted;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -700,6 +704,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     LeaderFollowerStoreIngestionTask mockIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(mockIngestionTask).shouldSyncOffsetFromSnapshot(any(), any());
     doCallRealMethod().when(mockIngestionTask).shouldSyncOffset(any(), any(), any());
+    // Stub early so size-based branch can call getVersionTopic().getName()
+    PubSubTopic versionTopic = TOPIC_REPOSITORY.getTopic("test-topic_v1");
+    doReturn(versionTopic).when(mockIngestionTask).getVersionTopic();
+    VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
+    doReturn(consumedBytesSinceLastSync).when(mockIngestionTask).getConsumedBytesSinceLastSync();
 
     // Set up Global RT DIV message
     final DefaultPubSubMessage globalRtDivMessage = getMockMessage(1).getMessage();
@@ -741,6 +750,31 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(ControlMessageType.START_OF_SEGMENT.getValue()).when(mockControlMessage).getControlMessageType();
     assertFalse(
         mockIngestionTask.shouldSyncOffsetFromSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
+
+    // Mock the getSyncBytesInterval method to return a specific value
+    doReturn(1000L).when(mockIngestionTask).getSyncBytesInterval(any());
+
+    // Create a mock message that is neither a Global RT DIV nor a control message
+    final DefaultPubSubMessage regularMessage = getMockMessage(3).getMessage();
+    KafkaKey regularMockKey = regularMessage.getKey();
+    doReturn(false).when(regularMockKey).isGlobalRtDiv();
+    doReturn(false).when(regularMockKey).isControlMessage();
+
+    // Test case 1: When VT consumed bytes since last sync is less than 2*syncBytesInterval
+    consumedBytesSinceLastSync.put(versionTopic.getName(), 1500L);
+    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+
+    // Test case 2: When VT consumed bytes since last sync is equal to 2*syncBytesInterval
+    consumedBytesSinceLastSync.put(versionTopic.getName(), 2000L);
+    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+
+    // Test case 3: When VT consumed bytes since last sync is greater than 2*syncBytesInterval
+    consumedBytesSinceLastSync.put(versionTopic.getName(), 2500L);
+    assertTrue(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
+
+    // Test case 4: When syncBytesInterval is 0 (disabled)
+    doReturn(0L).when(mockIngestionTask).getSyncBytesInterval(any());
+    assertFalse(mockIngestionTask.shouldSyncOffsetFromSnapshot(regularMessage, mockPartitionConsumptionState));
   }
 
   @Test
@@ -1396,5 +1430,25 @@ public class LeaderFollowerStoreIngestionTaskTest {
     DolStamp dolStampIncomplete = new DolStamp(42L, "test-host");
     dolStampIncomplete.setDolConsumed(true);
     assertFalse(dolStampIncomplete.isDolComplete());
+  }
+
+  @Test
+  public void testUnknownRegionFallback() {
+    // Verify normalizeRegionName returns UNKNOWN_REGION for unmapped cluster IDs
+    Int2ObjectMap<String> clusterIdToAlias = new Int2ObjectOpenHashMap<>();
+    clusterIdToAlias.put(0, "dc-1");
+
+    // Cluster ID 99 is not in the map — get() returns null, normalizeRegionName returns UNKNOWN_REGION
+    String result = RegionUtils.normalizeRegionName(clusterIdToAlias.get(99));
+    assertEquals(result, RegionUtils.UNKNOWN_REGION, "Unknown kafkaClusterId should map to 'unknown' region");
+
+    // Cluster ID 0 is in the map — get() returns "dc-1", normalizeRegionName passes through
+    String known = RegionUtils.normalizeRegionName(clusterIdToAlias.get(0));
+    assertEquals(known, "dc-1", "Known kafkaClusterId should map to its alias");
+
+    // Empty alias — normalizeRegionName returns UNKNOWN_REGION
+    clusterIdToAlias.put(2, "");
+    String empty = RegionUtils.normalizeRegionName(clusterIdToAlias.get(2));
+    assertEquals(empty, RegionUtils.UNKNOWN_REGION, "Empty alias should normalize to 'unknown' region");
   }
 }

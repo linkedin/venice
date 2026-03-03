@@ -625,7 +625,13 @@ task aggregateJavadoc(type: Javadoc) {
 }
 
 spotless {
-  ratchetFrom "${git.getUpstreamRemote()}/main"
+  // Disable ratchetFrom in worktrees since JGit cannot resolve .git file references
+  def dotGit = file("${rootDir}/.git")
+  if (dotGit.isFile()) {
+    // worktree: .git is a file, not a directory — skip ratchetFrom
+  } else {
+    ratchetFrom "${git.getUpstreamRemote()}/main"
+  }
   java {
     importOrder()
     removeUnusedImports()

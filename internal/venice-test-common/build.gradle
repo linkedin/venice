@@ -145,7 +145,6 @@ def integrationTestConfigs = {
 
 def integrationTestBuckets = [
     "1": [
-        "com.linkedin.venice.endToEnd.PartialUpdateWithHeartbeatReadyToServeCheckTest",
         "com.linkedin.venice.endToEnd.TestIncrementalPush",
         "com.linkedin.venice.consumer.TestStatelessChangelogConsumerWithCompression",
         "com.linkedin.venice.endToEnd.DaVinciClientIsolatedAndHybridStoreTest"
@@ -157,7 +156,8 @@ def integrationTestBuckets = [
     "3": [
         "com.linkedin.venice.consumer.StatefulVeniceChangelogConsumerTest",
         "com.linkedin.venice.endToEnd.TestActiveActiveVersionSwapMessage",
-        "com.linkedin.venice.endToEnd.OnlineVeniceProducerOrderingIntegrationTest"
+        "com.linkedin.venice.endToEnd.OnlineVeniceProducerOrderingIntegrationTest",
+        "com.linkedin.venice.endToEnd.PartialUpdateAAMetadataTest"
     ],
     "4": [
         "com.linkedin.venice.endToEnd.TestDeferredVersionSwap",
@@ -406,7 +406,8 @@ def integrationTestBuckets = [
         "com.linkedin.venice.endToEnd.DaVinciClientP2PBlobTransferTest2"
     ],
     "23": [
-        "com.linkedin.venice.router.TestReadPathChaos"
+        "com.linkedin.venice.router.TestReadPathChaos",
+        "com.linkedin.venice.endToEnd.PartialUpdateNonAATest"
     ],
 ]
 

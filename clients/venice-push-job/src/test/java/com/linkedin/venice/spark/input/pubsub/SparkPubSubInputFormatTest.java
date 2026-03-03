@@ -6,7 +6,6 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.utils.VeniceProperties;
@@ -31,6 +30,7 @@ public class SparkPubSubInputFormatTest {
   public void setUp() {
     Properties p = new Properties();
     p.setProperty(VenicePushJobConstants.KAFKA_INPUT_TOPIC, "test-topic");
+    p.setProperty(VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, "false");
     props = new VeniceProperties(p);
   }
 
@@ -81,8 +81,8 @@ public class SparkPubSubInputFormatTest {
   }
 
   @Test
-  public void testReadSchemaReturnsNull() {
+  public void testReadSchemaReturnsExpectedSchema() {
     SparkPubSubInputFormat format = new SparkPubSubInputFormat(props);
-    assertNull(format.readSchema());
+    assertEquals(format.readSchema(), com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 }

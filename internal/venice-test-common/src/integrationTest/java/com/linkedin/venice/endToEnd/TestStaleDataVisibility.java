@@ -10,11 +10,6 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -24,83 +19,39 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestStaleDataVisibility {
+public class TestStaleDataVisibility extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(TestStaleDataVisibility.class);
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
-  private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
 
-  private List<VeniceMultiClusterWrapper> childClusters;
-  private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-
-  @BeforeClass
-  public void setUp() {
-    Properties serverProperties = new Properties();
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
-            .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(1)
-            .numberOfRouters(1)
-            .replicationFactor(1)
-            .forkServer(false)
-            .serverProperties(serverProperties);
-    multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-
-    childClusters = multiRegionMultiClusterWrapper.getChildRegions();
-    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-
-    LOGGER.info(
-        "parentControllers: {}",
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(", ")));
-
-    int i = 0;
-    for (VeniceMultiClusterWrapper multiClusterWrapper: childClusters) {
-      LOGGER.info(
-          "childCluster{} controllers: {}",
-          i++,
-          multiClusterWrapper.getControllers()
-              .values()
-              .stream()
-              .map(VeniceControllerWrapper::getControllerUrl)
-              .collect(Collectors.joining(", ")));
-    }
+  @Override
+  protected int getNumberOfServers() {
+    return 1;
   }
 
-  @AfterClass
-  public void cleanUp() {
-    multiRegionMultiClusterWrapper.close();
+  @Override
+  protected int getReplicationFactor() {
+    return 1;
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testGetClusterStaleStores() throws Exception {
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = CLUSTER_NAME;
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
-    String dc0ControllerUrls = multiRegionMultiClusterWrapper.getChildRegions().get(0).getControllerConnectString();
+    String dc0ControllerUrls = childDatacenters.get(0).getControllerConnectString();
 
     // create a store via parent controller url
     Properties props =

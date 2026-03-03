@@ -2,7 +2,6 @@ package com.linkedin.venice.vpj.pubsub.input.splitter;
 
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import com.linkedin.venice.vpj.pubsub.input.SplitRequest;
 import java.util.Collections;
@@ -22,22 +21,22 @@ public class SingleSplitPerPartitionStrategy implements PubSubTopicPartitionSpli
   @Override
   public List<PubSubPartitionSplit> split(SplitRequest splitRequest) {
     PubSubTopicPartition pubSubTopicPartition = splitRequest.getPubSubTopicPartition();
-    TopicManager topicManager = splitRequest.getTopicManager();
-    PubSubPosition startPosition = topicManager.getStartPositionsForPartitionWithRetries(pubSubTopicPartition);
-    PubSubPosition endPosition = topicManager.getEndPositionsForPartitionWithRetries(pubSubTopicPartition);
-    long numberOfRecords = topicManager.diffPosition(pubSubTopicPartition, endPosition, startPosition);
+    PubSubPosition startPosition = splitRequest.getStartPosition();
+    PubSubPosition endPosition = splitRequest.getEndPosition();
+    long numberOfRecords = splitRequest.getNumberOfRecords();
     if (numberOfRecords <= 0) {
       return Collections.emptyList();
     }
-    LOGGER.info(
+    LOGGER.debug(
         "Created split-0 for TP: {} record count: {}, start: {}, end: {}",
         pubSubTopicPartition,
         numberOfRecords,
         startPosition,
         endPosition);
+    LOGGER.info("Created 1 split for TP: {} with {} records", pubSubTopicPartition, numberOfRecords);
     return Collections.singletonList(
         new PubSubPartitionSplit(
-            topicManager.getTopicRepository(),
+            splitRequest.getTopicManager().getTopicRepository(),
             pubSubTopicPartition,
             startPosition,
             endPosition,

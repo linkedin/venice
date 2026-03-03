@@ -30,9 +30,9 @@ public class GrpcOutboundStatsHandler extends VeniceServerGrpcHandler {
       throw new VeniceException("store name could not be null");
     }
 
-    ServerHttpRequestStats serverHttpRequestStats = statsContext.getStoreName() == null
-        ? null
-        : statsContext.getCurrentStats().getStoreStats(statsContext.getStoreName());
+    // storeName is guaranteed non-null here (null check above throws)
+    ServerHttpRequestStats serverHttpRequestStats =
+        statsContext.getCurrentStats().getStoreStats(statsContext.getStoreName());
 
     statsContext.recordBasicMetrics(serverHttpRequestStats);
 

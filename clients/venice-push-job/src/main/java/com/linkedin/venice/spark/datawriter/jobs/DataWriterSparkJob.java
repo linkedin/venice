@@ -10,6 +10,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.GENERATE_PARTIAL_UP
 import static com.linkedin.venice.vpj.VenicePushJobConstants.GLOB_FILTER_PATTERN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
@@ -31,6 +32,7 @@ import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils;
 import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
+import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.spark.input.hdfs.VeniceHdfsSource;
 import com.linkedin.venice.spark.input.pubsub.raw.VeniceRawPubsubSource;
@@ -174,6 +176,11 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
         dataFrameReader,
         KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP,
         AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema));
+    setInputConf(
+        sparkSession,
+        dataFrameReader,
+        KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED,
+        String.valueOf(pushJobSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()));
 
     // Add KME (Kafka Message Envelope) schemas to support different message envelope versions
     KafkaInputUtils.putSchemaMapIntoProperties(pushJobSetting.newKmeSchemasFromController)
@@ -194,8 +201,13 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
    */
   private void passSSLConfigToDataFrameReader(SparkSession sparkSession, DataFrameReader dataFrameReader) {
     VeniceProperties jobProps = getJobProperties();
-    String[] sslMetadataKeys = { SSL_CONFIGURATOR_CLASS_CONFIG, SSL_KEY_STORE_PROPERTY_NAME,
-        SSL_TRUST_STORE_PROPERTY_NAME, SSL_KEY_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PASSWORD_PROPERTY_NAME };
+    setInputConf(
+        sparkSession,
+        dataFrameReader,
+        SSL_CONFIGURATOR_CLASS_CONFIG,
+        jobProps.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
+    String[] sslMetadataKeys = { SSL_KEY_STORE_PROPERTY_NAME, SSL_TRUST_STORE_PROPERTY_NAME,
+        SSL_KEY_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PASSWORD_PROPERTY_NAME };
     for (String key: sslMetadataKeys) {
       if (jobProps.containsKey(key)) {
         setInputConf(sparkSession, dataFrameReader, key, jobProps.getString(key));

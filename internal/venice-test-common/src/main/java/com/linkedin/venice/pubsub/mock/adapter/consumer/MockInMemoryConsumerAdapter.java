@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
@@ -279,6 +280,17 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
       PubSubPosition position1,
       PubSubPosition position2) {
     return PubSubUtil.computeOffsetDelta(partition, position1, position2, this);
+  }
+
+  @Override
+  public synchronized PubSubPosition advancePosition(PubSubTopicPartition tp, PubSubPosition startInclusive, long n) {
+    Objects.requireNonNull(tp, "tp");
+    Objects.requireNonNull(startInclusive, "startInclusive");
+    if (n < 0) {
+      throw new IllegalArgumentException("n must be >= 0");
+    }
+    long targetOffset = Math.addExact(startInclusive.getNumericOffset(), n);
+    return InMemoryPubSubPosition.of(targetOffset);
   }
 
   @Override

@@ -86,6 +86,13 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPA
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_VERSION_REFRESH_THRESHOLD_IN_DAYS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
@@ -228,6 +235,7 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -689,6 +697,15 @@ public class VeniceControllerClusterConfig {
   private final int userStoreVersionRetentionCount;
 
   private final int systemStoreVersionRetentionCount;
+
+  // --- Alternative PubSub backend configs ---
+  private final boolean alternativeBackendMetaSystemStoreVT;
+  private final boolean alternativeBackendMetaSystemStoreRT;
+  private final boolean alternativeBackendPushStatusSystemStoreVT;
+  private final boolean alternativeBackendPushStatusSystemStoreRT;
+  private final boolean alternativeBackendUserStoreVT;
+  private final boolean alternativeBackendUserStoreRT;
+  private final Set<String> alternativeBackendExclusionList;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -1301,6 +1318,22 @@ public class VeniceControllerClusterConfig {
     this.systemStoreVersionRetentionCount =
         props.getInt(SYSTEM_STORE_VERSION_RETENTION_COUNT, DEFAULT_SYSTEM_STORE_VERSION_RETENTION_COUNT);
 
+    // Alternative PubSub backend configs
+    this.alternativeBackendMetaSystemStoreVT =
+        props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT, false);
+    this.alternativeBackendMetaSystemStoreRT =
+        props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT, false);
+    this.alternativeBackendPushStatusSystemStoreVT =
+        props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT, false);
+    this.alternativeBackendPushStatusSystemStoreRT =
+        props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT, false);
+    this.alternativeBackendUserStoreVT = props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT, false);
+    this.alternativeBackendUserStoreRT = props.getBoolean(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT, false);
+    String exclusionListStr = props.getString(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "");
+    this.alternativeBackendExclusionList = exclusionListStr.isEmpty()
+        ? Collections.emptySet()
+        : Collections.unmodifiableSet(new HashSet<>(Arrays.asList(exclusionListStr.split("\\s*,\\s*"))));
+
     this.logClusterConfig();
   }
 
@@ -1321,6 +1354,25 @@ public class VeniceControllerClusterConfig {
     LOGGER.info("\tlogCompactionIntervalMS: {}", logCompactionIntervalMS);
     LOGGER.info("\tlogCompactionVersionStalenessThresholdMS: {}", logCompactionVersionStalenessThresholdMS);
     LOGGER.info("\tlogCompactionDuplicateKeyThreshold: {}", logCompactionDuplicateKeyThreshold);
+  }
+
+  /**
+   * Whether to use alternative pubsub backend for this store/topic combination.
+   * Checks the exact store name against the exclusion list, then looks up the appropriate flag
+   * based on system store type and topic type (RT vs VT). Excluding a user store does not
+   * affect its system stores; each must be excluded independently if needed.
+   */
+  public boolean shouldUseAlternativePubSubBackend(String storeName, boolean isRealTime) {
+    if (alternativeBackendExclusionList.contains(storeName)) {
+      return false;
+    }
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    if (systemStoreType == VeniceSystemStoreType.META_STORE) {
+      return isRealTime ? alternativeBackendMetaSystemStoreRT : alternativeBackendMetaSystemStoreVT;
+    } else if (systemStoreType == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
+      return isRealTime ? alternativeBackendPushStatusSystemStoreRT : alternativeBackendPushStatusSystemStoreVT;
+    }
+    return isRealTime ? alternativeBackendUserStoreRT : alternativeBackendUserStoreVT;
   }
 
   public VeniceProperties getProps() {
@@ -2455,4 +2507,5 @@ public class VeniceControllerClusterConfig {
   public LogContext getLogContext() {
     return logContext;
   }
+
 }

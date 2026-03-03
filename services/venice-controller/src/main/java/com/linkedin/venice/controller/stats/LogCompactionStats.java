@@ -1,12 +1,12 @@
 package com.linkedin.venice.controller.stats;
 
+import static com.linkedin.venice.controller.stats.ControllerStatsDimensionUtils.dimensionMapBuilder;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.STORE_REPUSH_TRIGGER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
 
-import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
@@ -31,11 +31,6 @@ import java.util.Set;
  * This class is used to track the metrics for log compaction.
  */
 public class LogCompactionStats extends AbstractVeniceStats {
-  private final boolean emitOpenTelemetryMetrics;
-  private final VeniceOpenTelemetryMetricsRepository otelRepository;
-  private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
-
-  /** metrics */
   private final MetricEntityStateGeneric repushCallCountMetric;
   private final MetricEntityStateGeneric compactionEligibleMetric;
   private final MetricEntityStateGeneric storeNominatedForCompactionCountMetric;
@@ -45,14 +40,9 @@ public class LogCompactionStats extends AbstractVeniceStats {
     super(metricsRepository, "LogCompactionStats");
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
-        OpenTelemetryMetricsSetup.builder(metricsRepository)
-            // set all base dimensions for this stats class and build
-            .setClusterName(clusterName)
-            .build();
-
-    this.emitOpenTelemetryMetrics = otelData.emitOpenTelemetryMetrics();
-    this.otelRepository = otelData.getOtelRepository();
-    this.baseDimensionsMap = otelData.getBaseDimensionsMap();
+        OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(clusterName).build();
+    VeniceOpenTelemetryMetricsRepository otelRepository = otelData.getOtelRepository();
+    Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
 
     repushCallCountMetric = MetricEntityStateGeneric.create(
         LogCompactionOtelMetricEntity.STORE_REPUSH_CALL_COUNT.getMetricEntity(),
@@ -93,42 +83,29 @@ public class LogCompactionStats extends AbstractVeniceStats {
       VeniceResponseStatusCategory executionStatus) {
     repushCallCountMetric.record(
         1,
-        getDimensionsBuilder().put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
-            .put(VeniceMetricsDimensions.STORE_REPUSH_TRIGGER_SOURCE, triggerSource.getDimensionValue())
-            .put(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY, executionStatus.getDimensionValue())
+        dimensionMapBuilder().store(storeName)
+            .add(STORE_REPUSH_TRIGGER_SOURCE, triggerSource.getDimensionValue())
+            .add(VENICE_RESPONSE_STATUS_CODE_CATEGORY, executionStatus.getDimensionValue())
             .build());
     if (triggerSource == StoreRepushTriggerSource.SCHEDULED_FOR_LOG_COMPACTION) {
       storeCompactionTriggeredCountMetric.record(
           1,
-          getDimensionsBuilder().put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
-              .put(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY, executionStatus.getDimensionValue())
+          dimensionMapBuilder().store(storeName)
+              .add(VENICE_RESPONSE_STATUS_CODE_CATEGORY, executionStatus.getDimensionValue())
               .build());
     }
   }
 
   public void setCompactionEligible(String storeName) {
-    compactionEligibleMetric
-        .record(1, getDimensionsBuilder().put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName).build());
+    compactionEligibleMetric.record(1, dimensionMapBuilder().store(storeName).build());
   }
 
   public void setCompactionComplete(String storeName) {
-    compactionEligibleMetric
-        .record(0, getDimensionsBuilder().put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName).build());
+    compactionEligibleMetric.record(0, dimensionMapBuilder().store(storeName).build());
   }
 
   public void recordStoreNominatedForCompactionCount(String storeName) {
-    storeNominatedForCompactionCountMetric
-        .record(1, getDimensionsBuilder().put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName).build());
-  }
-
-  private ImmutableMap.Builder<VeniceMetricsDimensions, String> getDimensionsBuilder() {
-    ImmutableMap.Builder<VeniceMetricsDimensions, String> builder = ImmutableMap.builder();
-
-    if (baseDimensionsMap != null) {
-      builder.putAll(baseDimensionsMap);
-    }
-
-    return builder;
+    storeNominatedForCompactionCountMetric.record(1, dimensionMapBuilder().store(storeName).build());
   }
 
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {
