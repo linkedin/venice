@@ -189,8 +189,9 @@ public class PartitionHealthStatsOtelTest {
     }
     assertTrue(!found, "OTel metric should NOT be emitted for total stats, but found: " + fullMetricName);
 
-    // Tehuti: should still work
-    String statsPrefix = "." + totalStatsName;
+    // Tehuti: should still work. AbstractVeniceStats replaces dots with underscores in the name,
+    // so the sensor prefix uses the transformed name.
+    String statsPrefix = "." + totalStatsName.replace(".", "_");
     String sensorName =
         PartitionHealthStats.PartitionHealthTehutiMetricNameEnum.UNDER_REPLICATED_PARTITION.getMetricName();
     String tehutiMetricName = AbstractVeniceStats.getSensorFullName(statsPrefix, sensorName) + ".Gauge";
