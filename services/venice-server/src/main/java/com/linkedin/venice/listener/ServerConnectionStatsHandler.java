@@ -3,6 +3,7 @@ package com.linkedin.venice.listener;
 import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.stats.ServerConnectionStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LatencyUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -104,8 +105,7 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
     if (evt instanceof SslHandshakeCompletionEvent && ((SslHandshakeCompletionEvent) evt).isSuccess()) {
       Long initStartTs = ctx.channel().attr(CHANNEL_INIT_START_TS).getAndSet(null);
       if (initStartTs != null) {
-        double latencyMs = (System.nanoTime() - initStartTs) / 1_000_000.0;
-        serverConnectionStats.recordNewConnectionSetupLatency(latencyMs);
+        serverConnectionStats.recordNewConnectionSetupLatency(LatencyUtils.getElapsedTimeFromNSToMS(initStartTs));
       }
     }
     super.userEventTriggered(ctx, evt);
