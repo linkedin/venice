@@ -4462,33 +4462,57 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     preparePositionCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, false);
   }
 
+  /**
+   * @return true if the partition is a leader consuming from a non-VT topic (e.g., RT in A/A mode)
+   */
+  private boolean isActiveLeaderOnNonVtTopic(PartitionConsumptionState pcs) {
+    PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
+    return pcs.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER) && leaderTopic != null
+        && !leaderTopic.isVersionTopic();
+  }
+
   @Override
   protected void pausePartitionForPubSubHealth(int partitionId, PartitionConsumptionState pcs) {
-    PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
-    boolean isLeader = pcs.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER) && leaderTopic != null
-        && !leaderTopic.isVersionTopic();
-    pubSubHealthPausedPartitions.add(partitionId);
+    boolean isLeader = isActiveLeaderOnNonVtTopic(pcs);
+
+    // Determine the actual PubSub address being consumed from. For leaders in A/A mode,
+    // this may be a remote Kafka address rather than the local one.
+    String pubSubAddress;
     if (isLeader) {
+      Set<String> sourceAddresses = getConsumptionSourceKafkaAddress(pcs);
+      pubSubAddress = sourceAddresses.size() == 1 ? sourceAddresses.iterator().next() : localKafkaServer;
+    } else {
+      pubSubAddress = localKafkaServer;
+    }
+
+    pubSubHealthPausedPartitions.put(partitionId, pubSubAddress);
+    if (isLeader) {
+      PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
       unsubscribeFromTopic(leaderTopic, pcs);
     } else {
       unsubscribeFromTopic(versionTopic, pcs);
     }
-    reportPubSubHealthException();
+    reportPubSubHealthException(pubSubAddress);
   }
 
   @Override
   protected void seekToCheckpointAndResume(PartitionConsumptionState pcs) throws InterruptedException {
-    // The partition was already unsubscribed during pausePartitionForPubSubHealth(),
-    // so we only need to resubscribe at the checkpointed position.
-    PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
-    boolean isLeader = pcs.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER) && leaderTopic != null
-        && !leaderTopic.isVersionTopic();
+    int partitionId = pcs.getPartition();
+    boolean isLeader = isActiveLeaderOnNonVtTopic(pcs);
     if (isLeader) {
-      LOGGER.info("Re-subscribing leader partition {} at checkpointed position", pcs.getPartition());
+      PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
+      // Drain buffered records before resubscribing to ensure checkpoint is up-to-date
+      waitForAllMessageToBeProcessedFromTopicPartition(new PubSubTopicPartitionImpl(leaderTopic, partitionId), pcs);
+      LOGGER.info("Leader replica: {} drain finished for PubSub health resubscribe.", pcs.getReplicaId());
       preparePositionCheckpointAndStartConsumptionAsLeader(leaderTopic, pcs, false);
     } else {
+      // Drain buffered records before resubscribing to ensure checkpoint is up-to-date
+      waitForAllMessageToBeProcessedFromTopicPartition(new PubSubTopicPartitionImpl(versionTopic, partitionId), pcs);
       PubSubPosition vtPosition = pcs.getLatestProcessedVtPosition();
-      LOGGER.info("Re-subscribing follower partition {} at position {}", pcs.getPartition(), vtPosition);
+      LOGGER.info(
+          "Follower replica: {} resubscribe to offset: {} for PubSub health resume.",
+          pcs.getReplicaId(),
+          vtPosition);
       consumerSubscribe(versionTopic, pcs, vtPosition, localKafkaServer);
     }
   }

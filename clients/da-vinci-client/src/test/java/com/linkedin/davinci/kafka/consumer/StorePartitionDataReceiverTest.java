@@ -46,28 +46,93 @@ public class StorePartitionDataReceiverTest {
   }
 
   @Test
-  public void testPubSubExceptionRoutedToPartitionLevel() throws Exception {
+  public void testPubSubExceptionRoutedToPartitionLevel_WhenPauseEnabled() throws Exception {
+    when(mockSIT.isPubSubPartitionPauseEnabled()).thenReturn(true);
     PubSubClientException pubSubException = new PubSubClientException("Broker unavailable");
     doThrow(pubSubException).when(mockSIT).produceToStoreBufferServiceOrKafka(any(), any(), anyString(), anyInt());
 
     receiver.write(emptyMessages);
 
-    // PubSub exception should go to partition-level (setIngestionException), NOT task-level
     verify(mockSIT).setIngestionException(eq(3), eq(pubSubException));
     verify(mockSIT, never()).setLastConsumerException(any());
   }
 
   @Test
-  public void testWrappedPubSubExceptionRoutedToPartitionLevel() throws Exception {
+  public void testRetriablePubSubExceptionRoutedToPartitionLevel_WhenPauseEnabled() throws Exception {
+    when(mockSIT.isPubSubPartitionPauseEnabled()).thenReturn(true);
+    PubSubClientRetriableException retriableException = new PubSubOpTimeoutException("Poll timed out");
+    doThrow(retriableException).when(mockSIT).produceToStoreBufferServiceOrKafka(any(), any(), anyString(), anyInt());
+
+    receiver.write(emptyMessages);
+
+    verify(mockSIT).setIngestionException(eq(3), eq(retriableException));
+    verify(mockSIT, never()).setLastConsumerException(any());
+  }
+
+  @Test
+  public void testWrappedPubSubExceptionRoutedToPartitionLevel_WhenPauseEnabled() throws Exception {
+    when(mockSIT.isPubSubPartitionPauseEnabled()).thenReturn(true);
     PubSubClientException cause = new PubSubClientException("Broker unavailable");
     VeniceException wrappedException = new VeniceException("Wrapped", cause);
     doThrow(wrappedException).when(mockSIT).produceToStoreBufferServiceOrKafka(any(), any(), anyString(), anyInt());
 
     receiver.write(emptyMessages);
 
-    // Wrapped PubSub exception should also go to partition-level
     verify(mockSIT).setIngestionException(eq(3), eq(wrappedException));
     verify(mockSIT, never()).setLastConsumerException(any());
+  }
+
+  // --- Tests with PubSub partition pause DISABLED (default) ---
+
+  @Test
+  public void testPubSubExceptionRoutedToTaskLevel_WhenPauseDisabled() throws Exception {
+    when(mockSIT.isPubSubPartitionPauseEnabled()).thenReturn(false);
+    PubSubClientException pubSubException = new PubSubClientException("Broker unavailable");
+    doThrow(pubSubException).when(mockSIT).produceToStoreBufferServiceOrKafka(any(), any(), anyString(), anyInt());
+
+    receiver.write(emptyMessages);
+
+    // When pause is disabled, preserve original behavior: task-level only
+    verify(mockSIT).setLastConsumerException(eq(pubSubException));
+    verify(mockSIT, never()).setIngestionException(anyInt(), any());
+  }
+
+  @Test
+  public void testRetriablePubSubExceptionRoutedToTaskLevel_WhenPauseDisabled() throws Exception {
+    when(mockSIT.isPubSubPartitionPauseEnabled()).thenReturn(false);
+    PubSubClientRetriableException retriableException = new PubSubOpTimeoutException("Poll timed out");
+    doThrow(retriableException).when(mockSIT).produceToStoreBufferServiceOrKafka(any(), any(), anyString(), anyInt());
+
+    receiver.write(emptyMessages);
+
+    verify(mockSIT).setLastConsumerException(eq(retriableException));
+    verify(mockSIT, never()).setIngestionException(anyInt(), any());
+  }
+
+  @Test
+  public void testWrappedPubSubExceptionRoutedToTaskLevel_WhenPauseDisabled() throws Exception {
+    when(mockSIT.isPubSubPartitionPauseEnabled()).thenReturn(false);
+    PubSubClientException cause = new PubSubClientException("Broker unavailable");
+    VeniceException wrappedException = new VeniceException("Wrapped", cause);
+    doThrow(wrappedException).when(mockSIT).produceToStoreBufferServiceOrKafka(any(), any(), anyString(), anyInt());
+
+    receiver.write(emptyMessages);
+
+    verify(mockSIT).setLastConsumerException(eq(wrappedException));
+    verify(mockSIT, never()).setIngestionException(anyInt(), any());
+  }
+
+  @Test
+  public void testWrappedRetriablePubSubExceptionRoutedToTaskLevel_WhenPauseDisabled() throws Exception {
+    when(mockSIT.isPubSubPartitionPauseEnabled()).thenReturn(false);
+    PubSubOpTimeoutException cause = new PubSubOpTimeoutException("Poll timed out");
+    VeniceException wrappedException = new VeniceException("Wrapped", cause);
+    doThrow(wrappedException).when(mockSIT).produceToStoreBufferServiceOrKafka(any(), any(), anyString(), anyInt());
+
+    receiver.write(emptyMessages);
+
+    verify(mockSIT).setLastConsumerException(eq(wrappedException));
+    verify(mockSIT, never()).setIngestionException(anyInt(), any());
   }
 
   @Test
@@ -77,7 +142,6 @@ public class StorePartitionDataReceiverTest {
 
     receiver.write(emptyMessages);
 
-    // Non-PubSub exception should go to task-level (setLastConsumerException)
     verify(mockSIT).setLastConsumerException(eq(genericException));
     verify(mockSIT, never()).setIngestionException(anyInt(), any());
   }
@@ -94,37 +158,12 @@ public class StorePartitionDataReceiverTest {
   }
 
   @Test
-  public void testRetriablePubSubExceptionRoutedToPartitionLevel() throws Exception {
-    PubSubClientRetriableException retriableException = new PubSubOpTimeoutException("Poll timed out");
-    doThrow(retriableException).when(mockSIT).produceToStoreBufferServiceOrKafka(any(), any(), anyString(), anyInt());
-
-    receiver.write(emptyMessages);
-
-    // Retriable PubSub exception should also go to partition-level
-    verify(mockSIT).setIngestionException(eq(3), eq(retriableException));
-    verify(mockSIT, never()).setLastConsumerException(any());
-  }
-
-  @Test
-  public void testWrappedRetriablePubSubExceptionRoutedToPartitionLevel() throws Exception {
-    PubSubOpTimeoutException cause = new PubSubOpTimeoutException("Poll timed out");
-    VeniceException wrappedException = new VeniceException("Wrapped", cause);
-    doThrow(wrappedException).when(mockSIT).produceToStoreBufferServiceOrKafka(any(), any(), anyString(), anyInt());
-
-    receiver.write(emptyMessages);
-
-    verify(mockSIT).setIngestionException(eq(3), eq(wrappedException));
-    verify(mockSIT, never()).setLastConsumerException(any());
-  }
-
-  @Test
   public void testInterruptedExceptionIsRethrown() throws Exception {
     InterruptedException interruptedException = new InterruptedException("Shutting down");
     doThrow(interruptedException).when(mockSIT).produceToStoreBufferServiceOrKafka(any(), any(), anyString(), anyInt());
 
     expectThrows(InterruptedException.class, () -> receiver.write(emptyMessages));
 
-    // InterruptedException should NOT set any exception on SIT
     verify(mockSIT, never()).setLastConsumerException(any());
     verify(mockSIT, never()).setIngestionException(anyInt(), any());
   }

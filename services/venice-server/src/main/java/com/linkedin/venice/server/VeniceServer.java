@@ -446,7 +446,7 @@ public class VeniceServer {
         kafkaStoreIngestionService.getPubSubContext().getTopicManagerRepository());
     String probeTopicName = serverConfig.getPubSubHealthProbeTopic();
     if (!probeTopicName.isEmpty()) {
-      PubSubTopicRepository topicRepo = new PubSubTopicRepository();
+      PubSubTopicRepository topicRepo = kafkaStoreIngestionService.getPubSubContext().getPubSubTopicRepository();
       pubSubHealthMonitor.setProbeTopic(topicRepo.getTopic(probeTopicName));
     }
     services.add(pubSubHealthMonitor);

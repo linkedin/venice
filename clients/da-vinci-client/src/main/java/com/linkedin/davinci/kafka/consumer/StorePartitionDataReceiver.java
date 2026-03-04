@@ -115,10 +115,10 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Def
        */
       throw e;
     }
-    if (ExceptionUtils.recursiveClassEquals(e, PubSubClientException.class, PubSubClientRetriableException.class)) {
+    if (ExceptionUtils.recursiveClassEquals(e, PubSubClientException.class, PubSubClientRetriableException.class)
+        && storeIngestionTask.isPubSubPartitionPauseEnabled()) {
       // Downgrade from task-level kill to partition-level exception so that only the affected
-      // partition is paused (when PubSub health-based pause is enabled), instead of killing the
-      // entire ingestion task.
+      // partition is paused instead of killing the entire ingestion task.
       LOGGER.warn(
           "Received PubSub exception {} for topic: {}. Propagating as partition-level exception.",
           e.getClass().getSimpleName(),

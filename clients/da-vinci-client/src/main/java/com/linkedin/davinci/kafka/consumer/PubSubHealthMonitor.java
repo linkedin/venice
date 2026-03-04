@@ -20,6 +20,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -56,26 +57,25 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
   // Listeners notified on health transitions
   private final List<PubSubHealthChangeListener> listeners = new CopyOnWriteArrayList<>();
 
-  // Background threads — created in constructor, scheduled in startInner()
-  private final ScheduledExecutorService probeExecutor;
-  private final ExecutorService listenerNotificationExecutor;
+  // Background threads — created in startInner() when enabled
+  private ScheduledExecutorService probeExecutor;
+  private ExecutorService listenerNotificationExecutor;
 
   // Probe topic — a well-known topic used to test broker reachability
   private volatile PubSubTopic probeTopic;
 
   public PubSubHealthMonitor(VeniceServerConfig serverConfig, TopicManagerRepository topicManagerRepository) {
     this.enabled = serverConfig.isPubSubHealthMonitorEnabled();
-    this.probeIntervalSeconds = serverConfig.getPubSubHealthProbeIntervalSeconds();
+    this.probeIntervalSeconds = Math.max(1, serverConfig.getPubSubHealthProbeIntervalSeconds());
     this.topicManagerRepository = topicManagerRepository;
 
     // Register the built-in exception-based signal provider
     this.exceptionSignalProvider = new ExceptionBasedHealthSignalProvider();
     this.signalProviders.add(exceptionSignalProvider);
 
-    this.probeExecutor =
-        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("PubSubHealthMonitor-Probe"));
-    this.listenerNotificationExecutor =
-        Executors.newSingleThreadExecutor(new DaemonThreadFactory("PubSubHealthMonitor-Listener"));
+    // Executors are initialized in startInner() to avoid wasting threads when disabled
+    this.probeExecutor = null;
+    this.listenerNotificationExecutor = null;
   }
 
   @Override
@@ -86,6 +86,10 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
     }
 
     LOGGER.info("Starting PubSub health monitor with probe interval {}s", probeIntervalSeconds);
+    this.probeExecutor =
+        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("PubSubHealthMonitor-Probe"));
+    this.listenerNotificationExecutor =
+        Executors.newSingleThreadExecutor(new DaemonThreadFactory("PubSubHealthMonitor-Listener"));
     probeExecutor
         .scheduleWithFixedDelay(this::runRecoveryProbe, probeIntervalSeconds, probeIntervalSeconds, TimeUnit.SECONDS);
 
@@ -94,8 +98,12 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
 
   @Override
   public void stopInner() {
-    probeExecutor.shutdownNow();
-    listenerNotificationExecutor.shutdownNow();
+    if (probeExecutor != null) {
+      probeExecutor.shutdownNow();
+    }
+    if (listenerNotificationExecutor != null) {
+      listenerNotificationExecutor.shutdownNow();
+    }
   }
 
   /**
@@ -183,7 +191,7 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
 
     // Atomically transition to UNHEALTHY (including HEALTHY -> UNHEALTHY) while
     // suppressing duplicate UNHEALTHY notifications.
-    final boolean[] transitioned = { false };
+    AtomicBoolean transitioned = new AtomicBoolean(false);
     categoryStatuses.compute(category, (k, previous) -> {
       if (previous == PubSubHealthStatus.UNHEALTHY) {
         return PubSubHealthStatus.UNHEALTHY; // Already unhealthy, no notification needed
@@ -209,11 +217,11 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
           pubSubAddress,
           category,
           triggerName);
-      transitioned[0] = true;
+      transitioned.set(true);
       return PubSubHealthStatus.UNHEALTHY;
     });
 
-    if (transitioned[0]) {
+    if (transitioned.get()) {
       if (stats != null) {
         stats.recordStateTransition(category);
       }
@@ -260,17 +268,42 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
             provider.onProbeSuccess(target.address, target.category);
           }
 
-          // Transition to HEALTHY
+          // Atomically transition to HEALTHY only if no provider still reports unhealthy.
+          // This prevents a race where a new exception arrives between onProbeSuccess and
+          // the status update.
+          AtomicBoolean transitioned = new AtomicBoolean(false);
           Map<PubSubHealthCategory, PubSubHealthStatus> categoryStatuses = healthStatuses.get(target.address);
           if (categoryStatuses != null) {
-            categoryStatuses.put(target.category, PubSubHealthStatus.HEALTHY);
+            categoryStatuses.compute(target.category, (k, previous) -> {
+              // Re-check all providers under the compute lock
+              for (PubSubHealthSignalProvider provider: signalProviders) {
+                if (provider.isUnhealthy(target.address, target.category)) {
+                  return PubSubHealthStatus.UNHEALTHY; // New exception arrived, stay unhealthy
+                }
+              }
+              transitioned.set(true);
+              return PubSubHealthStatus.HEALTHY;
+            });
+
+            // Clean up empty/all-healthy entries to prevent unbounded map growth
+            if (transitioned.get()) {
+              boolean allHealthy =
+                  categoryStatuses.values().stream().allMatch(status -> status == PubSubHealthStatus.HEALTHY);
+              if (allHealthy) {
+                healthStatuses.remove(target.address);
+              }
+            }
           }
 
           if (stats != null) {
             stats.recordProbeSuccess(target.category);
-            stats.recordStateTransition(target.category);
+            if (transitioned.get()) {
+              stats.recordStateTransition(target.category);
+            }
           }
-          notifyListeners(target.address, target.category, PubSubHealthStatus.HEALTHY);
+          if (transitioned.get()) {
+            notifyListeners(target.address, target.category, PubSubHealthStatus.HEALTHY);
+          }
         } else {
           LOGGER.debug("Recovery probe failed: address={}, category={}", target.address, target.category);
 
@@ -311,7 +344,7 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
   }
 
   private void notifyListeners(String pubSubAddress, PubSubHealthCategory category, PubSubHealthStatus newStatus) {
-    if (listenerNotificationExecutor.isShutdown()) {
+    if (listenerNotificationExecutor == null || listenerNotificationExecutor.isShutdown()) {
       return;
     }
     for (PubSubHealthChangeListener listener: listeners) {
