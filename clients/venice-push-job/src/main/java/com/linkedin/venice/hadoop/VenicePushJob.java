@@ -830,13 +830,7 @@ public class VenicePushJob implements AutoCloseable {
         LOGGER.info("Incremental Push Version: {}", pushJobSetting.incrementalPushVersion);
         getVeniceWriter(pushJobSetting)
             .broadcastStartOfIncrementalPush(pushJobSetting.incrementalPushVersion, new HashMap<>());
-        startPushJobKillCheckMonitor();
-        try {
-          runJobAndUpdateStatus();
-        } finally {
-          stopPushJobKillCheckMonitor();
-        }
-        throwIfPushJobKilledByController();
+        runJobWithKillDetection();
         getVeniceWriter(pushJobSetting)
             .broadcastEndOfIncrementalPush(pushJobSetting.incrementalPushVersion, Collections.emptyMap());
       } else {
@@ -858,13 +852,7 @@ public class VenicePushJob implements AutoCloseable {
            * {@link createNewStoreVersion(PushJobSetting, long, ControllerClient, String, VeniceProperties)}
            */
         }
-        startPushJobKillCheckMonitor();
-        try {
-          runJobAndUpdateStatus();
-        } finally {
-          stopPushJobKillCheckMonitor();
-        }
-        throwIfPushJobKilledByController();
+        runJobWithKillDetection();
 
         if (!pushJobSetting.suppressEndOfPushMessage) {
           if (pushJobSetting.sendControlMessagesDirectly) {
@@ -1010,6 +998,24 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
+   * Runs the data writer job with a concurrent kill-check monitor. The monitor periodically queries
+   * the controller for push status and kills the data writer if the push has been terminated.
+   *
+   * Note: There is an intentional race window where the monitor may set {@code pushJobKilledByController}
+   * after data writing completes but before the monitor is cancelled. This is correct behavior — if the
+   * push was killed, any data written is wasted, and we should still fail the job.
+   */
+  void runJobWithKillDetection() {
+    startPushJobKillCheckMonitor();
+    try {
+      runJobAndUpdateStatus();
+    } finally {
+      stopPushJobKillCheckMonitor();
+    }
+    throwIfPushJobKilledByController();
+  }
+
+  /**
    * Schedules a periodic task that checks whether the push job has been killed by the controller.
    * This runs during the data writing phase to detect early kills (e.g., when a user push supersedes
    * a repush) and abort the data writer job promptly instead of wasting resources.
@@ -1017,8 +1023,12 @@ public class VenicePushJob implements AutoCloseable {
   void startPushJobKillCheckMonitor() {
     String topicToMonitor = getTopicToMonitor(pushJobSetting);
     long intervalMs = pushJobSetting.pollJobStatusIntervalMs;
-    LOGGER.info("Starting push job kill check monitor for topic: {} with interval: {} ms", topicToMonitor, intervalMs);
-    pushJobKillCheckScheduledFuture = timeoutExecutor.scheduleAtFixedRate(() -> {
+    LOGGER.info(
+        "Starting push job kill check monitor for store: {}, version: {} with interval: {} ms",
+        pushJobSetting.storeName,
+        pushJobSetting.version,
+        intervalMs);
+    pushJobKillCheckScheduledFuture = timeoutExecutor.scheduleWithFixedDelay(() -> {
       try {
         JobStatusQueryResponse response = ControllerClient.retryableRequest(
             controllerClient,
@@ -1026,16 +1036,18 @@ public class VenicePushJob implements AutoCloseable {
             client -> client.queryOverallJobStatus(topicToMonitor, Optional.empty(), null, false));
         if (response.isError()) {
           LOGGER.warn(
-              "Kill check monitor could not query job status for topic: {}. Error: {}",
-              topicToMonitor,
+              "Kill check monitor could not query job status for store: {}, version: {}. Error: {}",
+              pushJobSetting.storeName,
+              pushJobSetting.version,
               response.getError());
           return;
         }
         ExecutionStatus status = getExecutionStatusFromControllerResponse(response);
         if (status.isTerminal() && status.isError()) {
           LOGGER.error(
-              "Kill check monitor detected that push job for topic: {} has been killed. Status: {}",
-              topicToMonitor,
+              "Kill check monitor detected that push job for store: {}, version: {} has been killed. Status: {}",
+              pushJobSetting.storeName,
+              pushJobSetting.version,
               status);
           pushJobKilledByController = true;
           killDataWriterJob();

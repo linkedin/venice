@@ -1868,6 +1868,7 @@ public class VenicePushJobTest {
       CountDownLatch dataWriterKilledLatch = new CountDownLatch(1);
 
       // Stall the data writer job until it gets killed by the kill-check monitor
+      doCallRealMethod().when(pushJob).runJobWithKillDetection();
       doCallRealMethod().when(pushJob).runJobAndUpdateStatus();
       doCallRealMethod().when(pushJob).startPushJobKillCheckMonitor();
       doCallRealMethod().when(pushJob).stopPushJobKillCheckMonitor();
@@ -1894,8 +1895,11 @@ public class VenicePushJobTest {
         return null;
       }).when(dataWriterJob).kill();
 
+      // N.B.: skipVPJValidation stubs runJobAndUpdateStatus() (among others), so we must re-override
+      // it afterward to let the real kill-detection flow execute. If skipVPJValidation's stubs change,
+      // this re-override may need updating.
       skipVPJValidation(pushJob);
-      // Override skipVPJValidation's stub on runJobAndUpdateStatus
+      doCallRealMethod().when(pushJob).runJobWithKillDetection();
       doCallRealMethod().when(pushJob).runJobAndUpdateStatus();
 
       try {
