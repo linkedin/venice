@@ -49,6 +49,7 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.SchemaRepoBackedSchemaReader;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
@@ -70,6 +71,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -278,21 +280,29 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   protected CompletableFuture<Void> seekToTail() {
     throwIfNotReady();
-    addPartitionsToSubscription(ComplementSet.universalSet());
-    return getStoreBackend().seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, null, null, true), getVersion());
+    Set<Integer> allPartitions = new HashSet<>();
+    for (int i = 0; i < getPartitionCount(); i++) {
+      allPartitions.add(i);
+    }
+    return seekToTail(allPartitions);
   }
 
   protected CompletableFuture<Void> seekToTail(Set<Integer> partitionSet) {
-    throwIfNotReady();
-    addPartitionsToSubscription(ComplementSet.wrap(partitionSet));
-    return getStoreBackend().seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, null, null, true), getVersion());
+    return seekToPosition(partitionSet, PubSubSymbolicPosition.LATEST);
   }
 
   protected CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitionSet) {
+    return seekToPosition(partitionSet, PubSubSymbolicPosition.EARLIEST);
+  }
+
+  private CompletableFuture<Void> seekToPosition(Set<Integer> partitionSet, PubSubPosition position) {
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.wrap(partitionSet));
-    return getStoreBackend()
-        .seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, null, null, false, true), getVersion());
+    Map<Integer, PubSubPosition> positionMap = new HashMap<>();
+    for (int partition: partitionSet) {
+      positionMap.put(partition, position);
+    }
+    return getStoreBackend().seekToCheckpoint(DaVinciSeekCheckpointInfo.forPositions(positionMap), getVersion());
   }
 
   protected CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
@@ -306,22 +316,22 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       positionMap.put(changeCoordinate.getPartition(), changeCoordinate.getPosition());
     }
     addPartitionsToSubscription(ComplementSet.wrap(positionMap.keySet()));
-    return getStoreBackend()
-        .seekToCheckpoint(new DaVinciSeekCheckpointInfo(positionMap, null, null, false), getVersion());
+    return getStoreBackend().seekToCheckpoint(DaVinciSeekCheckpointInfo.forPositions(positionMap), getVersion());
   }
 
   protected CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
     throwIfNotReady();
     addPartitionsToSubscription(ComplementSet.wrap(timestamps.keySet()));
-    return getStoreBackend()
-        .seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, timestamps, null, false), getVersion());
+    return getStoreBackend().seekToCheckpoint(DaVinciSeekCheckpointInfo.forTimestamps(timestamps), getVersion());
   }
 
   protected CompletableFuture<Void> seekToTimestamps(Long timestamp) {
     throwIfNotReady();
-    addPartitionsToSubscription(ComplementSet.universalSet());
-    return getStoreBackend()
-        .seekToCheckpoint(new DaVinciSeekCheckpointInfo(null, null, timestamp, false), getVersion());
+    Map<Integer, Long> timestamps = new HashMap<>();
+    for (int i = 0; i < getPartitionCount(); i++) {
+      timestamps.put(i, timestamp);
+    }
+    return seekToTimestamps(timestamps);
   }
 
   protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {

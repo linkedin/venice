@@ -1,93 +1,53 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.ComplementSet;
+import java.util.Collections;
 import java.util.Map;
 
 
 public class DaVinciSeekCheckpointInfo {
-  private Long allPartitionsTimestamp;
-  private Map<Integer, PubSubPosition> postitionMap;
-  private Map<Integer, Long> timestampsMap;
-  private boolean seekToTail = false;
-  private boolean seekToBeginningOfPush = false;
-
-  public DaVinciSeekCheckpointInfo(
-      Map<Integer, PubSubPosition> postitionMap,
-      Map<Integer, Long> timestampsMap,
-      Long allPartitionsTimestamp,
-      boolean seekToTail) {
-    this(postitionMap, timestampsMap, allPartitionsTimestamp, seekToTail, false);
+  public enum SeekMode {
+    POSITION_MAP, TIMESTAMPS_MAP
   }
 
-  public DaVinciSeekCheckpointInfo(
-      Map<Integer, PubSubPosition> postitionMap,
-      Map<Integer, Long> timestampsMap,
-      Long allPartitionsTimestamp,
-      boolean seekToTail,
-      boolean seekToBeginningOfPush) {
-    this.allPartitionsTimestamp = allPartitionsTimestamp;
-    this.postitionMap = postitionMap;
+  private final SeekMode seekMode;
+  private final Map<Integer, PubSubPosition> positionMap;
+  private final Map<Integer, Long> timestampsMap;
+
+  private DaVinciSeekCheckpointInfo(
+      SeekMode seekMode,
+      Map<Integer, PubSubPosition> positionMap,
+      Map<Integer, Long> timestampsMap) {
+    this.seekMode = seekMode;
+    this.positionMap = positionMap;
     this.timestampsMap = timestampsMap;
-    this.seekToTail = seekToTail;
-    this.seekToBeginningOfPush = seekToBeginningOfPush;
-    int validCheckPointCount = 0;
-    if (allPartitionsTimestamp != null) {
-      validCheckPointCount++;
-    }
-    if (seekToTail) {
-      validCheckPointCount++;
-    }
-    if (seekToBeginningOfPush) {
-      validCheckPointCount++;
-    }
-    if (timestampsMap != null) {
-      validCheckPointCount++;
-    }
-    if (postitionMap != null) {
-      validCheckPointCount++;
-    }
-    if (validCheckPointCount > 1) {
-      throw new VeniceException("Multiple checkpoint types are not supported");
-    }
   }
 
-  public Long getAllPartitionsTimestamp() {
-    return allPartitionsTimestamp;
+  public static DaVinciSeekCheckpointInfo forPositions(Map<Integer, PubSubPosition> positionMap) {
+    return new DaVinciSeekCheckpointInfo(SeekMode.POSITION_MAP, Collections.unmodifiableMap(positionMap), null);
   }
 
-  public Map<Integer, PubSubPosition> getPostitionMap() {
-    return postitionMap;
+  public static DaVinciSeekCheckpointInfo forTimestamps(Map<Integer, Long> timestampsMap) {
+    return new DaVinciSeekCheckpointInfo(SeekMode.TIMESTAMPS_MAP, null, Collections.unmodifiableMap(timestampsMap));
   }
 
-  public void setPositionMap(Map<Integer, PubSubPosition> postitionMap) {
-    this.postitionMap = postitionMap;
+  public SeekMode getSeekMode() {
+    return seekMode;
   }
 
-  public void setTimestampsMap(Map<Integer, Long> timestampsMap) {
-    this.timestampsMap = timestampsMap;
+  public Map<Integer, PubSubPosition> getPositionMap() {
+    return positionMap;
   }
 
   public Map<Integer, Long> getTimestampsMap() {
     return timestampsMap;
   }
 
-  public boolean isSeekToTail() {
-    return seekToTail;
-  }
-
-  public boolean isSeekToBeginningOfPush() {
-    return seekToBeginningOfPush;
-  }
-
   public ComplementSet<Integer> getPartitions() {
-    if (postitionMap != null) {
-      return ComplementSet.newSet(postitionMap.keySet());
-    } else if (timestampsMap != null) {
-      return ComplementSet.newSet(timestampsMap.keySet());
-    } else {
-      return ComplementSet.universalSet();
+    if (positionMap != null) {
+      return ComplementSet.newSet(positionMap.keySet());
     }
+    return ComplementSet.newSet(timestampsMap.keySet());
   }
 }

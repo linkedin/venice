@@ -207,7 +207,7 @@ public class VersionBackendTest {
     ComplementSet<Integer> complementSet = ComplementSet.newSet(partitionList);
 
     // First subscription
-    versionBackend.subscribe(complementSet, null);
+    versionBackend.subscribe(complementSet, null, null);
 
     // Verify the latch count is set to 3 (number of partitions)
     verify(internalRecordTransformerConfig).setStartConsumptionLatchCount(3);
@@ -224,7 +224,7 @@ public class VersionBackendTest {
     // Test with overlapping partitions
     partitionList = Arrays.asList(2, 3, 4);
     complementSet = ComplementSet.newSet(partitionList);
-    versionBackend.subscribe(complementSet, null);
+    versionBackend.subscribe(complementSet, null, null);
 
     // Shouldn't try to start consumption on already subscribed partition (2)
     verify(mockIngestionBackend, never()).startConsumption(any(), eq(2), any(), any());
@@ -235,7 +235,7 @@ public class VersionBackendTest {
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
 
     // Test empty subscription
-    versionBackend.subscribe(ComplementSet.emptySet(), null);
+    versionBackend.subscribe(ComplementSet.emptySet(), null, null);
     verify(mockIngestionBackend, never()).startConsumption(any(), eq(0), any(), any());
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
   }

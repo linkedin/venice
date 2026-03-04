@@ -37,7 +37,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.schemas.TestValueRecord;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.StoreDisabledException;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
@@ -522,6 +521,7 @@ public class AvroGenericDaVinciClientTest {
     doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
         .seekToCheckpoint(any(DaVinciSeekCheckpointInfo.class), eq(Optional.empty()));
     doReturn(true).when(dvcClient).isReady();
+    doReturn(3).when(dvcClient).getPartitionCount();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
     // Test
     CompletableFuture<Void> future = dvcClient.seekToTail();
@@ -621,21 +621,40 @@ public class AvroGenericDaVinciClientTest {
   }
 
   @Test
-  public void testDaVinciSeekCheckpointInfoSeekToBeginningOfPush() {
-    DaVinciSeekCheckpointInfo info = new DaVinciSeekCheckpointInfo(null, null, null, false, true);
-    assertTrue(info.isSeekToBeginningOfPush());
-    assertFalse(info.isSeekToTail());
+  public void testDaVinciSeekCheckpointInfoForPositionsWithEarliest() {
+    Map<Integer, com.linkedin.venice.pubsub.api.PubSubPosition> positionMap = new HashMap<>();
+    positionMap.put(0, com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST);
+    positionMap.put(1, com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST);
+    DaVinciSeekCheckpointInfo info = DaVinciSeekCheckpointInfo.forPositions(positionMap);
+    assertEquals(info.getSeekMode(), DaVinciSeekCheckpointInfo.SeekMode.POSITION_MAP);
+    assertTrue(info.getPartitions().contains(0));
+    assertTrue(info.getPartitions().contains(1));
+    assertFalse(info.getPartitions().contains(2));
+    assertEquals(info.getPositionMap(), positionMap);
   }
 
   @Test
-  public void testDaVinciSeekCheckpointInfoMutualExclusion() {
-    assertThrows(VeniceException.class, () -> new DaVinciSeekCheckpointInfo(null, null, null, true, true));
+  public void testDaVinciSeekCheckpointInfoForTimestamps() {
+    Map<Integer, Long> timestamps = new HashMap<>();
+    timestamps.put(0, 1000L);
+    timestamps.put(1, 2000L);
+    DaVinciSeekCheckpointInfo info = DaVinciSeekCheckpointInfo.forTimestamps(timestamps);
+    assertEquals(info.getSeekMode(), DaVinciSeekCheckpointInfo.SeekMode.TIMESTAMPS_MAP);
+    assertTrue(info.getPartitions().contains(0));
+    assertTrue(info.getPartitions().contains(1));
+    assertFalse(info.getPartitions().contains(2));
+    assertEquals(info.getTimestampsMap(), timestamps);
   }
 
   @Test
-  public void testDaVinciSeekCheckpointInfoBackwardCompatibility() {
-    DaVinciSeekCheckpointInfo info = new DaVinciSeekCheckpointInfo(null, null, null, false);
-    assertFalse(info.isSeekToBeginningOfPush());
-    assertFalse(info.isSeekToTail());
+  public void testDaVinciSeekCheckpointInfoForPositionsWithLatest() {
+    Map<Integer, com.linkedin.venice.pubsub.api.PubSubPosition> positionMap = new HashMap<>();
+    positionMap.put(0, com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.LATEST);
+    positionMap.put(1, com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.LATEST);
+    DaVinciSeekCheckpointInfo info = DaVinciSeekCheckpointInfo.forPositions(positionMap);
+    assertEquals(info.getSeekMode(), DaVinciSeekCheckpointInfo.SeekMode.POSITION_MAP);
+    assertTrue(info.getPartitions().contains(0));
+    assertTrue(info.getPartitions().contains(1));
+    assertFalse(info.getPartitions().contains(2));
   }
 }

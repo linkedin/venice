@@ -339,9 +339,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
-    return initializeAndSubscribe(
-        partitions,
-        subscribedPartitions -> daVinciClient.seekToBeginningOfPush(subscribedPartitions));
+    return initializeAndSubscribe(partitions, daVinciClient::seekToBeginningOfPush);
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush() {
@@ -357,11 +355,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
-    return daVinciClient.seekToTail(partitions);
+    return initializeAndSubscribe(partitions, daVinciClient::seekToTail);
   }
 
   public CompletableFuture<Void> seekToTail() {
-    return daVinciClient.seekToTail();
+    return this.seekToTail(Collections.emptySet());
   }
 
   public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
