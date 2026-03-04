@@ -19,7 +19,8 @@ public final class ServerMetricEntity {
       HeartbeatOtelMetricEntity.class,
       RecordLevelDelayOtelMetricEntity.class,
       ServerReadOtelMetricEntity.class,
-      ThreadPoolOtelMetricEntity.class);
+      ThreadPoolOtelMetricEntity.class,
+      ServerMetadataOtelMetricEntity.class);
 
   private ServerMetricEntity() {
   }

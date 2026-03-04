@@ -6,6 +6,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -264,8 +265,12 @@ public class OpenTelemetryMetricsSetup {
       return new OpenTelemetryMetricsSetupInfo(true, otelRepository, baseDimensionsMap, baseAttributes);
     }
 
+    /**
+     * Returns emptyMap (not null) for baseDimensionsMap so callers that copy-and-augment
+     * the map (e.g., adding VENICE_STORE_NAME) don't need individual null guards.
+     */
     private OpenTelemetryMetricsSetupInfo buildOtelDisabled() {
-      return new OpenTelemetryMetricsSetupInfo(false, null, null, null);
+      return new OpenTelemetryMetricsSetupInfo(false, null, Collections.emptyMap(), null);
     }
   }
 
