@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 
 import com.google.common.collect.ImmutableMap;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import java.util.Map;
 
@@ -13,8 +14,6 @@ import java.util.Map;
  * OTel metrics via {@link com.linkedin.venice.stats.metrics.MetricEntityStateGeneric}.
  */
 class ControllerStatsDimensionUtils {
-  static final String UNKNOWN_STORE_NAME = "unknown";
-
   private ControllerStatsDimensionUtils() {
   }
 
@@ -22,15 +21,11 @@ class ControllerStatsDimensionUtils {
     return new DimensionMapBuilder();
   }
 
-  private static String sanitizeStoreName(String storeName) {
-    return (storeName == null || storeName.isEmpty()) ? UNKNOWN_STORE_NAME : storeName;
-  }
-
   static class DimensionMapBuilder {
     private final ImmutableMap.Builder<VeniceMetricsDimensions, String> mapBuilder = ImmutableMap.builder();
 
     DimensionMapBuilder store(String storeName) {
-      mapBuilder.put(VENICE_STORE_NAME, sanitizeStoreName(storeName));
+      mapBuilder.put(VENICE_STORE_NAME, OpenTelemetryMetricsSetup.sanitizeStoreName(storeName));
       return this;
     }
 

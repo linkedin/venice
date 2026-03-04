@@ -18,6 +18,16 @@ import java.util.Map;
  * that can be reused when recording metrics.
  */
 public class OpenTelemetryMetricsSetup {
+  public static final String UNKNOWN_STORE_NAME = "unknown_store";
+
+  /**
+   * Sanitizes a store name for use as an OTel dimension value.
+   * Returns {@link #UNKNOWN_STORE_NAME} if the input is null, empty, or whitespace-only.
+   */
+  public static String sanitizeStoreName(String storeName) {
+    return (storeName == null || storeName.trim().isEmpty()) ? UNKNOWN_STORE_NAME : storeName;
+  }
+
   /**
    * Result object containing the setup OpenTelemetry components.
    *
@@ -195,6 +205,7 @@ public class OpenTelemetryMetricsSetup {
 
       // Add store name if provided
       if (storeName != null) {
+        storeName = sanitizeStoreName(storeName);
         baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
         baseAttributesBuilder
             .put(otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_STORE_NAME), storeName);

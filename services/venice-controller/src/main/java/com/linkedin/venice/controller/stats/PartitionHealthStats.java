@@ -76,12 +76,18 @@ public class PartitionHealthStats extends AbstractVeniceStats {
   }
 
   enum PartitionHealthTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    UNDER_REPLICATED_PARTITION;
+    // Preserve the original camelCase sensor name for backward compatibility with existing dashboards.
+    UNDER_REPLICATED_PARTITION("underReplicatedPartition");
+
+    private final String metricName;
+
+    PartitionHealthTehutiMetricNameEnum(String metricName) {
+      this.metricName = metricName;
+    }
 
     @Override
     public String getMetricName() {
-      // Preserve the original camelCase sensor name for backward compatibility with existing dashboards.
-      return "underReplicatedPartition";
+      return metricName;
     }
   }
 
