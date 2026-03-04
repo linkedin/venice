@@ -1,7 +1,6 @@
 package com.linkedin.venice.consumer;
 
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
@@ -16,14 +15,11 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
@@ -142,12 +138,7 @@ public class StatefulVeniceChangelogConsumerTest {
 
     metricsRepository = getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
 
-    consumerProperties = new Properties();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, clusterWrapper.getPubSubBrokerWrapper().getAddress());
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
-    consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
-    consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
+    consumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(clusterWrapper);
 
     deleteWithRmdKeyIndex.id = 1000;
   }

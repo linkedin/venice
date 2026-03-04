@@ -1,6 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
@@ -21,6 +20,7 @@ import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.consumer.ChangelogConsumerTestUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -157,11 +157,11 @@ public class TestActiveActiveVersionSwapMessage {
     dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
     dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
 
-    String localKafkaUrl = childDatacenters.get(0).getPubSubBrokerWrapper().getAddress();
-    consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
+    consumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(
+        multiRegionMultiClusterWrapper,
+        childDatacenters.get(0).getPubSubBrokerWrapper(),
+        clusterName,
+        childDatacenters.get(0).getZkServerWrapper());
   }
 
   @AfterClass(alwaysRun = true)

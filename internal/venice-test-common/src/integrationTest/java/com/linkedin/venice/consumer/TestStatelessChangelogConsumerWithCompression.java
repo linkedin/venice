@@ -1,13 +1,9 @@
 package com.linkedin.venice.consumer;
 
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
@@ -228,13 +224,8 @@ public class TestStatelessChangelogConsumerWithCompression {
 
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
     PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
-    consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
+    Properties consumerProperties = ChangelogConsumerTestUtils
+        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
 
     ChangelogClientConfig globalChangelogClientConfig =
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)

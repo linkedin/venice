@@ -20,6 +20,7 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.consumer.StatefulVeniceChangelogConsumerTest.pollChangeEventsFromChangeCaptureConsumer;
@@ -91,6 +92,7 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkUrl);
+    consumerProperties.put(PERSISTENCE_TYPE, "ROCKS_DB");
     consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
     consumerProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
     consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, blobTransferServerPort);
