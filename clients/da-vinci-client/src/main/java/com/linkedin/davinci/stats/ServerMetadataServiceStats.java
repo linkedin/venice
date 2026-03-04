@@ -2,6 +2,7 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
@@ -40,8 +41,14 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
   private final boolean emitOtelMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
-  /** Unbounded; cardinality is bounded by stores deployed to this server. Same pattern as HelixGroupStats. */
-  private final VeniceConcurrentHashMap<String, MetricEntityStateOneEnum<VeniceResponseStatusCategory>> perStoreMetrics =
+  /**
+   * Sentinel store name used when the requested store does not exist (e.g., VeniceNoStoreException).
+   * Keeps per-store OTel cardinality bounded — all unknown-store failures share one metric entry.
+   */
+  public static final String UNKNOWN_STORE = "unknown_store";
+
+  /** Per-store OTel metrics. Cardinality is bounded by stores deployed to this server + {@link #UNKNOWN_STORE}. */
+  private final Map<String, MetricEntityStateOneEnum<VeniceResponseStatusCategory>> perStoreMetrics =
       new VeniceConcurrentHashMap<>();
 
   public ServerMetadataServiceStats(MetricsRepository metricsRepository, String clusterName) {
@@ -82,10 +89,16 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
     }
   }
 
-  public void recordRequestBasedMetadataFailureCount(String storeName) {
+  /**
+   * Records failure. Uses {@link #UNKNOWN_STORE} when the exception indicates the store doesn't exist,
+   * to bound per-store OTel cardinality from arbitrary request-provided names.
+   */
+  public void recordRequestBasedMetadataFailureCount(String storeName, Exception e) {
     requestBasedMetadataFailureCount.record();
     if (emitOtelMetrics) {
-      getStoreMetrics(storeName).record(1, VeniceResponseStatusCategory.FAIL);
+      String metricStoreName = (e instanceof VeniceNoStoreException) ? UNKNOWN_STORE : storeName;
+      getStoreMetrics(metricStoreName).record(1, VeniceResponseStatusCategory.FAIL);
     }
   }
+
 }

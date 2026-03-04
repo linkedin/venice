@@ -352,7 +352,7 @@ public class ServerReadMetadataRepositoryTest {
   }
 
   @Test
-  public void testGetStorePropertiesRecordsFailureOnVeniceException() {
+  public void testGetStorePropertiesRecordsFailureOnVeniceNoStoreException() {
     String storeName = "nonexistent-store";
     doThrow(new VeniceNoStoreException(storeName)).when(mockMetadataRepo).getStoreOrThrow(storeName);
     StorePropertiesPayload response = serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
@@ -365,6 +365,19 @@ public class ServerReadMetadataRepositoryTest {
     doThrow(new RuntimeException("unexpected error")).when(mockMetadataRepo).getStoreOrThrow(storeName);
     StorePropertiesPayload response = serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
     assertStorePropertiesFailure(response, "unexpected error");
+  }
+
+  @Test
+  public void testGetMetadataRecordsFailureOnVeniceNoStoreException() {
+    String storeName = "nonexistent-metadata-store";
+    doThrow(new VeniceNoStoreException(storeName)).when(mockMetadataRepo).getStoreOrThrow(storeName);
+
+    MetadataResponse response = serverReadMetadataRepository.getMetadata(storeName);
+    assertTrue(response.isError());
+    assertTrue(response.getMessage().contains(storeName));
+    // Tehuti failure sensor recorded (via no-arg overload), invoke sensor also recorded
+    assertTrue(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value() > 0);
+    assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
   }
 
   @Test

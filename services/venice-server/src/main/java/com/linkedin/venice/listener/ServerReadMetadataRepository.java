@@ -102,6 +102,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   public MetadataResponse getMetadata(String storeName) {
     serverMetadataServiceStats.recordRequestBasedMetadataInvokeCount();
     MetadataResponse response = new MetadataResponse();
+
     try {
       Store store = storeRepository.getStoreOrThrow(storeName);
 
@@ -164,9 +165,9 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       LOGGER.warn("Failed to populate request based metadata for store: {}.", storeName);
       response.setMessage("Failed to populate metadata for store: " + storeName + " due to: " + e.getMessage());
       response.setError(true);
-      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName);
+      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName, e);
     } catch (Exception e) {
-      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName);
+      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName, e);
       throw e;
     }
     return response;
@@ -245,7 +246,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       response
           .setMessage("Failed to populate metadata by client for store: " + storeName + " due to: " + e.getMessage());
       response.setError(true);
-      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName);
+      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName, e);
     } catch (Exception e) {
       StringWriter sw = new StringWriter();
       try (PrintWriter pw = new PrintWriter(sw)) {
@@ -256,7 +257,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       response
           .setMessage("Failed to populate metadata by client for store: " + storeName + " due to: " + e + "\n" + trace);
       response.setError(true);
-      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName);
+      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName, e);
     }
 
     return response;

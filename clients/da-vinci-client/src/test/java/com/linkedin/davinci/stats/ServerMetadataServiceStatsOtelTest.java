@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.davinci.stats.ServerMetadataServiceStats.UNKNOWN_STORE;
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
@@ -7,6 +8,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
@@ -44,14 +47,16 @@ public class ServerMetadataServiceStatsOtelTest {
 
   @AfterMethod
   public void tearDown() {
-    metricsRepository.close();
+    if (metricsRepository != null) {
+      metricsRepository.close();
+    }
   }
 
   @Test
-  public void testRecordFailure() {
-    stats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME);
+  public void testRecordFailureUsesStoreNameForNonNoStoreException() {
+    stats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME, new VeniceException("some error"));
 
-    // OTel counter recorded
+    // OTel counter recorded under the actual store name (not UNKNOWN_STORE)
     validateCounter(
         ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
         1,
@@ -81,7 +86,7 @@ public class ServerMetadataServiceStatsOtelTest {
   public void testSuccessAndFailureAreIndependent() {
     stats.recordRequestBasedMetadataSuccessCount(TEST_STORE_NAME);
     stats.recordRequestBasedMetadataSuccessCount(TEST_STORE_NAME);
-    stats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME);
+    stats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME, null);
 
     validateCounter(
         ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
@@ -131,11 +136,29 @@ public class ServerMetadataServiceStatsOtelTest {
     assertAllMethodsSafeWithRepo(new MetricsRepository());
   }
 
+  @Test
+  public void testUnknownStoreFailureUsesSentinel() {
+    stats.recordRequestBasedMetadataFailureCount("arbitrary-store", new VeniceNoStoreException("arbitrary-store"));
+
+    // OTel counter recorded under the sentinel store name
+    validateCounter(
+        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
+        1,
+        buildExpectedAttributes(UNKNOWN_STORE, VeniceResponseStatusCategory.FAIL));
+
+    // Tehuti failure sensor also recorded
+    assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
+
+    // Invoke sensor unaffected
+    assertEquals(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value(), 0d);
+  }
+
   private void assertAllMethodsSafeWithRepo(MetricsRepository repo) {
     ServerMetadataServiceStats safeStats = new ServerMetadataServiceStats(repo, TEST_CLUSTER_NAME);
     safeStats.recordRequestBasedMetadataInvokeCount();
     safeStats.recordRequestBasedMetadataSuccessCount(TEST_STORE_NAME);
-    safeStats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME);
+    safeStats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME, null);
+    safeStats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME, new VeniceNoStoreException(TEST_STORE_NAME));
   }
 
   private Attributes buildExpectedAttributes(String storeName, VeniceResponseStatusCategory statusCategory) {
