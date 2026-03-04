@@ -3,6 +3,7 @@ package com.linkedin.davinci.client;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.ComplementSet;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 
@@ -25,11 +26,17 @@ public class DaVinciSeekCheckpointInfo {
   }
 
   public static DaVinciSeekCheckpointInfo forPositions(Map<Integer, PubSubPosition> positionMap) {
-    return new DaVinciSeekCheckpointInfo(SeekMode.POSITION_MAP, Collections.unmodifiableMap(positionMap), null);
+    return new DaVinciSeekCheckpointInfo(
+        SeekMode.POSITION_MAP,
+        Collections.unmodifiableMap(new HashMap<>(positionMap)),
+        null);
   }
 
   public static DaVinciSeekCheckpointInfo forTimestamps(Map<Integer, Long> timestampsMap) {
-    return new DaVinciSeekCheckpointInfo(SeekMode.TIMESTAMPS_MAP, null, Collections.unmodifiableMap(timestampsMap));
+    return new DaVinciSeekCheckpointInfo(
+        SeekMode.TIMESTAMPS_MAP,
+        null,
+        Collections.unmodifiableMap(new HashMap<>(timestampsMap)));
   }
 
   public SeekMode getSeekMode() {

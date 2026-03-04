@@ -195,7 +195,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
   }
 
-  private void startDaVinciClient() {
+  private synchronized void startDaVinciClient() {
     // Start daVinci client if not already started
     if (!isStarted.get()) {
       daVinciClient.start();
@@ -269,7 +269,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
      * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
      * will wait forever for capacity to become available. This leads to a deadlock.
     */
-    subscriptionCall.apply(subscribedPartitions).whenComplete((result, error) -> {
+    subscriptionCall.apply(targetPartitions).whenComplete((result, error) -> {
       if (error != null) {
         LOGGER.error("Failed to subscribe to partitions: {} for store: {}", subscribedPartitions, storeName, error);
         startFuture.completeExceptionally(new VeniceClientException(error));
