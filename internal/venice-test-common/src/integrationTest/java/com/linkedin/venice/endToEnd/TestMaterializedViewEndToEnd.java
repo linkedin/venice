@@ -449,6 +449,7 @@ public class TestMaterializedViewEndToEnd extends AbstractMultiRegionTest {
     consumerProperties.put(
         KAFKA_BOOTSTRAP_SERVERS,
         multiRegionMultiClusterWrapper.getChildRegions().get(1).getPubSubBrokerWrapper().getAddress());
+    consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
     ChangelogClientConfig viewChangeLogClientConfig = new ChangelogClientConfig().setViewName(testViewName)
         .setConsumerProperties(consumerProperties)
         .setControllerD2ServiceName(D2_SERVICE_NAME)
@@ -817,6 +818,7 @@ public class TestMaterializedViewEndToEnd extends AbstractMultiRegionTest {
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
     consumerProperties.put(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY, true);
+    consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
 
     return new ChangelogClientConfig().setConsumerProperties(consumerProperties)
         .setControllerD2ServiceName(D2_SERVICE_NAME)

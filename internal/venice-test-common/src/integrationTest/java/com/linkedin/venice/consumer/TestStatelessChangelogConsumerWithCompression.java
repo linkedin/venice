@@ -1,6 +1,7 @@
 package com.linkedin.venice.consumer;
 
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
@@ -233,6 +234,7 @@ public class TestStatelessChangelogConsumerWithCompression {
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
 
     ChangelogClientConfig globalChangelogClientConfig =
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
