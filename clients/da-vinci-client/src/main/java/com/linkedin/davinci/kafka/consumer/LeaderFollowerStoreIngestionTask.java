@@ -89,10 +89,14 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
+import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
+import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -203,6 +207,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriter;
   protected final Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterForRealTime;
   protected final Int2ObjectMap<String> kafkaClusterIdToUrlMap;
+  private final Int2ObjectMap<String> kafkaClusterIdToAliasMap;
+  private final String localRegionName;
+  private final int localRegionKafkaClusterId;
   protected final Map<String, byte[]> globalRtDivKeyBytesCache;
   private volatile long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
@@ -300,6 +307,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
+    this.kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
+    this.localRegionName = serverConfig.getRegionName();
+    this.localRegionKafkaClusterId = RegionUtils.getLocalKafkaClusterId(kafkaClusterIdToAliasMap, localRegionName);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()
         && !store.isFlinkVeniceViewsEnabled()) {
       viewWriters = builder.getVeniceViewWriterFactory().buildStoreViewWriters(store, version.getNumber());
@@ -770,8 +780,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     if (isMetricsEmissionEnabled()) {
-      hostLevelIngestionStats
-          .recordCheckLongRunningTasksLatency(LatencyUtils.getElapsedTimeFromNSToMS(checkStartTimeInNS));
+      double checkLatency = LatencyUtils.getElapsedTimeFromNSToMS(checkStartTimeInNS);
+      hostLevelIngestionStats.recordCheckLongRunningTasksLatency(checkLatency);
+      versionedIngestionStats.recordLongRunningTaskCheckTime(storeName, versionNumber, checkLatency);
     }
 
     if (pushTimeout) {
@@ -787,6 +798,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // For current / backup version, a replica's re-bootstrap timeout should not incur whole SIT closure.
         for (int partition: timeoutPartitions) {
           reportError(errorMsg, partition, ex);
+        }
+        if (isMetricsEmissionEnabled()) {
+          hostLevelIngestionStats.recordIngestionFailure();
+          versionedIngestionStats.recordIngestionFailureCount(
+              getStoreName(),
+              getVersionNumber(),
+              VeniceIngestionFailureReason.SERVING_VERSION_BOOTSTRAP_TIMEOUT);
         }
       } else {
         throw ex;
@@ -1958,8 +1976,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     long beforeProduceTimestampNS = System.nanoTime();
     produceFunction.accept(callback, leaderMetadataWrapper);
-    getHostLevelIngestionStats()
-        .recordLeaderProduceLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS));
+    double enqueueLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS);
+    getHostLevelIngestionStats().recordLeaderProduceLatency(enqueueLatency);
+    getVersionIngestionStats().recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
 
     try {
       if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
@@ -2345,13 +2364,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected final void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs) {
     if (getMaxRecordSizeBytes() != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE && ratio > 0) {
       hostLevelIngestionStats.recordAssembledRecordSizeRatio(ratio, currentTimeMs);
+      versionedIngestionStats.recordAssembledSizeRatio(storeName, versionNumber, ratio);
     }
   }
 
   private void recordRegionHybridConsumptionStats(int kafkaClusterId, int producedRecordSize, long currentTimeMs) {
     if (kafkaClusterId >= 0) {
-      versionedIngestionStats
-          .recordRegionHybridConsumption(storeName, versionNumber, kafkaClusterId, producedRecordSize, currentTimeMs);
+      String sourceRegion = RegionUtils.normalizeRegionName(kafkaClusterIdToAliasMap.get(kafkaClusterId));
+      VeniceRegionLocality regionLocality =
+          localRegionKafkaClusterId == kafkaClusterId ? VeniceRegionLocality.LOCAL : VeniceRegionLocality.REMOTE;
+
+      versionedIngestionStats.recordRegionHybridConsumption(
+          storeName,
+          versionNumber,
+          kafkaClusterId,
+          producedRecordSize,
+          currentTimeMs,
+          sourceRegion,
+          regionLocality);
       hostLevelIngestionStats.recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize, currentTimeMs);
     }
   }
@@ -3111,8 +3141,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (lastFuture != null) {
           long synchronizeStartTimeInNS = System.nanoTime();
           lastFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
-          hostLevelIngestionStats
-              .recordLeaderProducerSynchronizeLatency(LatencyUtils.getElapsedTimeFromNSToMS(synchronizeStartTimeInNS));
+          double syncLatency = LatencyUtils.getElapsedTimeFromNSToMS(synchronizeStartTimeInNS);
+          hostLevelIngestionStats.recordLeaderProducerSynchronizeLatency(syncLatency);
+          versionedIngestionStats.recordProducerSynchronizeTime(storeName, versionNumber, syncLatency);
         }
       } catch (InterruptedException e) {
         LOGGER.warn(
@@ -3279,7 +3310,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         long startTimeInNS = System.nanoTime();
         // We need to expand the front of the returned bytebuffer to make room for schema header insertion
         ByteBuffer result = compressor.get().compress(data, ByteUtils.SIZE_OF_INT);
-        hostLevelIngestionStats.recordLeaderCompressLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
+        double compressLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
+        hostLevelIngestionStats.recordLeaderCompressLatency(compressLatency);
+        versionedIngestionStats.recordProducerCompressTime(storeName, versionNumber, compressLatency);
         return result;
       } catch (IOException e) {
         // throw a loud exception if something goes wrong here
@@ -3422,8 +3455,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               update.updateSchemaId,
               readerUpdateProtocolVersion);
           updatedValueBytes = compressor.get().compress(writeComputeResult.getUpdatedValueBytes());
-          hostLevelIngestionStats
-              .recordWriteComputeUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS));
+          double wcUpdateLatency = LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS);
+          hostLevelIngestionStats.recordWriteComputeUpdateLatency(wcUpdateLatency);
+          versionedIngestionStats
+              .recordPartialUpdateTime(storeName, versionNumber, VenicePartialUpdateOperation.UPDATE, wcUpdateLatency);
         } catch (Exception e) {
           setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
           throw new RuntimeException(e);
@@ -3921,6 +3956,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition topicPartition,
       ChunkedValueManifestContainer manifestContainer) {
     final GenericRecord currValue;
+    hostLevelIngestionStats.recordWriteComputeLookupCount();
     PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
     if (transientRecord == null) {
       try {
@@ -3938,14 +3974,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 storeDeserializerCache,
                 compressor.get(),
                 manifestContainer));
-        hostLevelIngestionStats
-            .recordWriteComputeLookUpLatency(LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS));
+        double wcLookupLatency = LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS);
+        hostLevelIngestionStats.recordWriteComputeLookUpLatency(wcLookupLatency);
+        versionedIngestionStats
+            .recordPartialUpdateTime(storeName, versionNumber, VenicePartialUpdateOperation.QUERY, wcLookupLatency);
       } catch (Exception e) {
         setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
         throw e;
       }
     } else {
       hostLevelIngestionStats.recordWriteComputeCacheHitCount();
+      versionedIngestionStats.recordPartialUpdateCacheHitCount(storeName, versionNumber);
       // construct currValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
         try {
@@ -4445,9 +4484,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
       viewWriterFutures[index++] = viewWriterRecordProcessor.apply(writer, viewPartitionSet);
     }
-    hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+    double viewProduceLatency = LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime);
+    hostLevelIngestionStats.recordViewProducerLatency(viewProduceLatency);
+    versionedIngestionStats.recordViewWriterProduceTime(storeName, versionNumber, viewProduceLatency);
     CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
-      hostLevelIngestionStats.recordViewProducerAckLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+      double viewAckLatency = LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime);
       if (exception == null) {
         versionTopicWrite.run();
         currentVersionTopicWrite.complete(null);
@@ -4456,6 +4497,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
         currentVersionTopicWrite.completeExceptionally(veniceException);
       }
+      hostLevelIngestionStats.recordViewProducerAckLatency(viewAckLatency);
+      versionedIngestionStats.recordViewWriterAckTime(storeName, versionNumber, viewAckLatency);
     });
 
     partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);

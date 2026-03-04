@@ -22,10 +22,14 @@ import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
 import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
+import com.linkedin.venice.controller.stats.DisabledPartitionStats;
+import com.linkedin.venice.controller.stats.ErrorPartitionStats;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
+import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controller.stats.SparkServerStats;
 import com.linkedin.venice.controller.stats.StoreBackupVersionCleanupServiceStats;
+import com.linkedin.venice.controller.stats.SystemStoreHealthCheckStats;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
@@ -84,7 +88,12 @@ public class VeniceController {
           TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.class,
           VeniceAdminStats.VeniceAdminOtelMetricEntity.class,
           AdminConsumptionStats.AdminConsumptionOtelMetricEntity.class,
-          AddVersionLatencyStats.AddVersionLatencyOtelMetricEntity.class);
+          AddVersionLatencyStats.AddVersionLatencyOtelMetricEntity.class,
+          DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.class,
+          DisabledPartitionStats.DisabledPartitionOtelMetricEntity.class,
+          ErrorPartitionStats.ErrorPartitionOtelMetricEntity.class,
+          SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.class,
+          ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity.class);
 
   // services
   private final VeniceControllerService controllerService;

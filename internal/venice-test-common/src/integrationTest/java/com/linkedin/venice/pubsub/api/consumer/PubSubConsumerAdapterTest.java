@@ -1593,4 +1593,85 @@ public class PubSubConsumerAdapterTest {
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
         "Unsubscribe should not block for longer than the timeout");
   }
+
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
+  public void testAdvancePositionFromBeginning() throws ExecutionException, InterruptedException, TimeoutException {
+    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueString("advance-pos-topic-"));
+    int numPartitions = 1;
+    int numMessages = 10;
+
+    pubSubAdminAdapterLazy.get().createTopic(topic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(topic, 0);
+    assertTrue(pubSubAdminAdapterLazy.get().containsTopic(topic), "Topic should exist");
+
+    // Produce messages
+    PubSubProducerAdapter producer = pubSubProducerAdapterLazy.get();
+    CompletableFuture<PubSubProduceResult> lastFuture = null;
+    for (int i = 0; i < numMessages; i++) {
+      lastFuture = producer
+          .sendMessage(topic.getName(), 0, PubSubHelper.getDummyKey(), PubSubHelper.getDummyValue(), null, null);
+    }
+    assertNotNull(lastFuture, "Last message future should not be null");
+    lastFuture.get(10, TimeUnit.SECONDS);
+
+    // Get beginning position and advance by numMessages
+    PubSubPosition beginPos = pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT);
+    assertNotNull(beginPos, "Beginning position should not be null");
+
+    PubSubPosition advancedPos = pubSubConsumerAdapter.advancePosition(partition, beginPos, numMessages);
+    assertNotNull(advancedPos, "Advanced position should not be null");
+
+    // The advanced position should equal the end position
+    PubSubPosition endPos = pubSubConsumerAdapter.endPosition(partition);
+    assertEquals(
+        pubSubConsumerAdapter.positionDifference(partition, advancedPos, endPos),
+        0,
+        "Advanced position should equal the end position");
+  }
+
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
+  public void testAdvancePositionByZero() {
+    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueString("advance-zero-topic-"));
+    int numPartitions = 1;
+
+    pubSubAdminAdapterLazy.get().createTopic(topic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(topic, 0);
+
+    PubSubPosition beginPos = pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT);
+    assertNotNull(beginPos, "Beginning position should not be null");
+
+    PubSubPosition result = pubSubConsumerAdapter.advancePosition(partition, beginPos, 0);
+    assertNotNull(result, "Result should not be null");
+
+    // Advancing by zero should return an equivalent position
+    assertEquals(
+        pubSubConsumerAdapter.positionDifference(partition, result, beginPos),
+        0,
+        "Advance by 0 should return an equivalent position");
+  }
+
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
+  public void testAdvancePositionNullInputs() {
+    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueString("advance-null-topic-"));
+    int numPartitions = 1;
+
+    pubSubAdminAdapterLazy.get().createTopic(topic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(topic, 0);
+
+    PubSubPosition beginPos = pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT);
+    assertThrows(NullPointerException.class, () -> pubSubConsumerAdapter.advancePosition(null, beginPos, 1));
+    assertThrows(NullPointerException.class, () -> pubSubConsumerAdapter.advancePosition(partition, null, 1));
+  }
+
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
+  public void testAdvancePositionNegativeN() {
+    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueString("advance-neg-topic-"));
+    int numPartitions = 1;
+
+    pubSubAdminAdapterLazy.get().createTopic(topic, numPartitions, REPLICATION_FACTOR, TOPIC_CONFIGURATION);
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(topic, 0);
+
+    PubSubPosition beginPos = pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT);
+    assertThrows(IllegalArgumentException.class, () -> pubSubConsumerAdapter.advancePosition(partition, beginPos, -1));
+  }
 }

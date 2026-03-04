@@ -560,7 +560,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     TopicManager mockedTopicManager = mock(TopicManager.class);
     doThrow(new PubSubOpTimeoutException("mock timeout")).when(mockedTopicManager)
-        .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), eq(true));
+        .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), eq(true), anyBoolean());
     TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getLocalTopicManager();
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));

@@ -13,6 +13,7 @@ public class PubSubTopicConfiguration implements Cloneable {
   Optional<Long> maxLogCompactionLagMs;
   Optional<Integer> minInSyncReplicas;
   Optional<Boolean> uncleanLeaderElectionEnable;
+  private boolean useAlternativeBackend = false;
 
   public PubSubTopicConfiguration(
       Optional<Long> retentionInMs,
@@ -42,6 +43,17 @@ public class PubSubTopicConfiguration implements Cloneable {
     this.minLogCompactionLagMs = minLogCompactionLagMs;
     this.maxLogCompactionLagMs = maxLogCompactionLagMs;
     this.uncleanLeaderElectionEnable = uncleanLeaderElectionEnable;
+  }
+
+  public PubSubTopicConfiguration(
+      Optional<Long> retentionInMs,
+      boolean isLogCompacted,
+      Optional<Integer> minInSyncReplicas,
+      Long minLogCompactionLagMs,
+      Optional<Long> maxLogCompactionLagMs,
+      boolean useAlternativeBackend) {
+    this(retentionInMs, isLogCompacted, minInSyncReplicas, minLogCompactionLagMs, maxLogCompactionLagMs);
+    this.useAlternativeBackend = useAlternativeBackend;
   }
 
   /**
@@ -100,6 +112,14 @@ public class PubSubTopicConfiguration implements Cloneable {
     this.minLogCompactionLagMs = minLogCompactionLagMs;
   }
 
+  public boolean isUseAlternativeBackend() {
+    return useAlternativeBackend;
+  }
+
+  public void setUseAlternativeBackend(boolean useAlternativeBackend) {
+    this.useAlternativeBackend = useAlternativeBackend;
+  }
+
   public Optional<Long> getMaxLogCompactionLagMs() {
     return maxLogCompactionLagMs;
   }
@@ -128,13 +148,14 @@ public class PubSubTopicConfiguration implements Cloneable {
   @Override
   public String toString() {
     return String.format(
-        "TopicConfiguration(retentionInMs = %s, isLogCompacted = %s, minInSyncReplicas = %s, minLogCompactionLagMs = %s, maxLogCompactionLagMs = %s, uncleanLeaderElectionEnable = %s)",
+        "TopicConfiguration(retentionInMs = %s, isLogCompacted = %s, minInSyncReplicas = %s, minLogCompactionLagMs = %s, maxLogCompactionLagMs = %s, uncleanLeaderElectionEnable = %s, useAlternativeBackend = %s)",
         retentionInMs.isPresent() ? retentionInMs.get() : "not set",
         isLogCompacted,
         minInSyncReplicas.isPresent() ? minInSyncReplicas.get() : "not set",
         minLogCompactionLagMs,
         maxLogCompactionLagMs.isPresent() ? maxLogCompactionLagMs.get() : "not set",
-        uncleanLeaderElectionEnable.isPresent() ? uncleanLeaderElectionEnable.get() : "not set");
+        uncleanLeaderElectionEnable.isPresent() ? uncleanLeaderElectionEnable.get() : "not set",
+        useAlternativeBackend);
   }
 
   @Override

@@ -280,7 +280,14 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     RandomAccessFile raf = new RandomAccessFile(file, "r");
     ChannelFuture sendFileFuture;
     long length = raf.length();
+
+    long checksumStartTime = System.currentTimeMillis();
     String fileChecksum = BlobTransferUtils.generateFileChecksum(file.toPath());
+    LOGGER.info(
+        "Checksum calculation for file: {} for replica {} took {} ms.",
+        file.getName(),
+        replicaInfo,
+        System.currentTimeMillis() - checksumStartTime);
 
     HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     response.headers().set(HttpHeaderNames.CONTENT_LENGTH, length);

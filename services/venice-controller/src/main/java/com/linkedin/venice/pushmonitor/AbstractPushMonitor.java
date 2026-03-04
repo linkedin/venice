@@ -849,7 +849,7 @@ public abstract class AbstractPushMonitor
             kafkaTopic,
             Collections.singletonList(HelixUtils.getPartitionName(kafkaTopic, partitionId)));
         disabledReplicaMap.computeIfAbsent(instance, k -> new HashSet<>()).add(partitionId);
-        disabledPartitionStats.recordDisabledPartition();
+        disabledPartitionStats.recordDisabledPartition(Version.parseStoreFromKafkaTopicName(kafkaTopic));
       }
 
       @Override

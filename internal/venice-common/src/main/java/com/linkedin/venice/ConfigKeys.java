@@ -2337,6 +2337,36 @@ public class ConfigKeys {
   public static final String CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE =
       "controller.auto.materialize.davinci.push.status.system.store";
 
+  // --- Alternative PubSub backend configs (per-cluster, per-topic-type) ---
+
+  /** Create meta system store version topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT =
+      "controller.pubsub.alternative.backend.meta.system.store.vt";
+
+  /** Create meta system store RT topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_RT =
+      "controller.pubsub.alternative.backend.meta.system.store.rt";
+
+  /** Create push status system store VTs using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT =
+      "controller.pubsub.alternative.backend.push.status.system.store.vt";
+
+  /** Create push status system store RTs using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT =
+      "controller.pubsub.alternative.backend.push.status.system.store.rt";
+
+  /** Create user store version topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_VT =
+      "controller.pubsub.alternative.backend.user.store.vt";
+
+  /** Create user store RT topics using alternative pubsub backend. Default: false */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT =
+      "controller.pubsub.alternative.backend.user.store.rt";
+
+  /** Comma-separated store names excluded from alternative pubsub backend. Default: empty */
+  public static final String CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST =
+      "controller.pubsub.alternative.backend.exclusion.list";
+
   /**
    * This will indicate which ReplicationMetadataSchemaGenerator version to use to generate replication metadata schema.
    * This config should be set on a per-cluster level, meaning that each cluster can have its own RMD version ID.
@@ -2419,6 +2449,15 @@ public class ConfigKeys {
    * turned off separately without affecting other server/DaVinci OTel metrics.
    */
   public static final String SERVER_INGESTION_OTEL_STATS_ENABLED = "server.ingestion.otel.stats.enabled";
+
+  /**
+   * Whether to emit OTel metrics for server read stats. When enabled (and the global OTel flag is also enabled),
+   * per-store read OTel metrics are recorded. Enabled by default so that turning on OTel for servers
+   * automatically includes read stats. Can be set to {@code false} to disable read OTel stats
+   * independently — useful if read OTel metrics cause issues and need to be turned off separately
+   * without affecting other server/DaVinci OTel metrics.
+   */
+  public static final String SERVER_READ_OTEL_STATS_ENABLED = "server.read.otel.stats.enabled";
 
   /**
    * A config to control which status store to use for fetching incremental push job status from the controller. This config

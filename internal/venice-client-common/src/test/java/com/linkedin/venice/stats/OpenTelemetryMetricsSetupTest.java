@@ -13,12 +13,14 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -58,8 +60,7 @@ public class OpenTelemetryMetricsSetupTest {
 
   @Test
   public void testBuilderWithVeniceMetricsRepositoryOtelDisabled() {
-    when(mockVeniceMetricsRepository.getVeniceMetricsConfig()).thenReturn(mockVeniceMetricsConfig);
-    when(mockVeniceMetricsConfig.emitOtelMetrics()).thenReturn(false);
+    setupGlobalOtel(false);
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo result =
         OpenTelemetryMetricsSetup.builder(mockVeniceMetricsRepository).build();
@@ -69,13 +70,64 @@ public class OpenTelemetryMetricsSetupTest {
 
   @Test
   public void testBuilderWithVeniceMetricsRepositoryOtelEnabledButTotalStats() {
-    when(mockVeniceMetricsRepository.getVeniceMetricsConfig()).thenReturn(mockVeniceMetricsConfig);
-    when(mockVeniceMetricsConfig.emitOtelMetrics()).thenReturn(true);
+    setupGlobalOtel(true);
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo result =
         OpenTelemetryMetricsSetup.builder(mockVeniceMetricsRepository).isTotalStats(true).build();
 
     assertOtelDisabled(result);
+  }
+
+  @DataProvider(name = "otelEnabledOverrideCombinations", parallel = true)
+  public Object[][] otelEnabledOverrideCombinations() {
+    // { globalOtelEnabled, otelEnabledOverride (null=not set), expectedEmitOtel }
+    return new Object[][] {
+        // Override=false disables OTel even when global is enabled
+        { true, Boolean.FALSE, false },
+        // Override=true cannot re-enable OTel when global is disabled
+        { false, Boolean.TRUE, false },
+        // Override=true with global enabled → OTel enabled (pass-through)
+        { true, Boolean.TRUE, true },
+        // Override not set → follows global config
+        { true, null, true }, { false, null, false },
+        // Both global and override disabled
+        { false, Boolean.FALSE, false }, };
+  }
+
+  @Test(dataProvider = "otelEnabledOverrideCombinations")
+  public void testOtelEnabledOverrideInteractionWithGlobalConfig(
+      boolean globalOtelEnabled,
+      Boolean otelEnabledOverride,
+      boolean expectedEmitOtel) {
+    // Use local mocks to be parallel-safe (instance mocks race under concurrent DataProvider)
+    VeniceMetricsConfig localConfig = org.mockito.Mockito.mock(VeniceMetricsConfig.class);
+    VeniceMetricsRepository localRepo = org.mockito.Mockito.mock(VeniceMetricsRepository.class);
+    VeniceOpenTelemetryMetricsRepository localOtelRepo =
+        org.mockito.Mockito.mock(VeniceOpenTelemetryMetricsRepository.class);
+    when(localRepo.getVeniceMetricsConfig()).thenReturn(localConfig);
+    when(localConfig.emitOtelMetrics()).thenReturn(globalOtelEnabled);
+    when(localRepo.getOpenTelemetryMetricsRepository()).thenReturn(localOtelRepo);
+
+    OpenTelemetryMetricsSetup.Builder builder = OpenTelemetryMetricsSetup.builder(localRepo);
+    if (otelEnabledOverride != null) {
+      builder.setOtelEnabledOverride(otelEnabledOverride);
+    }
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo result = builder.build();
+
+    assertEquals(result.emitOpenTelemetryMetrics(), expectedEmitOtel);
+    if (expectedEmitOtel) {
+      assertNotNull(result.getOtelRepository());
+      assertNotNull(result.getBaseDimensionsMap());
+      assertNotNull(result.getBaseAttributes());
+    } else {
+      assertOtelDisabled(result);
+    }
+  }
+
+  private void setupGlobalOtel(boolean enabled) {
+    when(mockVeniceMetricsRepository.getVeniceMetricsConfig()).thenReturn(mockVeniceMetricsConfig);
+    when(mockVeniceMetricsConfig.emitOtelMetrics()).thenReturn(enabled);
+    when(mockVeniceMetricsRepository.getOpenTelemetryMetricsRepository()).thenReturn(mockOtelRepository);
   }
 
   private void assertOtelDisabled(OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo result) {
@@ -88,9 +140,7 @@ public class OpenTelemetryMetricsSetupTest {
 
   @Test
   public void testBuilderWithVeniceMetricsRepositoryOtelEnabled() {
-    when(mockVeniceMetricsRepository.getVeniceMetricsConfig()).thenReturn(mockVeniceMetricsConfig);
-    when(mockVeniceMetricsConfig.emitOtelMetrics()).thenReturn(true);
-    when(mockVeniceMetricsRepository.getOpenTelemetryMetricsRepository()).thenReturn(mockOtelRepository);
+    setupGlobalOtel(true);
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo result =
         OpenTelemetryMetricsSetup.builder(mockVeniceMetricsRepository).build();
@@ -106,9 +156,7 @@ public class OpenTelemetryMetricsSetupTest {
 
   @Test
   public void testBuilderWithAllDimensions() {
-    when(mockVeniceMetricsRepository.getVeniceMetricsConfig()).thenReturn(mockVeniceMetricsConfig);
-    when(mockVeniceMetricsConfig.emitOtelMetrics()).thenReturn(true);
-    when(mockVeniceMetricsRepository.getOpenTelemetryMetricsRepository()).thenReturn(mockOtelRepository);
+    setupGlobalOtel(true);
 
     String storeName = "test-store";
     RequestType requestType = RequestType.SINGLE_GET;
@@ -139,25 +187,15 @@ public class OpenTelemetryMetricsSetupTest {
     Attributes baseAttributes = result.getBaseAttributes();
     assertNotNull(baseAttributes);
     assertEquals(baseAttributes.size(), 4);
-    assertEquals(
-        baseAttributes.get(io.opentelemetry.api.common.AttributeKey.stringKey("venice.store.name")),
-        storeName);
-    assertEquals(
-        baseAttributes.get(io.opentelemetry.api.common.AttributeKey.stringKey("venice.request.method")),
-        requestType.getDimensionValue());
-    assertEquals(
-        baseAttributes.get(io.opentelemetry.api.common.AttributeKey.stringKey("venice.cluster.name")),
-        clusterName);
-    assertEquals(
-        baseAttributes.get(io.opentelemetry.api.common.AttributeKey.stringKey("venice.route.name")),
-        routeName);
+    assertEquals(baseAttributes.get(AttributeKey.stringKey("venice.store.name")), storeName);
+    assertEquals(baseAttributes.get(AttributeKey.stringKey("venice.request.method")), requestType.getDimensionValue());
+    assertEquals(baseAttributes.get(AttributeKey.stringKey("venice.cluster.name")), clusterName);
+    assertEquals(baseAttributes.get(AttributeKey.stringKey("venice.route.name")), routeName);
   }
 
   @Test
   public void testBuilderWithPartialDimensions() {
-    when(mockVeniceMetricsRepository.getVeniceMetricsConfig()).thenReturn(mockVeniceMetricsConfig);
-    when(mockVeniceMetricsConfig.emitOtelMetrics()).thenReturn(true);
-    when(mockVeniceMetricsRepository.getOpenTelemetryMetricsRepository()).thenReturn(mockOtelRepository);
+    setupGlobalOtel(true);
 
     String storeName = "test-store";
     RequestType requestType = RequestType.MULTI_GET;

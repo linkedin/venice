@@ -3,6 +3,9 @@ package com.linkedin.venice.listener.response;
 import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.venice.listener.response.stats.ReadResponseStatsRecorder;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import java.util.function.IntFunction;
@@ -114,15 +117,23 @@ public class ParallelMultiKeyResponseWrapper<T extends MultiKeyResponseWrapper> 
     }
 
     @Override
-    public void recordMetrics(ServerHttpRequestStats stats) {
-      this.mergedStats.recordMetrics(stats);
-      recordUnmergedMetrics(stats);
+    public void recordMetrics(
+        ServerHttpRequestStats stats,
+        HttpResponseStatusEnum statusEnum,
+        HttpResponseStatusCodeCategory statusCategory,
+        VeniceResponseStatusCategory veniceCategory) {
+      this.mergedStats.recordMetrics(stats, statusEnum, statusCategory, veniceCategory);
+      recordUnmergedMetrics(stats, statusEnum, statusCategory, veniceCategory);
     }
 
     @Override
-    public void recordUnmergedMetrics(ServerHttpRequestStats stats) {
+    public void recordUnmergedMetrics(
+        ServerHttpRequestStats stats,
+        HttpResponseStatusEnum statusEnum,
+        HttpResponseStatusCodeCategory statusCategory,
+        VeniceResponseStatusCategory veniceCategory) {
       for (int i = 0; i < this.statsRecorders.length; i++) {
-        this.statsRecorders[i].recordUnmergedMetrics(stats);
+        this.statsRecorders[i].recordUnmergedMetrics(stats, statusEnum, statusCategory, veniceCategory);
       }
     }
 

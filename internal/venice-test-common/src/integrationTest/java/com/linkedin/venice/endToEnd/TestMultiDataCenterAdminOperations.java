@@ -22,11 +22,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
@@ -49,84 +45,57 @@ import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestMultiDataCenterAdminOperations {
+public class TestMultiDataCenterAdminOperations extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(TestMultiDataCenterAdminOperations.class);
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
-  private static final int NUMBER_OF_CLUSTERS = 2;
 
   // Do not use venice-cluster1 as it is used for testing failed admin messages
   private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
-                                                                                                         // "venice-cluster1",
-                                                                                                         // ...];
+      IntStream.range(0, 2).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
+                                                                                        // "venice-cluster1",
+                                                                                        // ...];
 
-  private List<VeniceMultiClusterWrapper> childClusters;
   private List<List<VeniceControllerWrapper>> childControllers;
-  private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   private final byte[] emptyKeyBytes = new byte[] { 'a' };
 
-  @BeforeClass(alwaysRun = true)
-  public void setUp() {
-    Properties serverProperties = new Properties();
-    Properties parentControllerProperties = new Properties();
-    // Setup segment duration time to be 5 seconds so that we can test the admin operations when current segment is
-    // ended
-    parentControllerProperties.put(MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, TimeUnit.SECONDS.toMillis(5));
-    // Disable topic cleanup since parent and child are sharing the same kafka cluster.
-    parentControllerProperties.setProperty(
-        ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
-        String.valueOf(Long.MAX_VALUE));
-    // Set store recreation time window to 3600 seconds (1 hour) for testing store recreation prevention
-    parentControllerProperties.put(CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS, "3600");
-
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
-            .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(1)
-            .numberOfRouters(1)
-            .replicationFactor(1)
-            .forkServer(false)
-            .serverProperties(serverProperties)
-            .parentControllerProperties(parentControllerProperties);
-    multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-
-    childClusters = multiRegionMultiClusterWrapper.getChildRegions();
-    childControllers = childClusters.stream()
-        .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
-        .collect(Collectors.toList());
-    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-
-    LOGGER.info(
-        "parentControllers: {}",
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(", ")));
-
-    int i = 0;
-    for (VeniceMultiClusterWrapper multiClusterWrapper: childClusters) {
-      LOGGER.info(
-          "childCluster{} controllers: {}",
-          i++,
-          multiClusterWrapper.getControllers()
-              .values()
-              .stream()
-              .map(VeniceControllerWrapper::getControllerUrl)
-              .collect(Collectors.joining(", ")));
-    }
+  @Override
+  protected int getNumberOfClusters() {
+    return 2;
   }
 
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    multiRegionMultiClusterWrapper.close();
+  @Override
+  protected int getNumberOfServers() {
+    return 1;
+  }
+
+  @Override
+  protected int getReplicationFactor() {
+    return 1;
+  }
+
+  @Override
+  protected Properties getExtraControllerProperties() {
+    Properties props = new Properties();
+    props.put(MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, TimeUnit.SECONDS.toMillis(5));
+    props.setProperty(
+        ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
+        String.valueOf(Long.MAX_VALUE));
+    props.put(CONTROLLER_STORE_RECREATION_AFTER_DELETION_TIME_WINDOW_SECONDS, "3600");
+    return props;
+  }
+
+  @Override
+  @BeforeClass(alwaysRun = true)
+  public void setUp() {
+    super.setUp();
+    childControllers = childDatacenters.stream()
+        .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
+        .collect(Collectors.toList());
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -174,14 +143,14 @@ public class TestMultiDataCenterAdminOperations {
   @Test(timeOut = TEST_TIMEOUT)
   public void testFailedAdminMessages() {
     String clusterName = CLUSTER_NAMES[1];
-    VeniceControllerWrapper parentController =
+    VeniceControllerWrapper leaderParentController =
         multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
-    Admin admin = parentController.getVeniceAdmin();
+    Admin admin = leaderParentController.getVeniceAdmin();
     VeniceWriterFactory veniceWriterFactory = admin.getVeniceWriterFactory();
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder(AdminTopicUtils.getTopicNameFromClusterName(clusterName)).build());
     AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
-    long executionId = parentController.getVeniceAdmin().getLastSucceedExecutionId(clusterName) + 1;
+    long executionId = leaderParentController.getVeniceAdmin().getLastSucceedExecutionId(clusterName) + 1;
     // send a bad admin message
     veniceWriter.put(
         emptyKeyBytes,
@@ -189,14 +158,14 @@ public class TestMultiDataCenterAdminOperations {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     List<VeniceControllerWrapper> controllersToTest = new ArrayList<>();
-    controllersToTest.add(parentController);
+    controllersToTest.add(leaderParentController);
     childControllers.forEach(controllerList -> controllersToTest.add(controllerList.get(0)));
-    PubSubTopicPartition topicPartition = parentController.getVeniceAdmin()
+    PubSubTopicPartition topicPartition = leaderParentController.getVeniceAdmin()
         .getTopicManager()
         .getTopicPartitionInfo(new PubSubTopicRepository().getTopic(veniceWriter.getTopicName()))
         .get(0)
         .getTopicPartition();
-    TopicManager topicManager = parentController.getVeniceAdmin().getTopicManager();
+    TopicManager topicManager = leaderParentController.getVeniceAdmin().getTopicManager();
     // Check if all regions received the bad admin message
     TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
       for (VeniceControllerWrapper controller: controllersToTest) {
@@ -217,7 +186,8 @@ public class TestMultiDataCenterAdminOperations {
       adminConsumerService.setPositionToSkip(clusterName, adminConsumerService.getFailingPosition(), false);
     }
 
-    AdminConsumerService parentAdminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
+    AdminConsumerService parentAdminConsumerService =
+        leaderParentController.getAdminConsumerServiceByCluster(clusterName);
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       boolean allFailedMessagesSkipped = parentAdminConsumerService.getFailingPosition().getNumericOffset() == -1;
       for (List<VeniceControllerWrapper> controllerWrappers: childControllers) {
@@ -233,9 +203,10 @@ public class TestMultiDataCenterAdminOperations {
   public void testFailedAdminMessageWhenBadSemanticIsDetected() {
     String storeName = Utils.getUniqueString("test-store");
     String clusterName = CLUSTER_NAMES[0];
-    VeniceControllerWrapper parentController =
+    VeniceControllerWrapper leaderParentController =
         multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+    ControllerClient parentControllerClient =
+        new ControllerClient(clusterName, leaderParentController.getControllerUrl());
     // Update the admin operation version to new version - 85 - to test bad message
     AdminTopicMetadataResponse updateProtocolVersionResponse =
         parentControllerClient.updateAdminOperationProtocolVersion(clusterName, 85L);
@@ -248,7 +219,7 @@ public class TestMultiDataCenterAdminOperations {
     emptyPushToStore(parentControllerClient, storeName, 1);
 
     // Get current execution ID
-    VeniceParentHelixAdmin parentAdmin = (VeniceParentHelixAdmin) parentController.getVeniceAdmin();
+    VeniceParentHelixAdmin parentAdmin = (VeniceParentHelixAdmin) leaderParentController.getVeniceAdmin();
     ExecutionIdAccessor executionIdAccessor = parentAdmin.getVeniceHelixAdmin().getExecutionIdAccessor();
     long beforeBadMessageExecutionId = executionIdAccessor.getLastGeneratedExecutionId(clusterName);
 
@@ -325,9 +296,8 @@ public class TestMultiDataCenterAdminOperations {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreRecreationBlockedWithinTimeWindow() {
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerUrls)) {
+    String parentControllerUrl = getParentControllerUrl();
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerUrl)) {
       String storeName = Utils.getUniqueString("testStoreRecreationBlocked");
 
       // Create a store
@@ -364,5 +334,4 @@ public class TestMultiDataCenterAdminOperations {
       assertTrue(errorMessage.contains("Remaining time:"), "Error should show remaining time");
     }
   }
-
 }

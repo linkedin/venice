@@ -1,12 +1,12 @@
 package com.linkedin.venice.controller.stats;
 
+import static com.linkedin.venice.controller.stats.ControllerStatsDimensionUtils.dimensionMapBuilder;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
 
-import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
@@ -28,8 +28,6 @@ import java.util.Set;
 
 
 public class PushJobStatusStats extends AbstractVeniceStats {
-  private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
-
   private final MetricEntityStateGeneric batchPushSuccessMetric;
   private final MetricEntityStateGeneric batchPushFailureDueToUserErrorMetric;
   private final MetricEntityStateGeneric batchPushFailureDueToNonUserErrorMetric;
@@ -43,7 +41,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(name).build();
     VeniceOpenTelemetryMetricsRepository otelRepository = otelData.getOtelRepository();
-    this.baseDimensionsMap = otelData.getBaseDimensionsMap();
+    Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
 
     batchPushSuccessMetric = MetricEntityStateGeneric.create(
         PushJobOtelMetricEntity.PUSH_JOB_COUNT.getMetricEntity(),
@@ -95,45 +93,41 @@ public class PushJobStatusStats extends AbstractVeniceStats {
   }
 
   public void recordBatchPushSuccessSensor(String storeName) {
-    batchPushSuccessMetric.record(1, buildDimensions(storeName, PushType.BATCH, VenicePushJobStatus.SUCCESS));
+    batchPushSuccessMetric.record(1, pushJobDimensions(storeName, PushType.BATCH, VenicePushJobStatus.SUCCESS));
   }
 
   public void recordBatchPushFailureDueToUserErrorSensor(String storeName) {
     batchPushFailureDueToUserErrorMetric
-        .record(1, buildDimensions(storeName, PushType.BATCH, VenicePushJobStatus.USER_ERROR));
+        .record(1, pushJobDimensions(storeName, PushType.BATCH, VenicePushJobStatus.USER_ERROR));
   }
 
   public void recordBatchPushFailureNotDueToUserErrorSensor(String storeName) {
     batchPushFailureDueToNonUserErrorMetric
-        .record(1, buildDimensions(storeName, PushType.BATCH, VenicePushJobStatus.SYSTEM_ERROR));
+        .record(1, pushJobDimensions(storeName, PushType.BATCH, VenicePushJobStatus.SYSTEM_ERROR));
   }
 
   public void recordIncrementalPushSuccessSensor(String storeName) {
     incrementalPushSuccessMetric
-        .record(1, buildDimensions(storeName, PushType.INCREMENTAL, VenicePushJobStatus.SUCCESS));
+        .record(1, pushJobDimensions(storeName, PushType.INCREMENTAL, VenicePushJobStatus.SUCCESS));
   }
 
   public void recordIncrementalPushFailureDueToUserErrorSensor(String storeName) {
     incrementalPushFailureDueToUserErrorMetric
-        .record(1, buildDimensions(storeName, PushType.INCREMENTAL, VenicePushJobStatus.USER_ERROR));
+        .record(1, pushJobDimensions(storeName, PushType.INCREMENTAL, VenicePushJobStatus.USER_ERROR));
   }
 
   public void recordIncrementalPushFailureNotDueToUserErrorSensor(String storeName) {
     incrementalPushFailureDueToNonUserErrorMetric
-        .record(1, buildDimensions(storeName, PushType.INCREMENTAL, VenicePushJobStatus.SYSTEM_ERROR));
+        .record(1, pushJobDimensions(storeName, PushType.INCREMENTAL, VenicePushJobStatus.SYSTEM_ERROR));
   }
 
-  private Map<VeniceMetricsDimensions, String> buildDimensions(
+  private static Map<VeniceMetricsDimensions, String> pushJobDimensions(
       String storeName,
       PushType pushType,
       VenicePushJobStatus status) {
-    ImmutableMap.Builder<VeniceMetricsDimensions, String> builder = ImmutableMap.builder();
-    if (baseDimensionsMap != null) {
-      builder.putAll(baseDimensionsMap);
-    }
-    return builder.put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
-        .put(VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE, pushType.getDimensionValue())
-        .put(VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS, status.getDimensionValue())
+    return dimensionMapBuilder().store(storeName)
+        .add(VENICE_PUSH_JOB_TYPE, pushType.getDimensionValue())
+        .add(VENICE_PUSH_JOB_STATUS, status.getDimensionValue())
         .build();
   }
 

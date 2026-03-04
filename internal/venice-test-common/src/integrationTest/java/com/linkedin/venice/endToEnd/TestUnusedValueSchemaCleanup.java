@@ -15,10 +15,6 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -26,29 +22,34 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
-import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.IntStream;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestUnusedValueSchemaCleanup {
+public class TestUnusedValueSchemaCleanup extends AbstractMultiRegionTest {
   private static final int TEST_TIMEOUT = 120_000; // ms
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 1;
-  private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
-
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   private VeniceHelixAdmin veniceHelixAdmin;
 
-  @BeforeClass
-  public void setUp() {
+  @Override
+  protected int getNumberOfRegions() {
+    return 1;
+  }
+
+  @Override
+  protected int getNumberOfServers() {
+    return 1;
+  }
+
+  @Override
+  protected int getReplicationFactor() {
+    return 1;
+  }
+
+  @Override
+  protected Properties getExtraControllerProperties() {
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1);
     controllerProps.put(DEFAULT_PARTITION_SIZE, 10);
@@ -57,31 +58,15 @@ public class TestUnusedValueSchemaCleanup {
     controllerProps.put(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS, 10);
     controllerProps.put(CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP, 1);
     controllerProps.put(CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED, true);
-    Properties serverProperties = new Properties();
-
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
-            .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(1)
-            .numberOfRouters(1)
-            .replicationFactor(1)
-            .forkServer(false)
-            .parentControllerProperties(controllerProps)
-            .childControllerProperties(controllerProps)
-            .serverProperties(serverProperties);
-    multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-
-    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    veniceHelixAdmin =
-        (VeniceHelixAdmin) childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
+    return controllerProps;
   }
 
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+  @Override
+  @BeforeClass(alwaysRun = true)
+  public void setUp() {
+    super.setUp();
+    veniceHelixAdmin =
+        (VeniceHelixAdmin) childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -97,8 +82,8 @@ public class TestUnusedValueSchemaCleanup {
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
-      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V1_SCHEMA.toString(), props, storeParms).close();
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURLs)) {
+      createStoreForJob(CLUSTER_NAME, keySchemaStr, NAME_RECORD_V1_SCHEMA.toString(), props, storeParms).close();
       parentControllerClient.addValueSchema(storeName, NAME_RECORD_V2_SCHEMA.toString());
       parentControllerClient.addValueSchema(storeName, NAME_RECORD_V3_SCHEMA.toString());
       IntegrationTestPushUtils.runVPJ(props);
@@ -111,7 +96,7 @@ public class TestUnusedValueSchemaCleanup {
       TestUtils.waitForNonDeterministicCompletion(
           20,
           TimeUnit.SECONDS,
-          () -> veniceHelixAdmin.getValueSchemas(CLUSTER_NAMES[0], storeName).size() == 1
+          () -> veniceHelixAdmin.getValueSchemas(CLUSTER_NAME, storeName).size() == 1
               && parentControllerClient.getAllValueSchema(storeName).getSchemas().length == 1);
     }
   }

@@ -840,7 +840,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
               helixAdminClient
                   .enablePartition(true, clusterName, instance.getNodeId(), entry.getKey(), entry.getValue());
-              disabledPartitionStats.recordClearDisabledPartition(entry.getValue().size());
+              disabledPartitionStats.recordClearDisabledPartition(
+                  entry.getValue().size(),
+                  Version.parseStoreFromKafkaTopicName(entry.getKey()));
               LOGGER.info("Enabled disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
             }
           }
@@ -3004,6 +3006,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .getTopic(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
       topicNamesToCreate.add(streamReprocessingTopic);
     }
+    boolean useAltBackend = clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false);
     topicNamesToCreate.forEach(
         topicNameToCreate -> topicManager.createTopic(
             topicNameToCreate,
@@ -3012,7 +3015,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             true,
             false,
             clusterConfig.getMinInSyncReplicas(),
-            useFastKafkaOperationTimeout));
+            useFastKafkaOperationTimeout,
+            useAltBackend));
   }
 
   private Pair<Boolean, Version> addVersion(
@@ -3621,7 +3625,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
           clusterConfig.getMinInSyncReplicasRealTimeTopics(),
           uncleanLeaderElection,
-          false);
+          false,
+          clusterConfig.shouldUseAlternativePubSubBackend(store.getName(), true));
     }
     LOGGER.info(
         "Completed setup for real-time topic: {} for store: {} with reference hybrid version: {} and partition count: {}",
@@ -6801,7 +6806,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
         if (enableAll || entry.getKey().equals(kafkaTopic)) {
           // clean up disabled partition map, so that it does not grow indefinitely with dropped resources
-          getDisabledPartitionStats(clusterName).recordClearDisabledPartition(entry.getValue().size());
+          getDisabledPartitionStats(clusterName).recordClearDisabledPartition(
+              entry.getValue().size(),
+              Version.parseStoreFromKafkaTopicName(entry.getKey()));
           getHelixAdminClient()
               .enablePartition(true, clusterName, instance.getNodeId(), entry.getKey(), entry.getValue());
           LOGGER.info("Cleaning up disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
@@ -7302,7 +7309,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Map<String, List<String>> disabledPartitions = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
         for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
           helixAdminClient.enablePartition(true, clusterName, instance, entry.getKey(), entry.getValue());
-          getDisabledPartitionStats(clusterName).recordClearDisabledPartition(entry.getValue().size());
+          getDisabledPartitionStats(clusterName).recordClearDisabledPartition(
+              entry.getValue().size(),
+              Version.parseStoreFromKafkaTopicName(entry.getKey()));
           LOGGER.info(
               "Enabled disabled replica of resource {}, partitions {} in cluster {}",
               entry.getKey(),

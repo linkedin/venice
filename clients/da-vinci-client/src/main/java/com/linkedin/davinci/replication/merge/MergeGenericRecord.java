@@ -9,7 +9,6 @@ import com.linkedin.davinci.schema.merge.UpdateResultStatus;
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
 import com.linkedin.davinci.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1;
@@ -58,29 +57,19 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
       ValueAndRmd<GenericRecord> oldValueAndRmd,
       GenericRecord newValue,
       long putOperationTimestamp,
-      int putOperationColoID,
-      PubSubPosition newValueSourcePosition,
-      int newValueSourceBrokerID) {
+      int putOperationColoID) {
     validatePutInputParams(oldValueAndRmd, newValue);
     final Object tsObject = oldValueAndRmd.getRmd().get(TIMESTAMP_FIELD_POS);
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(tsObject);
 
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
-        return putWithRecordLevelTimestamp(
-            (long) tsObject,
-            oldValueAndRmd,
-            putOperationTimestamp,
-            newValueSourcePosition,
-            newValueSourceBrokerID,
-            newValue);
+        return putWithRecordLevelTimestamp((long) tsObject, oldValueAndRmd, putOperationTimestamp, newValue);
 
       case PER_FIELD_TIMESTAMP:
         return handlePutWithPerFieldLevelTimestamp(
             (GenericRecord) tsObject,
             putOperationTimestamp,
-            newValueSourcePosition,
-            newValueSourceBrokerID,
             putOperationColoID,
             oldValueAndRmd,
             newValue);
@@ -109,14 +98,12 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
   private ValueAndRmd<GenericRecord> handlePutWithPerFieldLevelTimestamp(
       final GenericRecord timestampRecordForOldValue,
       final long putOperationTimestamp,
-      final PubSubPosition sourcePositionOfNewValue,
-      final int newValueSourceBrokerID,
       final int putOperationColoID,
       ValueAndRmd<GenericRecord> oldValueAndRmd,
       GenericRecord newValue) {
     final GenericRecord oldReplicationMetadata = oldValueAndRmd.getRmd();
     final GenericRecord oldValue = oldValueAndRmd.getValue();
-    updateReplicationCheckpointVector(oldReplicationMetadata, sourcePositionOfNewValue, newValueSourceBrokerID);
+    updateReplicationCheckpointVector(oldReplicationMetadata);
 
     List<Schema.Field> fieldsInNewRecord = newValue.getSchema().getFields();
     boolean noFieldUpdated = true;
@@ -143,9 +130,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
   public ValueAndRmd<GenericRecord> delete(
       ValueAndRmd<GenericRecord> oldValueAndRmd,
       long deleteOperationTimestamp,
-      int deleteOperationColoID,
-      PubSubPosition newValueSourcePosition,
-      int newValueSourceBrokerID) {
+      int deleteOperationColoID) {
     if (RUNTIME_AVRO_VERSION.earlierThan(AvroVersion.AVRO_1_7)) {
       throw new VeniceException(
           "'delete' operation won't work properly with Avro version before 1.7 and" + " the runtime Avro version is: "
@@ -158,15 +143,10 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
 
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
-        return deleteWithValueLevelTimestamp(
-            (long) tsObject,
-            deleteOperationTimestamp,
-            newValueSourcePosition,
-            newValueSourceBrokerID,
-            oldValueAndRmd);
+        return deleteWithValueLevelTimestamp((long) tsObject, deleteOperationTimestamp, oldValueAndRmd);
 
       case PER_FIELD_TIMESTAMP:
-        updateReplicationCheckpointVector(oldReplicationMetadata, newValueSourcePosition, newValueSourceBrokerID);
+        updateReplicationCheckpointVector(oldReplicationMetadata);
         UpdateResultStatus recordDeleteResultStatus = mergeRecordHelper.deleteRecord(
             oldValueAndRmd.getValue(),
             (GenericRecord) tsObject,
@@ -192,10 +172,8 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
       Lazy<GenericRecord> writeComputeRecord,
       Schema currValueSchema, // Schema of the current value that is to-be-updated here.
       long updateOperationTimestamp,
-      int updateOperationColoID,
-      PubSubPosition newValueSourcePosition,
-      int newValueSourceBrokerID) {
-    updateReplicationCheckpointVector(oldValueAndRmd.getRmd(), newValueSourcePosition, newValueSourceBrokerID);
+      int updateOperationColoID) {
+    updateReplicationCheckpointVector(oldValueAndRmd.getRmd());
     return writeComputeProcessor.updateRecordWithRmd(
         currValueSchema,
         oldValueAndRmd,

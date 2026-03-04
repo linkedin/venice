@@ -247,6 +247,7 @@ public class RealTimeTopicSwitcherTest {
         eq(false),
         eq(Optional.of(KAFKA_MIN_ISR_FOR_RT_TOPICS)),
         any(),
+        eq(false),
         eq(false));
   }
 
@@ -299,6 +300,7 @@ public class RealTimeTopicSwitcherTest {
         eq(false),
         eq(Optional.of(KAFKA_MIN_ISR_FOR_RT_TOPICS)),
         eq(Optional.of(false)),
+        eq(false),
         eq(false));
   }
 
@@ -350,6 +352,7 @@ public class RealTimeTopicSwitcherTest {
         eq(false),
         eq(Optional.of(KAFKA_MIN_ISR_FOR_RT_TOPICS)),
         eq(Optional.of(true)),
+        eq(false),
         eq(false));
   }
 
@@ -401,6 +404,7 @@ public class RealTimeTopicSwitcherTest {
         eq(false),
         eq(Optional.of(KAFKA_MIN_ISR_FOR_RT_TOPICS)),
         eq(Optional.of(false)),
+        eq(false),
         eq(false));
   }
 }

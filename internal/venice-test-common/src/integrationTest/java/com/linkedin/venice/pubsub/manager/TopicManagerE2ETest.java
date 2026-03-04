@@ -517,6 +517,7 @@ public class TopicManagerE2ETest {
         logCompaction,
         minIsr,
         uncleanLeaderElection,
+        false,
         false);
 
     // Verify the topic was created
@@ -552,6 +553,7 @@ public class TopicManagerE2ETest {
         logCompaction,
         minIsr,
         Optional.of(false),
+        false,
         false);
 
     waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
@@ -577,6 +579,7 @@ public class TopicManagerE2ETest {
         logCompaction,
         minIsr,
         Optional.of(true),
+        false,
         false);
 
     waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {

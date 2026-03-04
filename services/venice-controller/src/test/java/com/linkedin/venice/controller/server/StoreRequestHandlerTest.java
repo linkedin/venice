@@ -33,9 +33,12 @@ import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -362,6 +365,35 @@ public class StoreRequestHandlerTest {
     ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
 
     assertEquals(response.getStoreNamesCount(), 0);
+  }
+
+  @DataProvider(name = "storeStatusMaps")
+  public Object[][] storeStatusMaps() {
+    Map<String, String> populatedMap = new HashMap<>();
+    populatedMap.put("store1", "ONLINE");
+    populatedMap.put("store2", "DEGRADED");
+    populatedMap.put("store3", "UNAVAILABLE");
+    return new Object[][] { { populatedMap }, { Collections.emptyMap() } };
+  }
+
+  @Test(dataProvider = "storeStatusMaps")
+  public void testGetStoreStatuses(Map<String, String> expectedStatusMap) {
+    when(admin.getAllStoreStatuses("testCluster")).thenReturn(expectedStatusMap);
+
+    Map<String, String> response = storeRequestHandler.getStoreStatuses("testCluster");
+
+    verify(admin, times(1)).getAllStoreStatuses("testCluster");
+    assertEquals(response, expectedStatusMap);
+  }
+
+  @DataProvider(name = "blankClusterNames")
+  public Object[][] blankClusterNames() {
+    return new Object[][] { { null }, { "" } };
+  }
+
+  @Test(dataProvider = "blankClusterNames", expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
+  public void testGetStoreStatusesWithBlankClusterName(String clusterName) {
+    storeRequestHandler.getStoreStatuses(clusterName);
   }
 
   @Test

@@ -16,7 +16,8 @@ public final class ServerMetricEntity {
   public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES = getUniqueMetricEntities(
       IngestionOtelMetricEntity.class,
       HeartbeatOtelMetricEntity.class,
-      RecordLevelDelayOtelMetricEntity.class);
+      RecordLevelDelayOtelMetricEntity.class,
+      ServerReadOtelMetricEntity.class);
 
   private ServerMetricEntity() {
   }

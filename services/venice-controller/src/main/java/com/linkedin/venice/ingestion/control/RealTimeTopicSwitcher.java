@@ -183,6 +183,7 @@ public class RealTimeTopicSwitcher {
           false,
           minISR,
           uncleanLeaderElection,
+          false,
           false);
     } else {
       /**
