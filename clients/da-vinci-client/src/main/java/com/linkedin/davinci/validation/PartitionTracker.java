@@ -230,7 +230,7 @@ public class PartitionTracker {
       }
     }
     if (removedCount > 0 && !REDUNDANT_LOGGING_FILTER.isRedundantException(topicName + "-cloneVtProducerStates")) {
-      logger.info("event=globalRtDiv Removed {} stale VT producer state(s) for store {}", removedCount, topicName);
+      logger.info("Removed {} stale VT producer state(s) for store {}", removedCount, topicName);
     }
     destProducerTracker.updateLatestConsumedVtPosition(latestConsumedVtPosition.get());
   }
