@@ -37,6 +37,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
+import com.linkedin.venice.protocols.controller.GetBackupVersionGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetBackupVersionGrpcResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -234,12 +236,34 @@ public class StoresRoutesTest {
             MultiStoreStatusResponse.class);
     Assert.assertEquals(multiStoreStatusResponse.getCluster(), TEST_CLUSTER);
     Assert.assertEquals(multiStoreStatusResponse.getStoreStatusMap(), Collections.singletonMap(TEST_STORE_NAME, "1"));
+  }
 
-    doCallRealMethod().when(mockAdmin).getBackupVersionsForMultiColos(TEST_CLUSTER, TEST_STORE_NAME);
-    doReturn(2).when(mockAdmin).getBackupVersion(TEST_CLUSTER, TEST_STORE_NAME);
-    Route getBackupVersionRoute =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getBackupVersion(mockAdmin);
-    multiStoreStatusResponse = ObjectMapperFactory.getInstance()
+  @Test
+  public void testGetBackupVersionForChildController() throws Exception {
+    Admin mockAdmin = mock(VeniceHelixAdmin.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Store mockStore = mock(Store.class);
+    doReturn(mockStore).when(mockAdmin).getStore(TEST_CLUSTER, TEST_STORE_NAME);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+
+    // Create mock request handler
+    VeniceControllerRequestHandler mockRequestHandler = mock(VeniceControllerRequestHandler.class);
+
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE_NAME).build();
+    GetBackupVersionGrpcResponse grpcResponse = GetBackupVersionGrpcResponse.newBuilder()
+        .setStoreInfo(storeInfo)
+        .putStoreVersionMap(TEST_STORE_NAME, "2")
+        .build();
+    doReturn(grpcResponse).when(mockRequestHandler).getBackupVersion(any(GetBackupVersionGrpcRequest.class));
+
+    Route getBackupVersionRoute = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository)
+        .getBackupVersion(mockAdmin, mockRequestHandler);
+    MultiStoreStatusResponse multiStoreStatusResponse = ObjectMapperFactory.getInstance()
         .readValue(
             getBackupVersionRoute.handle(request, mock(Response.class)).toString(),
             MultiStoreStatusResponse.class);

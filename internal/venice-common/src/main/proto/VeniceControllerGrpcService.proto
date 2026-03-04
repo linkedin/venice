@@ -14,6 +14,9 @@ service VeniceControllerGrpcService {
 
   // ControllerRoutes
   rpc getLeaderController(LeaderControllerGrpcRequest) returns (LeaderControllerGrpcResponse);
+
+  // StoresRoutes
+  rpc getBackupVersion(GetBackupVersionGrpcRequest) returns (GetBackupVersionGrpcResponse);
 }
 
 message DiscoverClusterGrpcRequest {
@@ -39,4 +42,13 @@ message LeaderControllerGrpcResponse {
   string httpsUrl = 3;       // SSL-enabled leader controller URL
   string grpcUrl = 4;        // gRPC URL for leader controller
   string secureGrpcUrl = 5;  // Secure gRPC URL for leader controller
+}
+
+message GetBackupVersionGrpcRequest {
+  ClusterStoreGrpcInfo storeInfo = 1;
+}
+
+message GetBackupVersionGrpcResponse {
+  ClusterStoreGrpcInfo storeInfo = 1;
+  map<string, string> storeVersionMap = 2;  // Map of store name to backup version
 }

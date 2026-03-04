@@ -12,9 +12,13 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.grpc.GrpcRequestResponseConverter;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.ControllerGrpcErrorType;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetBackupVersionGrpcRequest;
+import com.linkedin.venice.protocols.controller.GetBackupVersionGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcErrorInfo;
@@ -26,6 +30,8 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
+import java.util.HashMap;
+import java.util.Map;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -175,5 +181,49 @@ public class VeniceControllerGrpcServiceImplTest {
     assertFalse(errorInfo2.hasClusterName(), "Cluster name should not be present in the error info");
     assertEquals(errorInfo2.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
     assertTrue(errorInfo2.getErrorMessage().contains("Failed to discover cluster"));
+  }
+
+  @Test
+  public void testGetBackupVersion() {
+    // Case 1: Successful response
+    ClusterStoreGrpcInfo storeInfo =
+        ClusterStoreGrpcInfo.newBuilder().setClusterName(TEST_CLUSTER).setStoreName(TEST_STORE).build();
+    Map<String, String> versionMap = new HashMap<>();
+    versionMap.put("dc-0", "1");
+    versionMap.put("dc-1", "2");
+    GetBackupVersionGrpcResponse response =
+        GetBackupVersionGrpcResponse.newBuilder().setStoreInfo(storeInfo).putAllStoreVersionMap(versionMap).build();
+    doReturn(response).when(requestHandler).getBackupVersion(any(GetBackupVersionGrpcRequest.class));
+
+    GetBackupVersionGrpcRequest request = GetBackupVersionGrpcRequest.newBuilder().setStoreInfo(storeInfo).build();
+    GetBackupVersionGrpcResponse actualResponse = blockingStub.getBackupVersion(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getStoreInfo().getClusterName(), TEST_CLUSTER);
+    assertEquals(actualResponse.getStoreInfo().getStoreName(), TEST_STORE);
+    assertEquals(actualResponse.getStoreVersionMapMap().size(), 2);
+    assertEquals(actualResponse.getStoreVersionMapMap().get("dc-0"), "1");
+    assertEquals(actualResponse.getStoreVersionMapMap().get("dc-1"), "2");
+
+    // Case 2: Store not found
+    doThrow(new VeniceNoStoreException(TEST_STORE)).when(requestHandler)
+        .getBackupVersion(any(GetBackupVersionGrpcRequest.class));
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getBackupVersion(request));
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.NOT_FOUND.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.STORE_NOT_FOUND);
+
+    // Case 3: Bad request - missing cluster name
+    doThrow(new IllegalArgumentException("Cluster name is mandatory parameter")).when(requestHandler)
+        .getBackupVersion(any(GetBackupVersionGrpcRequest.class));
+    ClusterStoreGrpcInfo missingClusterInfo = ClusterStoreGrpcInfo.newBuilder().setStoreName(TEST_STORE).build();
+    GetBackupVersionGrpcRequest badRequest =
+        GetBackupVersionGrpcRequest.newBuilder().setStoreInfo(missingClusterInfo).build();
+    StatusRuntimeException e2 =
+        expectThrows(StatusRuntimeException.class, () -> blockingStub.getBackupVersion(badRequest));
+    assertNotNull(e2.getStatus(), "Status should not be null");
+    assertEquals(e2.getStatus().getCode(), Status.INVALID_ARGUMENT.getCode());
   }
 }
