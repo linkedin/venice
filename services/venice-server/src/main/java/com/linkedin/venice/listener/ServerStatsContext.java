@@ -8,6 +8,7 @@ import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.stats.ReadResponseStatsRecorder;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
+import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -28,7 +29,7 @@ public class ServerStatsContext {
    * metrics are recorded rather than otel getting silently dropped as otel needs non-null values
    * for all dimensions rather than having a diff metric for such cases.
    */
-  public static final String UNKNOWN_STORE_NAME = "unknown_store";
+  public static final String UNKNOWN_STORE_NAME = OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME;
 
   private ReadResponseStatsRecorder responseStatsRecorder;
   private long startTimeInNS;

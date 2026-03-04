@@ -102,6 +102,7 @@ import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -118,22 +119,34 @@ public class IngestionOtelStatsTest {
   private static final String REMOTE_REGION = "dc-2";
 
   private InMemoryMetricReader inMemoryMetricReader;
+  private VeniceMetricsRepository metricsRepository;
   private IngestionOtelStats ingestionOtelStats;
 
-  private static IngestionOtelStats createStats(InMemoryMetricReader reader) {
-    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
+  private static VeniceMetricsRepository createOtelEnabledRepo(InMemoryMetricReader reader) {
+    return new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setMetricPrefix(TEST_PREFIX)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(reader)
             .build());
-    return new IngestionOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+  }
+
+  private static IngestionOtelStats createStats(VeniceMetricsRepository repo) {
+    return new IngestionOtelStats(repo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
   }
 
   @BeforeMethod
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
-    ingestionOtelStats = createStats(inMemoryMetricReader);
+    metricsRepository = createOtelEnabledRepo(inMemoryMetricReader);
+    ingestionOtelStats = createStats(metricsRepository);
+  }
+
+  @AfterMethod
+  public void tearDown() {
+    if (metricsRepository != null) {
+      metricsRepository.close();
+    }
   }
 
   @Test
@@ -143,29 +156,29 @@ public class IngestionOtelStatsTest {
 
   @Test
   public void testConstructorWithGlobalOtelDisabled() {
-    VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
+    try (VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(false)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .build());
-
-    IngestionOtelStats stats =
-        new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
-    assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when global OTel is off");
+            .build())) {
+      IngestionOtelStats stats =
+          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+      assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when global OTel is off");
+    }
   }
 
   @Test
   public void testConstructorWithIngestionOtelOverrideDisabled() {
-    VeniceMetricsRepository enabledMetricsRepository = new VeniceMetricsRepository(
+    try (VeniceMetricsRepository enabledMetricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setMetricPrefix(TEST_PREFIX)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .build());
-
-    IngestionOtelStats stats =
-        new IngestionOtelStats(enabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, false);
-    assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when ingestion override is off");
+            .build())) {
+      IngestionOtelStats stats =
+          new IngestionOtelStats(enabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, false);
+      assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when ingestion override is off");
+    }
   }
 
   @Test
@@ -682,18 +695,20 @@ public class IngestionOtelStatsTest {
       double value,
       IngestionOtelMetricEntity entity) {
     InMemoryMetricReader reader = InMemoryMetricReader.create();
-    IngestionOtelStats stats = createStats(reader);
-    stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    recorder.accept(stats, value);
-    validateHistogramPointData(
-        reader,
-        value,
-        value,
-        1,
-        value,
-        buildAttributesWithVersionRole(VersionRole.CURRENT),
-        entity.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
+    try (VeniceMetricsRepository localRepo = createOtelEnabledRepo(reader)) {
+      IngestionOtelStats stats = createStats(localRepo);
+      stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+      recorder.accept(stats, value);
+      validateHistogramPointData(
+          reader,
+          value,
+          value,
+          1,
+          value,
+          buildAttributesWithVersionRole(VersionRole.CURRENT),
+          entity.getMetricEntity().getMetricName(),
+          TEST_PREFIX);
+    }
   }
 
   @Test
@@ -745,15 +760,17 @@ public class IngestionOtelStatsTest {
       int value,
       IngestionOtelMetricEntity entity) {
     InMemoryMetricReader reader = InMemoryMetricReader.create();
-    IngestionOtelStats stats = createStats(reader);
-    stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    recorder.accept(stats, value);
-    validateLongPointDataFromCounter(
-        reader,
-        value,
-        buildAttributesWithVersionRole(VersionRole.CURRENT),
-        entity.getMetricEntity().getMetricName(),
-        TEST_PREFIX);
+    try (VeniceMetricsRepository localRepo = createOtelEnabledRepo(reader)) {
+      IngestionOtelStats stats = createStats(localRepo);
+      stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+      recorder.accept(stats, value);
+      validateLongPointDataFromCounter(
+          reader,
+          value,
+          buildAttributesWithVersionRole(VersionRole.CURRENT),
+          entity.getMetricEntity().getMetricName(),
+          TEST_PREFIX);
+    }
   }
 
   @Test
@@ -854,23 +871,24 @@ public class IngestionOtelStatsTest {
   @Test
   public void testNoMetricsRecordedWhenOtelDisabled() {
     InMemoryMetricReader disabledMetricReader = InMemoryMetricReader.create();
-    VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
+    try (VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(false)
             .setOtelAdditionalMetricsReader(disabledMetricReader)
-            .build());
-    IngestionOtelStats stats =
-        new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
-    stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    stats.recordRecordsConsumed(CURRENT_VERSION, ReplicaType.LEADER, 10);
-    stats.recordIngestionTime(CURRENT_VERSION, 50.0);
-    stats.recordRtRecordsConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 5);
-    stats.recordRtBytesConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 1024);
-    // New metrics should also not record when disabled
-    stats.recordConsumerQueuePutTime(CURRENT_VERSION, 10.0);
-    stats.recordUnexpectedMessageCount(CURRENT_VERSION, 1);
-    stats.recordKeySize(CURRENT_VERSION, 100);
-    assertEquals(disabledMetricReader.collectAllMetrics().size(), 0, "No metrics when OTel disabled");
+            .build())) {
+      IngestionOtelStats stats =
+          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+      stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+      stats.recordRecordsConsumed(CURRENT_VERSION, ReplicaType.LEADER, 10);
+      stats.recordIngestionTime(CURRENT_VERSION, 50.0);
+      stats.recordRtRecordsConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 5);
+      stats.recordRtBytesConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 1024);
+      // New metrics should also not record when disabled
+      stats.recordConsumerQueuePutTime(CURRENT_VERSION, 10.0);
+      stats.recordUnexpectedMessageCount(CURRENT_VERSION, 1);
+      stats.recordKeySize(CURRENT_VERSION, 100);
+      assertEquals(disabledMetricReader.collectAllMetrics().size(), 0, "No metrics when OTel disabled");
+    }
   }
 
   // ASYNC_GAUGE state management

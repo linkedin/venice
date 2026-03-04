@@ -107,6 +107,9 @@ public enum VeniceMetricsDimensions {
   /** AdminMessageType */
   VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type"),
 
+  /** Thread pool name for ThreadPoolStats */
+  VENICE_THREAD_POOL_NAME("venice.thread_pool.name"),
+
   /** {@link VeniceDCROperation} DCR merge operation type (put, update, delete) */
   VENICE_DCR_OPERATION("venice.dcr.operation"),
 

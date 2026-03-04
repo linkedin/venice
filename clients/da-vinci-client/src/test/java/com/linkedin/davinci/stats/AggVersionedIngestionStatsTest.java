@@ -248,7 +248,7 @@ public class AggVersionedIngestionStatsTest {
     aggStats.recordFollowerLatencies(STORE_NAME, VERSION_1, now, 15.0, 25.0);
     aggStats.recordLeaderProducerCompletionTime(STORE_NAME, VERSION_1, 4.0, now);
     aggStats.recordConsumedRecordEndToEndProcessingLatency(STORE_NAME, VERSION_1, 6.0, now);
-    aggStats.recordMaxIdleTime(STORE_NAME, VERSION_1, 1000);
+    aggStats.recordMaxIdleTime(STORE_NAME, VERSION_1, 1000, true);
     aggStats.recordBatchProcessingRequest(STORE_NAME, VERSION_1, 10, now);
     aggStats.recordBatchProcessingRequestError(STORE_NAME, VERSION_1);
     aggStats.recordBatchProcessingLatency(STORE_NAME, VERSION_1, 7.0, now);

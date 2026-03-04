@@ -5,10 +5,12 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.router.RouterServer;
+import com.linkedin.venice.stats.ThreadPoolOtelMetricEntity;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collection;
 import java.util.HashMap;
@@ -167,8 +169,9 @@ public class RouterMetricEntityTest {
           "Unexpected metric dimensions for " + metric.name());
     }
 
-    // Convert expectedMetrics to a Collection for comparison
-    Collection<MetricEntity> expectedMetricEntities = expectedMetrics.values();
+    // Build the full expected set: RouterMetricEntity + shared module entities (ThreadPoolOtelMetricEntity)
+    Collection<MetricEntity> expectedMetricEntities =
+        ModuleMetricEntityInterface.getUniqueMetricEntities(RouterMetricEntity.class, ThreadPoolOtelMetricEntity.class);
 
     // Assert size
     assertEquals(

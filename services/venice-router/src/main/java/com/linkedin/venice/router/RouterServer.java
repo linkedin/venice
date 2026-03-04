@@ -84,6 +84,7 @@ import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.stats.ThreadPoolOtelMetricEntity;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -203,7 +204,7 @@ public class RouterServer extends AbstractVeniceService {
   public static final String ROUTER_SERVICE_NAME = "venice-router";
   public static final String ROUTER_SERVICE_METRIC_PREFIX = "router";
   public static final Collection<MetricEntity> ROUTER_SERVICE_METRIC_ENTITIES =
-      ModuleMetricEntityInterface.getUniqueMetricEntities(RouterMetricEntity.class);
+      ModuleMetricEntityInterface.getUniqueMetricEntities(RouterMetricEntity.class, ThreadPoolOtelMetricEntity.class);
   /**
    * Thread number used to monitor the listening port;
    */

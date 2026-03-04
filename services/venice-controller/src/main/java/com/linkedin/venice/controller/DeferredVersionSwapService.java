@@ -1004,7 +1004,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               }
             });
           }
-          clusterThreadPoolStats.recordQueuedTasksCount(clusterExecutorService.getQueue().size());
+          clusterThreadPoolStats.recordQueuedTasksCount();
         } catch (Exception e) {
           LOGGER.warn("Caught exception while performing deferred version swap for cluster: {}", cluster, e);
           deferredVersionSwapStats.recordDeferredVersionSwapExceptionMetric(cluster);

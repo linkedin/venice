@@ -82,7 +82,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       boolean sslEnabled) {
     this.serverCluster = serverCluster;
     this.sslEnabled = sslEnabled;
-    this.serverMetadataServiceStats = new ServerMetadataServiceStats(metricsRepository);
+    this.serverMetadataServiceStats = new ServerMetadataServiceStats(metricsRepository, serverCluster);
     this.storeRepository = storeRepository;
     this.schemaRepository = schemaRepository;
     this.storeConfigRepository = storeConfigRepository;
@@ -102,6 +102,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
   public MetadataResponse getMetadata(String storeName) {
     serverMetadataServiceStats.recordRequestBasedMetadataInvokeCount();
     MetadataResponse response = new MetadataResponse();
+
     try {
       Store store = storeRepository.getStoreOrThrow(storeName);
 
@@ -159,11 +160,15 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       } else {
         response.setBatchGetLimit(Store.DEFAULT_BATCH_GET_LIMIT);
       }
+      serverMetadataServiceStats.recordRequestBasedMetadataSuccessCount(storeName);
     } catch (VeniceException e) {
       LOGGER.warn("Failed to populate request based metadata for store: {}.", storeName);
       response.setMessage("Failed to populate metadata for store: " + storeName + " due to: " + e.getMessage());
       response.setError(true);
-      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount();
+      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName, e);
+    } catch (Exception e) {
+      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName, e);
+      throw e;
     }
     return response;
   }
@@ -235,12 +240,13 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       response.setStoreMetaValue(storeMetaValue);
       response.setHelixGroupInfo(helixGroupInfo);
       response.setRoutingInfo(routingInfo);
+      serverMetadataServiceStats.recordRequestBasedMetadataSuccessCount(storeName);
     } catch (VeniceException e) {
       LOGGER.error("Failed to populate request based store properties for store {}:", storeName, e);
       response
           .setMessage("Failed to populate metadata by client for store: " + storeName + " due to: " + e.getMessage());
       response.setError(true);
-      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount();
+      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName, e);
     } catch (Exception e) {
       StringWriter sw = new StringWriter();
       try (PrintWriter pw = new PrintWriter(sw)) {
@@ -251,7 +257,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       response
           .setMessage("Failed to populate metadata by client for store: " + storeName + " due to: " + e + "\n" + trace);
       response.setError(true);
-      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount();
+      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName, e);
     }
 
     return response;

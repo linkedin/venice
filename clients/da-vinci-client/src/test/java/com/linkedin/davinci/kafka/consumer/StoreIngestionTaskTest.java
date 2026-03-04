@@ -4889,24 +4889,27 @@ public abstract class StoreIngestionTaskTest {
           throw new VeniceException(e);
         }
       };
-      int wantedInvocationsForStatsWhichCanBeDisabled = 0;
-      int wantedInvocationsForAllOtherStats = 0;
-      verifyStats(stats, wantedInvocationsForStatsWhichCanBeDisabled, wantedInvocationsForAllOtherStats);
+      int tehutiEmitMetricsGated = 0;
+      int tehutiNotGatedByEmitMetrics = 0;
+      int otelNotGatedByEmitMetrics = 0;
+      verifyStats(stats, tehutiEmitMetricsGated, tehutiNotGatedByEmitMetrics, otelNotGatedByEmitMetrics);
 
       produce.run();
-      verifyStats(stats, ++wantedInvocationsForStatsWhichCanBeDisabled, ++wantedInvocationsForAllOtherStats);
+      verifyStats(stats, ++tehutiEmitMetricsGated, ++tehutiNotGatedByEmitMetrics, ++otelNotGatedByEmitMetrics);
 
-      storeIngestionTaskUnderTest.disableMetricsEmission();
+      storeIngestionTaskUnderTest.disableTehutiMetrics();
       produce.run();
-      verifyStats(stats, wantedInvocationsForStatsWhichCanBeDisabled, ++wantedInvocationsForAllOtherStats);
+      verifyStats(stats, tehutiEmitMetricsGated, ++tehutiNotGatedByEmitMetrics, ++otelNotGatedByEmitMetrics);
 
-      storeIngestionTaskUnderTest.enableMetricsEmission();
+      storeIngestionTaskUnderTest.enableTehutiMetrics();
       produce.run();
-      verifyStats(stats, ++wantedInvocationsForStatsWhichCanBeDisabled, ++wantedInvocationsForAllOtherStats);
+      verifyStats(stats, ++tehutiEmitMetricsGated, ++tehutiNotGatedByEmitMetrics, ++otelNotGatedByEmitMetrics);
 
       long currentTimeMs = System.currentTimeMillis();
       long errorMargin = 10_000;
-      verify(mockVersionedStorageIngestionStats, timeout(1000).times(++wantedInvocationsForStatsWhichCanBeDisabled))
+      // recordConsumedRecordEndToEndProcessingLatency is gated by recordLevelMetricEnabled (not emitTehutiMetrics),
+      // so it fires on every produce — same count as otelNotGatedByEmitMetrics in this test.
+      verify(mockVersionedStorageIngestionStats, timeout(1000).times(otelNotGatedByEmitMetrics))
           .recordConsumedRecordEndToEndProcessingLatency(
               anyString(),
               anyInt(),
@@ -4918,17 +4921,39 @@ public abstract class StoreIngestionTaskTest {
 
   private void verifyStats(
       HostLevelIngestionStats stats,
-      int wantedInvocationsForStatsWhichCanBeDisabled,
-      int wantedInvocationsForAllOtherStats) {
-    verify(stats, times(wantedInvocationsForStatsWhichCanBeDisabled))
-        .recordConsumerRecordsQueuePutLatency(anyDouble(), anyLong());
-    verify(stats, timeout(10000).times(wantedInvocationsForAllOtherStats)).recordTotalRecordsConsumed();
-    verify(stats, timeout(10000).times(wantedInvocationsForAllOtherStats)).recordTotalBytesConsumed(anyLong());
-    verify(mockVersionedStorageIngestionStats, timeout(10000).times(wantedInvocationsForAllOtherStats))
+      int tehutiEmitMetricsGated,
+      int tehutiNotGatedByEmitMetrics,
+      int otelNotGatedByEmitMetrics) {
+    // Tehuti host-level: gated by emitTehutiMetrics (synchronous in produceToStoreBufferService)
+    verify(stats, times(tehutiEmitMetricsGated)).recordConsumerRecordsQueuePutLatency(anyDouble(), anyLong());
+    // Tehuti host-level: gated by tehutiRecordMetricsEnabled (async via processRecord)
+    verify(stats, timeout(10000).times(tehutiEmitMetricsGated)).recordStorageEnginePutLatency(anyDouble(), anyLong());
+    verify(stats, timeout(10000).times(tehutiEmitMetricsGated)).recordKeySize(anyLong(), anyLong());
+    verify(stats, timeout(10000).times(tehutiEmitMetricsGated)).recordValueSize(anyLong(), anyLong());
+    // Note: recordTotalBytesReadFromKafkaAsUncompressedSize and recordStorageQuotaUsed are also gated by
+    // emitTehutiMetrics but fire from recordBatchProcessingMetrics / poll-loop paths respectively, which are
+    // not exercised by produceToStoreBufferService. Their gating is covered by unit tests.
+    // Tehuti host-level: NOT gated by emitTehutiMetrics or recordLevelMetricEnabled
+    verify(stats, timeout(10000).times(tehutiNotGatedByEmitMetrics)).recordTotalRecordsConsumed();
+    // Tehuti host-level: gated by recordLevelMetricEnabled but NOT by emitTehutiMetrics
+    verify(stats, timeout(10000).times(tehutiNotGatedByEmitMetrics)).recordTotalBytesConsumed(anyLong());
+    // Per-version Tehuti stats (via recordVersionedAndTotalStat): gated by recordLevelMetricEnabled but not
+    // emitTehutiMetrics
+    verify(mockVersionedStorageIngestionStats, timeout(10000).times(tehutiNotGatedByEmitMetrics))
         .recordRecordsConsumed(anyString(), anyInt());
-    verify(mockVersionedStorageIngestionStats, timeout(10000).times(wantedInvocationsForAllOtherStats))
+    verify(mockVersionedStorageIngestionStats, timeout(10000).times(tehutiNotGatedByEmitMetrics))
         .recordBytesConsumed(anyString(), anyInt(), anyLong());
-
+    // OTel: NOT gated by emitTehutiMetrics, recorded for all versions when recordLevelMetricEnabled=true
+    verify(mockVersionedStorageIngestionStats, timeout(10000).times(otelNotGatedByEmitMetrics))
+        .recordConsumerQueuePutTime(anyString(), anyInt(), anyDouble());
+    verify(mockVersionedStorageIngestionStats, timeout(10000).times(otelNotGatedByEmitMetrics))
+        .recordStorageEnginePutTime(anyString(), anyInt(), anyDouble());
+    verify(mockVersionedStorageIngestionStats, timeout(10000).times(otelNotGatedByEmitMetrics))
+        .recordKeySize(anyString(), anyInt(), anyLong());
+    verify(mockVersionedStorageIngestionStats, timeout(10000).times(otelNotGatedByEmitMetrics))
+        .recordValueSize(anyString(), anyInt(), anyLong());
+    // Note: recordBytesConsumedAsUncompressedSize fires from recordBatchProcessingMetrics (batch-from-Kafka path),
+    // not from produceToStoreBufferService. Its gating is covered by unit tests.
   }
 
   @Test
