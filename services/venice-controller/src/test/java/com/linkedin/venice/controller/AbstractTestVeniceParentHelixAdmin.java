@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -64,7 +65,6 @@ public class AbstractTestVeniceParentHelixAdmin {
   protected static final String clusterName = "test-cluster";
   static final String regionName = "test-region";
   static final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
-  static final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
   static final int partitionId = AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID;
   static final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
   static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
@@ -83,6 +83,7 @@ public class AbstractTestVeniceParentHelixAdmin {
   Map<String, ControllerClient> controllerClients = new HashMap<>();
   ClusterLockManager clusterLockManager;
   StoragePersonaRepository personaRepository;
+  AdminTopicMetadataAccessor adminTopicMetadataAccessor;
 
   public void setupInternalMocks() {
     topicManager = mock(TopicManager.class);
@@ -194,6 +195,11 @@ public class AbstractTestVeniceParentHelixAdmin {
         .put(regionName, mockControllerClient);
     parentAdmin.setOfflinePushAccessor(accessor);
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+
+    // Set up mock admin topic metadata accessor to avoid ZK interaction issues
+    adminTopicMetadataAccessor = mock(AdminTopicMetadataAccessor.class);
+    doReturn(new AdminMetadata()).when(adminTopicMetadataAccessor).getMetadata(anyString());
+    parentAdmin.setAdminTopicMetadataAccessor(adminTopicMetadataAccessor);
   }
 
   public void cleanupTestCase() {

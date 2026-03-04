@@ -17,7 +17,6 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -93,14 +92,6 @@ public class VersionBackend {
     this.config = backend.getConfigLoader().getStoreConfig(version.kafkaTopicName());
     this.batchReportEOIPStatusEnabled = config.getBatchReportEOIPEnabled();
 
-    if (this.config.getIngestionMode().equals(IngestionMode.ISOLATED)) {
-      /*
-       * Explicitly disable the store restore since we don't want to open other partitions that should be controlled by
-       * child process. All the finished partitions will be closed by child process and reopened in parent process.
-       */
-      this.config.setRestoreDataPartitions(false);
-      this.config.setRestoreMetadataPartition(false);
-    }
     this.partitioner = PartitionUtils.getUserPartitionLevelVenicePartitioner(version.getPartitionerConfig());
     this.suppressLiveUpdates = this.config.freezeIngestionIfReadyToServeOrLocalDataExists();
     this.storageEngine.set(backend.getStorageService().getStorageEngine(version.kafkaTopicName()));
@@ -416,7 +407,8 @@ public class VersionBackend {
                   partition,
                   checkpointInfo.getTimestampsMap(),
                   checkpointInfo.getPostitionMap());
-      backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition);
+      String replicaId = Utils.getReplicaId(version.kafkaTopicName(), partition);
+      backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition, replicaId);
       tryStartHeartbeat();
     }
 
@@ -473,7 +465,9 @@ public class VersionBackend {
       completePartition(partition);
       backend.getHeartbeatMonitoringService()
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.REMOVE_MONITOR);
-      backend.getIngestionBackend().dropStoragePartitionGracefully(config, partition, stopConsumptionTimeoutInSeconds);
+      String replicaId = Utils.getReplicaId(version.kafkaTopicName(), partition);
+      backend.getIngestionBackend()
+          .dropStoragePartitionGracefully(config, partition, stopConsumptionTimeoutInSeconds, replicaId);
       partitionFutures.remove(partition);
       partitionToPendingReportIncrementalPushList.remove(partition);
       partitionToBatchReportEOIPEnabled.remove(partition);

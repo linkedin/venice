@@ -62,6 +62,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
   private final @Nonnull BooleanSupplier _disableRetryOnTimeout;
   private final @Nonnull BooleanSupplier _isReqRedirectionAllowedForQuery;
   private final @Nonnull Supplier<Collection> _requestCollectionSupplier;
+  private final @Nullable Executor _responseAggregationExecutor;
 
   protected ScatterGatherHelper(
       @Nonnull ExtendedResourcePathParser<P, K, BASIC_HTTP_REQUEST> pathParser,
@@ -92,7 +93,8 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
       @Nonnull BooleanSupplier enableRetryRequestAlwaysUseADifferentHost,
       @Nonnull BooleanSupplier disableRetryOnTimeout,
       @Nonnull BooleanSupplier isReqRedirectionAllowedForQuery,
-      @Nonnull Supplier<Collection> requestCollectionSupplier) {
+      @Nonnull Supplier<Collection> requestCollectionSupplier,
+      @Nullable Executor responseAggregationExecutor) {
     _pathParser = Objects.requireNonNull(pathParser, "pathParser");
     _partitionFinder = Objects.requireNonNull(partitionFinder, "partitionFinder");
     _hostFinder = Objects.requireNonNull(hostFinder, "hostFinder").getSnapshot();
@@ -141,6 +143,11 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
     _isReqRedirectionAllowedForQuery =
         Objects.requireNonNull(isReqRedirectionAllowedForQuery, "isReqRedirectionAllowedForQuery");
     _requestCollectionSupplier = Objects.requireNonNull(requestCollectionSupplier, "requestCollectionSupplier");
+    _responseAggregationExecutor = responseAggregationExecutor;
+  }
+
+  public @Nullable Executor getResponseAggregationExecutor() {
+    return _responseAggregationExecutor;
   }
 
   private Stream<Pair<String, ?>> streamOf(List<Pair<String, Supplier<?>>> list) {
@@ -376,6 +383,7 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
     private BooleanSupplier _disableRetryOnTimeout = () -> false;
     private BooleanSupplier _isReqRedirectionAllowedForQuery = () -> true;
     private Supplier<Collection> _requestCollectionSupplier = ArrayList::new;
+    private Executor _responseAggregationExecutor = null;
 
     private Builder() {
     }
@@ -556,6 +564,12 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
       return this;
     }
 
+    public Builder<H, P, K, R, HTTP_REQUEST, HTTP_RESPONSE, HTTP_RESPONSE_STATUS> responseAggregationExecutor(
+        @Nullable Executor responseAggregationExecutor) {
+      _responseAggregationExecutor = responseAggregationExecutor;
+      return this;
+    }
+
     public Builder<H, P, K, R, HTTP_REQUEST, HTTP_RESPONSE, HTTP_RESPONSE_STATUS> disableRetryOnTimeout(
         @Nonnull BooleanSupplier disableRetryOnTimeout) {
       _disableRetryOnTimeout = disableRetryOnTimeout;
@@ -648,7 +662,8 @@ public class ScatterGatherHelper<H, P extends ResourcePath<K>, K, R, BASIC_HTTP_
           _enableRetryRequestAlwaysUseADifferentHost,
           _disableRetryOnTimeout,
           _isReqRedirectionAllowedForQuery,
-          _requestCollectionSupplier);
+          _requestCollectionSupplier,
+          _responseAggregationExecutor);
     }
 
     @SuppressWarnings("unchecked")

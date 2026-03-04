@@ -33,11 +33,13 @@ import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import java.util.HashMap;
 import java.util.Map;
 
 
-public enum AdminMessageType {
+public enum AdminMessageType implements VeniceDimensionInterface {
   STORE_CREATION(0, false), VALUE_SCHEMA_CREATION(1, false), DISABLE_STORE_WRITE(2, false),
   ENABLE_STORE_WRITE(3, false), KILL_OFFLINE_PUSH_JOB(4, false), DISABLE_STORE_READ(5, false),
   ENABLE_STORE_READ(6, false), DELETE_ALL_VERSIONS(7, false), SET_STORE_OWNER(8, false), SET_STORE_PARTITION(9, false),
@@ -167,5 +169,10 @@ public enum AdminMessageType {
 
   public boolean isBatchUpdate() {
     return batchUpdate;
+  }
+
+  @Override
+  public VeniceMetricsDimensions getDimensionName() {
+    return VeniceMetricsDimensions.VENICE_ADMIN_MESSAGE_TYPE;
   }
 }

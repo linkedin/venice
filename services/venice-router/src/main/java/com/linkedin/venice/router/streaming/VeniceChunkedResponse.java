@@ -647,11 +647,17 @@ public class VeniceChunkedResponse {
       if (chunk != null) {
         progress.addAndGet(chunk.buffer.readableBytes());
         chunksAwaitingCallback.add(chunk);
+        /**
+         * Retain the buffer before passing to Netty. Netty will release the buffer after the write
+         * completes (success or failure), and we also release it in resolveChunk(). Without retain(),
+         * this would cause IllegalReferenceCountException when client disconnects abruptly and both
+         * Netty cleanup and resolveChunk() try to release the same buffer.
+         */
         if (chunk.isLast) {
-          content = new DefaultLastHttpContent(chunk.buffer);
+          content = new DefaultLastHttpContent(chunk.buffer.retain());
           sentLastChunk = true;
         } else {
-          content = new DefaultHttpContent(chunk.buffer);
+          content = new DefaultHttpContent(chunk.buffer.retain());
         }
       }
       return content;

@@ -4,12 +4,6 @@ import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
-import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
-import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
-import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
-import com.linkedin.venice.ingestion.protocol.LoadedStoreUserPartitionMapping;
-import com.linkedin.venice.ingestion.protocol.ProcessShutdownCommand;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
@@ -77,7 +71,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(94, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
+  ADMIN_OPERATION(95, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
@@ -102,43 +96,12 @@ public enum AvroProtocolDefinition {
    */
   CHUNKED_KEY_SUFFIX(ChunkedKeySuffix.class),
 
-  /**
-   * Used to encode various kinds of ingestion task commands, which are used to control ingestion task in child process.
-   */
-  INGESTION_TASK_COMMAND(28, 1, IngestionTaskCommand.class),
-
-  /**
-   * Used to encode status of ingestion task, that are reported backed from child process to Storage Node / Da Vinci backend.
-   */
-  INGESTION_TASK_REPORT(29, 1, IngestionTaskReport.class),
-
-  /**
-   * Used to encode metrics collected from ingestion task, that are reported backed from child process to Storage Node / Da Vinci backend.
-   */
-  INGESTION_METRICS_REPORT(30, 1, IngestionMetricsReport.class),
-
-  /**
-   * Used to encode storage metadata updates that are reported backed from Storage Node / Da Vinci backend to child process.
-   */
-  INGESTION_STORAGE_METADATA(31, 1, IngestionStorageMetadata.class),
-
-  /**
-   * Used to encode various kinds of ingestion task commands, which are used to control ingestion task in child process.
-   */
-  PROCESS_SHUTDOWN_COMMAND(32, 1, ProcessShutdownCommand.class),
-
   BATCH_JOB_HEARTBEAT(33, 1, BatchJobHeartbeatValue.class),
 
   /**
    * Used to encode the position of a PubSub message.
    */
   PUBSUB_POSITION_WIRE_FORMAT(34, 1, PubSubPositionWireFormat.class),
-
-  /**
-   * Used to retrieve the loaded store partition mapping in the isolated process.
-   * In theory, we don't need to use magicByte for the communication with II process.
-   */
-  LOADED_STORE_USER_PARTITION_MAPPING(35, 1, LoadedStoreUserPartitionMapping.class),
 
   /**
    * Key schema for metadata system store.
@@ -148,7 +111,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(39, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(40, StoreMetaValue.class),
 
   /*
     Value Schema for Parent Controller Metadata system store

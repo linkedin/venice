@@ -4,14 +4,11 @@ import static com.linkedin.venice.controller.AdminTopicMetadataAccessor.UNDEFINE
 
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -19,20 +16,15 @@ import org.apache.logging.log4j.Logger;
  */
 public class AdminMetadata {
   private Long executionId;
-  private Long offset;
-  private Long upstreamOffset;
   private Long adminOperationProtocolVersion;
-  private PubSubPosition position;
-  private PubSubPosition upstreamPosition;
-  private static final Logger LOGGER = LogManager.getLogger(AdminMetadata.class);
+  private PubSubPosition position = PubSubSymbolicPosition.EARLIEST;
+  private PubSubPosition upstreamPosition = PubSubSymbolicPosition.EARLIEST;
 
   public AdminMetadata() {
   }
 
   public AdminMetadata(Map<String, Object> metadataMap) {
     this.executionId = getLongValue(metadataMap, AdminTopicMetadataAccessor.EXECUTION_ID_KEY);
-    this.offset = getLongValue(metadataMap, AdminTopicMetadataAccessor.OFFSET_KEY);
-    this.upstreamOffset = getLongValue(metadataMap, AdminTopicMetadataAccessor.UPSTREAM_OFFSET_KEY);
     this.adminOperationProtocolVersion =
         getLongValue(metadataMap, AdminTopicMetadataAccessor.ADMIN_OPERATION_PROTOCOL_VERSION_KEY);
 
@@ -68,12 +60,6 @@ public class AdminMetadata {
     if (executionId != null) {
       map.put(AdminTopicMetadataAccessor.EXECUTION_ID_KEY, executionId);
     }
-    if (offset != null) {
-      map.put(AdminTopicMetadataAccessor.OFFSET_KEY, offset);
-    }
-    if (upstreamOffset != null) {
-      map.put(AdminTopicMetadataAccessor.UPSTREAM_OFFSET_KEY, upstreamOffset);
-    }
     if (adminOperationProtocolVersion != null) {
       map.put(AdminTopicMetadataAccessor.ADMIN_OPERATION_PROTOCOL_VERSION_KEY, adminOperationProtocolVersion);
     }
@@ -82,52 +68,6 @@ public class AdminMetadata {
     map.put(AdminTopicMetadataAccessor.UPSTREAM_POSITION_KEY, upstreamPosition);
 
     return map;
-  }
-
-  /**
-   * Convert AdminMetadata to legacy Map<String, Long> format for V1 compatibility
-   * This only includes the Long fields and excludes Position objects
-   * @return Map<String, Long> containing only the Long fields
-   * @deprecated Scheduled for removal
-   */
-  public Map<String, Long> toLegacyMap() {
-    Map<String, Long> legacyMap = new HashMap<>();
-    if (executionId != null) {
-      legacyMap.put(AdminTopicMetadataAccessor.EXECUTION_ID_KEY, executionId);
-    }
-    if (offset != null) {
-      legacyMap.put(AdminTopicMetadataAccessor.OFFSET_KEY, offset);
-    }
-    if (upstreamOffset != null) {
-      legacyMap.put(AdminTopicMetadataAccessor.UPSTREAM_OFFSET_KEY, upstreamOffset);
-    }
-    if (adminOperationProtocolVersion != null) {
-      legacyMap.put(AdminTopicMetadataAccessor.ADMIN_OPERATION_PROTOCOL_VERSION_KEY, adminOperationProtocolVersion);
-    }
-    return legacyMap;
-  }
-
-  /**
-   * Factory method to create AdminMetadata from legacy Map<String, Long> format
-   */
-  public static AdminMetadata fromLegacyMap(Map<String, Long> legacyMap) {
-    AdminMetadata metadata = new AdminMetadata();
-    if (legacyMap != null) {
-      metadata.setExecutionId(legacyMap.get(AdminTopicMetadataAccessor.EXECUTION_ID_KEY));
-      metadata.setOffset(legacyMap.get(AdminTopicMetadataAccessor.OFFSET_KEY));
-      metadata.setUpstreamOffset(legacyMap.get(AdminTopicMetadataAccessor.UPSTREAM_OFFSET_KEY));
-      metadata.setAdminOperationProtocolVersion(
-          legacyMap.get(AdminTopicMetadataAccessor.ADMIN_OPERATION_PROTOCOL_VERSION_KEY));
-      metadata.setPubSubPosition(
-          metadata.getOffset().longValue() == UNDEFINED_VALUE
-              ? PubSubSymbolicPosition.EARLIEST
-              : ApacheKafkaOffsetPosition.of(metadata.getOffset()));
-      metadata.setUpstreamPubSubPosition(
-          metadata.getUpstreamOffset().longValue() == UNDEFINED_VALUE
-              ? PubSubSymbolicPosition.EARLIEST
-              : ApacheKafkaOffsetPosition.of(metadata.getUpstreamOffset()));
-    }
-    return metadata;
   }
 
   // Getters and setters
@@ -139,22 +79,6 @@ public class AdminMetadata {
     this.executionId = executionId;
   }
 
-  public Long getOffset() {
-    return offset == null ? UNDEFINED_VALUE : offset;
-  }
-
-  public void setOffset(Long offset) {
-    this.offset = offset;
-  }
-
-  public Long getUpstreamOffset() {
-    return upstreamOffset == null ? UNDEFINED_VALUE : upstreamOffset;
-  }
-
-  public void setUpstreamOffset(Long upstreamOffset) {
-    this.upstreamOffset = upstreamOffset;
-  }
-
   public Long getAdminOperationProtocolVersion() {
     return adminOperationProtocolVersion == null ? UNDEFINED_VALUE : adminOperationProtocolVersion;
   }
@@ -164,54 +88,25 @@ public class AdminMetadata {
   }
 
   public PubSubPosition getPosition() {
-    return getPubSubPosition(position, offset);
+    return position;
   }
 
   public PubSubPosition getUpstreamPosition() {
-    return getPubSubPosition(upstreamPosition, upstreamOffset);
-  }
-
-  private PubSubPosition getPubSubPosition(PubSubPosition position, Long offset) {
-    if (position == null) {
-      if (offset != null && !offset.equals(UNDEFINED_VALUE)) {
-        return ApacheKafkaOffsetPosition.of(offset);
-      } else {
-        return PubSubSymbolicPosition.EARLIEST;
-      }
-    } else if (offset != null && offset > position.getNumericOffset()) {
-      LOGGER.warn(
-          "Offset {} is greater than position {}. Resetting position to offset.",
-          offset,
-          position.getNumericOffset());
-      return ApacheKafkaOffsetPosition.of(offset);
-    } else {
-      return position;
-    }
+    return upstreamPosition;
   }
 
   public void setPubSubPosition(PubSubPosition pubSubPosition) {
     this.position = pubSubPosition;
-    if (pubSubPosition != null) {
-      this.offset = pubSubPosition.getNumericOffset();
-    } else {
-      this.offset = UNDEFINED_VALUE;
-    }
   }
 
   public void setUpstreamPubSubPosition(PubSubPosition upstreamPubPosition) {
     this.upstreamPosition = upstreamPubPosition;
-    if (upstreamPubPosition != null) {
-      this.upstreamOffset = upstreamPubPosition.getNumericOffset();
-    } else {
-      this.upstreamOffset = UNDEFINED_VALUE;
-    }
   }
 
   @Override
   public String toString() {
-    return "AdminMetadata{" + "executionId=" + executionId + ", offset=" + offset + ", upstreamOffset=" + upstreamOffset
-        + ", adminOperationProtocolVersion=" + adminOperationProtocolVersion + ", position=" + position
-        + ", upstreamPosition=" + upstreamPosition + '}';
+    return "AdminMetadata{" + "executionId=" + executionId + ", adminOperationProtocolVersion="
+        + adminOperationProtocolVersion + ", position=" + position + ", upstreamPosition=" + upstreamPosition + '}';
   }
 
   @Override
@@ -224,8 +119,6 @@ public class AdminMetadata {
     }
     AdminMetadata that = (AdminMetadata) o;
     return Objects.equals(this.getExecutionId(), that.getExecutionId())
-        && Objects.equals(this.getOffset(), that.getOffset())
-        && Objects.equals(this.getUpstreamOffset(), that.getUpstreamOffset())
         && Objects.equals(this.getAdminOperationProtocolVersion(), that.getAdminOperationProtocolVersion())
         && Objects.equals(this.getPosition(), that.getPosition())
         && Objects.equals(this.getUpstreamPosition(), that.getUpstreamPosition());
@@ -235,8 +128,6 @@ public class AdminMetadata {
   public int hashCode() {
     return Objects.hash(
         this.getExecutionId(),
-        this.getOffset(),
-        this.getUpstreamOffset(),
         this.getAdminOperationProtocolVersion(),
         this.getPosition(),
         this.getUpstreamPosition());

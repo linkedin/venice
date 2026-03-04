@@ -52,6 +52,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -1563,6 +1564,248 @@ public class VeniceParentHelixAdminTest {
 
     schemaStr += "           ]\n" + "      }], " + "     \"default\": null\n" + "    }\n" + " ]\n" + "}";
     return AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
+  }
+
+  /**
+   * Test that verifies superset schema behavior when read/write compute is disabled.
+   *
+   * This test covers two scenarios:
+   *
+   * Part 1 - No superset schema created when compute disabled and none exists:
+   * 1. Store is created with compute DISABLED (no superset schema exists)
+   * 2. Multiple schemas are added that would normally require a superset schema
+   * 3. Expected: No superset schema should be created since compute is disabled and none existed
+   *
+   * Part 2 - Superset schema IS updated when compute disabled but one already exists:
+   * 4. Enable compute, add schemas to create a superset schema
+   * 5. Disable compute again
+   * 6. Add new schemas with new fields
+   * 7. Expected: The superset schema SHOULD be updated to include the new fields
+   *
+   * The fix in VeniceParentHelixAdmin.addValueSchema() checks if a superset schema already exists
+   * (store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) and if so,
+   * continues to update it even when compute is disabled.
+   */
+  @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
+  public void testSupersetSchemaUpdateBehaviorWhenComputeDisabled() {
+    String storeName = Utils.getUniqueString("test_superset_compute_disabled");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+
+    // Load schemas from test resources
+    // ValueV1: f0, f1
+    // ValueV2: f0, f1, f2
+    // ValueV3: f1, f2, f3, f4
+    // ValueV7: f2, f3, f5 (new field f5)
+    // ValueV8: f2, f3, f6 (new field f6)
+    Schema valueSchemaV1 =
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV1.avsc"));
+    Schema valueSchemaV2 =
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV2.avsc"));
+    Schema valueSchemaV3 =
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV3.avsc"));
+    Schema valueSchemaV7 =
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV7.avsc"));
+    Schema valueSchemaV8 =
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV8.avsc"));
+
+    try (ControllerClient parentControllerClient =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {
+
+      // ==================== PART 1: No superset created when compute disabled ====================
+
+      // Step 1: Create store with first schema (compute is disabled by default)
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaV1.toString());
+      Assert.assertNotNull(newStoreResponse);
+      Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
+
+      // Verify compute is disabled and no superset schema exists
+      StoreResponse storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      Assert.assertFalse(storeResponse.getStore().isReadComputationEnabled(), "Read computation should be disabled");
+      Assert.assertFalse(storeResponse.getStore().isWriteComputationEnabled(), "Write computation should be disabled");
+      Assert.assertEquals(
+          storeResponse.getStore().getLatestSuperSetValueSchemaId(),
+          -1,
+          "No superset schema should exist initially");
+
+      // Step 2: Add schema V2 (f0, f1, f2) - with compute disabled, no superset should be created
+      SchemaResponse addSchemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaV2.toString());
+      Assert.assertNotNull(addSchemaResponse);
+      Assert.assertFalse(addSchemaResponse.isError(), "error in addSchemaResponse: " + addSchemaResponse.getError());
+
+      // Verify still no superset schema
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      Assert.assertEquals(
+          storeResponse.getStore().getLatestSuperSetValueSchemaId(),
+          -1,
+          "No superset schema should exist after adding V2 with compute disabled");
+
+      // Step 3: Add schema V3 (f1, f2, f3, f4) - this would normally trigger superset generation
+      addSchemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaV3.toString());
+      Assert.assertNotNull(addSchemaResponse);
+      Assert.assertFalse(addSchemaResponse.isError(), "error in addSchemaResponse: " + addSchemaResponse.getError());
+
+      // Verify STILL no superset schema - since compute is disabled and none existed before
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      Assert.assertEquals(
+          storeResponse.getStore().getLatestSuperSetValueSchemaId(),
+          -1,
+          "No superset schema should be created when compute is disabled and none existed");
+
+      // Verify only the actual value schemas exist (V1=1, V2=2, V3=3), no superset
+      MultiSchemaResponse schemaResponse = parentControllerClient.getAllValueSchema(storeName);
+      Assert.assertNotNull(schemaResponse);
+      Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
+      Assert.assertEquals(
+          schemaResponse.getSchemas().length,
+          3,
+          "There should be exactly 3 value schemas (no superset created)");
+
+      // ==================== PART 2: Superset IS updated when one already exists ====================
+
+      // Step 4: Enable read computation to trigger superset schema generation
+      UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+      params.setReadComputationEnabled(true);
+      ControllerResponse updateStoreResponse = parentControllerClient.updateStore(storeName, params);
+      Assert.assertNotNull(updateStoreResponse);
+      Assert.assertFalse(
+          updateStoreResponse.isError(),
+          "error in updateStoreResponse: " + updateStoreResponse.getError());
+
+      // Verify compute is now enabled
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      Assert.assertTrue(storeResponse.getStore().isReadComputationEnabled(), "Read computation should be enabled");
+
+      // Note: Enabling compute doesn't automatically create a superset schema for existing schemas.
+      // We need to add a new schema to trigger superset schema generation.
+      // The existing schemas are V1(f0,f1), V2(f0,f1,f2), V3(f1,f2,f3,f4)
+      // Adding ValueV7 (f2,f3,f5) will trigger superset generation combining all fields.
+      addSchemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaV7.toString());
+      Assert.assertNotNull(addSchemaResponse);
+      Assert.assertFalse(addSchemaResponse.isError(), "error in addSchemaResponse: " + addSchemaResponse.getError());
+
+      // Verify a superset schema was generated
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      int supersetSchemaIdBeforeDisable = storeResponse.getStore().getLatestSuperSetValueSchemaId();
+      Assert.assertTrue(
+          supersetSchemaIdBeforeDisable > 0,
+          "Superset schema should exist after enabling compute and adding schema");
+
+      // Verify the superset schema contains all fields (f0, f1, f2, f3, f4, f5)
+      SchemaResponse supersetSchemaResponse =
+          parentControllerClient.getValueSchema(storeName, supersetSchemaIdBeforeDisable);
+      Assert.assertFalse(
+          supersetSchemaResponse.isError(),
+          "error in schemaResponse: " + supersetSchemaResponse.getError());
+      Schema supersetSchema = AvroCompatibilityHelper.parse(supersetSchemaResponse.getSchemaStr());
+      Assert.assertNotNull(supersetSchema.getField("f0"), "Superset schema should contain f0");
+      Assert.assertNotNull(supersetSchema.getField("f1"), "Superset schema should contain f1");
+      Assert.assertNotNull(supersetSchema.getField("f2"), "Superset schema should contain f2");
+      Assert.assertNotNull(supersetSchema.getField("f3"), "Superset schema should contain f3");
+      Assert.assertNotNull(supersetSchema.getField("f4"), "Superset schema should contain f4");
+      Assert.assertNotNull(supersetSchema.getField("f5"), "Superset schema should contain f5");
+
+      // Step 5: Disable read computation
+      params = new UpdateStoreQueryParams();
+      params.setReadComputationEnabled(false);
+      updateStoreResponse = parentControllerClient.updateStore(storeName, params);
+      Assert.assertNotNull(updateStoreResponse);
+      Assert.assertFalse(
+          updateStoreResponse.isError(),
+          "error in updateStoreResponse: " + updateStoreResponse.getError());
+
+      // Verify read computation is disabled
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      Assert.assertFalse(storeResponse.getStore().isReadComputationEnabled(), "Read computation should be disabled");
+
+      // Step 6: Add ValueV8 (f2, f3, f6) with a NEW field f6
+      // Even with compute disabled, since a superset schema exists, it should be updated
+      addSchemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaV8.toString());
+      Assert.assertNotNull(addSchemaResponse);
+      Assert.assertFalse(addSchemaResponse.isError(), "error in addSchemaResponse: " + addSchemaResponse.getError());
+
+      // Verify when a superset schema already exists, it should be updated
+      // even when compute is disabled. The superset schema should now include f6.
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      int supersetSchemaIdAfterDisable = storeResponse.getStore().getLatestSuperSetValueSchemaId();
+
+      // The superset schema ID should have changed because we added a schema with a new field (f6)
+      Assert.assertNotEquals(
+          supersetSchemaIdAfterDisable,
+          supersetSchemaIdBeforeDisable,
+          "Superset schema ID should change when a new field is added, even with compute disabled since a superset exists");
+
+      // Verify the new superset schema contains f6 (proving the fix works)
+      supersetSchemaResponse = parentControllerClient.getValueSchema(storeName, supersetSchemaIdAfterDisable);
+      Assert.assertFalse(
+          supersetSchemaResponse.isError(),
+          "error in schemaResponse: " + supersetSchemaResponse.getError());
+      Schema supersetSchemaAfterDisable = AvroCompatibilityHelper.parse(supersetSchemaResponse.getSchemaStr());
+      Assert.assertNotNull(
+          supersetSchemaAfterDisable.getField("f6"),
+          "Superset schema should contain f6 because superset update continues when one already exists");
+      // Also verify all previous fields are still present
+      Assert.assertNotNull(supersetSchemaAfterDisable.getField("f0"), "Superset schema should still contain f0");
+      Assert.assertNotNull(supersetSchemaAfterDisable.getField("f1"), "Superset schema should still contain f1");
+      Assert.assertNotNull(supersetSchemaAfterDisable.getField("f2"), "Superset schema should still contain f2");
+      Assert.assertNotNull(supersetSchemaAfterDisable.getField("f3"), "Superset schema should still contain f3");
+      Assert.assertNotNull(supersetSchemaAfterDisable.getField("f4"), "Superset schema should still contain f4");
+      Assert.assertNotNull(supersetSchemaAfterDisable.getField("f5"), "Superset schema should still contain f5");
+
+      // ==================== PART 3: Clear superset schema via updateStore ====================
+      // Verify that setting latestSupersetSchemaId to INVALID_VALUE_SCHEMA_ID completely removes
+      // the superset schema from the store, and subsequent schema additions don't recreate it
+      // (since compute is still disabled).
+
+      // Step 7: Clear the superset schema by setting it to INVALID_VALUE_SCHEMA_ID
+      params = new UpdateStoreQueryParams();
+      params.setLatestSupersetSchemaId(SchemaData.INVALID_VALUE_SCHEMA_ID);
+      updateStoreResponse = parentControllerClient.updateStore(storeName, params);
+      Assert.assertNotNull(updateStoreResponse);
+      Assert.assertFalse(
+          updateStoreResponse.isError(),
+          "error in updateStoreResponse: " + updateStoreResponse.getError());
+
+      // Verify the superset schema ID is now INVALID (-1)
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      Assert.assertEquals(
+          storeResponse.getStore().getLatestSuperSetValueSchemaId(),
+          SchemaData.INVALID_VALUE_SCHEMA_ID,
+          "Superset schema ID should be INVALID after clearing it via updateStore");
+
+      // Verify compute is still disabled
+      Assert.assertFalse(
+          storeResponse.getStore().isReadComputationEnabled(),
+          "Read computation should still be disabled");
+      Assert.assertFalse(
+          storeResponse.getStore().isWriteComputationEnabled(),
+          "Write computation should still be disabled");
+
+      // Step 8: Add a new schema (ValueV9 with f2, f3, f7) after clearing the superset schema
+      // Since compute is disabled AND the superset schema was cleared, no new superset should be created
+      Schema valueSchemaV9 =
+          AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV9.avsc"));
+      addSchemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaV9.toString());
+      Assert.assertNotNull(addSchemaResponse);
+      Assert.assertFalse(addSchemaResponse.isError(), "error in addSchemaResponse: " + addSchemaResponse.getError());
+
+      // Verify no superset schema was recreated
+      storeResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+      Assert.assertEquals(
+          storeResponse.getStore().getLatestSuperSetValueSchemaId(),
+          SchemaData.INVALID_VALUE_SCHEMA_ID,
+          "No superset schema should be created after clearing it when compute is disabled");
+    }
   }
 
 }

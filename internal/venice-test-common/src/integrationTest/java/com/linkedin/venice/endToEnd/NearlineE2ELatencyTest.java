@@ -15,12 +15,8 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
-import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
@@ -34,7 +30,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -44,48 +39,21 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class NearlineE2ELatencyTest {
+public class NearlineE2ELatencyTest extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(NearlineE2ELatencyTest.class);
   private static final long TEST_TIMEOUT = 120_000;
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
-  private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final int NUMBER_OF_PARENT_CONTROLLERS = 1;
-  private static final int NUMBER_OF_CONTROLLERS = 1;
-  private static final int NUMBER_OF_SERVERS = 2;
-  private static final int NUMBER_OF_ROUTERS = 1;
-  private static final int REPLICATION_FACTOR = 2;
 
-  private static final String CLUSTER_NAME = "venice-cluster0";
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
   private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
 
+  @Override
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Utils.thisIsLocalhost();
-    Properties serverProperties = new Properties();
-
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
-            .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(NUMBER_OF_PARENT_CONTROLLERS)
-            .numberOfChildControllers(NUMBER_OF_CONTROLLERS)
-            .numberOfServers(NUMBER_OF_SERVERS)
-            .numberOfRouters(NUMBER_OF_ROUTERS)
-            .replicationFactor(REPLICATION_FACTOR)
-            .forkServer(false)
-            .serverProperties(serverProperties);
-    multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-    multiRegionMultiClusterWrapper.logMultiCluster();
+    super.setUp();
     pubSubPositionTypeRegistry =
         multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getPubSubPositionTypeRegistry();
   }
@@ -97,8 +65,7 @@ public class NearlineE2ELatencyTest {
     // Send some nearline messages
     // Check nearline timestamp is recieved correctly by all servers
     String storeName = "test-hybrid";
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrls = parentController.getControllerUrl();
     try (ControllerClient parentControllerCli = new ControllerClient(CLUSTER_NAME, parentControllerUrls);
         ControllerClient dc0Client =
             new ControllerClient(CLUSTER_NAME, childDatacenters.get(0).getControllerConnectString());
@@ -197,10 +164,4 @@ public class NearlineE2ELatencyTest {
     Assert.assertTrue(producerToLocalBroker.get());
     Assert.assertTrue(producerToLocalBrokerLatencies.stream().anyMatch(v -> v > 0));
   }
-
-  @AfterClass(alwaysRun = true)
-  public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
-  }
-
 }

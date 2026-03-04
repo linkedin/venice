@@ -1,7 +1,6 @@
 package com.linkedin.venice.vpj.pubsub.input.splitter;
 
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 
@@ -37,6 +36,7 @@ public class CappedSplitCountStrategyTest {
     topic = TOPIC_REPOSITORY.getTopic("test-topic");
     partition = new PubSubTopicPartitionImpl(topic, 0);
     topicManager = mock(TopicManager.class);
+    when(topicManager.getTopicRepository()).thenReturn(TOPIC_REPOSITORY);
     splitter = new CappedSplitCountStrategy();
   }
 
@@ -45,10 +45,9 @@ public class CappedSplitCountStrategyTest {
     // Case 1: Even division - 10 records, 5 splits = 2 records each
     PubSubPosition startPos = ApacheKafkaOffsetPosition.of(100);
     PubSubPosition endPos = ApacheKafkaOffsetPosition.of(110);
-    setupTopicManagerMocks(startPos, endPos, 10);
     setupAdvancePositionMocks(startPos, new long[] { 2, 2, 2, 2, 2 });
 
-    SplitRequest request = createSplitRequest(5);
+    SplitRequest request = createSplitRequest(5, startPos, endPos, 10);
     List<PubSubPartitionSplit> splits = splitter.split(request);
 
     assertEquals(splits.size(), 5);
@@ -57,12 +56,10 @@ public class CappedSplitCountStrategyTest {
     verifyStartOffsets(splits);
 
     // Case 2: Uneven division - 11 records, 3 splits = [4, 4, 3]
-    reset(topicManager);
     endPos = ApacheKafkaOffsetPosition.of(111);
-    setupTopicManagerMocks(startPos, endPos, 11);
     setupAdvancePositionMocks(startPos, new long[] { 4, 4, 3 });
 
-    request = createSplitRequest(3);
+    request = createSplitRequest(3, startPos, endPos, 11);
     splits = splitter.split(request);
 
     assertEquals(splits.size(), 3);
@@ -84,12 +81,10 @@ public class CappedSplitCountStrategyTest {
     assertEquals(splits.get(2).getStartIndex(), 8L, "Third split should have startOffset 8");
 
     // Case 3: More splits requested than records - 5 records, 10 splits = 5 splits of 1 each
-    reset(topicManager);
     endPos = ApacheKafkaOffsetPosition.of(105);
-    setupTopicManagerMocks(startPos, endPos, 5);
     setupAdvancePositionMocks(startPos, new long[] { 1, 1, 1, 1, 1 });
 
-    request = createSplitRequest(10);
+    request = createSplitRequest(10, startPos, endPos, 5);
     splits = splitter.split(request);
 
     assertEquals(splits.size(), 5); // capped by number of records
@@ -105,10 +100,9 @@ public class CappedSplitCountStrategyTest {
 
     // Case 1: Single record, single split
     endPos = ApacheKafkaOffsetPosition.of(1);
-    setupTopicManagerMocks(startPos, endPos, 1);
     setupAdvancePositionMocks(startPos, new long[] { 1 });
 
-    SplitRequest request = createSplitRequest(1);
+    SplitRequest request = createSplitRequest(1, startPos, endPos, 1);
     List<PubSubPartitionSplit> splits = splitter.split(request);
 
     assertEquals(splits.size(), 1);
@@ -119,11 +113,9 @@ public class CappedSplitCountStrategyTest {
     verifyStartOffsets(splits);
 
     // Case 2: Single record, multiple splits requested - should create only 1 split
-    reset(topicManager);
-    setupTopicManagerMocks(startPos, endPos, 1);
     setupAdvancePositionMocks(startPos, new long[] { 1 });
 
-    request = createSplitRequest(5);
+    request = createSplitRequest(5, startPos, endPos, 1);
     splits = splitter.split(request);
 
     assertEquals(splits.size(), 1);
@@ -133,11 +125,9 @@ public class CappedSplitCountStrategyTest {
 
     // Case 3: Large number of records with small maxSplits
     endPos = ApacheKafkaOffsetPosition.of(1000); // 1000 records
-    reset(topicManager);
-    setupTopicManagerMocks(startPos, endPos, 1000);
     setupAdvancePositionMocks(startPos, new long[] { 500, 500 });
 
-    request = createSplitRequest(2);
+    request = createSplitRequest(2, startPos, endPos, 1000);
     splits = splitter.split(request);
 
     assertEquals(splits.size(), 2);
@@ -152,23 +142,16 @@ public class CappedSplitCountStrategyTest {
   @Test
   public void testZeroAndNegativeRecordScenarios() {
     PubSubPosition startPos = ApacheKafkaOffsetPosition.of(100);
-    PubSubPosition endPos;
+    PubSubPosition endPos = ApacheKafkaOffsetPosition.of(100);
 
     // Case 1: Zero records - should return empty list
-    endPos = ApacheKafkaOffsetPosition.of(100);
-    setupTopicManagerMocks(startPos, endPos, 0);
-
-    SplitRequest request = createSplitRequest(5);
+    SplitRequest request = createSplitRequest(5, startPos, endPos, 0);
     List<PubSubPartitionSplit> splits = splitter.split(request);
 
     assertEquals(splits.size(), 0, "Zero records should return no splits");
 
     // Case 2: Negative record count should return no splits
-    reset(topicManager);
-    endPos = ApacheKafkaOffsetPosition.of(100);
-    setupTopicManagerMocks(startPos, endPos, -5);
-
-    request = createSplitRequest(3);
+    request = createSplitRequest(3, startPos, endPos, -5);
     splits = splitter.split(request);
 
     assertEquals(splits.size(), 0, "Negative records should return no splits");
@@ -185,11 +168,9 @@ public class CappedSplitCountStrategyTest {
     PubSubPosition startPos = ApacheKafkaOffsetPosition.of(0);
     PubSubPosition endPos = ApacheKafkaOffsetPosition.of(10);
 
-    reset(topicManager);
-    setupTopicManagerMocks(startPos, endPos, 10);
     setupAdvancePositionMocks(startPos, new long[] { 2, 2, 2, 2, 2 });
 
-    SplitRequest request = createSplitRequest(requestedMaxSplits);
+    SplitRequest request = createSplitRequest(requestedMaxSplits, startPos, endPos, 10);
     List<PubSubPartitionSplit> splits = splitter.split(request);
 
     assertEquals(splits.size(), 5, "Expected 5 splits");
@@ -231,10 +212,9 @@ public class CappedSplitCountStrategyTest {
     PubSubPosition startPos = ApacheKafkaOffsetPosition.of(0);
     PubSubPosition endPos = ApacheKafkaOffsetPosition.of(totalRecords);
 
-    setupTopicManagerMocks(startPos, endPos, totalRecords);
     setupAdvancePositionMocks(startPos, expectedCounts);
 
-    SplitRequest request = createSplitRequest(maxSplits);
+    SplitRequest request = createSplitRequest(maxSplits, startPos, endPos, totalRecords);
     List<PubSubPartitionSplit> splits = splitter.split(request);
 
     assertEquals(splits.size(), maxSplits);
@@ -262,7 +242,6 @@ public class CappedSplitCountStrategyTest {
     // Case 1: Verify that splits have contiguous position ranges
     PubSubPosition startPos = ApacheKafkaOffsetPosition.of(100);
     PubSubPosition endPos = ApacheKafkaOffsetPosition.of(106);
-    setupTopicManagerMocks(startPos, endPos, 6);
 
     PubSubPosition pos102 = ApacheKafkaOffsetPosition.of(102);
     PubSubPosition pos104 = ApacheKafkaOffsetPosition.of(104);
@@ -272,7 +251,7 @@ public class CappedSplitCountStrategyTest {
     when(topicManager.advancePosition(partition, pos102, 2)).thenReturn(pos104);
     when(topicManager.advancePosition(partition, pos104, 2)).thenReturn(pos106);
 
-    SplitRequest request = createSplitRequest(3);
+    SplitRequest request = createSplitRequest(3, startPos, endPos, 6);
     List<PubSubPartitionSplit> splits = splitter.split(request);
 
     assertEquals(splits.size(), 3);
@@ -306,7 +285,6 @@ public class CappedSplitCountStrategyTest {
     // Case 1: Large number of records with reasonable split count
     PubSubPosition startPos = ApacheKafkaOffsetPosition.of(0);
     PubSubPosition endPos = ApacheKafkaOffsetPosition.of(1000000);
-    setupTopicManagerMocks(startPos, endPos, 1000000);
 
     // Create expected positions for 100 splits of 10000 records each
     PubSubPosition[] positions = new PubSubPosition[101]; // start + 100 end positions
@@ -316,7 +294,7 @@ public class CappedSplitCountStrategyTest {
       when(topicManager.advancePosition(partition, positions[i - 1], 10000)).thenReturn(positions[i]);
     }
 
-    SplitRequest request = createSplitRequest(100);
+    SplitRequest request = createSplitRequest(100, startPos, endPos, 1000000);
     List<PubSubPartitionSplit> splits = splitter.split(request);
 
     assertEquals(splits.size(), 100);
@@ -329,19 +307,19 @@ public class CappedSplitCountStrategyTest {
     assertEquals(splits.get(99).getEndPubSubPosition(), endPos);
   }
 
-  private SplitRequest createSplitRequest(int maxSplits) {
+  private SplitRequest createSplitRequest(
+      int maxSplits,
+      PubSubPosition startPos,
+      PubSubPosition endPos,
+      long numberOfRecords) {
     return new SplitRequest.Builder().pubSubTopicPartition(partition)
         .topicManager(topicManager)
         .splitType(PartitionSplitStrategy.CAPPED_SPLIT_COUNT)
         .maxSplits(maxSplits)
+        .startPosition(startPos)
+        .endPosition(endPos)
+        .numberOfRecords(numberOfRecords)
         .build();
-  }
-
-  private void setupTopicManagerMocks(PubSubPosition startPos, PubSubPosition endPos, long recordCount) {
-    when(topicManager.getStartPositionsForPartitionWithRetries(partition)).thenReturn(startPos);
-    when(topicManager.getEndPositionsForPartitionWithRetries(partition)).thenReturn(endPos);
-    when(topicManager.diffPosition(partition, endPos, startPos)).thenReturn(recordCount);
-    when(topicManager.getTopicRepository()).thenReturn(TOPIC_REPOSITORY);
   }
 
   private void setupAdvancePositionMocks(PubSubPosition startPos, long[] splitSizes) {

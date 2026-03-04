@@ -233,6 +233,28 @@ public abstract class OpenTelemetryDataTestUtils {
     assertEquals(longPointData.getAttributes(), expectedAttributes, "LongPointData attributes should match");
   }
 
+  /**
+   * Validate counter value is at least the expected minimum. Use this in integration tests
+   * where the exact count is non-deterministic (e.g., TopicCleanupService may delete
+   * additional topics beyond those the test explicitly tracks).
+   */
+  public static void validateLongPointDataFromCounterAtLeast(
+      InMemoryMetricReader inMemoryMetricReader,
+      long expectedMinValue,
+      Attributes expectedAttributes,
+      String metricName,
+      String metricPrefix) {
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    assertFalse(metricsData.isEmpty());
+
+    LongPointData longPointData = getLongPointDataFromSum(metricsData, metricName, metricPrefix, expectedAttributes);
+    assertNotNull(longPointData, "LongPointData should not be null");
+    assertTrue(
+        longPointData.getValue() >= expectedMinValue,
+        "LongPointData value should be >= " + expectedMinValue + " but was " + longPointData.getValue());
+    assertEquals(longPointData.getAttributes(), expectedAttributes, "LongPointData attributes should match");
+  }
+
   public static void validateLongPointDataFromGauge(
       InMemoryMetricReader inMemoryMetricReader,
       long expectedValue,
@@ -301,6 +323,29 @@ public abstract class OpenTelemetryDataTestUtils {
     assertEquals(histogramPointData.getAttributes(), expectedAttributes, "Histogram attributes should match");
   }
 
+  /**
+   * Validate ExponentialHistogramPointData has at least expectedMinCount entries with sum > 0.
+   * Use this in integration tests where the exact count is non-deterministic.
+   */
+  public static void validateExponentialHistogramPointDataAtLeast(
+      InMemoryMetricReader inMemoryMetricReader,
+      long expectedMinCount,
+      Attributes expectedAttributes,
+      String metricName,
+      String metricPrefix) {
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    assertFalse(metricsData.isEmpty());
+    ExponentialHistogramPointData histogramPointData =
+        getExponentialHistogramPointData(metricsData, metricName, metricPrefix, expectedAttributes);
+
+    assertNotNull(histogramPointData, "ExponentialHistogramPointData should not be null");
+    assertTrue(
+        histogramPointData.getCount() >= expectedMinCount,
+        "Histogram count should be >= " + expectedMinCount + " but was " + histogramPointData.getCount());
+    assertTrue(histogramPointData.getSum() > 0, "Histogram sum should be > 0");
+    assertEquals(histogramPointData.getAttributes(), expectedAttributes, "Histogram attributes should match");
+  }
+
   public static void validateHistogramPointData(
       InMemoryMetricReader inMemoryMetricReader,
       double expectedMin,
@@ -340,5 +385,73 @@ public abstract class OpenTelemetryDataTestUtils {
     assertNotNull(longPointData, "LongPointData for observable counter should not be null");
     assertEquals(longPointData.getValue(), expectedValue, "Observable counter value should be " + expectedValue);
     assertEquals(longPointData.getAttributes(), expectedAttributes, "Observable counter attributes should match");
+  }
+
+  /**
+   * Validate that at least one Sum (counter) data point exists with value >= minValue,
+   * across all attribute combinations. Use this in integration tests where the exact
+   * attributes are non-deterministic (e.g., replica type depends on leader election).
+   *
+   * <p>Note: When validating multiple metrics, prefer collecting once via
+   * {@code reader.collectAllMetrics()} and calling the {@code Collection<MetricData>}
+   * overload to avoid draining async counter adders between calls.
+   */
+  public static void validateAnySumDataPointAtLeast(
+      InMemoryMetricReader inMemoryMetricReader,
+      long minValue,
+      String metricName,
+      String metricPrefix) {
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    validateAnySumDataPointAtLeast(metricsData, minValue, metricName, metricPrefix);
+  }
+
+  public static void validateAnySumDataPointAtLeast(
+      Collection<MetricData> metricsData,
+      long minValue,
+      String metricName,
+      String metricPrefix) {
+    assertFalse(metricsData.isEmpty());
+
+    String fullMetricName = DEFAULT_METRIC_PREFIX + metricPrefix + "." + metricName;
+    MetricData data =
+        metricsData.stream().filter(metricData -> metricData.getName().equals(fullMetricName)).findFirst().orElse(null);
+    assertNotNull(data, "MetricData for " + fullMetricName + " should not be null");
+
+    boolean found = data.getLongSumData().getPoints().stream().anyMatch(p -> p.getValue() >= minValue);
+    assertTrue(found, fullMetricName + " should have at least one data point with value >= " + minValue);
+  }
+
+  /**
+   * Validate that at least one Gauge data point exists with value >= minValue,
+   * across all attribute combinations. Use this in integration tests where the exact
+   * attributes are non-deterministic.
+   *
+   * <p>Note: When validating multiple metrics, prefer collecting once via
+   * {@code reader.collectAllMetrics()} and calling the {@code Collection<MetricData>}
+   * overload to avoid draining async counter adders between calls.
+   */
+  public static void validateAnyGaugeDataPointAtLeast(
+      InMemoryMetricReader inMemoryMetricReader,
+      long minValue,
+      String metricName,
+      String metricPrefix) {
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    validateAnyGaugeDataPointAtLeast(metricsData, minValue, metricName, metricPrefix);
+  }
+
+  public static void validateAnyGaugeDataPointAtLeast(
+      Collection<MetricData> metricsData,
+      long minValue,
+      String metricName,
+      String metricPrefix) {
+    assertFalse(metricsData.isEmpty());
+
+    String fullMetricName = DEFAULT_METRIC_PREFIX + metricPrefix + "." + metricName;
+    MetricData data =
+        metricsData.stream().filter(metricData -> metricData.getName().equals(fullMetricName)).findFirst().orElse(null);
+    assertNotNull(data, "MetricData for " + fullMetricName + " should not be null");
+
+    boolean found = data.getLongGaugeData().getPoints().stream().anyMatch(p -> p.getValue() >= minValue);
+    assertTrue(found, fullMetricName + " should have at least one data point with value >= " + minValue);
   }
 }

@@ -15,6 +15,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import java.util.Queue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -310,9 +311,7 @@ public class AdminExecutionTaskTest {
 
     adminOperation.payloadUnion = storeCreation;
 
-    PubSubPosition position = mock(PubSubPosition.class);
-    when(position.getNumericOffset()).thenReturn(1L);
-
+    PubSubPosition position = InMemoryPubSubPosition.of(1L);
     AdminOperationWrapper wrapper = new AdminOperationWrapper(
         adminOperation,
         position,

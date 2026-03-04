@@ -267,7 +267,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       }
     };
     try (Timer t = Timer.run(setupTimeLogging)) {
-      ingestionBackend.startConsumption(storeAndServerConfigs, partition, Optional.empty());
+      ingestionBackend.startConsumption(storeAndServerConfigs, partition, Optional.empty(), storePartitionDescription);
     }
   }
 
@@ -281,7 +281,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     CompletableFuture<Void> dropPartitionFuture = ingestionBackend.dropStoragePartitionGracefully(
         storeAndServerConfigs,
         partition,
-        getStoreAndServerConfigs().getStopConsumptionTimeoutInSeconds());
+        getStoreAndServerConfigs().getStopConsumptionTimeoutInSeconds(),
+        storePartitionDescription);
     removeCustomizedState();
     return dropPartitionFuture;
   }
@@ -383,7 +384,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   }
 
   protected void stopConsumption(boolean dropCVState) {
-    CompletableFuture<Void> future = ingestionBackend.stopConsumption(storeAndServerConfigs, partition);
+    CompletableFuture<Void> future =
+        ingestionBackend.stopConsumption(storeAndServerConfigs, partition, storePartitionDescription);
     if (dropCVState) {
       future.whenComplete((ignored, throwable) -> {
         if (throwable != null) {

@@ -24,6 +24,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.AssertJUnit.assertTrue;
 
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
@@ -34,6 +35,7 @@ import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.HashMap;
 import java.util.Map;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -235,5 +237,39 @@ public class BasicConsumerStatsTest {
             responseStatusCategory.getDimensionValue());
 
     return builder.build();
+  }
+
+  @Test
+  public void testBasicConsumerTehutiMetricNameEnum() {
+    Map<BasicConsumerStats.BasicConsumerTehutiMetricName, String> expectedNames = new HashMap<>();
+    expectedNames.put(BasicConsumerStats.BasicConsumerTehutiMetricName.MAX_PARTITION_LAG, "max_partition_lag");
+    expectedNames.put(BasicConsumerStats.BasicConsumerTehutiMetricName.RECORDS_CONSUMED, "records_consumed");
+    expectedNames
+        .put(BasicConsumerStats.BasicConsumerTehutiMetricName.MINIMUM_CONSUMING_VERSION, "minimum_consuming_version");
+    expectedNames
+        .put(BasicConsumerStats.BasicConsumerTehutiMetricName.MAXIMUM_CONSUMING_VERSION, "maximum_consuming_version");
+    expectedNames.put(BasicConsumerStats.BasicConsumerTehutiMetricName.POLL_SUCCESS_COUNT, "poll_success_count");
+    expectedNames.put(BasicConsumerStats.BasicConsumerTehutiMetricName.POLL_FAIL_COUNT, "poll_fail_count");
+    expectedNames
+        .put(BasicConsumerStats.BasicConsumerTehutiMetricName.VERSION_SWAP_SUCCESS_COUNT, "version_swap_success_count");
+    expectedNames
+        .put(BasicConsumerStats.BasicConsumerTehutiMetricName.VERSION_SWAP_FAIL_COUNT, "version_swap_fail_count");
+    expectedNames.put(
+        BasicConsumerStats.BasicConsumerTehutiMetricName.CHUNKED_RECORD_SUCCESS_COUNT,
+        "chunked_record_success_count");
+    expectedNames
+        .put(BasicConsumerStats.BasicConsumerTehutiMetricName.CHUNKED_RECORD_FAIL_COUNT, "chunked_record_fail_count");
+
+    assertEquals(
+        BasicConsumerStats.BasicConsumerTehutiMetricName.values().length,
+        expectedNames.size(),
+        "New BasicConsumerTehutiMetricName values were added but not included in this test");
+
+    for (BasicConsumerStats.BasicConsumerTehutiMetricName enumValue: BasicConsumerStats.BasicConsumerTehutiMetricName
+        .values()) {
+      String expectedName = expectedNames.get(enumValue);
+      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
+      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
+    }
   }
 }

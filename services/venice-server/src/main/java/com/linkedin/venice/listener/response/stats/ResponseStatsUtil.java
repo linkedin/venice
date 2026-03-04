@@ -1,6 +1,9 @@
 package com.linkedin.venice.listener.response.stats;
 
 import com.linkedin.venice.stats.ServerHttpRequestStats;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
+import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.DoubleAndBooleanConsumer;
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.function.DoubleConsumer;
@@ -8,9 +11,18 @@ import java.util.function.IntConsumer;
 
 
 public class ResponseStatsUtil {
-  public static void recordKeyValueSizes(ServerHttpRequestStats stats, IntList keySizes, IntList valueSizes) {
+  public static void recordKeyValueSizes(
+      ServerHttpRequestStats stats,
+      IntList keySizes,
+      IntList valueSizes,
+      HttpResponseStatusEnum statusEnum,
+      HttpResponseStatusCodeCategory statusCategory,
+      VeniceResponseStatusCategory veniceCategory) {
     for (int i = 0; i < valueSizes.size(); i++) {
-      consumeIntIfAbove(stats::recordValueSizeInByte, valueSizes.getInt(i), 0);
+      int valueSize = valueSizes.getInt(i);
+      if (valueSize > 0) {
+        stats.recordValueSizeInByte(statusEnum, statusCategory, veniceCategory, valueSize);
+      }
     }
     for (int i = 0; i < keySizes.size(); i++) {
       stats.recordKeySizeInByte(keySizes.getInt(i));

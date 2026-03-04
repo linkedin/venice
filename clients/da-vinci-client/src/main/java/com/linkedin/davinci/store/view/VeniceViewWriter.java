@@ -11,14 +11,12 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.VeniceView;
-import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -35,24 +33,16 @@ import org.apache.avro.generic.GenericRecord;
  */
 public abstract class VeniceViewWriter extends VeniceView {
   public enum ViewWriterType {
-    MATERIALIZED_VIEW, CHANGE_CAPTURE_VIEW
+    MATERIALIZED_VIEW
   }
 
   protected final Version version;
-  protected final int versionNumber;
   protected Optional<Boolean> isNearlineProducerCompressionEnabled = Optional.empty();
   protected Optional<Integer> nearlineProducerCountPerWriter = Optional.empty();
-  protected final VeniceWriterFactory veniceWriterFactory;
 
-  public VeniceViewWriter(
-      VeniceConfigLoader props,
-      Version version,
-      Schema keySchema,
-      Map<String, String> extraViewParameters,
-      VeniceWriterFactory veniceWriterFactory) {
+  public VeniceViewWriter(VeniceConfigLoader props, Version version, Map<String, String> extraViewParameters) {
     super(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
     this.version = version;
-    this.versionNumber = version.getNumber();
     if (extraViewParameters.containsKey(NEARLINE_PRODUCER_COMPRESSION_ENABLED)) {
       isNearlineProducerCompressionEnabled =
           Optional.of(Boolean.valueOf(extraViewParameters.get(NEARLINE_PRODUCER_COMPRESSION_ENABLED)));
@@ -61,7 +51,6 @@ public abstract class VeniceViewWriter extends VeniceView {
       nearlineProducerCountPerWriter =
           Optional.of(Integer.valueOf(extraViewParameters.get(NEARLINE_PRODUCER_COUNT_PER_WRITER)));
     }
-    this.veniceWriterFactory = veniceWriterFactory;
   }
 
   /**

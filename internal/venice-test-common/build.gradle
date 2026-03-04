@@ -145,8 +145,8 @@ def integrationTestConfigs = {
 
 def integrationTestBuckets = [
     "1": [
-        "com.linkedin.venice.endToEnd.PartialUpdateWithHeartbeatReadyToServeCheckTest",
         "com.linkedin.venice.endToEnd.TestIncrementalPush",
+        "com.linkedin.venice.consumer.TestStatelessChangelogConsumerWithCompression",
         "com.linkedin.venice.endToEnd.DaVinciClientIsolatedAndHybridStoreTest"
     ],
     "2": [
@@ -154,7 +154,10 @@ def integrationTestBuckets = [
         "com.linkedin.venice.endToEnd.TestRepush"
     ],
     "3": [
-        "com.linkedin.venice.consumer.StatefulVeniceChangelogConsumerTest"
+        "com.linkedin.venice.consumer.StatefulVeniceChangelogConsumerTest",
+        "com.linkedin.venice.endToEnd.TestActiveActiveVersionSwapMessage",
+        "com.linkedin.venice.endToEnd.OnlineVeniceProducerOrderingIntegrationTest",
+        "com.linkedin.venice.endToEnd.PartialUpdateAAMetadataTest"
     ],
     "4": [
         "com.linkedin.venice.endToEnd.TestDeferredVersionSwap",
@@ -174,6 +177,7 @@ def integrationTestBuckets = [
     ],
     "7": [
         "com.linkedin.venice.consumer.TestChangelogConsumerWithParallelProcessing",
+        "com.linkedin.venice.endToEnd.TestActiveActiveIngestionWithCrossTpParallelProcessing",
         "com.linkedin.venice.kafka.KafkaConsumptionTest"
     ],
     "8": [
@@ -331,7 +335,6 @@ def integrationTestBuckets = [
         "com.linkedin.venice.controller.server.TestBackupControllerResponse",
         "com.linkedin.venice.endToEnd.TestSuperSetSchemaRegistration",
         "com.linkedin.venice.endToEnd.TestServerStorePropertiesEndpoint",
-        "com.linkedin.davinci.ingestion.IsolatedIngestionServerTest",
         "com.linkedin.venice.controller.TestHolisticSeverHealthCheck",
         "com.linkedin.venice.consumer.ConsumerIntegrationTestWithProtocolHeader",
         "com.linkedin.venice.controller.TestStartMultiControllers",
@@ -399,7 +402,12 @@ def integrationTestBuckets = [
         "com.linkedin.venice.fastclient.FastClientIndividualFeatureConfigurationTest",
         "com.linkedin.venice.fastclient.FastClientDaVinciClientCompatTest",
         "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest",
-        "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest"
+        "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest",
+        "com.linkedin.venice.endToEnd.DaVinciClientP2PBlobTransferTest2"
+    ],
+    "23": [
+        "com.linkedin.venice.router.TestReadPathChaos",
+        "com.linkedin.venice.endToEnd.PartialUpdateNonAATest"
     ],
 ]
 

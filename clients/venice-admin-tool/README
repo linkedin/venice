@@ -473,7 +473,7 @@ usage: Parameters:
  -su,--server-url <arg>                                          Venice server url, eg. http://localhost:1690  This has to be a storage node
  -svc,--storage-view-configs <arg>                               Config that describes views to be added for a store.  Input is a json map.
                                                                  Example: {"ExampleView": {"viewClassName":
-                                                                 "com.linkedin.venice.views.ChangeCaptureView","params": {}}}
+                                                                 "com.linkedin.venice.views.MaterializedView","params": {}}}
  -u,--url <arg>                                                  Venice url, eg. http://localhost:1689  This can be a router or a controller
  -usde,--enable-unused-schema-deletion <arg>                     Enable unused schema deletion
  -v,--version <arg>                                              Active store version number

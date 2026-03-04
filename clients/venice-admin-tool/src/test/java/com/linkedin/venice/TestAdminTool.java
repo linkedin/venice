@@ -49,7 +49,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.views.MaterializedView;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -493,7 +493,7 @@ public class TestAdminTool {
 
     // Case 1: Happy path to setup a view.
     String[] args = { "--configure-store-view", "--url", "http://localhost:7036", "--cluster", "test-cluster",
-        "--store", "testStore", "--view-name", "testView", "--view-class", ChangeCaptureView.class.getCanonicalName(),
+        "--store", "testStore", "--view-name", "testView", "--view-class", MaterializedView.class.getCanonicalName(),
         "--view-params", "{\"" + K1 + "\":\"" + V1 + "\",\"" + K2 + "\":\"" + V2 + "\"}" };
 
     CommandLine commandLine = AdminTool.getCommandLine(args);
@@ -501,7 +501,7 @@ public class TestAdminTool {
     Assert.assertTrue(params.getViewName().isPresent());
     assertEquals(params.getViewName().get(), "testView");
     Assert.assertTrue(params.getViewClassName().isPresent());
-    assertEquals(params.getViewClassName().get(), ChangeCaptureView.class.getCanonicalName());
+    assertEquals(params.getViewClassName().get(), MaterializedView.class.getCanonicalName());
 
     Optional<Map<String, String>> viewParams = params.getViewClassParams();
     Assert.assertTrue(viewParams.isPresent());

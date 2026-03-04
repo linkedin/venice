@@ -253,9 +253,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
       this.protocolVersionAutoDetectionService = new ProtocolVersionAutoDetectionService(
           clusterName,
           admin,
-          new ProtocolVersionAutoDetectionStats(
-              metricsRepository,
-              "admin_operation_protocol_version_auto_detection_service_" + clusterName),
+          new ProtocolVersionAutoDetectionStats(metricsRepository, clusterName),
           config.getProtocolVersionAutoDetectionSleepMS());
     } else {
       this.protocolVersionAutoDetectionService = null;
@@ -269,7 +267,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
       this.logCompactionService = null;
     }
 
-    veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
+    veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-", clusterName);
     this.storagePersonaRepository =
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
     /**

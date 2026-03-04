@@ -380,18 +380,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
    */
   public enum BasicClientTehutiMetricName implements TehutiMetricNameEnum {
     HEALTHY_REQUEST, UNHEALTHY_REQUEST, HEALTHY_REQUEST_LATENCY, UNHEALTHY_REQUEST_LATENCY, REQUEST_KEY_COUNT,
-    SUCCESS_REQUEST_KEY_COUNT;
-
-    private final String metricName;
-
-    BasicClientTehutiMetricName() {
-      this.metricName = name().toLowerCase();
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    SUCCESS_REQUEST_KEY_COUNT
   }
 
   public enum BasicClientMetricEntity implements ModuleMetricEntityInterface {

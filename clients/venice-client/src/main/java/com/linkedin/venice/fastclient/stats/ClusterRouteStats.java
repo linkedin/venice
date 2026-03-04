@@ -309,17 +309,6 @@ public class ClusterRouteStats {
   public enum RouteTehutiMetricName implements TehutiMetricNameEnum {
     HEALTHY_REQUEST_COUNT, QUOTA_EXCEEDED_REQUEST_COUNT, INTERNAL_SERVER_ERROR_REQUEST_COUNT, LEAKED_REQUEST_COUNT,
     SERVICE_UNAVAILABLE_REQUEST_COUNT, OTHER_ERROR_REQUEST_COUNT, RESPONSE_WAITING_TIME, PENDING_REQUEST_COUNT,
-    REJECTION_RATIO;
-
-    private final String metricName;
-
-    RouteTehutiMetricName() {
-      this.metricName = name().toLowerCase();
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    REJECTION_RATIO
   }
 }

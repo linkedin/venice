@@ -11,12 +11,15 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.protocols.controller.ClusterStoreGrpcInfo;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.CreateStoreGrpcResponse;
@@ -30,9 +33,12 @@ import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -359,6 +365,118 @@ public class StoreRequestHandlerTest {
     ListStoresGrpcResponse response = storeRequestHandler.listStores(request);
 
     assertEquals(response.getStoreNamesCount(), 0);
+  }
+
+  @DataProvider(name = "storeStatusMaps")
+  public Object[][] storeStatusMaps() {
+    Map<String, String> populatedMap = new HashMap<>();
+    populatedMap.put("store1", "ONLINE");
+    populatedMap.put("store2", "DEGRADED");
+    populatedMap.put("store3", "UNAVAILABLE");
+    return new Object[][] { { populatedMap }, { Collections.emptyMap() } };
+  }
+
+  @Test(dataProvider = "storeStatusMaps")
+  public void testGetStoreStatuses(Map<String, String> expectedStatusMap) {
+    when(admin.getAllStoreStatuses("testCluster")).thenReturn(expectedStatusMap);
+
+    Map<String, String> response = storeRequestHandler.getStoreStatuses("testCluster");
+
+    verify(admin, times(1)).getAllStoreStatuses("testCluster");
+    assertEquals(response, expectedStatusMap);
+  }
+
+  @DataProvider(name = "blankClusterNames")
+  public Object[][] blankClusterNames() {
+    return new Object[][] { { null }, { "" } };
+  }
+
+  @Test(dataProvider = "blankClusterNames", expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cluster name is required")
+  public void testGetStoreStatusesWithBlankClusterName(String clusterName) {
+    storeRequestHandler.getStoreStatuses(clusterName);
+  }
+
+  @Test
+  public void testGetRepushInfoSuccess() {
+    String clusterName = "testCluster";
+    String storeName = "testStore";
+    Optional<String> fabric = Optional.of("testFabric");
+
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getNumber()).thenReturn(1);
+    when(mockVersion.getCreatedTime()).thenReturn(123456789L);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.ONLINE);
+    when(mockVersion.getPushJobId()).thenReturn("test-push-job-123");
+    when(mockVersion.getPartitionCount()).thenReturn(10);
+    when(mockVersion.getReplicationFactor()).thenReturn(3);
+
+    RepushInfo mockRepushInfo =
+        RepushInfo.createRepushInfo(mockVersion, "kafka.broker.url:9092", "testD2Service", "testZkHost");
+
+    when(admin.getRepushInfo(clusterName, storeName, fabric)).thenReturn(mockRepushInfo);
+
+    RepushInfo response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
+
+    verify(admin, times(1)).getRepushInfo(clusterName, storeName, fabric);
+    assertEquals(response.getKafkaBrokerUrl(), "kafka.broker.url:9092");
+    assertEquals(response.getVersion().getNumber(), 1);
+    assertEquals(response.getVersion().getCreatedTime(), 123456789L);
+    assertEquals(response.getVersion().getStatus(), VersionStatus.ONLINE);
+    assertEquals(response.getVersion().getPushJobId(), "test-push-job-123");
+    assertEquals(response.getVersion().getPartitionCount(), 10);
+    assertEquals(response.getVersion().getReplicationFactor(), 3);
+    assertEquals(response.getSystemSchemaClusterD2ServiceName(), "testD2Service");
+    assertEquals(response.getSystemSchemaClusterD2ZkHost(), "testZkHost");
+  }
+
+  @Test
+  public void testGetRepushInfoWithoutFabric() {
+    String clusterName = "testCluster";
+    String storeName = "testStore";
+    Optional<String> fabric = Optional.empty();
+
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getNumber()).thenReturn(2);
+    when(mockVersion.getCreatedTime()).thenReturn(987654321L);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.PUSHED);
+    when(mockVersion.getPushJobId()).thenReturn("test-push-job-456");
+    when(mockVersion.getPartitionCount()).thenReturn(5);
+    when(mockVersion.getReplicationFactor()).thenReturn(2);
+
+    RepushInfo mockRepushInfo =
+        RepushInfo.createRepushInfo(mockVersion, "another.kafka.broker:9092", "anotherD2Service", "anotherZkHost");
+
+    when(admin.getRepushInfo(clusterName, storeName, fabric)).thenReturn(mockRepushInfo);
+
+    RepushInfo response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
+
+    verify(admin, times(1)).getRepushInfo(clusterName, storeName, fabric);
+    assertEquals(response.getKafkaBrokerUrl(), "another.kafka.broker:9092");
+    assertEquals(response.getVersion().getNumber(), 2);
+  }
+
+  @Test
+  public void testGetRepushInfoWithNullVersion() {
+    String clusterName = "testCluster";
+    String storeName = "testStore";
+    Optional<String> fabric = Optional.empty();
+
+    RepushInfo mockRepushInfo = RepushInfo.createRepushInfo(null, "kafka.broker:9092", null, null);
+
+    when(admin.getRepushInfo(clusterName, storeName, fabric)).thenReturn(mockRepushInfo);
+
+    RepushInfo response = storeRequestHandler.getRepushInfo(clusterName, storeName, fabric);
+
+    assertEquals(response.getKafkaBrokerUrl(), "kafka.broker:9092");
+    assertTrue(response.getVersion() == null);
+    assertTrue(response.getSystemSchemaClusterD2ServiceName() == null);
+    assertTrue(response.getSystemSchemaClusterD2ZkHost() == null);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Repush info not available.*")
+  public void testGetRepushInfoReturnsNullThrowsException() {
+    when(admin.getRepushInfo("testCluster", "testStore", Optional.empty())).thenReturn(null);
+    storeRequestHandler.getRepushInfo("testCluster", "testStore", Optional.empty());
   }
 
   @Test

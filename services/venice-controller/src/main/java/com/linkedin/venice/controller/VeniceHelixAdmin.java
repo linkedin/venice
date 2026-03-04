@@ -72,7 +72,9 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.logcompaction.RepushCandidateFilter;
+import com.linkedin.venice.controller.logcompaction.RepushCandidateTrigger;
 import com.linkedin.venice.controller.logcompaction.StoreRepushCandidateFilter;
+import com.linkedin.venice.controller.logcompaction.VersionStalenessTrigger;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
@@ -156,6 +158,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RegionPushDetails;
@@ -491,6 +494,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
   private final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
+  private final Optional<ExternalETLService> externalETLService;
 
   // Test only.
   public VeniceHelixAdmin(
@@ -500,7 +504,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubTopicRepository pubSubTopicRepository,
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
-      Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener) {
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<ExternalETLService> externalETLService) {
     this(
         multiClusterConfigs,
         metricsRepository,
@@ -515,7 +520,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pubSubClientsFactory,
         pubSubPositionTypeRegistry,
         Collections.EMPTY_LIST,
-        versionLifecycleEventListener);
+        versionLifecycleEventListeners,
+        externalETLService);
   }
 
   // TODO Use different configs for different clusters when creating helix admin.
@@ -533,7 +539,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines,
-      Optional<VeniceVersionLifecycleEventListener> versionLifecycleEventListener) {
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<ExternalETLService> externalETLService) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
     this.logContext = multiClusterConfigs.getLogContext();
@@ -803,7 +810,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         realTimeTopicSwitcher,
         accessController,
         helixAdminClient,
-        versionLifecycleEventListener);
+        versionLifecycleEventListeners);
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
       if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
@@ -832,7 +839,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
               helixAdminClient
                   .enablePartition(true, clusterName, instance.getNodeId(), entry.getKey(), entry.getValue());
-              disabledPartitionStats.recordClearDisabledPartition(entry.getValue().size());
+              disabledPartitionStats.recordClearDisabledPartition(
+                  entry.getValue().size(),
+                  Version.parseStoreFromKafkaTopicName(entry.getKey()));
               LOGGER.info("Enabled disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
             }
           }
@@ -867,11 +876,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               e);
         }
 
-        // Add candidate filters for compaction manager
+        // Add candidate filters and triggers for compaction manager
         Set<RepushCandidateFilter> candidateFilters =
             getRepushCandidateFiltersFromControllerConfig(multiClusterConfigs);
+        Set<RepushCandidateTrigger> candidateTriggers =
+            getRepushCandidateTriggersFromControllerConfig(multiClusterConfigs);
 
-        this.compactionManager = new CompactionManager(repushOrchestrator, candidateFilters, logCompactionStatsMap);
+        this.compactionManager =
+            new CompactionManager(repushOrchestrator, candidateFilters, candidateTriggers, logCompactionStatsMap);
       }
     }
 
@@ -879,18 +891,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
 
     pushJobUserErrorCheckpoints = commonConfig.getPushJobUserErrorCheckpoints();
+    this.externalETLService = externalETLService;
   }
 
   private Set<RepushCandidateFilter> getRepushCandidateFiltersFromControllerConfig(
       VeniceControllerMultiClusterConfig multiClusterConfigs) {
 
-    // Add candidate filters for compaction manager
     Set<RepushCandidateFilter> candidateFilters = new HashSet<>();
 
-    // Default filter
+    // Default prerequisite filter
     candidateFilters.add(new StoreRepushCandidateFilter(multiClusterConfigs));
 
-    // Additional filters from config
+    // Additional prerequisite filters from config
     for (String candidateFilterClassName: multiClusterConfigs.getRepushCandidateFilterClassNames()) {
       try {
         Class<? extends RepushCandidateFilter> candidateFilterClass = ReflectUtils.loadClass(candidateFilterClassName);
@@ -910,6 +922,37 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     return candidateFilters;
+  }
+
+  private Set<RepushCandidateTrigger> getRepushCandidateTriggersFromControllerConfig(
+      VeniceControllerMultiClusterConfig multiClusterConfigs) {
+
+    Set<RepushCandidateTrigger> candidateTriggers = new HashSet<>();
+
+    // Default trigger: version staleness
+    candidateTriggers.add(new VersionStalenessTrigger(multiClusterConfigs));
+
+    // Additional triggers from config
+    for (String candidateTriggerClassName: multiClusterConfigs.getRepushCandidateTriggerClassNames()) {
+      try {
+        Class<? extends RepushCandidateTrigger> candidateTriggerClass =
+            ReflectUtils.loadClass(candidateTriggerClassName);
+
+        RepushCandidateTrigger candidateTrigger = ReflectUtils.callConstructor(
+            candidateTriggerClass,
+            new Class[] { VeniceControllerMultiClusterConfig.class },
+            new Object[] { multiClusterConfigs });
+
+        candidateTriggers.add(candidateTrigger);
+        LOGGER.info("Successfully loaded repush candidate trigger class: {}", candidateTriggerClassName);
+      } catch (Exception e) {
+        throw new VeniceException(
+            "Failed to load repush candidate trigger class through reflect: " + candidateTriggerClassName,
+            e);
+      }
+    }
+
+    return candidateTriggers;
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
@@ -1538,25 +1581,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (isPushJobFailedDueToUserError(overallStatus, pushJobDetailsValue, pushJobUserErrorCheckpoints)) {
             logMessage.append(" due to user error");
             if (isIncrementalPush) {
-              pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor();
+              pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor(storeName.toString());
             } else {
-              pushJobStatusStats.recordBatchPushFailureDueToUserErrorSensor();
+              pushJobStatusStats.recordBatchPushFailureDueToUserErrorSensor(storeName.toString());
             }
           } else {
             logMessage.append(" due to non-user error");
             if (isIncrementalPush) {
-              pushJobStatusStats.recordIncrementalPushFailureNotDueToUserErrorSensor();
+              pushJobStatusStats.recordIncrementalPushFailureNotDueToUserErrorSensor(storeName.toString());
             } else {
-              pushJobStatusStats.recordBatchPushFailureNotDueToUserErrorSensor();
+              pushJobStatusStats.recordBatchPushFailureNotDueToUserErrorSensor(storeName.toString());
             }
           }
         } else if (PushJobDetailsStatus.isSucceeded(overallStatus)) {
           logMessage.append(" succeeded with status: ").append(overallStatus);
           // Emit metrics for successful push jobs
           if (isIncrementalPush) {
-            pushJobStatusStats.recordIncrementalPushSuccessSensor();
+            pushJobStatusStats.recordIncrementalPushSuccessSensor(storeName.toString());
           } else {
-            pushJobStatusStats.recordBatchPushSuccessSensor();
+            pushJobStatusStats.recordBatchPushSuccessSensor(storeName.toString());
           }
 
           // Scheduled log compaction metric
@@ -2962,6 +3005,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .getTopic(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
       topicNamesToCreate.add(streamReprocessingTopic);
     }
+    boolean useAltBackend = clusterConfig.shouldUseAlternativePubSubBackend(version.getStoreName(), false);
     topicNamesToCreate.forEach(
         topicNameToCreate -> topicManager.createTopic(
             topicNameToCreate,
@@ -2970,7 +3014,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             true,
             false,
             clusterConfig.getMinInSyncReplicas(),
-            useFastKafkaOperationTimeout));
+            useFastKafkaOperationTimeout,
+            useAltBackend));
   }
 
   private Pair<Boolean, Version> addVersion(
@@ -3380,14 +3425,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           resources.getVeniceVersionLifecycleEventManager()
               .notifyVersionCreated(store, version, !sourceVersion.isPresent());
 
-          // Check the push job id to self-manage the ttlRepushEnabled store property.
-          if (Version.isPushIdTTLRePush(pushJobId) && !store.isTTLRepushEnabled()) {
-            store.setTTLRepushEnabled(true);
-            repository.updateStore(store);
-          } else if (Version.isPushIdRegularPushWithTTLRePush(pushJobId) && store.isTTLRepushEnabled()) {
-            store.setTTLRepushEnabled(false);
-            repository.updateStore(store);
-          }
+          updateStoreTTLRepushFlag(pushJobId, store, repository);
           if (startIngestion) {
             // We need to prepare to monitor before creating helix resource.
             startMonitorOfflinePush(
@@ -3584,7 +3622,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           false,
           // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
           clusterConfig.getMinInSyncReplicasRealTimeTopics(),
-          false);
+          false,
+          clusterConfig.shouldUseAlternativePubSubBackend(store.getName(), true));
     }
     LOGGER.info(
         "Completed setup for real-time topic: {} for store: {} with reference hybrid version: {} and partition count: {}",
@@ -4031,7 +4070,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeName,
         clusterName,
         topic);
-    getHelixVeniceClusterResources(clusterName).getVeniceAdminStats().recordUnexpectedTopicAbsenceCount();
+    getHelixVeniceClusterResources(clusterName).getVeniceAdminStats().recordUnexpectedTopicAbsenceCount(pushType);
     throw new VeniceException(
         pushType + " push writes cannot be accepted on store: " + storeName + " in cluster: " + clusterName
             + " because the topic: " + topic + " is either absent or being truncated");
@@ -4142,6 +4181,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public RepushInfo getRepushInfo(String clusterName, String storeName, Optional<String> fabricName) {
     Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName);
+    }
     boolean isSSL = isSSLEnabledForPush(clusterName, storeName);
     String systemSchemaClusterName = multiClusterConfigs.getSystemSchemaClusterName();
     VeniceControllerClusterConfig systemSchemaClusterConfig =
@@ -5860,6 +5902,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
     Optional<Boolean> blobTransferEnabled = params.getBlobTransferEnabled();
     Optional<String> blobTransferInServerEnabled = params.getBlobTransferInServerEnabled();
+    Optional<String> blobDbEnabled = params.getBlobDbEnabled();
     Optional<Boolean> nearlineProducerCompressionEnabled = params.getNearlineProducerCompressionEnabled();
     Optional<Integer> nearlineProducerCountPerWriter = params.getNearlineProducerCountPerWriter();
     Optional<String> targetSwapRegion = params.getTargetSwapRegion();
@@ -5872,6 +5915,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> keyUrnCompressionEnabled = params.getKeyUrnCompressionEnabled();
     Optional<List<String>> keyUrnFields = params.getKeyUrnFields();
     Optional<Boolean> flinkVeniceViewsEnabled = params.getFlinkVeniceViewsEnabled();
+    Optional<Integer> previousCurrentVersion = params.getPreviousCurrentVersion();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -6101,6 +6145,36 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           store.setEtlStoreConfig(etlStoreConfig);
           return store;
         });
+        if (externalETLService.isPresent() && !isParent() && etlStrategy.isPresent()
+            && etlStrategy.get() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER) {
+          ETLStoreConfig oldETLStoreConfig = originalStore.getEtlStoreConfig();
+          boolean firstTimeEnablingETLWithVeniceTrigger = oldETLStoreConfig == null
+              || oldETLStoreConfig.getETLStrategy() != VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER;
+          boolean isSourceCluster = !originalStore.isMigrating();
+          if (!isSourceCluster) {
+            isSourceCluster = getHelixVeniceClusterResources(clusterName).isSourceCluster(clusterName, storeName);
+          }
+          if (firstTimeEnablingETLWithVeniceTrigger && isSourceCluster) {
+            // This is first time setting ETL strategy to EXTERNAL_WITH_VENICE_TRIGGER, so trigger ETL for all relevant
+            // store versions (current and future).
+            onboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
+          }
+        }
+        if (externalETLService.isPresent() && !isParent() && etlStrategy.isPresent()
+            && etlStrategy.get() == VeniceETLStrategy.EXTERNAL_SERVICE) {
+          ETLStoreConfig oldETLStoreConfig = originalStore.getEtlStoreConfig();
+          boolean firstTimeDisablingETLWithVeniceTrigger = oldETLStoreConfig != null
+              && oldETLStoreConfig.getETLStrategy() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER;
+          boolean isSourceCluster = !originalStore.isMigrating();
+          if (!isSourceCluster) {
+            isSourceCluster = getHelixVeniceClusterResources(clusterName).isSourceCluster(clusterName, storeName);
+          }
+          if (firstTimeDisablingETLWithVeniceTrigger && isSourceCluster) {
+            // This is first time changing ETL strategy from EXTERNAL_WITH_VENICE_TRIGGER to EXTERNAL_SERVICE,
+            // so offboard ETL for all relevant store versions (current and future).
+            offboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
+          }
+        }
       }
       if (backupVersionRetentionMs.isPresent()) {
         setBackupVersionRetentionMs(clusterName, storeName, backupVersionRetentionMs.get());
@@ -6186,6 +6260,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return store;
           }));
 
+      blobDbEnabled.ifPresent(aString -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+        store.setBlobDbEnabled(aString);
+        return store;
+      }));
+
       nearlineProducerCompressionEnabled
           .ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
             store.setNearlineProducerCompressionEnabled(aBoolean);
@@ -6243,6 +6322,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return store;
       }));
 
+      previousCurrentVersion.ifPresent(version -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+        store.setPreviousCurrentVersion(version);
+        return store;
+      }));
+
       LOGGER.info("Finished updating store: {} in cluster: {}", storeName, clusterName);
     } catch (VeniceException e) {
       LOGGER.error(
@@ -6266,6 +6350,78 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           e.getClass().getSimpleName());
       throw e;
+    }
+  }
+
+  private void onboardETLForExistingStoreVersion(Store store) {
+    performETLOperationForStoreVersions(
+        store,
+        "Onboarding",
+        "onboarded",
+        (s, v) -> externalETLService.get().onboardETL(s, v));
+  }
+
+  private void offboardETLForExistingStoreVersion(Store store) {
+    performETLOperationForStoreVersions(
+        store,
+        "Offboarding",
+        "offboarded",
+        (s, v) -> externalETLService.get().offboardETL(s, v));
+  }
+
+  /**
+   * Performs ETL operations (onboarding or offboarding) for relevant store versions.
+   * This includes the current version and the largest in-progress version if it exists.
+   *
+   * @param store the store to perform ETL operations on
+   * @param operationVerb the verb describing the operation in present progressive tense (e.g., "Triggering", "Offboarding")
+   * @param operationPastParticiple the past participle of the operation (e.g., "triggered", "offboarded")
+   * @param etlOperation the ETL operation to perform (e.g., onboardETL or offboardETL)
+   */
+  private void performETLOperationForStoreVersions(
+      Store store,
+      String operationVerb,
+      String operationPastParticiple,
+      java.util.function.BiConsumer<Store, Version> etlOperation) {
+    if (!externalETLService.isPresent()) {
+      // Defensive coding
+      throw new VeniceException("External ETL service is not initialized");
+    }
+    int currentVersion = store.getCurrentVersion();
+    // Find the largest in-progress version greater than current version
+    Version largestInProgressVersion = null;
+    for (Version version: store.getVersions()) {
+      if (version.getNumber() > currentVersion
+          && (version.getStatus() == VersionStatus.STARTED || version.getStatus() == PUSHED)) {
+        if (largestInProgressVersion == null || version.getNumber() > largestInProgressVersion.getNumber()) {
+          largestInProgressVersion = version;
+        }
+      }
+    }
+
+    // Perform ETL operation for current version
+    if (currentVersion > NON_EXISTING_VERSION) {
+      LOGGER.info("{} ETL job for store: {} current version: {}", operationVerb, store.getName(), currentVersion);
+      etlOperation.accept(store, store.getVersion(currentVersion));
+      LOGGER.info(
+          "Successfully {} ETL job for store: {} current version: {}",
+          operationPastParticiple,
+          store.getName(),
+          currentVersion);
+    }
+    // Perform ETL operation for the largest in-progress version if it exists
+    if (largestInProgressVersion != null) {
+      LOGGER.info(
+          "{} ETL job for store: {} future version: {}",
+          operationVerb,
+          store.getName(),
+          largestInProgressVersion.getNumber());
+      etlOperation.accept(store, largestInProgressVersion);
+      LOGGER.info(
+          "Successfully {} ETL job for store: {} future version: {}",
+          operationPastParticiple,
+          store.getName(),
+          largestInProgressVersion.getNumber());
     }
   }
 
@@ -6621,7 +6777,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
         if (enableAll || entry.getKey().equals(kafkaTopic)) {
           // clean up disabled partition map, so that it does not grow indefinitely with dropped resources
-          getDisabledPartitionStats(clusterName).recordClearDisabledPartition(entry.getValue().size());
+          getDisabledPartitionStats(clusterName).recordClearDisabledPartition(
+              entry.getValue().size(),
+              Version.parseStoreFromKafkaTopicName(entry.getKey()));
           getHelixAdminClient()
               .enablePartition(true, clusterName, instance.getNodeId(), entry.getKey(), entry.getValue());
           LOGGER.info("Cleaning up disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
@@ -7122,7 +7280,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Map<String, List<String>> disabledPartitions = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
         for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
           helixAdminClient.enablePartition(true, clusterName, instance, entry.getKey(), entry.getValue());
-          getDisabledPartitionStats(clusterName).recordClearDisabledPartition(entry.getValue().size());
+          getDisabledPartitionStats(clusterName).recordClearDisabledPartition(
+              entry.getValue().size(),
+              Version.parseStoreFromKafkaTopicName(entry.getKey()));
           LOGGER.info(
               "Enabled disabled replica of resource {}, partitions {} in cluster {}",
               entry.getKey(),
@@ -9921,5 +10081,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   AsyncStoreChangeNotifier getStoreChangeNotifier() {
     return asyncStoreChangeNotifier;
+  }
+
+  /**
+   * Self-manages the store's ttlRepushEnabled property based on push job ID prefix.
+   * - TTL repush (venice_ttl_re_push_*) sets the flag to true
+   * - Regular push with TTL repush (venice_regular_push_with_ttl_re_push_*) sets the flag to false
+   * - Other push types (including compliance push) do not affect this flag
+   */
+  static void updateStoreTTLRepushFlag(String pushJobId, Store store, ReadWriteStoreRepository repository) {
+    if (Version.isPushIdTTLRePush(pushJobId) && !store.isTTLRepushEnabled()) {
+      store.setTTLRepushEnabled(true);
+      repository.updateStore(store);
+    } else if (Version.isPushIdRegularPushWithTTLRePush(pushJobId) && store.isTTLRepushEnabled()) {
+      store.setTTLRepushEnabled(false);
+      repository.updateStore(store);
+    }
   }
 }

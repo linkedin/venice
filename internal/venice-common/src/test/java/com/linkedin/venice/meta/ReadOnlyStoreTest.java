@@ -111,9 +111,12 @@ public class ReadOnlyStoreTest {
     assertEquals(storeProperties.getBlobTransferEnabled(), store.isBlobTransferEnabled());
     assertEquals(storeProperties.getBlobTransferInServerEnabled(), store.getBlobTransferInServerEnabled());
     assertEquals(storeProperties.getBlobTransferInServerEnabled(), ActivationState.NOT_SPECIFIED.name());
+    assertEquals(storeProperties.getBlobDbEnabled(), store.getBlobDbEnabled());
+    assertEquals(storeProperties.getBlobDbEnabled(), ActivationState.NOT_SPECIFIED.name());
     assertEquals(storeProperties.getNearlineProducerCompressionEnabled(), store.isNearlineProducerCompressionEnabled());
     assertEquals(storeProperties.getNearlineProducerCountPerWriter(), store.getNearlineProducerCountPerWriter());
     assertEquals(storeProperties.getStoreLifecycleHooks().size(), store.getStoreLifecycleHooks().size());
+    assertEquals(storeProperties.getPreviousCurrentVersion(), store.getPreviousCurrentVersion());
   }
 
   private void assertEqualHybridConfig(StoreHybridConfig actual, HybridStoreConfig expected) {
@@ -185,5 +188,108 @@ public class ReadOnlyStoreTest {
           actualSystemStoreProperties.getLargestUsedVersionNumber(),
           expectedSystemStoreAttributes.getLargestUsedVersionNumber());
     }
+  }
+
+  @Test
+  public void testSetCurrentVersionSetsPreviousCurrentVersionOnNewVersion() {
+    ZKStore store = new ZKStore(
+        "testStore",
+        "testOwner",
+        System.currentTimeMillis(),
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        3);
+
+    // Add versions
+    Version v1 = new VersionImpl("testStore", 1, "push1");
+    Version v2 = new VersionImpl("testStore", 2, "push2");
+    Version v3 = new VersionImpl("testStore", 3, "push3");
+    store.addVersion(v1);
+    store.addVersion(v2);
+    store.addVersion(v3);
+
+    // Initially set current version to 1 without auto-setting previousCurrentVersion
+    store.setCurrentVersionWithoutCheck(1);
+
+    // v1 should have default previousCurrentVersion (-1) since setCurrentVersionWithoutCheck doesn't set it
+    assertEquals(store.getVersion(1).getPreviousCurrentVersion(), -1);
+
+    // Set current version to 2 - v2 should have previousCurrentVersion = 1
+    store.setCurrentVersion(2);
+    assertEquals(store.getVersion(2).getPreviousCurrentVersion(), 1);
+    assertEquals(store.getCurrentVersion(), 2);
+
+    // Set current version to 3 - v3 should have previousCurrentVersion = 2
+    store.setCurrentVersion(3);
+    assertEquals(store.getVersion(3).getPreviousCurrentVersion(), 2);
+    assertEquals(store.getCurrentVersion(), 3);
+
+    // v2's previousCurrentVersion should still be 1 (unchanged)
+    assertEquals(store.getVersion(2).getPreviousCurrentVersion(), 1);
+
+    // v1's previousCurrentVersion should still be -1 (unchanged)
+    assertEquals(store.getVersion(1).getPreviousCurrentVersion(), -1);
+  }
+
+  @Test
+  public void testPreviousCurrentVersionNotSetWhenNoExistingVersion() {
+    ZKStore store = new ZKStore(
+        "testStore",
+        "testOwner",
+        System.currentTimeMillis(),
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        3);
+    Version v1 = new VersionImpl("testStore", 1, "push1");
+    store.addVersion(v1);
+
+    // No current version set initially (NON_EXISTING_VERSION == 0)
+    assertEquals(store.getCurrentVersion(), Store.NON_EXISTING_VERSION);
+
+    // Set current version to 1 - v1 should have default previousCurrentVersion (-1)
+    // because the old current version was NON_EXISTING_VERSION
+    store.setCurrentVersion(1);
+
+    assertEquals(store.getVersion(1).getPreviousCurrentVersion(), -1);
+    assertEquals(store.getCurrentVersion(), 1);
+  }
+
+  @Test
+  public void testSetCurrentVersionWithoutCheckDoesNotSetPreviousCurrentVersion() {
+    ZKStore store = new ZKStore(
+        "testStore",
+        "testOwner",
+        System.currentTimeMillis(),
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        3);
+    Version v1 = new VersionImpl("testStore", 1, "push1");
+    Version v2 = new VersionImpl("testStore", 2, "push2");
+    store.addVersion(v1);
+    store.addVersion(v2);
+
+    // Set current version to 1
+    store.setCurrentVersionWithoutCheck(1);
+
+    // Use setCurrentVersionWithoutCheck - should NOT set previousCurrentVersion
+    store.setCurrentVersionWithoutCheck(2);
+
+    // v2's previousCurrentVersion should still be default (-1)
+    assertEquals(store.getVersion(2).getPreviousCurrentVersion(), -1);
+  }
+
+  @Test
+  public void testCloneVersionCopiesPreviousCurrentVersion() {
+    Version v1 = new VersionImpl("testStore", 1, "push1");
+    v1.setPreviousCurrentVersion(99);
+
+    Version cloned = v1.cloneVersion();
+    assertEquals(cloned.getPreviousCurrentVersion(), 99);
   }
 }

@@ -11,6 +11,7 @@ import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -137,6 +138,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final boolean blobTransferInProgress;
   protected final boolean readWriteLeaderForDefaultCF;
   protected final boolean readWriteLeaderForRMDCF;
+  protected final ActivationState blobDbEnabled;
 
   private final Optional<Statistics> aggStatistics;
   private final RocksDBMemoryStats rocksDBMemoryStats;
@@ -214,6 +216,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.blobTransferInProgress = storagePartitionConfig.isBlobTransferInProgress();
     this.readWriteLeaderForDefaultCF = storagePartitionConfig.isReadWriteLeaderForDefaultCF();
     this.readWriteLeaderForRMDCF = storagePartitionConfig.isReadWriteLeaderForRMDCF();
+    this.blobDbEnabled = storagePartitionConfig.getBlobDbEnabled();
     this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeNameAndVersion, partitionId);
     this.options = options;
     /**
@@ -364,8 +367,21 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
       /**
        * Only enable blob files for block-based format.
+       * Store-level config takes precedence; if not specified, fallback to cluster-level config.
        */
-      if (rocksDBServerConfig.isBlobFilesEnabled()) {
+      boolean enableBlobFiles;
+      switch (storagePartitionConfig.getBlobDbEnabled()) {
+        case ENABLED:
+          enableBlobFiles = true;
+          break;
+        case DISABLED:
+          enableBlobFiles = false;
+          break;
+        default:
+          // NOT_SPECIFIED - use cluster-level config
+          enableBlobFiles = rocksDBServerConfig.isBlobFilesEnabled();
+      }
+      if (enableBlobFiles) {
         options.setEnableBlobFiles(true);
         options.setEnableBlobGarbageCollection(true);
         options.setMinBlobSize(rocksDBServerConfig.getMinBlobSizeInBytes());
@@ -940,6 +956,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
 
     if (blobTransferInProgress != partitionConfig.isBlobTransferInProgress()) {
+      return false;
+    }
+
+    if (blobDbEnabled != partitionConfig.getBlobDbEnabled()) {
       return false;
     }
 

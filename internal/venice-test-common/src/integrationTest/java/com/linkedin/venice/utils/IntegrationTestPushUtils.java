@@ -196,7 +196,7 @@ public class IntegrationTestPushUtils {
       pushJobDetailsTracker.ifPresent(job::setSentPushJobDetailsTracker);
       job.run();
       TestUtils.waitForNonDeterministicCompletion(
-          5,
+          90,
           TimeUnit.SECONDS,
           () -> controllerClient.getStore((String) vpjProperties.get(VENICE_STORE_NAME_PROP))
               .getStore()

@@ -96,8 +96,7 @@ public abstract class VeniceView {
     // So for now, we'll keep this static, but needs a better approach. Perhaps, a config
     // that's passed into the server that lists the types of views supported, and then
     // for each type having an uniformly named static method that doesn't override.
-    return topicName.endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)
-        || topicName.endsWith(MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX);
+    return topicName.endsWith(MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX);
   }
 
   // TODO: see above TODO for isViewtopic function, same applies here.

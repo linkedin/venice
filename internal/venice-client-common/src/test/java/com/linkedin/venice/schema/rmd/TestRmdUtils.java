@@ -9,9 +9,7 @@ import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1;
 import com.linkedin.venice.utils.TestWriteUtils;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -90,51 +88,6 @@ public class TestRmdUtils {
         RmdTimestampType.PER_FIELD_TIMESTAMP.name());
   }
 
-  @Test
-  public void testHasOffsetAdvanced() {
-    List<Long> list1 = new ArrayList<>();
-    list1.add(1L);
-    list1.add(10L);
-
-    List<Long> list2 = new ArrayList<>();
-    list2.add(1L);
-    list2.add(9L);
-
-    List<Long> list3 = new ArrayList<>();
-    list3.add(10L);
-
-    List<Long> list4 = new ArrayList<>();
-    list4.add(-1L);
-
-    Assert.assertFalse(RmdUtils.hasOffsetAdvanced(list1, list2));
-    Assert.assertFalse(RmdUtils.hasOffsetAdvanced(list1, Collections.emptyList()));
-    Assert.assertTrue(RmdUtils.hasOffsetAdvanced(list1, list3));
-    Assert.assertFalse(RmdUtils.hasOffsetAdvanced(list3, list1));
-    Assert.assertTrue(RmdUtils.hasOffsetAdvanced(list2, list1));
-    Assert.assertTrue(RmdUtils.hasOffsetAdvanced(Collections.emptyList(), list2));
-    Assert.assertTrue(RmdUtils.hasOffsetAdvanced(Collections.emptyList(), Collections.emptyList()));
-
-    List<Long> mergedList = RmdUtils.mergeOffsetVectors(list2, list1);
-    Assert.assertEquals(mergedList.get(0), list2.get(0));
-    Assert.assertEquals(mergedList.get(1), list1.get(1));
-
-    mergedList = RmdUtils.mergeOffsetVectors(list2, Collections.EMPTY_LIST);
-    Assert.assertEquals(mergedList.get(0), list2.get(0));
-    Assert.assertEquals(mergedList.get(1), list2.get(1));
-
-    mergedList = RmdUtils.mergeOffsetVectors(Collections.EMPTY_LIST, list2);
-    Assert.assertEquals(mergedList.get(0), list2.get(0));
-    Assert.assertEquals(mergedList.get(1), list2.get(1));
-
-    mergedList = RmdUtils.mergeOffsetVectors(list1, list3);
-    Assert.assertEquals(mergedList.get(0), list3.get(0));
-    Assert.assertEquals(mergedList.get(1), list1.get(1));
-
-    mergedList = RmdUtils.mergeOffsetVectors(list3, list1);
-    Assert.assertEquals(mergedList.get(0), list3.get(0));
-    Assert.assertEquals(mergedList.get(1), list1.get(1));
-  }
-
   @Test(expectedExceptions = IllegalStateException.class)
   public void testGetUnsupportedRmdTimestampType() {
     GenericRecord dummy = new GenericData.Record(rmdSchema);
@@ -151,19 +104,6 @@ public class TestRmdUtils {
     List<Long> perFieldTimeStamp = RmdUtils.extractTimestampFromRmd(rmdRecordWithPerFieldLevelTimeStamp);
     Assert.assertEquals(1, perFieldTimeStamp.size());
     Assert.assertEquals(0, perFieldTimeStamp.get(0).intValue()); // not supported yet so just return 0
-  }
-
-  @Test
-  public void testExtractOffsetVectorSumFromRmd() {
-    Assert.assertEquals(6, RmdUtils.extractOffsetVectorSumFromRmd(rmdRecordWithValueLevelTimeStamp));
-  }
-
-  @Test
-  public void testExtractOffsetVectorFromRmd() {
-    List<Long> vector = RmdUtils.extractOffsetVectorFromRmd(rmdRecordWithValueLevelTimeStamp);
-    Assert.assertEquals(vector, Arrays.asList(1L, 2L, 3L));
-    GenericRecord nullRmdRecord = new GenericData.Record(rmdSchema);
-    Assert.assertEquals(RmdUtils.extractOffsetVectorFromRmd(nullRmdRecord), Collections.emptyList());
   }
 
   @Test

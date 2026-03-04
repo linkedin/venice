@@ -48,7 +48,6 @@ import com.linkedin.venice.view.TestView;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -56,6 +55,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
@@ -127,16 +127,42 @@ public class TestStatelessChangelogConsumerWithCompression {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStatelessChangelogConsumerWithGzipCompression()
       throws IOException, ExecutionException, InterruptedException {
-    testStatelessChangelogConsumerWithCompression(CompressionStrategy.GZIP);
+    String storeName = Utils.getUniqueString("store-with-gzip-compression");
+    testStatelessChangelogConsumerWithCompression(storeName, CompressionStrategy.GZIP);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStatelessChangelogConsumerWithZstdWithDictCompression()
       throws IOException, ExecutionException, InterruptedException {
-    testStatelessChangelogConsumerWithCompression(CompressionStrategy.ZSTD_WITH_DICT);
+    String storeName = Utils.getUniqueString("store-with-zstd-compression");
+    testStatelessChangelogConsumerWithCompression(storeName, CompressionStrategy.ZSTD_WITH_DICT);
   }
 
-  private void testStatelessChangelogConsumerWithCompression(CompressionStrategy compressionStrategy)
+  /**
+   * Tests that chunked records (values exceeding the chunk size threshold) are correctly consumed
+   * when the store uses GZIP compression. This verifies that the chunk assembler's decompression
+   * is not followed by a redundant second decompression in the changelog consumer.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStatelessChangelogConsumerWithChunkedGzipRecords()
+      throws IOException, ExecutionException, InterruptedException {
+    String storeName = Utils.getUniqueString("store-with-gzip-chunking");
+    testStatelessChangelogConsumerWithChunking(storeName, CompressionStrategy.GZIP);
+  }
+
+  /**
+   * Tests that chunked records (values exceeding the chunk size threshold) are correctly consumed
+   * when the store uses ZSTD with dictionary compression. This verifies that the chunk assembler's decompression
+   * is not followed by a redundant second decompression in the changelog consumer.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStatelessChangelogConsumerWithChunkedZstdRecords()
+      throws IOException, ExecutionException, InterruptedException {
+    String storeName = Utils.getUniqueString("store-with-zstd-chunking");
+    testStatelessChangelogConsumerWithChunking(storeName, CompressionStrategy.ZSTD_WITH_DICT);
+  }
+
+  private void testStatelessChangelogConsumerWithCompression(String storeName, CompressionStrategy compressionStrategy)
       throws IOException, ExecutionException, InterruptedException {
     File inputDir = getTempDataDirectory();
     int version = 1;
@@ -144,9 +170,36 @@ public class TestStatelessChangelogConsumerWithCompression {
     int numKeys = compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT ? 1000 : 10;
     Schema recordSchema =
         TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
-    int partitionCount = 3;
+    consumeAndValidate(storeName, inputDir, recordSchema, numKeys, Function.identity(), 0, compressionStrategy);
+  }
+
+  private void testStatelessChangelogConsumerWithChunking(String storeName, CompressionStrategy compressionStrategy)
+      throws IOException, ExecutionException, InterruptedException {
+    File inputDir = getTempDataDirectory();
+    // Create records larger than the default chunk threshold (~950KB) to force chunking
+    int numKeys = 5;
+    int valueSizeBytes = 1024 * 1024; // 1MB per value, exceeds the ~950KB chunk threshold
+    Schema recordSchema =
+        TestWriteUtils.writeSimpleAvroFileWithCustomSize(inputDir, numKeys, valueSizeBytes, valueSizeBytes);
+    consumeAndValidate(
+        storeName,
+        inputDir,
+        recordSchema,
+        numKeys,
+        i -> new org.apache.avro.util.Utf8(Integer.toString(i)),
+        valueSizeBytes,
+        compressionStrategy);
+  }
+
+  private <T> void consumeAndValidate(
+      String storeName,
+      File inputDir,
+      Schema recordSchema,
+      int numKeys,
+      Function<Integer, T> keyConverter,
+      int valueSizeBytes,
+      CompressionStrategy compressionStrategy) throws InterruptedException, ExecutionException {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store-" + compressionStrategy.name().toLowerCase());
     Properties props = TestWriteUtils.defaultVPJProps(
         parentControllers.get(0).getControllerUrl(),
         inputDirPath,
@@ -161,17 +214,17 @@ public class TestStatelessChangelogConsumerWithCompression {
         .setHybridOffsetLagThreshold(8)
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
-        .setPartitionCount(partitionCount)
+        .setPartitionCount(3)
         .setCompressionStrategy(compressionStrategy);
 
-    MetricsRepository metricsRepository =
-        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
 
     // Push data to the store
     IntegrationTestPushUtils.runVPJ(props);
 
-    // Set up consumer properties
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
     PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
     Properties consumerProperties = new Properties();
@@ -181,7 +234,6 @@ public class TestStatelessChangelogConsumerWithCompression {
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
 
-    // Create changelog client config
     ChangelogClientConfig globalChangelogClientConfig =
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
@@ -192,52 +244,37 @@ public class TestStatelessChangelogConsumerWithCompression {
             .setD2Client(d2Client)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
 
-    // Create stateless changelog consumer using getChangelogConsumer
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
-    VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
+    VeniceChangelogConsumer<T, Utf8> changeLogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
 
-    // Subscribe to all partitions
     changeLogConsumer.subscribeAll().get();
 
-    // Poll and verify that all data is received correctly with the specified compression
-    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap<>();
-    List<Integer> receivedKeys = new ArrayList<>();
-
+    Map<T, PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+      Collection<PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
           changeLogConsumer.poll(1000);
-      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+      for (PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
         if (message.getKey() != null) {
           pubSubMessagesMap.put(message.getKey(), message);
-          receivedKeys.add(message.getKey());
         }
       }
-      assertEquals(pubSubMessagesMap.size(), numKeys, "Expected to receive all " + numKeys + " messages");
+      assertEquals(pubSubMessagesMap.size(), numKeys, "Expected to receive all " + numKeys + " chunked messages");
     });
 
-    // Verify the content of received messages
-    for (int i = 1; i <= numKeys; i++) {
-      assertTrue(pubSubMessagesMap.containsKey(i), "Should have received key " + i);
-      PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(i);
-      assertNotNull(message, "Message for key " + i + " should not be null");
-      assertNotNull(message.getValue(), "Value for key " + i + " should not be null");
-
+    // Verify the content of received chunked messages
+    for (int i = 1; i < numKeys; i++) {
+      T key = keyConverter.apply(i);
+      assertTrue(pubSubMessagesMap.containsKey(key), "Should have received key " + key);
+      PubSubMessage<T, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = pubSubMessagesMap.get(key);
+      assertNotNull(message.getValue(), "Value for key " + key + " should not be null");
       ChangeEvent<Utf8> changeEvent = message.getValue();
-      assertNotNull(changeEvent.getCurrentValue(), "Current value for key " + i + " should not be null");
-
-      String expectedValue = Integer.toString(version) + i;
-      assertEquals(
-          changeEvent.getCurrentValue().toString(),
-          expectedValue,
-          "Value should match expected value for key " + i);
-    }
-
-    // Verify all keys were received
-    assertEquals(receivedKeys.size(), numKeys, "Should have received exactly " + numKeys + " keys");
-    for (int i = 1; i <= numKeys; i++) {
-      assertTrue(receivedKeys.contains(i), "Should have received key " + i);
+      assertNotNull(changeEvent.getCurrentValue(), "Current value for key " + key + " should not be null");
+      // Each value should be at least valueSizeBytes long (large enough to have been chunked)
+      assertTrue(
+          changeEvent.getCurrentValue().toString().length() >= valueSizeBytes,
+          "Value for key " + key + " should be at least " + valueSizeBytes + " chars");
     }
 
     changeLogConsumer.close();

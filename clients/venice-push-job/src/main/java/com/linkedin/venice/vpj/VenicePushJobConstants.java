@@ -356,6 +356,15 @@ public final class VenicePushJobConstants {
   public static final String REPUSH_TTL_POLICY = "repush.ttl.policy";
   public static final String REPUSH_TTL_SECONDS = "repush.ttl.seconds";
   public static final String REPUSH_TTL_START_TIMESTAMP = "repush.ttl.start.timestamp";
+
+  /**
+   * Config to indicate this is a compliance push which could be used for a variety of reasons
+   * by the operator like purging or updating a subset/all the data for compliance purposes.
+   * Compliance pushes can be killed by user-initiated pushes, allowing users to preempt
+   * long-running compliance workflows.
+   */
+  public static final String COMPLIANCE_PUSH = "compliance.push";
+
   public static final String RMD_SCHEMA_DIR = "rmd.schema.dir";
   public static final String VALUE_SCHEMA_DIR = "value.schema.dir";
   public static final int NOT_SET = -1;

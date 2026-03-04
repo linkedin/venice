@@ -72,7 +72,58 @@ public enum VeniceMetricsDimensions {
   VENICE_REPLICA_TYPE("venice.replica.type"),
 
   /** {@link ReplicaState} */
-  VENICE_REPLICA_STATE("venice.replica.state");
+  VENICE_REPLICA_STATE("venice.replica.state"),
+
+  /** {@link VeniceDCREvent} */
+  VENICE_DCR_EVENT("venice.dcr.event"),
+
+  /** {@link VeniceRegionLocality} */
+  VENICE_REGION_LOCALITY("venice.region.locality"),
+
+  /** Source region for hybrid region consumption */
+  VENICE_SOURCE_REGION("venice.source.region"),
+
+  /** Destination region for hybrid region consumption */
+  VENICE_DESTINATION_REGION("venice.destination.region"),
+
+  /** {@link VeniceIngestionSourceComponent} source component */
+  VENICE_INGESTION_SOURCE_COMPONENT("venice.ingestion.source.component"),
+
+  /** {@link VeniceIngestionDestinationComponent} destination component */
+  VENICE_INGESTION_DESTINATION_COMPONENT("venice.ingestion.destination.component"),
+
+  /** Venice push job type (e.g. batch, incremental). See Version.PushType */
+  VENICE_PUSH_JOB_TYPE("venice.push_job.type"),
+
+  /** {@link VenicePushJobStatus} */
+  VENICE_PUSH_JOB_STATUS("venice.push_job.status"),
+
+  /** {@link VeniceSystemStoreType} */
+  VENICE_SYSTEM_STORE_TYPE("venice.system_store.type"),
+
+  /** {@link AdminMessageProcessingComponent} */
+  VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT("venice.admin_message.processing.component"),
+
+  /** AdminMessageType */
+  VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type"),
+
+  /** {@link VeniceDCROperation} DCR merge operation type (put, update, delete) */
+  VENICE_DCR_OPERATION("venice.dcr.operation"),
+
+  /** {@link VenicePartialUpdateOperation} Phase of a partial update (write compute) operation: query or update */
+  VENICE_PARTIAL_UPDATE_OPERATION_PHASE("venice.partial_update.operation_phase"),
+
+  /** {@link VeniceRecordType} Record type (data, replication_metadata) */
+  VENICE_RECORD_TYPE("venice.record.type"),
+
+  /** {@link VeniceIngestionFailureReason} Categorized reason for ingestion failure */
+  VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason"),
+
+  /** {@link VeniceChunkingStatus} */
+  VENICE_CHUNKING_STATUS("venice.chunking.status"),
+
+  /** {@link VeniceComputeOperationType} Type of read-compute operation: dot_product, cosine_similarity, etc. */
+  VENICE_READ_COMPUTE_OPERATION_TYPE("venice.read_compute.operation_type");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

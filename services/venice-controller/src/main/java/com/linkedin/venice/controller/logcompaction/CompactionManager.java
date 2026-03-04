@@ -29,14 +29,17 @@ public class CompactionManager {
 
   private final RepushOrchestrator repushOrchestrator;
   private final Set<RepushCandidateFilter> candidateFilters;
+  private final Set<RepushCandidateTrigger> candidateTriggers;
   private final Map<String, LogCompactionStats> statsMap;
 
   public CompactionManager(
       RepushOrchestrator repushOrchestrator,
       Set<RepushCandidateFilter> candidateFilters,
+      Set<RepushCandidateTrigger> candidateTriggers,
       Map<String, LogCompactionStats> statsMap) {
     this.repushOrchestrator = repushOrchestrator;
     this.candidateFilters = candidateFilters;
+    this.candidateTriggers = candidateTriggers;
     this.statsMap = statsMap;
   }
 
@@ -86,10 +89,21 @@ public class CompactionManager {
   //
   public boolean filterStore(StoreInfo storeInfo, String clusterName) {
 
+    // Prerequisite filters (AND logic): all must pass
     for (RepushCandidateFilter candidateFilter: candidateFilters) {
       if (!candidateFilter.apply(clusterName, storeInfo)) {
         return false;
       }
+    }
+
+    // Trigger conditions (OR logic): at least one must pass (if any triggers are configured)
+    if (!candidateTriggers.isEmpty()) {
+      for (RepushCandidateTrigger trigger: candidateTriggers) {
+        if (trigger.apply(clusterName, storeInfo)) {
+          return true;
+        }
+      }
+      return false;
     }
 
     // Schedule for compaction

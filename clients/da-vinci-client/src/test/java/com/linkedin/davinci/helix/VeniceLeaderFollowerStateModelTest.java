@@ -196,12 +196,12 @@ public class VeniceLeaderFollowerStateModelTest extends
     Version version = new VersionImpl("mockStore.getName()", 2, "");
     when(mockStore.getVersion(Mockito.anyInt())).thenReturn(version);
     when(mockStore.getCurrentVersion()).thenReturn(2);
-    when(mockIngestionBackend.stopConsumption(any(VeniceStoreVersionConfig.class), eq(testPartition)))
+    when(mockIngestionBackend.stopConsumption(any(VeniceStoreVersionConfig.class), eq(testPartition), anyString()))
         .thenReturn(CompletableFuture.completedFuture(null));
 
     testStateModel.onBecomeOfflineFromStandby(mockMessage, mockContext);
 
-    verify(mockIngestionBackend).stopConsumption(any(VeniceStoreVersionConfig.class), eq(testPartition));
+    verify(mockIngestionBackend).stopConsumption(any(VeniceStoreVersionConfig.class), eq(testPartition), anyString());
     verify(mockPushStatusAccessor).deleteReplicaStatus(resourceName, testPartition);
   }
 
@@ -209,7 +209,7 @@ public class VeniceLeaderFollowerStateModelTest extends
   public void testWhenBecomeOfflineFromStandbyWithVersionDeletion() {
     when(mockStore.getVersion(1)).thenReturn(null);
     when(mockStore.getCurrentVersion()).thenReturn(2);
-    when(mockIngestionBackend.stopConsumption(any(VeniceStoreVersionConfig.class), eq(testPartition)))
+    when(mockIngestionBackend.stopConsumption(any(VeniceStoreVersionConfig.class), eq(testPartition), anyString()))
         .thenReturn(CompletableFuture.completedFuture(null));
     when(mockReadOnlyStoreRepository.waitVersion(eq(storeName), eq(version), any(), anyLong()))
         .thenReturn(new StoreVersionInfo(mockStore, null));
@@ -223,7 +223,7 @@ public class VeniceLeaderFollowerStateModelTest extends
     // still block it once to wait for drop partition action if it's done asynchronously via SIT
     CompletableFuture mockDropPartitionFuture = mock(CompletableFuture.class);
     when(mockDropPartitionFuture.isDone()).thenReturn(false);
-    when(mockIngestionBackend.dropStoragePartitionGracefully(any(), anyInt(), anyInt()))
+    when(mockIngestionBackend.dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString()))
         .thenReturn(mockDropPartitionFuture);
     when(mockStore.getCurrentVersion()).thenReturn(2);
     testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);

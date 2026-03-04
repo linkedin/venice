@@ -13,12 +13,6 @@ public enum RejectionReason implements VeniceDimensionInterface {
    */
   NO_REPLICAS_AVAILABLE;
 
-  private final String reason;
-
-  RejectionReason() {
-    this.reason = name().toLowerCase();
-  }
-
   /**
    * All the instances of this Enum should have the same dimension name.
    * Refer {@link VeniceDimensionInterface#getDimensionName()} for more details.
@@ -26,10 +20,5 @@ public enum RejectionReason implements VeniceDimensionInterface {
   @Override
   public VeniceMetricsDimensions getDimensionName() {
     return VENICE_REQUEST_REJECTION_REASON;
-  }
-
-  @Override
-  public String getDimensionValue() {
-    return this.reason;
   }
 }

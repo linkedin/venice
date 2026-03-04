@@ -193,18 +193,7 @@ public class HelixGroupStats extends AbstractVeniceStats {
    * Metric names for tehuti metrics used in this class.
    */
   public enum HelixGroupTehutiMetricName implements TehutiMetricNameEnum {
-    GROUP_COUNT, GROUP_REQUEST, GROUP_PENDING_REQUEST, GROUP_RESPONSE_WAITING_TIME;
-
-    private final String metricName;
-
-    HelixGroupTehutiMetricName() {
-      this.metricName = name().toLowerCase();
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    GROUP_COUNT, GROUP_REQUEST, GROUP_PENDING_REQUEST, GROUP_RESPONSE_WAITING_TIME
   }
 
   /**

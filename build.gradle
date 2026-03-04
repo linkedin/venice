@@ -327,8 +327,6 @@ subprojects {
       // when actually using the new protocol. Example to pin KME to v12 when introducing v13:
       // project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v12', PathValidation.DIRECTORY)
       def versionOverrides = [
-          project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v39', PathValidation.DIRECTORY),
-          project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v94', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]
@@ -627,13 +625,25 @@ task aggregateJavadoc(type: Javadoc) {
 }
 
 spotless {
-  ratchetFrom "${git.getUpstreamRemote()}/main"
+  // Disable ratchetFrom in worktrees since JGit cannot resolve .git file references
+  def dotGit = file("${rootDir}/.git")
+  if (dotGit.isFile()) {
+    // worktree: .git is a file, not a directory — skip ratchetFrom
+  } else {
+    ratchetFrom "${git.getUpstreamRemote()}/main"
+  }
   java {
     importOrder()
     removeUnusedImports()
     eclipse().configFile("$rootDir/gradle/spotless/eclipse-java-formatter.xml")
     target '**/src/**/*.java'
     targetExclude '**/generated/**'
+  }
+  format 'markdown', {
+    target '**/*.md'
+    targetExclude '**/build/**', '**/target/**', '**/.gradle/**'
+    prettier(['prettier': '2.8.8', 'prettier-plugin-java': '2.2.0'])
+        .config(['proseWrap': 'always', 'printWidth': 120])
   }
 }
 
@@ -755,11 +765,12 @@ ext.createDiffFile = { ->
       // Keep this sorted
       // da-vinci-client
       ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/DaVinciBackend.java',
-      ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/ingestion/isolated/IsolatedIngestionServer.java',
       ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/stats/ingestion/heartbeat/HeartbeatStatReporter.java',
 
       // venice-client
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
+      // CLI tool requiring real D2/ZK infrastructure to test
+      ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/FastClientQueryTool.java',
       // unit test for gRPC Transport Client is not straightforward, adding to exclusion list for now
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/transport/GrpcTransportClient.java',
       // unit test for deprecated DispatchingVsonStoreClient is not meaningful since most logic is in its parent class
@@ -771,6 +782,8 @@ ext.createDiffFile = { ->
 
       // venice-common
       ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
+      // D2 utility requiring real ZooKeeper to test
+      ':!internal/venice-common/src/main/java/com/linkedin/venice/d2/D2ConfigUtils.java',
       ':!internal/venice-common/src/main/java/com/linkedin/venice/acl/handler/StoreAclHandler.java',
 
       // venice-client-common

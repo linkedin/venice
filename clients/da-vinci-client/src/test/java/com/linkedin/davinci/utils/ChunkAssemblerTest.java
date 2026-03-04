@@ -6,10 +6,12 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.venice.compression.GzipCompressor;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -30,6 +32,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.writer.ChunkedPayloadAndManifest;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.WriterChunkingHelper;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -126,6 +129,32 @@ public class ChunkAssemblerTest {
         compressor);
     Assert.assertNotNull(valueRecord);
     Assert.assertEquals(valueRecord.writerSchemaId(), writerSchemaId);
+  }
+
+  @Test
+  public void testDecompressValueIfNeededSkipsDecompressionForChunkedRecords() throws IOException {
+    GzipCompressor compressor = new GzipCompressor();
+    byte[] raw = "already-decompressed".getBytes();
+    ByteBuffer input = ByteBuffer.wrap(raw);
+    int manifestSchemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+
+    // Chunked record: returns value as-is without attempting GZIP decompression
+    ByteBuffer result = ChunkAssembler.decompressValueIfNeeded(input, manifestSchemaId, compressor);
+    assertEquals(result, input);
+
+    int chunkSchemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+    result = ChunkAssembler.decompressValueIfNeeded(input, chunkSchemaId, compressor);
+    assertEquals(result, input);
+  }
+
+  @Test(expectedExceptions = IOException.class)
+  public void testDecompressValueIfNeededDecompressesNonChunkedRecords() throws IOException {
+    GzipCompressor compressor = new GzipCompressor();
+    byte[] notGzip = "not-gzip-data".getBytes();
+    int regularSchemaId = 1;
+
+    // Non-chunked: actually attempts decompression, fails on non-GZIP bytes (proving it tried)
+    ChunkAssembler.decompressValueIfNeeded(ByteBuffer.wrap(notGzip), regularSchemaId, compressor);
   }
 
   private void verifyBasicOperations(

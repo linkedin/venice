@@ -19,6 +19,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext.PubSubPropertiesSupplier;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SystemTime;
@@ -36,7 +37,9 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -79,6 +82,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final ReadOnlyStoreRepository metadataRepository;
 
   private final StuckConsumerRepairStats stuckConsumerStats;
+  private final ThreadPoolExecutor crossTpProcessingPool;
+  private final ThreadPoolStats crossTpProcessingStats;
 
   private final static String STUCK_CONSUMER_MSG =
       "Didn't find any suspicious ingestion task, and please contact developers to investigate it further";
@@ -143,6 +148,23 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.isAAOrWCEnabledFunc = isAAOrWCEnabledFunc;
     this.pubSubPropertiesSupplier = pubSubPropertiesSupplier;
     this.pubSubContext = pubSubContext;
+
+    // Create single shared thread pool for cross-TP parallel processing if enabled
+    if (serverConfig.isCrossTpParallelProcessingEnabled()) {
+      int poolSize = serverConfig.getCrossTpParallelProcessingThreadPoolSize();
+      this.crossTpProcessingPool = new ThreadPoolExecutor(
+          poolSize,
+          poolSize,
+          0L,
+          TimeUnit.MILLISECONDS,
+          new LinkedBlockingQueue<>(),
+          new DaemonThreadFactory("cross-tp-parallel-processing", serverConfig.getLogContext()));
+      this.crossTpProcessingStats = new ThreadPoolStats(metricsRepository, crossTpProcessingPool, "CrossTpProcessing");
+      LOGGER.info("Cross-TP parallel processing enabled with shared thread pool size: {}", poolSize);
+    } else {
+      this.crossTpProcessingPool = null;
+      this.crossTpProcessingStats = null;
+    }
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -162,6 +184,19 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
     if (this.stuckConsumerRepairExecutorService != null) {
       this.stuckConsumerRepairExecutorService.shutdownNow();
+    }
+    // Shutdown cross-TP processing pool if it was created
+    if (crossTpProcessingPool != null) {
+      crossTpProcessingPool.shutdown();
+      try {
+        if (!crossTpProcessingPool.awaitTermination(1, TimeUnit.SECONDS)) {
+          crossTpProcessingPool.shutdownNow();
+        }
+        LOGGER.info("crossTpProcessingPool shutdown completed.");
+      } catch (InterruptedException e) {
+        crossTpProcessingPool.shutdownNow();
+        Thread.currentThread().interrupt();
+      }
     }
   }
 
@@ -373,13 +408,35 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
                 metadataRepository,
                 serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
                 serverConfig,
-                pubSubContext),
+                pubSubContext,
+                getCrossTpProcessingPoolForPoolType(poolType)),
             isAAOrWCEnabledFunc));
 
     if (!consumerService.isRunning()) {
       consumerService.start();
     }
     return consumerService;
+  }
+
+  /**
+   * Returns the cross-TP processing pool for the given pool type based on configuration.
+   * If {@code crossTpParallelProcessingCurrentVersionAAWCLeaderOnly} is true, only
+   * {@code ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL} will receive the pool.
+   * Otherwise, all pool types receive the pool when cross-TP parallel processing is enabled.
+   *
+   * @param poolType the consumer pool type
+   * @return the cross-TP processing pool if applicable, null otherwise
+   */
+  private ThreadPoolExecutor getCrossTpProcessingPoolForPoolType(ConsumerPoolType poolType) {
+    if (crossTpProcessingPool == null) {
+      return null;
+    }
+    if (serverConfig.isCrossTpParallelProcessingCurrentVersionAAWCLeaderOnly()) {
+      // Only enable for CURRENT_VERSION_AA_WC_LEADER_POOL
+      return poolType == ConsumerPoolType.CURRENT_VERSION_AA_WC_LEADER_POOL ? crossTpProcessingPool : null;
+    }
+    // Enable for all pool types
+    return crossTpProcessingPool;
   }
 
   public boolean hasConsumerAssignedFor(

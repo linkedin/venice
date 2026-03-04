@@ -45,6 +45,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIn
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
@@ -472,19 +473,25 @@ public class DaVinciClientRecordTransformerTest {
           .join();
 
       for (int k = 1; k <= numKeys + 1; ++k) {
-        String transformedValue = clientWithRecordTransformer.get(k).get().toString();
-        String expectedValue = "a" + k;
-        String expectedTransformedValue = expectedValue + "Transformed";
+        final int key = k;
+        final String expectedValue = "a" + key;
+        final String expectedTransformedValue = expectedValue + "Transformed";
 
-        assertEquals(transformedValue, expectedTransformedValue);
+        TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+          Object transformedResult = clientWithRecordTransformer.get(key).get();
+          assertNotNull(transformedResult, "Expected transformed value for key " + key + " to be non-null");
+          assertEquals(transformedResult.toString(), expectedTransformedValue);
 
-        if (k <= numKeys) {
-          String value1 = client1.get(k).get().toString();
-          String value2 = client2.get(k).get().toString();
+          if (key <= numKeys) {
+            Object result1 = client1.get(key).get();
+            Object result2 = client2.get(key).get();
+            assertNotNull(result1, "Expected value1 for key " + key + " to be non-null");
+            assertNotNull(result2, "Expected value2 for key " + key + " to be non-null");
 
-          assertEquals(value1, expectedValue);
-          assertEquals(value2, expectedValue);
-        }
+            assertEquals(result1.toString(), expectedValue);
+            assertEquals(result2.toString(), expectedValue);
+          }
+        });
       }
 
       client1.unsubscribeAll();
@@ -804,7 +811,6 @@ public class DaVinciClientRecordTransformerTest {
     props.setProperty("store.name", storeName);
     props.setProperty("sleep.seconds", "100");
     props.setProperty("heartbeat.timeout.seconds", "10");
-    props.setProperty("ingestion.isolation", "false");
     props.setProperty("blob.transfer.server.port", Integer.toString(port1));
     props.setProperty("blob.transfer.client.port", Integer.toString(port2));
     props.setProperty("storage.class", StorageClass.DISK.toString());

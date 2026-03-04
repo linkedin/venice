@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
@@ -29,8 +30,8 @@ import org.testng.annotations.Test;
 
 
 public class AggVersionedIngestionStatsTest {
-  @Test
-  public void testStatsCanUpdateVersionStatus() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testStatsCanUpdateVersionStatus(boolean ingestionOtelStatsEnabled) {
     MetricsRepository metricsRepo = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
@@ -41,6 +42,7 @@ public class AggVersionedIngestionStatsTest {
     ReadOnlyStoreRepository mockMetaRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
     doReturn(true).when(mockVeniceServerConfig).isUnregisterMetricForDeletedStoreEnabled();
+    doReturn(ingestionOtelStatsEnabled).when(mockVeniceServerConfig).isIngestionOtelStatsEnabled();
 
     AggVersionedIngestionStats stats =
         new AggVersionedIngestionStats(metricsRepo, mockMetaRepository, mockVeniceServerConfig);

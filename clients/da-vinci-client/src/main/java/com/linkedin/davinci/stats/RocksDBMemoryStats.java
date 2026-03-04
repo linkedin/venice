@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.rocksdb.Cache;
 import org.rocksdb.SstFileManager;
 
 
@@ -132,5 +133,12 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
     synchronized (hostedRocksDBPartitions) {
       hostedRocksDBPartitions.remove(partitionName);
     }
+  }
+
+  public void setRMDBlockCache(Cache rmdCache, long rmdCacheCapacity) {
+    registerSensor(new AsyncGauge((ignored, ignored2) -> rmdCacheCapacity, "rocksdb.rmd-block-cache-capacity"));
+    registerSensor(new AsyncGauge((ignored, ignored2) -> rmdCache.getUsage(), "rocksdb.rmd-block-cache-usage"));
+    registerSensor(
+        new AsyncGauge((ignored, ignored2) -> rmdCache.getPinnedUsage(), "rocksdb.rmd-block-cache-pinned-usage"));
   }
 }

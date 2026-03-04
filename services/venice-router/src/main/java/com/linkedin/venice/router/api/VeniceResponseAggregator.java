@@ -1,8 +1,12 @@
 package com.linkedin.venice.router.api;
 
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_DISPATCH_LATENCY;
 import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_PARSE_URI;
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_PIPELINE_LATENCY;
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_QUEUE_LATENCY;
 import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_RESPONSE_WAIT_TIME;
 import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_ROUTING_TIME;
+import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_SCATTER_LATENCY;
 import static com.linkedin.alpini.base.misc.MetricNames.ROUTER_SERVER_TIME;
 import static com.linkedin.venice.HttpConstants.VENICE_CLIENT_COMPUTE;
 import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
@@ -17,6 +21,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
 import com.linkedin.alpini.base.misc.HeaderNames;
 import com.linkedin.alpini.base.misc.Metrics;
+import com.linkedin.alpini.netty4.handlers.BasicHttpObjectAggregator;
 import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
 import com.linkedin.alpini.router.api.ResponseAggregatorFactory;
 import com.linkedin.venice.HttpConstants;
@@ -278,9 +283,37 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       double routingTime = LatencyUtils.convertNSToMS(timeValue);
       stats.recordRequestRoutingLatency(storeName, routingTime);
     }
+    timeValue = metrics.get(ROUTER_PIPELINE_LATENCY);
+    if (timeValue != Metrics.UNSET_VALUE) {
+      stats.recordPipelineLatency(storeName, LatencyUtils.convertNSToMS(timeValue));
+    }
+    timeValue = metrics.get(ROUTER_SCATTER_LATENCY);
+    if (timeValue != Metrics.UNSET_VALUE) {
+      stats.recordScatterLatency(storeName, LatencyUtils.convertNSToMS(timeValue));
+    }
+    timeValue = metrics.get(ROUTER_QUEUE_LATENCY);
+    if (timeValue != Metrics.UNSET_VALUE) {
+      stats.recordQueueLatency(storeName, LatencyUtils.convertNSToMS(timeValue));
+    }
+    timeValue = metrics.get(ROUTER_DISPATCH_LATENCY);
+    if (timeValue != Metrics.UNSET_VALUE) {
+      stats.recordDispatchLatency(storeName, LatencyUtils.convertNSToMS(timeValue));
+    }
     if (HEALTHY_STATUSES.contains(httpResponseStatus) && !venicePath.isStreamingRequest()) {
       // Only record successful response
       stats.recordResponseSize(storeName, finalResponse.content().readableBytes());
+    }
+    // Record body aggregation latency for multiget streaming requests.
+    // The latency is stored in the request's AttributeMap (not a plain field) because the scatter-gather
+    // framework calls retainedDuplicate() which creates a new BasicHttpRequest object. The AttributeMap
+    // is shared across duplicates, so the value set by BasicHttpObjectAggregator is visible here.
+    if (requestType == RequestType.MULTI_GET_STREAMING) {
+      Long bodyAggLatencyNs = request.hasAttr(BasicHttpObjectAggregator.BODY_AGGREGATION_LATENCY_NS)
+          ? request.attr(BasicHttpObjectAggregator.BODY_AGGREGATION_LATENCY_NS).get()
+          : null;
+      if (bodyAggLatencyNs != null && bodyAggLatencyNs > 0) {
+        stats.recordBodyAggregationLatency(storeName, LatencyUtils.convertNSToMS(bodyAggLatencyNs));
+      }
     }
     stats.recordResponse(storeName);
 

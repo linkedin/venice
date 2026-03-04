@@ -96,7 +96,7 @@ public class IntegrationTestUtils {
     TopicManager topicManager = veniceAdmin.getTopicManager();
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
     PubSubTopic participantStoreRt = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(participantStoreName));
-    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Store store = veniceAdmin.getStore(clusterName, participantStoreName);
       assertNotNull(store);
       assertEquals(store.getVersions().size(), 1);

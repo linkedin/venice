@@ -27,11 +27,6 @@ public enum RequestType implements VeniceDimensionInterface {
     return VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
   }
 
-  @Override
-  public String getDimensionValue() {
-    return name().toLowerCase();
-  }
-
   public static boolean isSingleGet(RequestType requestType) {
     return requestType == SINGLE_GET;
   }

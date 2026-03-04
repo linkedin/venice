@@ -385,9 +385,4 @@ public enum ControllerRoute implements VeniceDimensionInterface {
   public VeniceMetricsDimensions getDimensionName() {
     return VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT;
   }
-
-  @Override
-  public String getDimensionValue() {
-    return name().toLowerCase();
-  }
 }

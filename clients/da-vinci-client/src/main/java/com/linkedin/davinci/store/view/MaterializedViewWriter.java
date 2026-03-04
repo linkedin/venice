@@ -19,7 +19,6 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -36,10 +35,9 @@ public class MaterializedViewWriter extends VeniceViewWriter {
   public MaterializedViewWriter(
       VeniceConfigLoader props,
       Version version,
-      Schema keySchema,
       Map<String, String> extraViewParameters,
       VeniceWriterFactory veniceWriterFactory) {
-    super(props, version, keySchema, extraViewParameters, veniceWriterFactory);
+    super(props, version, extraViewParameters);
     internalView =
         new MaterializedView(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
     materializedViewTopicName =

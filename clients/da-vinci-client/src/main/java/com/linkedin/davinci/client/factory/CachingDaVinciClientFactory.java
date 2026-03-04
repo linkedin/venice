@@ -470,7 +470,8 @@ public class CachingDaVinciClientFactory
       DaVinciClientConstructor clientConstructor,
       Class clientClass,
       boolean startClient) {
-    String internalStoreName = viewName == null ? storeName : VeniceView.getViewStoreName(storeName, viewName);
+    String internalStoreName =
+        (viewName == null || viewName.isEmpty()) ? storeName : VeniceView.getViewStoreName(storeName, viewName);
     if (closed) {
       throw new VeniceException("Unable to get a client from a closed factory, storeName=" + internalStoreName);
     }
@@ -539,6 +540,21 @@ public class CachingDaVinciClientFactory
     return (SeekableDaVinciClient<K, V>) client;
   }
 
+  public <K, V> SeekableDaVinciClient<K, V> getGenericSeekableAvroClient(
+      String storeName,
+      String viewName,
+      DaVinciConfig config) {
+    DaVinciClient<K, V> client = getClient(
+        storeName,
+        viewName,
+        config,
+        null,
+        new GenericSeekableDaVinciClientConstructor<>(),
+        AvroGenericSeekableDaVinciClient.class,
+        false);
+    return (SeekableDaVinciClient<K, V>) client;
+  }
+
   public <K, V> SeekableDaVinciClient<K, V> getAndStartGenericSeekableAvroClient(
       String storeName,
       DaVinciConfig config) {
@@ -555,11 +571,12 @@ public class CachingDaVinciClientFactory
 
   public <K, V> SeekableDaVinciClient<K, V> getSpecificSeekableAvroClient(
       String storeName,
+      String viewName,
       DaVinciConfig config,
       Class<V> valueClass) {
     DaVinciClient<K, V> client = getClient(
         storeName,
-        null,
+        viewName,
         config,
         valueClass,
         new SpecificSeekableDaVinciClientConstructor<>(),

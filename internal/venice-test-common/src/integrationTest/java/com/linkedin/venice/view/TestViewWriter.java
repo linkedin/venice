@@ -16,7 +16,6 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -26,10 +25,9 @@ public class TestViewWriter extends VeniceViewWriter {
   public TestViewWriter(
       VeniceConfigLoader props,
       Version version,
-      Schema keySchema,
       Map<String, String> extraViewParameters,
       VeniceWriterFactory viewWriterFactory) {
-    super(props, version, keySchema, extraViewParameters, viewWriterFactory);
+    super(props, version, extraViewParameters);
     internalView =
         new TestView(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
   }
@@ -80,7 +78,7 @@ public class TestViewWriter extends VeniceViewWriter {
       return;
     }
 
-    // Only leaders should produce to Change Capture topics
+    // Only leaders should produce to view topics
     if (partitionConsumptionState.getLeaderFollowerState() != LeaderFollowerStateType.LEADER) {
       return;
     }
@@ -88,9 +86,9 @@ public class TestViewWriter extends VeniceViewWriter {
     // Parse VersionSwap
     VersionSwap versionSwapMessage = (VersionSwap) controlMessage.getControlMessageUnion();
 
-    // Only the version we're transiting FROM needs to populate the topic switch message into the change capture topic
-    if (Version
-        .parseVersionFromVersionTopicName(versionSwapMessage.oldServingVersionTopic.toString()) != versionNumber) {
+    // Only the version we're transiting FROM needs to populate the topic switch message into the view topic
+    if (Version.parseVersionFromVersionTopicName(versionSwapMessage.oldServingVersionTopic.toString()) != version
+        .getNumber()) {
       return;
     }
 

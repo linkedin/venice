@@ -268,6 +268,7 @@ public class ControllerApiConstants {
 
   public static final String BLOB_TRANSFER_ENABLED = "blob_transfer_enabled";
   public static final String BLOB_TRANSFER_IN_SERVER_ENABLED = "blob_transfer_in_server_enabled";
+  public static final String BLOB_DB_ENABLED = "blob_db_enabled";
 
   public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
 
@@ -281,6 +282,7 @@ public class ControllerApiConstants {
   public static final String STORE_LIFECYCLE_HOOKS_LIST = "store_lifecycle_hooks_list";
   public static final String KEY_URN_COMPRESSION_ENABLED = "key_urn_compression_enabled";
   public static final String KEY_URN_FIELDS = "key_urn_fields";
+  public static final String PREVIOUS_CURRENT_VERSION = "previous_current_version";
 
   /**
    * Params for repush job

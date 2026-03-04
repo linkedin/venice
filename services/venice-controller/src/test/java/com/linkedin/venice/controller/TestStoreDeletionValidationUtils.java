@@ -230,17 +230,10 @@ public class TestStoreDeletionValidationUtils {
     // Create mock PubSubTopic for view topics
     PubSubTopic mockTopic1 = mock(PubSubTopic.class);
     when(mockTopic1.getStoreName()).thenReturn(TEST_STORE);
-    when(mockTopic1.getName()).thenReturn(TEST_STORE + "_v1_cc");
-
-    PubSubTopic mockTopic2 = mock(PubSubTopic.class);
-    when(mockTopic2.getStoreName()).thenReturn(TEST_STORE);
-    when(mockTopic2.getName()).thenReturn(TEST_STORE + "_v1_testView_mv");
-
-    // Test change capture view topic format: storeName_v{version}_cc
-    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic1, TEST_STORE));
+    when(mockTopic1.getName()).thenReturn(TEST_STORE + "_v1_testView_mv");
 
     // Test materialized view topic format: storeName_v{version}_{viewName}_mv
-    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic2, TEST_STORE));
+    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic1, TEST_STORE));
   }
 
   @Test

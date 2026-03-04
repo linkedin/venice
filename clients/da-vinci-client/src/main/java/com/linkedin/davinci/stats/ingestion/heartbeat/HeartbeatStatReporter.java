@@ -13,12 +13,14 @@ public class HeartbeatStatReporter extends AbstractVeniceStatsReporter<Heartbeat
   static final String LEADER_METRIC_PREFIX = "heartbeat_delay_ms_leader-";
   static final String FOLLOWER_METRIC_PREFIX = "heartbeat_delay_ms_follower-";
   static final String CATCHUP_UP_FOLLOWER_METRIC_PREFIX = "catching_up_heartbeat_delay_ms_follower-";
+
   static final String MAX = "-Max";
   static final String AVG = "-Avg";
 
   public HeartbeatStatReporter(MetricsRepository metricsRepository, String storeName, Set<String> regions) {
     super(metricsRepository, storeName);
     for (String region: regions) {
+      // Heartbeat message metrics
       registerSensor(new AsyncGauge((ignored, ignored2) -> {
         if (getStats() == null) {
           return NULL_INGESTION_STATS.code;
@@ -38,6 +40,7 @@ public class HeartbeatStatReporter extends AbstractVeniceStatsReporter<Heartbeat
         continue;
       }
 
+      // Heartbeat message metrics for follower
       registerSensor(new AsyncGauge((ignored, ignored2) -> {
         if (getStats() == null) {
           return NULL_INGESTION_STATS.code;

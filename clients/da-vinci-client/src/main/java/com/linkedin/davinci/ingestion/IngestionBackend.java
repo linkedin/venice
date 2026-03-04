@@ -12,9 +12,13 @@ import java.util.concurrent.atomic.AtomicReference;
 
 
 public interface IngestionBackend extends Closeable {
-  void startConsumption(VeniceStoreVersionConfig storeConfig, int partition, Optional<PubSubPosition> pubSubPosition);
+  void startConsumption(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      Optional<PubSubPosition> pubSubPosition,
+      String replicaId);
 
-  CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition);
+  CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition, String replicaId);
 
   void killConsumptionTask(String topicName);
 
@@ -33,8 +37,9 @@ public interface IngestionBackend extends Closeable {
   default CompletableFuture<Void> dropStoragePartitionGracefully(
       VeniceStoreVersionConfig storeConfig,
       int partition,
-      int timeoutInSeconds) {
-    return dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, true);
+      int timeoutInSeconds,
+      String replicaId) {
+    return dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, true, replicaId);
   }
 
   /**
@@ -43,13 +48,15 @@ public interface IngestionBackend extends Closeable {
    * @param partition Partition number to be dropped in the store version.
    * @param timeoutInSeconds Number of seconds to wait before timeout.
    * @param removeEmptyStorageEngine Whether to drop storage engine when dropping the last partition.
+   * @param replicaId The replica identifier for this partition.
    * @return a future for the drop partition action.
    */
   CompletableFuture<Void> dropStoragePartitionGracefully(
       VeniceStoreVersionConfig storeConfig,
       int partition,
       int timeoutInSeconds,
-      boolean removeEmptyStorageEngine);
+      boolean removeEmptyStorageEngine,
+      String replicaId);
 
   KafkaStoreIngestionService getStoreIngestionService();
 

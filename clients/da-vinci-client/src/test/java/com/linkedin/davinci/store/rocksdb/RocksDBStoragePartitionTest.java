@@ -36,6 +36,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -1141,5 +1142,118 @@ public class RocksDBStoragePartitionTest {
       }
       removeDir(storeDir);
     }
+  }
+
+  /**
+   * Test that store-level blobDbEnabled config overrides cluster-level config.
+   * When store-level is ENABLED, blob files should be created regardless of cluster-level setting.
+   * When store-level is DISABLED, blob files should not be created regardless of cluster-level setting.
+   * When store-level is NOT_SPECIFIED, cluster-level config should be used.
+   */
+  @Test
+  public void testStoreLevelBlobDbConfigOverridesClusterLevel() {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store_blob_db"), 1);
+    String storeDir = getTempDatabaseDir(storeName);
+    int partitionId = 0;
+    String dbFolder = RocksDBUtils.composePartitionDbDir(DATA_BASE_DIR, storeName, partitionId);
+    File dbDir = new File(dbFolder);
+
+    Supplier<String[]> blobFileFinder = () -> dbDir.list(((dir, name) -> name.endsWith(".blob")));
+
+    int largeRecordPaddingLength = 10000;
+    Map<String, String> largeInputRecords = generateInput(100, false, largeRecordPaddingLength, 0);
+    List<Map.Entry<String, String>> largeEntryList = new ArrayList<>(largeInputRecords.entrySet());
+
+    Properties extraProps = new Properties();
+    // Cluster-level: blob files DISABLED
+    extraProps.put(ROCKSDB_BLOB_FILES_ENABLED, "false");
+    extraProps.put(ROCKSDB_MIN_BLOB_SIZE_IN_BYTES, "1000");
+    extraProps.put(ROCKSDB_BLOB_FILE_SIZE_IN_BYTES, "2097152");
+    extraProps.put(ROCKSDB_BLOB_FILE_STARTING_LEVEL, "0");
+    extraProps.put(ROCKSDB_MEMTABLE_SIZE_IN_BYTES, "1048576");
+
+    VeniceProperties veniceServerProperties =
+        AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, extraProps);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+
+    // Test 1: Store-level ENABLED should override cluster-level DISABLED
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setBlobDbEnabled(ActivationState.ENABLED);
+
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig);
+
+    for (int i = 0; i < 50; i++) {
+      storagePartition.put(largeEntryList.get(i).getKey().getBytes(), largeEntryList.get(i).getValue().getBytes());
+    }
+    storagePartition.sync();
+
+    // Blob files should be created because store-level is ENABLED
+    assertTrue(blobFileFinder.get().length > 0, "Blob files should be created when store-level is ENABLED");
+
+    storagePartition.close();
+    storagePartition.drop();
+
+    // Test 2: Store-level DISABLED should override cluster-level ENABLED
+    extraProps.put(ROCKSDB_BLOB_FILES_ENABLED, "true"); // Cluster-level ENABLED
+    veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, extraProps);
+    rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+    serverConfig = new VeniceServerConfig(veniceServerProperties);
+    factory = new RocksDBStorageEngineFactory(serverConfig);
+
+    partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setBlobDbEnabled(ActivationState.DISABLED);
+
+    storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig);
+
+    for (int i = 50; i < 100; i++) {
+      storagePartition.put(largeEntryList.get(i).getKey().getBytes(), largeEntryList.get(i).getValue().getBytes());
+    }
+    storagePartition.sync();
+
+    // No blob files should be created because store-level is DISABLED
+    assertEquals(blobFileFinder.get().length, 0, "No blob files should be created when store-level is DISABLED");
+
+    storagePartition.close();
+    storagePartition.drop();
+
+    // Test 3: Store-level NOT_SPECIFIED should use cluster-level (which is ENABLED)
+    partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setBlobDbEnabled(ActivationState.NOT_SPECIFIED);
+
+    storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig);
+
+    for (int i = 0; i < 50; i++) {
+      storagePartition.put(largeEntryList.get(i).getKey().getBytes(), largeEntryList.get(i).getValue().getBytes());
+    }
+    storagePartition.sync();
+
+    // Blob files should be created because cluster-level is ENABLED
+    assertTrue(
+        blobFileFinder.get().length > 0,
+        "Blob files should be created when store-level is NOT_SPECIFIED and cluster-level is ENABLED");
+
+    storagePartition.close();
+    storagePartition.drop();
+    removeDir(storeDir);
   }
 }

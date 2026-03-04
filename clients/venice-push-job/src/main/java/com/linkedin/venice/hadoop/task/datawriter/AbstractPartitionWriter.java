@@ -103,9 +103,29 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     private final byte[] rmd;
 
+    /**
+     * Per-record value schema ID extracted from the source Kafka message. Used during KIF repush to preserve
+     * schema. A value of -1 indicates the per-record ID is not available,
+     * in which case {@link AbstractPartitionWriter#extract} falls back to the global value schema ID
+     */
+    private final int valueSchemaId;
+
+    /**
+     * Per-record RMD (replication metadata) version ID extracted from the source Kafka message. A value of -1
+     * indicates the per-record ID is not available, in which case {@link AbstractPartitionWriter#extract}
+     * falls back to the global RMD schema ID configured at job start.
+     */
+    private final int rmdVersionId;
+
     public VeniceRecordWithMetadata(byte[] value, byte[] rmd) {
+      this(value, rmd, -1, -1);
+    }
+
+    public VeniceRecordWithMetadata(byte[] value, byte[] rmd, int valueSchemaId, int rmdVersionId) {
       this.value = value;
       this.rmd = rmd;
+      this.valueSchemaId = valueSchemaId;
+      this.rmdVersionId = rmdVersionId;
     }
 
     public byte[] getValue() {
@@ -114,6 +134,14 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     public byte[] getRmd() {
       return rmd;
+    }
+
+    public int getValueSchemaId() {
+      return valueSchemaId;
+    }
+
+    public int getRmdVersionId() {
+      return rmdVersionId;
     }
   }
 
@@ -326,18 +354,38 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     VeniceRecordWithMetadata valueRecord = values.next();
     byte[] valueBytes = valueRecord.getValue();
-    ByteBuffer rmd = valueRecord.getRmd() == null ? null : ByteBuffer.wrap(valueRecord.getRmd());
+    // Handle empty RMD the same way as null - don't wrap empty byte array into ByteBuffer
+    byte[] rmdBytes = valueRecord.getRmd();
+    ByteBuffer rmd = (rmdBytes == null || rmdBytes.length == 0) ? null : ByteBuffer.wrap(rmdBytes);
+
+    // Drop the record entirely if both value and RMD are null since it doesn't carry any information.
+    // This can happen when the input is from Kafka and the record is a tombstone (null value) without replication
+    // metadata.
+    if (valueBytes == null && rmd == null) {
+      return null;
+    }
 
     if (duplicateKeyPrinter == null) {
       throw new VeniceException("'DuplicateKeyPrinter' is not initialized properly");
     }
     duplicateKeyPrinter.detectAndHandleDuplicateKeys(valueBytes, values, dataWriterTaskTracker);
 
+    // Use per-record schema IDs if available, otherwise fall back to global IDs
+    int effectiveValueSchemaId = valueRecord.getValueSchemaId() > 0 ? valueRecord.getValueSchemaId() : valueSchemaId;
+    int effectiveRmdVersionId = valueRecord.getRmdVersionId() > 0 ? valueRecord.getRmdVersionId() : rmdSchemaId;
+
+    if (effectiveValueSchemaId <= 0) {
+      throw new VeniceException(
+          "Invalid effective value schema ID: " + effectiveValueSchemaId + " (per-record: "
+              + valueRecord.getValueSchemaId() + ", global: " + valueSchemaId
+              + "). Ensure VALUE_SCHEMA_ID_PROP is configured or records carry valid schema IDs.");
+    }
+
     return new VeniceWriterMessage(
         keyBytes,
         valueBytes,
-        valueSchemaId,
-        rmdSchemaId,
+        effectiveValueSchemaId,
+        effectiveRmdVersionId,
         rmd,
         getCallback(),
         isEnableWriteCompute(),

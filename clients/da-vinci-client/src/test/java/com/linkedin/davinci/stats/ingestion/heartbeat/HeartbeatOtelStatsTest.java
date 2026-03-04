@@ -1,7 +1,7 @@
 package com.linkedin.davinci.stats.ingestion.heartbeat;
 
-import static com.linkedin.davinci.stats.ServerMetricEntity.INGESTION_HEARTBEAT_DELAY;
-import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelStats.SERVER_METRIC_ENTITIES;
+import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
+import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelMetricEntity.INGESTION_HEARTBEAT_DELAY;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
@@ -10,16 +10,26 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.utils.Utils.setOf;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
+import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Set;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -463,15 +473,15 @@ public class HeartbeatOtelStatsTest {
   public void testClassifyVersionWithNonExistingVersionInputReturnsBackup() {
     heartbeatOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     assertSame(
-        HeartbeatOtelStats.classifyVersion(NON_EXISTING_VERSION, heartbeatOtelStats.getVersionInfo()),
+        OtelVersionedStatsUtils.classifyVersion(NON_EXISTING_VERSION, heartbeatOtelStats.getVersionInfo()),
         VersionRole.BACKUP);
     assertSame(
-        HeartbeatOtelStats.classifyVersion(CURRENT_VERSION, heartbeatOtelStats.getVersionInfo()),
+        OtelVersionedStatsUtils.classifyVersion(CURRENT_VERSION, heartbeatOtelStats.getVersionInfo()),
         VersionRole.CURRENT);
     assertSame(
-        HeartbeatOtelStats.classifyVersion(FUTURE_VERSION, heartbeatOtelStats.getVersionInfo()),
+        OtelVersionedStatsUtils.classifyVersion(FUTURE_VERSION, heartbeatOtelStats.getVersionInfo()),
         VersionRole.FUTURE);
-    assertSame(HeartbeatOtelStats.classifyVersion(10, heartbeatOtelStats.getVersionInfo()), VersionRole.BACKUP);
+    assertSame(OtelVersionedStatsUtils.classifyVersion(10, heartbeatOtelStats.getVersionInfo()), VersionRole.BACKUP);
   }
 
   @Test
@@ -579,5 +589,24 @@ public class HeartbeatOtelStatsTest {
         expectedAttributes,
         INGESTION_HEARTBEAT_DELAY.getMetricEntity().getMetricName(),
         TEST_PREFIX);
+  }
+
+  @Test
+  public void testMetricEntityDefinitions() {
+    MetricEntity entity = INGESTION_HEARTBEAT_DELAY.getMetricEntity();
+    assertEquals(entity.getMetricName(), "ingestion.replication.heartbeat.delay");
+    assertEquals(entity.getMetricType(), MetricType.HISTOGRAM);
+    assertEquals(entity.getUnit(), MetricUnit.MILLISECOND);
+    assertEquals(entity.getDescription(), "Nearline ingestion replication lag measured via heartbeat messages");
+    Set<VeniceMetricsDimensions> expectedDimensions = setOf(
+        VENICE_STORE_NAME,
+        VENICE_CLUSTER_NAME,
+        VENICE_REGION_NAME,
+        VENICE_VERSION_ROLE,
+        VENICE_REPLICA_TYPE,
+        VENICE_REPLICA_STATE);
+    assertEquals(entity.getDimensionsList(), expectedDimensions);
+
+    assertEquals(HeartbeatOtelMetricEntity.values().length, 1, "Expected 1 metric entity");
   }
 }

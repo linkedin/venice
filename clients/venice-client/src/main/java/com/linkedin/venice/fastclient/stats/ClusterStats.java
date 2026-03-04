@@ -154,18 +154,6 @@ public class ClusterStats extends AbstractVeniceStats {
    * Metric names for tehuti metrics used in this class.
    */
   public enum ClusterTehutiMetricName implements TehutiMetricNameEnum {
-    VERSION_UPDATE_FAILURE, CURRENT_VERSION, BLOCKED_INSTANCE_COUNT, UNHEALTHY_INSTANCE_COUNT,
-    OVERLOADED_INSTANCE_COUNT;
-
-    private final String metricName;
-
-    ClusterTehutiMetricName() {
-      this.metricName = name().toLowerCase();
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    VERSION_UPDATE_FAILURE, CURRENT_VERSION, BLOCKED_INSTANCE_COUNT, UNHEALTHY_INSTANCE_COUNT, OVERLOADED_INSTANCE_COUNT
   }
 }

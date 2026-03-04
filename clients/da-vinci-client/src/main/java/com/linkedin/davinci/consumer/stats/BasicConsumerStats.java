@@ -216,18 +216,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   public enum BasicConsumerTehutiMetricName implements TehutiMetricNameEnum {
     MAX_PARTITION_LAG, RECORDS_CONSUMED, MINIMUM_CONSUMING_VERSION, MAXIMUM_CONSUMING_VERSION, POLL_SUCCESS_COUNT,
     POLL_FAIL_COUNT, VERSION_SWAP_SUCCESS_COUNT, VERSION_SWAP_FAIL_COUNT, CHUNKED_RECORD_SUCCESS_COUNT,
-    CHUNKED_RECORD_FAIL_COUNT;
-
-    private final String metricName;
-
-    BasicConsumerTehutiMetricName() {
-      this.metricName = name().toLowerCase();
-    }
-
-    @Override
-    public String getMetricName() {
-      return this.metricName;
-    }
+    CHUNKED_RECORD_FAIL_COUNT
   }
 
   public enum BasicConsumerMetricEntity implements ModuleMetricEntityInterface {

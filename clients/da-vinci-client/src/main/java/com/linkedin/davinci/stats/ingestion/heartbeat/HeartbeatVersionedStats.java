@@ -13,12 +13,22 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 
+/**
+ * Manages Tehuti and OTel heartbeat/record-level delay stats per store.
+ *
+ * <p><b>OTel stats lifecycle:</b> OTel stats are created lazily on first metric recording via
+ * {@link #getOrCreateHeartbeatOtelStats} and {@link #getOrCreateRecordLevelDelayOtelStats}.
+ * Version info updates from {@link #handleStoreChanged} propagate to existing OTel stats
+ * via {@link #onVersionInfoUpdated} ({@code computeIfPresent}). See
+ * {@link #getOrCreateHeartbeatOtelStats} for why version info is fetched outside the lambda.
+ */
 public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<HeartbeatStat, HeartbeatStatReporter> {
-  private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMonitors;
-  private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerMonitors;
+  private final Map<HeartbeatKey, IngestionTimestampEntry> leaderMonitors;
+  private final Map<HeartbeatKey, IngestionTimestampEntry> followerMonitors;
 
   // OpenTelemetry metrics per store
-  private final Map<String, HeartbeatOtelStats> otelStatsMap;
+  private final Map<String, HeartbeatOtelStats> heartbeatOtelStatsMap;
+  private final Map<String, RecordLevelDelayOtelStats> recordLevelDelayOtelStatsMap;
   private final String clusterName;
 
   // Time supplier for testability: defaults to System.currentTimeMillis()
@@ -29,14 +39,15 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       ReadOnlyStoreRepository metadataRepository,
       Supplier<HeartbeatStat> statsInitiator,
       StatsSupplier<HeartbeatStatReporter> reporterSupplier,
-      Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMonitors,
-      Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerMonitors,
+      Map<HeartbeatKey, IngestionTimestampEntry> leaderMonitors,
+      Map<HeartbeatKey, IngestionTimestampEntry> followerMonitors,
       String clusterName) {
     super(metricsRepository, metadataRepository, statsInitiator, reporterSupplier, true);
     this.leaderMonitors = leaderMonitors;
     this.followerMonitors = followerMonitors;
     this.clusterName = clusterName;
-    this.otelStatsMap = new VeniceConcurrentHashMap<>();
+    this.heartbeatOtelStatsMap = new VeniceConcurrentHashMap<>();
+    this.recordLevelDelayOtelStatsMap = new VeniceConcurrentHashMap<>();
   }
 
   public void recordLeaderLag(String storeName, int version, String region, long heartbeatTs) {
@@ -48,7 +59,7 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     getStats(storeName, version).recordReadyToServeLeaderLag(region, delay, currentTime);
 
     // OTel metrics
-    getOrCreateOtelStats(storeName).recordHeartbeatDelayOtelMetrics(
+    getOrCreateHeartbeatOtelStats(storeName).recordHeartbeatDelayOtelMetrics(
         version,
         region,
         ReplicaType.LEADER,
@@ -77,7 +88,7 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     getStats(storeName, version).recordCatchingUpFollowerLag(region, catchingUpDelay, currentTime);
 
     // Record to both OTel dimensions (one gets actual delay, other gets 0 for squelching)
-    HeartbeatOtelStats otelStats = getOrCreateOtelStats(storeName);
+    HeartbeatOtelStats otelStats = getOrCreateHeartbeatOtelStats(storeName);
     otelStats.recordHeartbeatDelayOtelMetrics(
         version,
         region,
@@ -92,6 +103,44 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
         catchingUpDelay);
   }
 
+  public void recordLeaderRecordLag(String storeName, int version, String region, long recordTs) {
+    long currentTime = currentTimeSupplier.get();
+    long delay = currentTime - recordTs;
+
+    // OTel metrics only (no Tehuti for record-level delays)
+    getOrCreateRecordLevelDelayOtelStats(storeName).recordRecordDelayOtelMetrics(
+        version,
+        region,
+        ReplicaType.LEADER,
+        ReplicaState.READY_TO_SERVE, // Leaders are always ready to serve
+        delay);
+  }
+
+  public void recordFollowerRecordLag(
+      String storeName,
+      int version,
+      String region,
+      long recordTs,
+      boolean isReadyToServe) {
+    long currentTime = currentTimeSupplier.get();
+    long delay = currentTime - recordTs;
+
+    long readyToServeDelay = isReadyToServe ? delay : 0;
+    long catchingUpDelay = isReadyToServe ? 0 : delay;
+
+    // OTel metrics only (no Tehuti for record-level delays)
+    RecordLevelDelayOtelStats otelStats = getOrCreateRecordLevelDelayOtelStats(storeName);
+    otelStats.recordRecordDelayOtelMetrics(
+        version,
+        region,
+        ReplicaType.FOLLOWER,
+        ReplicaState.READY_TO_SERVE,
+        readyToServeDelay);
+    otelStats
+        .recordRecordDelayOtelMetrics(version, region, ReplicaType.FOLLOWER, ReplicaState.CATCHING_UP, catchingUpDelay);
+  }
+
+  /** No-op: heartbeat stats are loaded lazily when the first heartbeat/record arrives. */
   @Override
   public synchronized void loadAllStats() {
     // No-op
@@ -103,16 +152,37 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
   }
 
   @Override
+  public void handleStoreDeleted(String storeName) {
+    try {
+      super.handleStoreDeleted(storeName);
+    } finally {
+      HeartbeatOtelStats otelStats = heartbeatOtelStatsMap.remove(storeName);
+      if (otelStats != null) {
+        otelStats.close();
+      }
+      RecordLevelDelayOtelStats recordStats = recordLevelDelayOtelStatsMap.remove(storeName);
+      if (recordStats != null) {
+        recordStats.close();
+      }
+    }
+  }
+
+  @Override
   public void handleStoreChanged(Store store) {
     if (isStoreAssignedToThisNode(store.getName())) {
       updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
     }
   }
 
+  /** Updates version info for existing OTel stats. No null guard needed: lazy loading means
+   *  this is never called from the super() constructor. */
   @Override
   protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
-    // Update OTel stats version cache when versions change
-    otelStatsMap.computeIfPresent(storeName, (store, stats) -> {
+    heartbeatOtelStatsMap.computeIfPresent(storeName, (store, stats) -> {
+      stats.updateVersionInfo(currentVersion, futureVersion);
+      return stats;
+    });
+    recordLevelDelayOtelStatsMap.computeIfPresent(storeName, (store, stats) -> {
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
@@ -124,25 +194,100 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       // of the superclass of this class. We shouldn't have to do this
       return false;
     }
-    return leaderMonitors.containsKey(store) || followerMonitors.containsKey(store);
+    for (HeartbeatKey key: leaderMonitors.keySet()) {
+      if (key.storeName.equals(store)) {
+        return true;
+      }
+    }
+    for (HeartbeatKey key: followerMonitors.keySet()) {
+      if (key.storeName.equals(store)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
-   * Gets or creates OTel stats for a store.
-   * Version info will be initialized via onVersionInfoUpdated() callback.
+   * Gets or creates heartbeat OTel stats for a store. {@code getCurrentVersion}/{@code getFutureVersion}
+   * are called <b>before</b> {@code computeIfAbsent} because they can trigger
+   * {@code addStore} → {@code onVersionInfoUpdated} → {@code heartbeatOtelStatsMap.computeIfPresent},
+   * which would re-enter this same map from inside the lambda (violates ConcurrentHashMap contract).
+   * The {@code get()} fast-path skips these calls when stats already exist.
    */
-  private HeartbeatOtelStats getOrCreateOtelStats(String storeName) {
-    return otelStatsMap.computeIfAbsent(storeName, key -> {
+  private HeartbeatOtelStats getOrCreateHeartbeatOtelStats(String storeName) {
+    HeartbeatOtelStats existing = heartbeatOtelStatsMap.get(storeName);
+    if (existing != null) {
+      return existing;
+    }
+    int currentVersion = getCurrentVersion(storeName);
+    int futureVersion = getFutureVersion(storeName);
+    return heartbeatOtelStatsMap.computeIfAbsent(storeName, key -> {
       HeartbeatOtelStats stats = new HeartbeatOtelStats(getMetricsRepository(), storeName, clusterName);
-      // Initialize version cache with current values
-      stats.updateVersionInfo(getCurrentVersion(storeName), getFutureVersion(storeName));
+      stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
+  }
+
+  /** Same pattern as {@link #getOrCreateHeartbeatOtelStats}. */
+  private RecordLevelDelayOtelStats getOrCreateRecordLevelDelayOtelStats(String storeName) {
+    RecordLevelDelayOtelStats existing = recordLevelDelayOtelStatsMap.get(storeName);
+    if (existing != null) {
+      return existing;
+    }
+    int currentVersion = getCurrentVersion(storeName);
+    int futureVersion = getFutureVersion(storeName);
+    return recordLevelDelayOtelStatsMap.computeIfAbsent(storeName, key -> {
+      RecordLevelDelayOtelStats stats = new RecordLevelDelayOtelStats(getMetricsRepository(), storeName, clusterName);
+      stats.updateVersionInfo(currentVersion, futureVersion);
+      return stats;
+    });
+  }
+
+  /**
+   * Emits a per-record OTel metric for leader record delay (called per record, not aggregated).
+   * Uses {@code get()} instead of {@code getOrCreate} to avoid synchronization on this hot path.
+   * Returns early if stats haven't been initialized yet for this store.
+   */
+  public void emitPerRecordLeaderOtelMetric(String storeName, int version, String region, long delay) {
+    RecordLevelDelayOtelStats otelStats = recordLevelDelayOtelStatsMap.get(storeName);
+    if (otelStats == null || !otelStats.emitOtelMetrics()) {
+      return; // Fast path exit: stats not initialized or OTel disabled
+    }
+    otelStats.recordRecordDelayOtelMetrics(version, region, ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, delay);
+  }
+
+  /**
+   * Emits a per-record OTel metric for follower record delay (called per record, not aggregated).
+   * Uses {@code get()} instead of {@code getOrCreate} to avoid synchronization on this hot path.
+   * Returns early if stats haven't been initialized yet for this store.
+   */
+  public void emitPerRecordFollowerOtelMetric(
+      String storeName,
+      int version,
+      String region,
+      long delay,
+      boolean isReadyToServe) {
+    RecordLevelDelayOtelStats otelStats = recordLevelDelayOtelStatsMap.get(storeName);
+    if (otelStats == null || !otelStats.emitOtelMetrics()) {
+      return; // Fast path exit: stats not initialized or OTel disabled
+    }
+    ReplicaState replicaState = isReadyToServe ? ReplicaState.READY_TO_SERVE : ReplicaState.CATCHING_UP;
+    otelStats.recordRecordDelayOtelMetrics(version, region, ReplicaType.FOLLOWER, replicaState, delay);
   }
 
   @VisibleForTesting
   HeartbeatStat getStatsForTesting(String storeName, int version) {
     return getStats(storeName, version);
+  }
+
+  @VisibleForTesting
+  HeartbeatOtelStats getOtelStatsForTesting(String storeName) {
+    return heartbeatOtelStatsMap.get(storeName);
+  }
+
+  @VisibleForTesting
+  RecordLevelDelayOtelStats getRecordLevelDelayOtelStatsForTesting(String storeName) {
+    return recordLevelDelayOtelStatsMap.get(storeName);
   }
 
   @VisibleForTesting

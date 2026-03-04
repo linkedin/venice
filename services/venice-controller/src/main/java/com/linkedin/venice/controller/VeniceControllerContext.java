@@ -36,7 +36,8 @@ public class VeniceControllerContext {
   private ICProvider icProvider;
   private SupersetSchemaGenerator externalSupersetSchemaGenerator;
   private PubSubClientsFactory pubSubClientsFactory;
-  private VeniceVersionLifecycleEventListener versionLifecycleEventListener;
+  private List<VeniceVersionLifecycleEventListener> versionLifecycleEventListeners;
+  private ExternalETLService externalETLService;
 
   public List<VeniceProperties> getPropertiesList() {
     return propertiesList;
@@ -82,8 +83,12 @@ public class VeniceControllerContext {
     return pubSubClientsFactory;
   }
 
-  public VeniceVersionLifecycleEventListener getVersionLifecycleEventListener() {
-    return versionLifecycleEventListener;
+  public List<VeniceVersionLifecycleEventListener> getVersionLifecycleEventListeners() {
+    return versionLifecycleEventListeners;
+  }
+
+  public ExternalETLService getExternalETLService() {
+    return externalETLService;
   }
 
   public VeniceControllerContext(Builder builder) {
@@ -98,7 +103,8 @@ public class VeniceControllerContext {
     this.externalSupersetSchemaGenerator = builder.externalSupersetSchemaGenerator;
     this.pubSubClientsFactory = builder.pubSubClientsFactory;
     this.d2Clients = builder.d2Clients;
-    this.versionLifecycleEventListener = builder.versionLifecycleEventListener;
+    this.versionLifecycleEventListeners = builder.versionLifecycleEventListeners;
+    this.externalETLService = builder.externalETLService;
   }
 
   public static class Builder {
@@ -116,7 +122,8 @@ public class VeniceControllerContext {
 
     private boolean isMetricsRepositorySet;
     private boolean isServiceDiscoveryAnnouncerSet;
-    private VeniceVersionLifecycleEventListener versionLifecycleEventListener;
+    private List<VeniceVersionLifecycleEventListener> versionLifecycleEventListeners;
+    private ExternalETLService externalETLService;
 
     public Builder setPropertiesList(List<VeniceProperties> propertiesList) {
       this.propertiesList = propertiesList;
@@ -176,8 +183,14 @@ public class VeniceControllerContext {
       return this;
     }
 
-    public Builder setVersionLifecycleEventListener(VeniceVersionLifecycleEventListener versionLifecycleEventListener) {
-      this.versionLifecycleEventListener = versionLifecycleEventListener;
+    public Builder setVersionLifecycleEventListeners(
+        List<VeniceVersionLifecycleEventListener> versionLifecycleEventListeners) {
+      this.versionLifecycleEventListeners = versionLifecycleEventListeners;
+      return this;
+    }
+
+    public Builder setExternalETLService(ExternalETLService externalETLService) {
+      this.externalETLService = externalETLService;
       return this;
     }
 

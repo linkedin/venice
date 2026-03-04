@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 import com.linkedin.alpini.base.misc.HeaderNames;
 import com.linkedin.alpini.base.misc.MetricNames;
 import com.linkedin.alpini.base.misc.Metrics;
+import com.linkedin.alpini.netty4.handlers.BasicHttpObjectAggregator;
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -50,6 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -352,5 +354,85 @@ public class TestVeniceResponseAggregator {
     Assert.assertEquals(
         routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY),
         String.valueOf(CompressionStrategy.NO_OP.getValue()));
+  }
+
+  @Test
+  public void testBodyAggregationLatencyRecordedForMultiGetStreaming() {
+    String storeName = Utils.getUniqueString("test_store");
+
+    // Build a streaming OK response with compression strategy header
+    FullHttpResponse subResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, Unpooled.EMPTY_BUFFER);
+    subResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
+
+    // Create request with BODY_AGGREGATION_LATENCY_NS attribute set (simulates BasicHttpObjectAggregator)
+    BasicFullHttpRequest request =
+        new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/storage/" + storeName, -1, -1);
+    long fakeLatencyNs = TimeUnit.MILLISECONDS.toNanos(42);
+    request.attr(BasicHttpObjectAggregator.BODY_AGGREGATION_LATENCY_NS).set(fakeLatencyNs);
+
+    AggRouterHttpRequestStats mockStreamingStats = mock(AggRouterHttpRequestStats.class);
+    AggRouterHttpRequestStats mockSingleGetStats = mock(AggRouterHttpRequestStats.class);
+    RouterStats mockRouterStat = mock(RouterStats.class);
+    when(mockRouterStat.getStatsByType(RequestType.MULTI_GET_STREAMING)).thenReturn(mockStreamingStats);
+    when(mockRouterStat.getStatsByType(RequestType.SINGLE_GET)).thenReturn(mockSingleGetStats);
+
+    VenicePath path = mock(VenicePath.class);
+    doReturn(RequestType.MULTI_GET_STREAMING).when(path).getRequestType();
+    doReturn(storeName).when(path).getStoreName();
+    doReturn(1).when(path).getVersionNumber();
+    doReturn(true).when(path).isStreamingRequest();
+    doReturn(false).when(path).isRetryRequest();
+    doReturn(-1).when(path).getHelixGroupId();
+    List<RouterKey> partitionKeys = Collections.singletonList(new RouterKey("key1".getBytes(StandardCharsets.UTF_8)));
+    doReturn(partitionKeys).when(path).getPartitionKeys();
+
+    Metrics metrics = new Metrics();
+    metrics.setPath(path);
+
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat, Optional.empty());
+    responseAggregator.buildResponse(request, metrics, Collections.singletonList(subResponse));
+
+    // Verify body aggregation latency was recorded (42ms from the fake latency)
+    verify(mockStreamingStats).recordBodyAggregationLatency(storeName, 42.0);
+  }
+
+  @Test
+  public void testBodyAggregationLatencyNotRecordedForNonStreamingMultiGet() {
+    String storeName = Utils.getUniqueString("test_store");
+    Map<String, String> headers = new HashMap<>();
+    headers.put(HttpHeaderNames.CONTENT_TYPE.toString(), "avro/binary");
+    headers.put(HttpConstants.VENICE_SCHEMA_ID, "1");
+
+    FullHttpResponse subResponse = buildFullHttpResponse(OK, getResponseContentWithSchemaString("value"), headers);
+
+    BasicFullHttpRequest request =
+        new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/storage/" + storeName, -1, -1);
+    // Set body aggregation latency even for non-streaming — should NOT be recorded
+    request.attr(BasicHttpObjectAggregator.BODY_AGGREGATION_LATENCY_NS).set(TimeUnit.MILLISECONDS.toNanos(100));
+
+    AggRouterHttpRequestStats mockMultiGetStats = mock(AggRouterHttpRequestStats.class);
+    AggRouterHttpRequestStats mockSingleGetStats = mock(AggRouterHttpRequestStats.class);
+    RouterStats mockRouterStat = mock(RouterStats.class);
+    when(mockRouterStat.getStatsByType(RequestType.MULTI_GET)).thenReturn(mockMultiGetStats);
+    when(mockRouterStat.getStatsByType(RequestType.SINGLE_GET)).thenReturn(mockSingleGetStats);
+
+    CompressorFactory compressorFactory = mock(CompressorFactory.class);
+    VenicePath path = getPath(storeName, RequestType.MULTI_GET, mockRouterStat, request, compressorFactory);
+    doReturn(false).when(path).isStreamingRequest();
+    doReturn(false).when(path).isRetryRequest();
+    doReturn(-1).when(path).getHelixGroupId();
+    List<RouterKey> partitionKeys = Collections.singletonList(new RouterKey("key1".getBytes(StandardCharsets.UTF_8)));
+    doReturn(partitionKeys).when(path).getPartitionKeys();
+
+    Metrics metrics = new Metrics();
+    metrics.setPath(path);
+
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat, Optional.empty());
+    responseAggregator.buildResponse(request, metrics, Collections.singletonList(subResponse));
+
+    // Body aggregation latency should NOT be recorded for non-streaming MULTI_GET
+    verify(mockMultiGetStats, org.mockito.Mockito.never()).recordBodyAggregationLatency(
+        org.mockito.ArgumentMatchers.anyString(),
+        org.mockito.ArgumentMatchers.anyDouble());
   }
 }

@@ -15,7 +15,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import java.util.ArrayList;
@@ -81,9 +80,5 @@ public class ReadOnlyViewStoreTest {
     String storeName = Utils.getUniqueString("testStore");
     Version version = new VersionImpl(storeName, 1, "dummyId");
     assertThrows(VeniceException.class, () -> new ReadOnlyViewStore.ReadOnlyMaterializedViewVersion(version, null));
-    ViewConfig invalidViewConfig = new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), new HashMap<>());
-    assertThrows(
-        VeniceException.class,
-        () -> new ReadOnlyViewStore.ReadOnlyMaterializedViewVersion(version, invalidViewConfig));
   }
 }

@@ -94,16 +94,18 @@ public class TestPushJobStatusStats {
               assertTrue(isPushJobFailedDueToUserError(status, pushJobDetails, userErrorCheckpoints));
               numberUserErrors++;
               if (isIncrementalPush) {
-                verify(pushJobStatusStats, times(numberUserErrors)).recordIncrementalPushFailureDueToUserErrorSensor();
+                verify(pushJobStatusStats, times(numberUserErrors))
+                    .recordIncrementalPushFailureDueToUserErrorSensor(storeName);
               } else {
-                verify(pushJobStatusStats, times(numberUserErrors)).recordBatchPushFailureDueToUserErrorSensor();
+                verify(pushJobStatusStats, times(numberUserErrors))
+                    .recordBatchPushFailureDueToUserErrorSensor(storeName);
               }
             } else {
               numberSuccess++;
               if (isIncrementalPush) {
-                verify(pushJobStatusStats, times(numberSuccess)).recordIncrementalPushSuccessSensor();
+                verify(pushJobStatusStats, times(numberSuccess)).recordIncrementalPushSuccessSensor(storeName);
               } else {
-                verify(pushJobStatusStats, times(numberSuccess)).recordBatchPushSuccessSensor();
+                verify(pushJobStatusStats, times(numberSuccess)).recordBatchPushSuccessSensor(storeName);
               }
 
               if (isRepush) {
@@ -118,16 +120,17 @@ public class TestPushJobStatusStats {
               numberNonUserErrors++;
               if (isIncrementalPush) {
                 verify(pushJobStatusStats, times(numberNonUserErrors))
-                    .recordIncrementalPushFailureNotDueToUserErrorSensor();
+                    .recordIncrementalPushFailureNotDueToUserErrorSensor(storeName);
               } else {
-                verify(pushJobStatusStats, times(numberNonUserErrors)).recordBatchPushFailureNotDueToUserErrorSensor();
+                verify(pushJobStatusStats, times(numberNonUserErrors))
+                    .recordBatchPushFailureNotDueToUserErrorSensor(storeName);
               }
             } else {
               numberSuccess++;
               if (isIncrementalPush) {
-                verify(pushJobStatusStats, times(numberSuccess)).recordIncrementalPushSuccessSensor();
+                verify(pushJobStatusStats, times(numberSuccess)).recordIncrementalPushSuccessSensor(storeName);
               } else {
-                verify(pushJobStatusStats, times(numberSuccess)).recordBatchPushSuccessSensor();
+                verify(pushJobStatusStats, times(numberSuccess)).recordBatchPushSuccessSensor(storeName);
               }
 
               if (isRepush) {

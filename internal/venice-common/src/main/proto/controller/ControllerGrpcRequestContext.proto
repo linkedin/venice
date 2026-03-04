@@ -34,3 +34,24 @@ message VeniceControllerGrpcErrorInfo {
   optional string clusterName = 4;
   optional string storeName = 5;
 }
+
+// Shared version-related types used by multiple gRPC services
+enum VersionStatusGrpc {
+  NOT_CREATED = 0;
+  STARTED = 1;
+  PUSHED = 2;
+  ONLINE = 3;
+  ERROR = 4;
+  CREATED = 5;
+  PARTIALLY_ONLINE = 6;
+  KILLED = 7;
+}
+
+message VersionGrpc {
+  int32 number = 1;
+  int64 createdTime = 2;
+  VersionStatusGrpc status = 3;
+  optional string pushJobId = 4;
+  int32 partitionCount = 5;
+  int32 replicationFactor = 6;
+}

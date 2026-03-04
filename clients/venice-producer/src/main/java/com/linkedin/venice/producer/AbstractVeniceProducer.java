@@ -1,10 +1,15 @@
 package com.linkedin.venice.producer;
 
-import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_CALLBACK_QUEUE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_CALLBACK_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_WORKER_COUNT;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_WORKER_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.utils.LatencyUtils.convertNSToMS;
+import static com.linkedin.venice.utils.LatencyUtils.getElapsedTimeFromNSToMS;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -19,12 +24,9 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.concurrent.BlockingQueueType;
-import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -33,12 +35,9 @@ import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -51,13 +50,28 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * A generic implementation of the {@link VeniceProducer} interface
+ * Async Venice producer with configurable parallelism.
+ *
+ * <p>Flow: {@code asyncPut(key)} → Worker[partition % workers] → serialize → veniceWriter.put() →
+ * PubSub callback → Callback executor → complete future</p>
+ *
+ * <p>Both worker pool and callback executor are optional (set count=0 for inline execution).
+ * Per-key ordering is preserved since same key always routes to same worker.</p>
  *
  * @see VeniceProducer
+ * @see PartitionedProducerExecutor
  */
 public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(AbstractVeniceProducer.class);
   private static final DurableWrite DURABLE_WRITE = new DurableWrite();
+  /** Sentinel value indicating key serialization failed; use reference equality (==) to check. */
+  private static final byte[] SERIALIZATION_FAILED = new byte[0];
+
+  // Default configuration values
+  private static final int DEFAULT_WORKER_COUNT = 4;
+  private static final int DEFAULT_WORKER_QUEUE_CAPACITY = 100000;
+  private static final int DEFAULT_CALLBACK_THREAD_COUNT = 0; // Disabled by default
+  private static final int DEFAULT_CALLBACK_QUEUE_CAPACITY = 100000;
 
   private VeniceProperties producerConfigs;
   private boolean configured = false;
@@ -65,11 +79,14 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   private VeniceProducerMetrics producerMetrics;
 
   private SchemaReader schemaReader;
-  private ThreadPoolExecutor producerExecutor;
-  private ThreadPoolExecutor writerExecutor; // Single-threaded executor to maintain write order
+  private PartitionedProducerExecutor asyncDispatcher;
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter;
+  private VenicePartitioner partitioner;
+  private int partitionCount;
 
   private RecordSerializer<Object> keySerializer;
+  protected boolean needsPartitionRouting;
+
   private static final Schema STRING_SCHEMA = Schema.create(Schema.Type.STRING);
   private static final Schema INT_SCHEMA = Schema.create(Schema.Type.INT);
   private static final Schema LONG_SCHEMA = Schema.create(Schema.Type.LONG);
@@ -96,21 +113,57 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
     this.producerMetrics = new VeniceProducerMetrics(metricsRepository, storeName);
 
-    this.producerExecutor = ThreadPoolFactory.createThreadPool(
-        producerConfigs.getInt(CLIENT_PRODUCER_THREAD_NUM, 10),
-        "ClientProducer",
-        Integer.MAX_VALUE,
-        BlockingQueueType.LINKED_BLOCKING_QUEUE);
-    if (metricsRepository != null) {
-      new ThreadPoolStats(metricsRepository, producerExecutor, "client_producer_thread_pool");
-    }
-    // Single-threaded executor to ensure write operations maintain order
-    this.writerExecutor = ThreadPoolFactory
-        .createThreadPool(1, "ClientProducerWriter", Integer.MAX_VALUE, BlockingQueueType.LINKED_BLOCKING_QUEUE);
+    // Create the async dispatcher for partition-based record dispatch and callbacks
+    this.asyncDispatcher = createDispatcher(storeName, producerConfigs, metricsRepository);
+    this.producerMetrics.registerQueueMetrics(this.asyncDispatcher);
+
     this.keySerializer = getSerializer(schemaReader.getKeySchema());
 
     VersionCreationResponse versionCreationResponse = requestTopic();
+    this.partitionCount = versionCreationResponse.getPartitions();
+
+    // Cache routing decision: only need partition routing when both multiple partitions AND multiple workers exist.
+    // With a single partition or a single worker, all requests go to the same destination regardless of routing.
+    this.needsPartitionRouting = partitionCount > 1 && asyncDispatcher.getWorkerCount() > 1;
+
+    // Initialize partitioner from response
+    Properties partitionerProperties = new Properties();
+    partitionerProperties.putAll(versionCreationResponse.getPartitionerParams());
+    this.partitioner = PartitionUtils.getVenicePartitioner(
+        versionCreationResponse.getPartitionerClass(),
+        new VeniceProperties(partitionerProperties));
+
     this.veniceWriter = getVeniceWriter(versionCreationResponse);
+  }
+
+  /**
+   * Factory method for creating the dispatcher. Can be overridden for testing.
+   *
+   * <p>Execution modes based on configuration:</p>
+   * <ul>
+   *   <li>{@code workerCount = 0, callbackThreadCount = 0}: Fully inline - all tasks execute on caller thread</li>
+   *   <li>{@code workerCount > 0, callbackThreadCount = 0}: Parallel workers, callbacks on PubSub thread</li>
+   *   <li>{@code workerCount = 0, callbackThreadCount > 0}: Inline preprocessing, callbacks on dedicated threads</li>
+   *   <li>{@code workerCount > 0, callbackThreadCount > 0}: Full async - parallel workers + callback isolation</li>
+   * </ul>
+   *
+   * <p>Set {@code workerCount = 0} to disable worker threads and execute all preprocessing
+   * inline on the caller thread. This is useful when the caller is already managing
+   * concurrency externally or wants minimal overhead.</p>
+   *
+   * @see PartitionedProducerExecutor
+   */
+  protected PartitionedProducerExecutor createDispatcher(
+      String storeName,
+      VeniceProperties configs,
+      MetricsRepository metricsRepository) {
+    return new PartitionedProducerExecutor(
+        configs.getInt(CLIENT_PRODUCER_WORKER_COUNT, DEFAULT_WORKER_COUNT),
+        configs.getInt(CLIENT_PRODUCER_WORKER_QUEUE_CAPACITY, DEFAULT_WORKER_QUEUE_CAPACITY),
+        configs.getInt(CLIENT_PRODUCER_CALLBACK_THREAD_COUNT, DEFAULT_CALLBACK_THREAD_COUNT),
+        configs.getInt(CLIENT_PRODUCER_CALLBACK_QUEUE_CAPACITY, DEFAULT_CALLBACK_QUEUE_CAPACITY),
+        storeName,
+        metricsRepository);
   }
 
   private VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse versionCreationResponse) {
@@ -131,18 +184,26 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   private VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
       VersionCreationResponse versionCreationResponse,
       Properties veniceWriterProperties) {
-    Integer partitionCount = versionCreationResponse.getPartitions();
-    Properties partitionerProperties = new Properties();
-    partitionerProperties.putAll(versionCreationResponse.getPartitionerParams());
-    VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
-        versionCreationResponse.getPartitionerClass(),
-        new VeniceProperties(partitionerProperties));
-    return constructVeniceWriter(
-        veniceWriterProperties,
-        new VeniceWriterOptions.Builder(versionCreationResponse.getKafkaTopic()).setPartitioner(venicePartitioner)
+    VeniceWriterOptions.Builder optionsBuilder =
+        new VeniceWriterOptions.Builder(versionCreationResponse.getKafkaTopic()).setPartitioner(partitioner)
             .setPartitionCount(partitionCount)
-            .setChunkingEnabled(false)
-            .build());
+            .setChunkingEnabled(false);
+
+    // Extract concurrent producer configs from properties
+    String producerCountProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_COUNT);
+    if (producerCountProp != null) {
+      optionsBuilder.setProducerCount(Integer.parseInt(producerCountProp));
+    }
+    String producerThreadCountProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_THREAD_COUNT);
+    if (producerThreadCountProp != null) {
+      optionsBuilder.setProducerThreadCount(Integer.parseInt(producerThreadCountProp));
+    }
+    String producerQueueSizeProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_QUEUE_SIZE);
+    if (producerQueueSizeProp != null) {
+      optionsBuilder.setProducerQueueSize(Integer.parseInt(producerQueueSizeProp));
+    }
+
+    return constructVeniceWriter(veniceWriterProperties, optionsBuilder.build());
   }
 
   // Visible for testing
@@ -181,6 +242,32 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     }
   }
 
+  /**
+   * Gets key bytes, serializing if not already done during routing.
+   */
+  private byte[] getKeyBytes(K key, byte[] serializedKeyBytes) throws Exception {
+    return serializedKeyBytes != null ? serializedKeyBytes : keySerializer.serialize(key);
+  }
+
+  /**
+   * Serializes the key for partition routing if needed.
+   *
+   * @return null if no routing needed, {@link #SERIALIZATION_FAILED} on error (use == to check),
+   *         or the serialized key bytes on success
+   */
+  private byte[] serializeKeyForRouting(K key, CompletableFuture<DurableWrite> durableWriteFuture) {
+    if (!needsPartitionRouting) {
+      return null;
+    }
+    try {
+      return keySerializer.serialize(key);
+    } catch (Exception e) {
+      producerMetrics.recordFailedRequest();
+      durableWriteFuture.completeExceptionally(new VeniceException("Key serialization failed", e));
+      return SERIALIZATION_FAILED;
+    }
+  }
+
   @Override
   public CompletableFuture<DurableWrite> asyncPut(K key, V value) {
     return asyncPutInternal(APP_DEFAULT_LOGICAL_TS, key, value);
@@ -200,83 +287,56 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     if (!StringUtils.isEmpty(error)) {
       return getFutureCompletedExceptionally(error);
     }
-
     producerMetrics.recordPutRequest();
+    // Capture submission time at method entry for consistent end-to-end latency measurement
+    long submissionTimeNanos = System.nanoTime();
+    CompletableFuture<DurableWrite> durableWriteFuture = new CompletableFuture<>();
 
-    // Step 1: Pre-process in parallel (schema fetching and serialization)
-    // This can happen concurrently across multiple threads for performance
-    CompletableFuture<PreparedWriteData> preprocessFuture = CompletableFuture.supplyAsync(() -> {
-      final Instant preProcessingStartTime = Instant.now();
-      Schema valueSchema;
-      try {
-        valueSchema = getSchemaFromObject(value);
-      } catch (Exception e) {
-        producerMetrics.recordFailedRequest();
-        throw e;
-      }
-      // Might block - this is the expensive part we want to parallelize
-      int valueSchemaId;
-      Exception schemaReadException = null;
-      try {
-        valueSchemaId = schemaReader.getValueSchemaId(valueSchema);
-      } catch (Exception e) {
-        valueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
-        schemaReadException = e;
-      }
-      if (valueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
-        producerMetrics.recordFailedRequest();
-        throw new VeniceException(
-            "Could not find a registered schema id for schema: " + valueSchema
-                + ". This might be transient if the schema has been registered recently.",
-            schemaReadException);
-      }
+    byte[] serializedKeyBytes = serializeKeyForRouting(key, durableWriteFuture);
+    if (serializedKeyBytes == SERIALIZATION_FAILED) {
+      return durableWriteFuture;
+    }
+    int partition = serializedKeyBytes != null ? partitioner.getPartitionId(serializedKeyBytes, partitionCount) : 0;
+    try {
+      asyncDispatcher.submit(partition, () -> {
+        long preprocessStartNanos = System.nanoTime();
+        producerMetrics.recordQueueWaitLatency(convertNSToMS(preprocessStartNanos - submissionTimeNanos));
+        try {
+          byte[] keyBytes = getKeyBytes(key, serializedKeyBytes);
+          Schema valueSchema = getSchemaFromObject(value);
+          int valueSchemaId;
+          try {
+            valueSchemaId = schemaReader.getValueSchemaId(valueSchema);
+          } catch (Exception e) {
+            throw new VeniceException(
+                "Could not find a registered schema id for schema: " + valueSchema
+                    + ". This might be transient if the schema has been registered recently.",
+                e);
+          }
 
-      byte[] keyBytes = keySerializer.serialize(key);
-      byte[] valueBytes = getSerializer(valueSchema).serialize(value);
+          byte[] valueBytes = getSerializer(valueSchema).serialize(value);
+          long preprocessEndNanos = System.nanoTime();
+          producerMetrics.recordPreprocessingLatency(convertNSToMS(preprocessEndNanos - preprocessStartNanos));
+          veniceWriter.put(
+              keyBytes,
+              valueBytes,
+              valueSchemaId,
+              logicalTime,
+              getPubSubProducerCallback(
+                  durableWriteFuture,
+                  submissionTimeNanos,
+                  preprocessEndNanos,
+                  "Failed to write the PUT record to the PubSub system"));
+          producerMetrics.recordCallerToPubSubBufferLatency(getElapsedTimeFromNSToMS(submissionTimeNanos));
+        } catch (Exception e) {
+          completeDurableWriteFutureExceptionally(durableWriteFuture, e);
+        }
+      });
+    } catch (RejectedExecutionException e) {
+      completeDurableWriteFutureExceptionally(durableWriteFuture, e);
+    }
 
-      // Record preprocessing latency
-      Duration preprocessingDuration = Duration.between(preProcessingStartTime, Instant.now());
-      producerMetrics.recordPreprocessingLatency(preprocessingDuration.toMillis());
-
-      return new PreparedWriteData(keyBytes, valueBytes, valueSchemaId, -1, logicalTime);
-    }, producerExecutor);
-
-    // Step 2: Submit write task to single-threaded executor IMMEDIATELY to maintain order
-    // The write task waits for preprocessing to complete, then performs the write
-    // This ensures veniceWriter.put() calls happen in the order requests were received
-    return executeWrite(
-        preprocessFuture,
-        (preparedData, callback) -> veniceWriter.put(
-            preparedData.keyBytes,
-            preparedData.payloadBytes,
-            preparedData.valueSchemaId,
-            preparedData.logicalTime,
-            callback),
-        "Failed to write the PUT record to the PubSub system");
-  }
-
-  private PubSubProducerCallback getPubSubProducerCallback(
-      Instant sendStartTime,
-      CompletableFuture<Void> completableFuture,
-      String errorMessage) {
-    final AtomicBoolean callbackTriggered = new AtomicBoolean();
-    return (PubSubProduceResult produceResult, Exception exception) -> {
-      boolean firstInvocation = callbackTriggered.compareAndSet(false, true);
-      // We do not expect this to be triggered multiple times, but we still handle the case for defensive reasons
-      if (!firstInvocation) {
-        return;
-      }
-
-      Duration sendDuration = Duration.between(sendStartTime, Instant.now());
-      if (exception == null) {
-        producerMetrics.recordSuccessfulRequestWithLatency(sendDuration.toMillis());
-        completableFuture.complete(null);
-      } else {
-        producerMetrics.recordFailedRequest();
-        LOGGER.error(errorMessage, exception);
-        completableFuture.completeExceptionally(exception);
-      }
-    };
+    return durableWriteFuture;
   }
 
   @Override
@@ -300,24 +360,41 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     }
 
     producerMetrics.recordDeleteRequest();
+    // Capture submission time at method entry for consistent end-to-end latency measurement
+    long submissionTimeNanos = System.nanoTime();
+    CompletableFuture<DurableWrite> durableWriteFuture = new CompletableFuture<>();
 
-    // Step 1: Pre-process in parallel (key serialization)
-    CompletableFuture<PreparedWriteData> preprocessFuture = CompletableFuture.supplyAsync(() -> {
-      final Instant preProcessingStartTime = Instant.now();
-      byte[] keyBytes = keySerializer.serialize(key);
+    byte[] serializedKeyBytes = serializeKeyForRouting(key, durableWriteFuture);
+    if (serializedKeyBytes == SERIALIZATION_FAILED) {
+      return durableWriteFuture;
+    }
+    int partition = serializedKeyBytes != null ? partitioner.getPartitionId(serializedKeyBytes, partitionCount) : 0;
+    try {
+      asyncDispatcher.submit(partition, () -> {
+        long preprocessStartNanos = System.nanoTime();
+        producerMetrics.recordQueueWaitLatency(convertNSToMS(preprocessStartNanos - submissionTimeNanos));
+        try {
+          byte[] keyBytes = getKeyBytes(key, serializedKeyBytes);
+          long preprocessEndNanos = System.nanoTime();
+          producerMetrics.recordPreprocessingLatency(convertNSToMS(preprocessEndNanos - preprocessStartNanos));
+          veniceWriter.delete(
+              keyBytes,
+              logicalTime,
+              getPubSubProducerCallback(
+                  durableWriteFuture,
+                  submissionTimeNanos,
+                  preprocessEndNanos,
+                  "Failed to write the DELETE record to the PubSub system"));
+          producerMetrics.recordCallerToPubSubBufferLatency(getElapsedTimeFromNSToMS(submissionTimeNanos));
+        } catch (Exception e) {
+          completeDurableWriteFutureExceptionally(durableWriteFuture, e);
+        }
+      });
+    } catch (RejectedExecutionException e) {
+      completeDurableWriteFutureExceptionally(durableWriteFuture, e);
+    }
 
-      // Record preprocessing latency
-      Duration preprocessingDuration = Duration.between(preProcessingStartTime, Instant.now());
-      producerMetrics.recordPreprocessingLatency(preprocessingDuration.toMillis());
-
-      return new PreparedWriteData(keyBytes, null, -1, -1, logicalTime);
-    }, producerExecutor);
-
-    // Step 2: Submit write task to single-threaded executor IMMEDIATELY to maintain order
-    return executeWrite(
-        preprocessFuture,
-        (preparedData, callback) -> veniceWriter.delete(preparedData.keyBytes, preparedData.logicalTime, callback),
-        "Failed to write the DELETE record to the PubSub system");
+    return durableWriteFuture;
   }
 
   @Override
@@ -344,60 +421,135 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     }
 
     producerMetrics.recordUpdateRequest();
+    // Capture submission time at method entry for consistent end-to-end latency measurement
+    long submissionTimeNanos = System.nanoTime();
+    CompletableFuture<DurableWrite> durableWriteFuture = new CompletableFuture<>();
 
-    // Step 1: Pre-process in parallel (schema fetching, building update record, serialization)
-    CompletableFuture<PreparedWriteData> preprocessFuture = CompletableFuture.supplyAsync(() -> {
-      final Instant preProcessingStartTime = Instant.now();
-      // Caching to avoid race conditions during processing of the function
-      DerivedSchemaEntry updateSchemaEntry = schemaReader.getLatestUpdateSchema();
+    byte[] serializedKeyBytes = serializeKeyForRouting(key, durableWriteFuture);
+    if (serializedKeyBytes == SERIALIZATION_FAILED) {
+      return durableWriteFuture;
+    }
+    int partition = serializedKeyBytes != null ? partitioner.getPartitionId(serializedKeyBytes, partitionCount) : 0;
+    try {
+      asyncDispatcher.submit(partition, () -> {
+        long preprocessStartNanos = System.nanoTime();
+        producerMetrics.recordQueueWaitLatency(convertNSToMS(preprocessStartNanos - submissionTimeNanos));
+        try {
+          byte[] keyBytes = getKeyBytes(key, serializedKeyBytes);
+          // Caching to avoid race conditions during processing of the function
+          DerivedSchemaEntry updateSchemaEntry = schemaReader.getLatestUpdateSchema();
 
-      if (updateSchemaEntry == null) {
-        producerMetrics.recordFailedRequest();
-        throw new VeniceException(
-            "Update schema not found. Check if partial update is enabled for the store. This error"
-                + " might also be transient if partial update has been enabled recently.");
+          if (updateSchemaEntry == null) {
+            throw new VeniceException(
+                "Update schema not found. Check if partial update is enabled for the store. This error"
+                    + " might also be transient if partial update has been enabled recently.");
+          }
+
+          Schema updateSchema = updateSchemaEntry.getSchema();
+
+          if (updateSchemaEntry.getValueSchemaID() == SchemaData.INVALID_VALUE_SCHEMA_ID
+              || updateSchemaEntry.getId() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+            throw new VeniceException(
+                "Could not find a registered schema id for schema: " + updateSchema
+                    + ". This might be transient if the schema has been registered recently.");
+          }
+
+          UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
+          updateFunction.accept(updateBuilder);
+          GenericRecord updateRecord = updateBuilder.build();
+          byte[] updateBytes = getSerializer(updateSchema).serialize(updateRecord);
+
+          long preprocessEndNanos = System.nanoTime();
+          producerMetrics.recordPreprocessingLatency(convertNSToMS(preprocessEndNanos - preprocessStartNanos));
+          veniceWriter.update(
+              keyBytes,
+              updateBytes,
+              updateSchemaEntry.getValueSchemaID(),
+              updateSchemaEntry.getId(),
+              getPubSubProducerCallback(
+                  durableWriteFuture,
+                  submissionTimeNanos,
+                  preprocessEndNanos,
+                  "Failed to write the UPDATE record to the PubSub system"),
+              logicalTime);
+          producerMetrics.recordCallerToPubSubBufferLatency(getElapsedTimeFromNSToMS(submissionTimeNanos));
+        } catch (Exception e) {
+          completeDurableWriteFutureExceptionally(durableWriteFuture, e);
+        }
+      });
+    } catch (RejectedExecutionException e) {
+      completeDurableWriteFutureExceptionally(durableWriteFuture, e);
+    }
+
+    return durableWriteFuture;
+  }
+
+  /**
+   * Create a callback for the PubSub producer that completes the durable write future.
+   *
+   * @param durableWriteFuture the future to complete
+   * @param submissionTimeNanos submission time in nanoseconds (from System.nanoTime())
+   * @param preprocessEndNanos preprocessing end time in nanoseconds (from System.nanoTime())
+   * @param errorMessage error message to use if the operation fails
+   */
+  private PubSubProducerCallback getPubSubProducerCallback(
+      CompletableFuture<DurableWrite> durableWriteFuture,
+      long submissionTimeNanos,
+      long preprocessEndNanos,
+      String errorMessage) {
+    final AtomicBoolean callbackTriggered = new AtomicBoolean();
+    return (PubSubProduceResult produceResult, Exception exception) -> {
+      boolean firstInvocation = callbackTriggered.compareAndSet(false, true);
+      // We do not expect this to be triggered multiple times, but we still handle the case for defensive reasons
+      if (!firstInvocation) {
+        return;
       }
 
-      Schema updateSchema = updateSchemaEntry.getSchema();
-
-      if (updateSchemaEntry.getValueSchemaID() == SchemaData.INVALID_VALUE_SCHEMA_ID
-          || updateSchemaEntry.getId() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      long pubSubAckTimeNanos = System.nanoTime();
+      if (exception != null) {
         producerMetrics.recordFailedRequest();
-        throw new VeniceException(
-            "Could not find a registered schema id for schema: " + updateSchema
-                + ". This might be transient if the schema has been registered recently.");
+      } else {
+        producerMetrics.recordSuccessfulRequestWithLatency(convertNSToMS(pubSubAckTimeNanos - preprocessEndNanos));
       }
 
-      UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
-      updateFunction.accept(updateBuilder);
-      GenericRecord updateRecord = updateBuilder.build();
+      // Complete user future (on callback executor or inline)
+      try {
+        asyncDispatcher.executeCallback(() -> {
+          if (exception == null) {
+            durableWriteFuture.complete(DURABLE_WRITE);
+            producerMetrics.recordEndToEndLatency(getElapsedTimeFromNSToMS(submissionTimeNanos));
+          } else {
+            durableWriteFuture.completeExceptionally(new VeniceException(errorMessage, exception));
+          }
+        });
+      } catch (RejectedExecutionException e) {
+        // Callback executor rejected - complete future exceptionally without blocking Kafka I/O thread
+        durableWriteFuture.completeExceptionally(new VeniceException("Callback executor rejected during shutdown", e));
+      }
+    };
+  }
 
-      byte[] keyBytes = keySerializer.serialize(key);
-      byte[] updateBytes = getSerializer(updateSchema).serialize(updateRecord);
-
-      // Record preprocessing latency
-      Duration preprocessingDuration = Duration.between(preProcessingStartTime, Instant.now());
-      producerMetrics.recordPreprocessingLatency(preprocessingDuration.toMillis());
-
-      return new PreparedWriteData(
-          keyBytes,
-          updateBytes,
-          updateSchemaEntry.getValueSchemaID(),
-          updateSchemaEntry.getId(),
-          logicalTime);
-    }, producerExecutor);
-
-    // Step 2: Submit write task to single-threaded executor IMMEDIATELY to maintain order
-    return executeWrite(
-        preprocessFuture,
-        (preparedData, callback) -> veniceWriter.update(
-            preparedData.keyBytes,
-            preparedData.payloadBytes,
-            preparedData.valueSchemaId,
-            preparedData.derivedSchemaId,
-            callback,
-            preparedData.logicalTime),
-        "Failed to write the UPDATE record to the PubSub system");
+  /**
+   * Complete durable write future exceptionally with proper metrics recording.
+   * Note: End-to-end latency is not recorded for failed requests.
+   *
+   * @param durableWriteFuture the future to complete exceptionally
+   * @param exception the exception that caused the failure
+   */
+  private void completeDurableWriteFutureExceptionally(
+      CompletableFuture<DurableWrite> durableWriteFuture,
+      Exception exception) {
+    try {
+      asyncDispatcher.executeCallback(() -> {
+        producerMetrics.recordFailedRequest();
+        String errorMessage = "Write operation failed: " + exception.getMessage();
+        durableWriteFuture.completeExceptionally(new VeniceException(errorMessage, exception));
+      });
+    } catch (RejectedExecutionException e) {
+      // Callback executor rejected - complete future exceptionally without blocking Kafka I/O thread
+      String errorMessage = "Write operation failed (callback rejected): " + exception.getMessage();
+      durableWriteFuture.completeExceptionally(new VeniceException(errorMessage, exception));
+    }
   }
 
   /**
@@ -427,20 +579,19 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   @Override
   public void close() throws IOException {
     closed = true;
-    if (producerExecutor != null) {
-      producerExecutor.shutdownNow();
+    if (asyncDispatcher != null) {
+      // Graceful shutdown: stop accepting new tasks and allow pending tasks to complete
+      asyncDispatcher.shutdown();
       try {
-        producerExecutor.awaitTermination(60, TimeUnit.SECONDS);
+        if (!asyncDispatcher.awaitTermination(60, TimeUnit.SECONDS)) {
+          // Force shutdown if tasks did not complete within timeout
+          LOGGER.warn("Async dispatcher did not terminate gracefully, forcing shutdown");
+          asyncDispatcher.shutdownNow();
+        }
       } catch (InterruptedException e) {
-        LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
-      }
-    }
-    if (writerExecutor != null) {
-      writerExecutor.shutdownNow();
-      try {
-        writerExecutor.awaitTermination(60, TimeUnit.SECONDS);
-      } catch (InterruptedException e) {
-        LOGGER.warn("Caught InterruptedException while closing the Venice producer writer ExecutorService", e);
+        LOGGER.warn("Interrupted while closing async dispatcher, forcing shutdown", e);
+        asyncDispatcher.shutdownNow();
+        Thread.currentThread().interrupt();
       }
     }
 
@@ -449,61 +600,5 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
   protected boolean isClosed() {
     return closed;
-  }
-
-  @FunctionalInterface
-  private interface WriteOperation {
-    void execute(PreparedWriteData preparedData, PubSubProducerCallback callback) throws Exception;
-  }
-
-  private CompletableFuture<DurableWrite> executeWrite(
-      CompletableFuture<PreparedWriteData> preprocessFuture,
-      WriteOperation writeOperation,
-      String errorMessage) {
-    return CompletableFuture.supplyAsync(() -> {
-      PreparedWriteData preparedData;
-      try {
-        // Wait for preprocessing to complete
-        preparedData = preprocessFuture.get();
-      } catch (InterruptedException | ExecutionException e) {
-        throw new VeniceException(e);
-      }
-
-      final CompletableFuture<Void> writeFuture = new CompletableFuture<>();
-      final Instant sendStartTime = Instant.now();
-      final PubSubProducerCallback callback = getPubSubProducerCallback(sendStartTime, writeFuture, errorMessage);
-
-      try {
-        writeOperation.execute(preparedData, callback);
-      } catch (Exception e) {
-        callback.onCompletion(null, e);
-        throw new VeniceException(errorMessage, e);
-      }
-
-      try {
-        writeFuture.get();
-      } catch (InterruptedException | ExecutionException e) {
-        throw new VeniceException(e);
-      }
-
-      return DURABLE_WRITE;
-    }, writerExecutor);
-  }
-
-  // Helper class to hold prepared data from preprocessing
-  private static class PreparedWriteData {
-    final byte[] keyBytes;
-    final byte[] payloadBytes; // null for delete operations, valueBytes for put, updateBytes for update
-    final int valueSchemaId; // -1 for delete operations
-    final int derivedSchemaId; // -1 for put/delete operations, used only for update
-    final long logicalTime;
-
-    PreparedWriteData(byte[] keyBytes, byte[] payloadBytes, int valueSchemaId, int derivedSchemaId, long logicalTime) {
-      this.keyBytes = keyBytes;
-      this.payloadBytes = payloadBytes;
-      this.valueSchemaId = valueSchemaId;
-      this.derivedSchemaId = derivedSchemaId;
-      this.logicalTime = logicalTime;
-    }
   }
 }

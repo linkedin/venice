@@ -48,7 +48,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
     for (PubSubPartitionSplit pubSubSplit: planned) {
       KafkaInputSplit split = new KafkaInputSplit(pubSubSplit);
       splits[index++] = split;
-      LOGGER.info("Created split: {}", split);
+      LOGGER.debug("Created split: {}", split);
     }
 
     LOGGER.info("Created {} splits for topic: {}", splits.length, veniceProperties.getString(KAFKA_INPUT_TOPIC));
