@@ -211,7 +211,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
    * @param subscriptionCall Function that takes subscribedPartitions and returns subscription future
    * @return CompletableFuture that represents the async initialization work
    */
-  private CompletableFuture<Void> initializeAndSubscribe(
+  private synchronized CompletableFuture<Void> initializeAndSubscribe(
       Set<Integer> partitions,
       Function<Set<Integer>, CompletableFuture<Void>> subscriptionCall) {
     startDaVinciClient();
