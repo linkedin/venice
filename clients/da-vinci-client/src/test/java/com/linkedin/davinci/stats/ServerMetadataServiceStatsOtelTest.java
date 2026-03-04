@@ -5,20 +5,16 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
-import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricType;
-import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
-import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -46,18 +42,24 @@ public class ServerMetadataServiceStatsOtelTest {
     stats = new ServerMetadataServiceStats(metricsRepository, TEST_CLUSTER_NAME);
   }
 
+  @AfterMethod
+  public void tearDown() {
+    metricsRepository.close();
+  }
+
   @Test
   public void testRecordFailure() {
     stats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME);
 
     // OTel counter recorded
     validateCounter(
-        ServerMetadataServiceStats.ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
+        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
         1,
         buildExpectedAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.FAIL));
 
-    // Tehuti failure sensor also recorded (dual-recording)
+    // Tehuti failure sensor also recorded (dual-recording), invoke sensor unaffected
     assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
+    assertEquals(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value(), 0d);
   }
 
   @Test
@@ -66,7 +68,7 @@ public class ServerMetadataServiceStatsOtelTest {
 
     // OTel counter recorded
     validateCounter(
-        ServerMetadataServiceStats.ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
+        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
         1,
         buildExpectedAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.SUCCESS));
 
@@ -82,14 +84,18 @@ public class ServerMetadataServiceStatsOtelTest {
     stats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME);
 
     validateCounter(
-        ServerMetadataServiceStats.ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
+        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
         2,
         buildExpectedAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.SUCCESS));
 
     validateCounter(
-        ServerMetadataServiceStats.ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
+        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
         1,
         buildExpectedAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.FAIL));
+
+    // Tehuti: only failure sensor affected, invoke unaffected
+    assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
+    assertEquals(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value(), 0d);
   }
 
   @Test
@@ -102,21 +108,22 @@ public class ServerMetadataServiceStatsOtelTest {
     stats.recordRequestBasedMetadataSuccessCount(storeB);
 
     validateCounter(
-        ServerMetadataServiceStats.ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
+        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
         2,
         buildExpectedAttributes(storeA, VeniceResponseStatusCategory.SUCCESS));
 
     validateCounter(
-        ServerMetadataServiceStats.ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
+        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
         1,
         buildExpectedAttributes(storeB, VeniceResponseStatusCategory.SUCCESS));
   }
 
   @Test
   public void testNoNpeWhenOtelDisabled() {
-    VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build());
-    assertAllMethodsSafeWithRepo(disabledRepo);
+    try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+      assertAllMethodsSafeWithRepo(disabledRepo);
+    }
   }
 
   @Test
@@ -129,27 +136,6 @@ public class ServerMetadataServiceStatsOtelTest {
     safeStats.recordRequestBasedMetadataInvokeCount();
     safeStats.recordRequestBasedMetadataSuccessCount(TEST_STORE_NAME);
     safeStats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME);
-  }
-
-  @Test
-  public void testOtelMetricEntityDefinitions() {
-    ServerMetadataServiceStats.ServerMetadataOtelMetricEntity[] values =
-        ServerMetadataServiceStats.ServerMetadataOtelMetricEntity.values();
-    assertEquals(values.length, 1, "Expected exactly 1 ServerMetadataOtelMetricEntity");
-
-    ServerMetadataServiceStats.ServerMetadataOtelMetricEntity metric =
-        ServerMetadataServiceStats.ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT;
-    MetricEntity entity = metric.getMetricEntity();
-
-    assertNotNull(entity);
-    assertEquals(entity.getMetricName(), "metadata.request_count");
-    assertEquals(entity.getMetricType(), MetricType.COUNTER);
-    assertEquals(entity.getUnit(), MetricUnit.NUMBER);
-    assertEquals(entity.getDescription(), "Request-based metadata invocation count by outcome");
-    assertEquals(
-        entity.getDimensionsList(),
-        Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY));
-    // Registration in SERVER_METRIC_ENTITIES is verified by ServerMetricEntityTest
   }
 
   private Attributes buildExpectedAttributes(String storeName, VeniceResponseStatusCategory statusCategory) {

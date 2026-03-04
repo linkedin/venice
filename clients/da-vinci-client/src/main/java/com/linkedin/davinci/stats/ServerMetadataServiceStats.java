@@ -1,28 +1,19 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
-import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
-import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
-import com.linkedin.venice.stats.metrics.MetricType;
-import com.linkedin.venice.stats.metrics.MetricUnit;
-import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Rate;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 
 
 /**
@@ -49,6 +40,7 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
   private final boolean emitOtelMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+  /** Unbounded; cardinality is bounded by stores deployed to this server. Same pattern as HelixGroupStats. */
   private final VeniceConcurrentHashMap<String, MetricEntityStateOneEnum<VeniceResponseStatusCategory>> perStoreMetrics =
       new VeniceConcurrentHashMap<>();
 
@@ -62,13 +54,12 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
         OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(clusterName).build();
     this.emitOtelMetrics = otelData.emitOpenTelemetryMetrics();
     this.otelRepository = otelData.getOtelRepository();
-    // Null-safe: getBaseDimensionsMap() returns null when OTel is disabled. Other stats classes pass
-    // it directly to MetricEntityState.create() which handles null internally, but getStoreMetrics()
-    // copies the map via new HashMap<>(baseDimensionsMap) which would NPE on null.
-    Map<VeniceMetricsDimensions, String> dims = otelData.getBaseDimensionsMap();
-    this.baseDimensionsMap = dims != null ? dims : Collections.emptyMap();
+    this.baseDimensionsMap = otelData.getBaseDimensionsMap();
   }
 
+  // Uses the 4-arg (OTel-only) create overload intentionally: the 7-arg overload would bind
+  // Tehuti recording to every record() call, but we only want Tehuti on failure, not success.
+  // Tehuti and OTel are therefore recorded in separate steps in recordRequestBasedMetadataFailureCount.
   private MetricEntityStateOneEnum<VeniceResponseStatusCategory> getStoreMetrics(String storeName) {
     return perStoreMetrics.computeIfAbsent(storeName, k -> {
       Map<VeniceMetricsDimensions, String> dimensionsMap = new HashMap<>(baseDimensionsMap);
@@ -95,30 +86,6 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
     requestBasedMetadataFailureCount.record();
     if (emitOtelMetrics) {
       getStoreMetrics(storeName).record(1, VeniceResponseStatusCategory.FAIL);
-    }
-  }
-
-  public enum ServerMetadataOtelMetricEntity implements ModuleMetricEntityInterface {
-    METADATA_REQUEST_COUNT(
-        "metadata.request_count", MetricType.COUNTER, MetricUnit.NUMBER,
-        "Request-based metadata invocation count by outcome",
-        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
-    );
-
-    private final MetricEntity metricEntity;
-
-    ServerMetadataOtelMetricEntity(
-        String metricName,
-        MetricType metricType,
-        MetricUnit unit,
-        String description,
-        Set<VeniceMetricsDimensions> dimensions) {
-      this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensions);
-    }
-
-    @Override
-    public MetricEntity getMetricEntity() {
-      return metricEntity;
     }
   }
 }
