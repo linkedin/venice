@@ -64,6 +64,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -555,9 +556,16 @@ public class AvroGenericDaVinciClientTest {
     // Test
     CompletableFuture<Void> future = dvcClient.seekToBeginningOfPush(Collections.singleton(1));
     future.get(); // Wait for completion
-    // Verify
-    verify(dvcClient).seekToBeginningOfPush(Collections.singleton(1));
-    assertTrue(future.isDone() && !future.isCompletedExceptionally());
+    // Verify the checkpoint info contains partition->EARLIEST mapping
+    ArgumentCaptor<DaVinciSeekCheckpointInfo> captor = ArgumentCaptor.forClass(DaVinciSeekCheckpointInfo.class);
+    verify(mockStoreBackend).seekToCheckpoint(captor.capture(), eq(Optional.empty()));
+    DaVinciSeekCheckpointInfo capturedInfo = captor.getValue();
+    assertEquals(capturedInfo.getSeekMode(), DaVinciSeekCheckpointInfo.SeekMode.POSITION_MAP);
+    assertEquals(
+        capturedInfo.getPositionMap(),
+        Collections.singletonMap(1, com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST));
+    assertTrue(capturedInfo.getPartitions().contains(1));
+    assertFalse(capturedInfo.getPartitions().contains(0));
   }
 
   @Test
