@@ -100,6 +100,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
+import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -1714,5 +1715,69 @@ public class LeaderFollowerStoreIngestionTaskTest {
     clusterIdToAlias.put(2, "");
     String empty = RegionUtils.normalizeRegionName(clusterIdToAlias.get(2));
     assertEquals(empty, RegionUtils.UNKNOWN_REGION, "Empty alias should normalize to 'unknown' region");
+  }
+
+  @Test
+  public void testPropagateHeartbeatIncludesOffsetVector() throws Exception {
+    // Mock the LFSIT and stub the non-private methods it calls internally
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    PubSubTopic versionTopic = new PubSubTopicImpl("store_v1");
+    doReturn(versionTopic).when(ingestionTask).getVersionTopic();
+    doReturn(null).when(ingestionTask).createProducerCallback(any(), any(), any(), anyInt(), anyString(), anyLong());
+
+    // Set up PCS: partition 0, not yet complete, with a two-cluster offset vector
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(0).when(pcs).getPartition();
+    doReturn(false).when(pcs).isCompletionReported();
+    Map<String, PubSubPosition> rtPositions = new HashMap<>();
+    rtPositions.put("broker1:9092", new ApacheKafkaOffsetPosition(100));
+    rtPositions.put("broker2:9092", new ApacheKafkaOffsetPosition(200));
+    doReturn(rtPositions).when(pcs).getLatestProcessedRtPositions();
+
+    // Set up the VeniceWriter that the PCS hands back
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    doReturn(CompletableFuture.completedFuture(mock(PubSubProduceResult.class))).when(mockWriter)
+        .sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong(), any());
+    Lazy<VeniceWriter<byte[], byte[], byte[]>> lazyWriter = Lazy.of(() -> mockWriter);
+    lazyWriter.get(); // force initialization so the Lazy is considered initialized
+    doReturn(lazyWriter).when(pcs).getVeniceWriterLazyRef();
+
+    // Set up a minimal consumer record (timestamp + consumed position)
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+    KafkaMessageEnvelope kme = new KafkaMessageEnvelope();
+    ProducerMetadata pm = new ProducerMetadata();
+    pm.messageTimestamp = 1000L;
+    kme.producerMetadata = pm;
+    doReturn(kme).when(consumerRecord).getValue();
+    doReturn(2000L).when(consumerRecord).getPubSubMessageTime();
+    doReturn(new ApacheKafkaOffsetPosition(50)).when(consumerRecord).getPosition();
+
+    // Invoke the private method via reflection
+    Method method = LeaderFollowerStoreIngestionTask.class.getDeclaredMethod(
+        "propagateHeartbeatFromUpstreamTopicToLocalVersionTopic",
+        PartitionConsumptionState.class,
+        DefaultPubSubMessage.class,
+        LeaderProducedRecordContext.class,
+        int.class,
+        String.class,
+        int.class,
+        long.class);
+    method.setAccessible(true);
+    method.invoke(ingestionTask, pcs, consumerRecord, null, 0, "broker1:9092", 0, 0L);
+
+    // The writer should have been called with both broker->position entries in the offset vector
+    ArgumentCaptor<Map> offsetVectorCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(mockWriter, times(1)).sendHeartbeat(
+        any(PubSubTopicPartition.class),
+        any(),
+        any(LeaderMetadataWrapper.class),
+        anyBoolean(),
+        any(),
+        anyLong(),
+        offsetVectorCaptor.capture());
+
+    Map<String, String> capturedOffsetVector = offsetVectorCaptor.getValue();
+    assertEquals(capturedOffsetVector.get("broker1:9092"), new ApacheKafkaOffsetPosition(100).toString());
+    assertEquals(capturedOffsetVector.get("broker2:9092"), new ApacheKafkaOffsetPosition(200).toString());
   }
 }
