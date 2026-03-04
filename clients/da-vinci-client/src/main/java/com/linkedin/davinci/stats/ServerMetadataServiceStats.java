@@ -42,12 +42,10 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
   /**
-   * Sentinel store name used when the requested store does not exist (e.g., VeniceNoStoreException).
-   * Keeps per-store OTel cardinality bounded — all unknown-store failures share one metric entry.
+   * Per-store OTel metrics. When the requested store does not exist (e.g., {@link VeniceNoStoreException}),
+   * {@link OpenTelemetryMetricsSetup#UNKNOWN_STORE_NAME} is used as a sentinel so that all unknown-store failures
+   * share one metric entry. Cardinality is bounded by stores deployed to this server + the sentinel.
    */
-  public static final String UNKNOWN_STORE = "unknown_store";
-
-  /** Per-store OTel metrics. Cardinality is bounded by stores deployed to this server + {@link #UNKNOWN_STORE}. */
   private final Map<String, MetricEntityStateOneEnum<VeniceResponseStatusCategory>> perStoreMetrics =
       new VeniceConcurrentHashMap<>();
 
@@ -90,13 +88,15 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
   }
 
   /**
-   * Records failure. Uses {@link #UNKNOWN_STORE} when the exception indicates the store doesn't exist,
-   * to bound per-store OTel cardinality from arbitrary request-provided names.
+   * Records failure. Uses {@link OpenTelemetryMetricsSetup#UNKNOWN_STORE_NAME} when the exception
+   * indicates the store doesn't exist, to bound per-store OTel cardinality from arbitrary
+   * request-provided names.
    */
   public void recordRequestBasedMetadataFailureCount(String storeName, Exception e) {
     requestBasedMetadataFailureCount.record();
     if (emitOtelMetrics) {
-      String metricStoreName = (e instanceof VeniceNoStoreException) ? UNKNOWN_STORE : storeName;
+      String metricStoreName =
+          (e instanceof VeniceNoStoreException) ? OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME : storeName;
       getStoreMetrics(metricStoreName).record(1, VeniceResponseStatusCategory.FAIL);
     }
   }

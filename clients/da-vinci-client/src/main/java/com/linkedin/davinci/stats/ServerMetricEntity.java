@@ -5,6 +5,7 @@ import static com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface.getU
 import com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelMetricEntity;
 import com.linkedin.davinci.stats.ingestion.heartbeat.RecordLevelDelayOtelMetricEntity;
+import com.linkedin.venice.stats.ThreadPoolOtelMetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import java.util.Collection;
 
@@ -18,6 +19,7 @@ public final class ServerMetricEntity {
       HeartbeatOtelMetricEntity.class,
       RecordLevelDelayOtelMetricEntity.class,
       ServerReadOtelMetricEntity.class,
+      ThreadPoolOtelMetricEntity.class,
       ServerMetadataOtelMetricEntity.class);
 
   private ServerMetricEntity() {

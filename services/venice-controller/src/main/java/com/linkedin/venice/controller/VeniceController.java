@@ -16,6 +16,7 @@ import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslS
 import com.linkedin.venice.controller.grpc.server.interceptor.ParentControllerRegionValidationInterceptor;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
+import com.linkedin.venice.controller.lingeringjob.HeartbeatCheckerOtelMetricEntity;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
@@ -25,6 +26,7 @@ import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.ErrorPartitionStats;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
+import com.linkedin.venice.controller.stats.PartitionHealthStats;
 import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controller.stats.SparkServerStats;
@@ -47,6 +49,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.AsyncRetryingServiceDiscoveryAnnouncer;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.stats.ThreadPoolOtelMetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
@@ -93,7 +96,10 @@ public class VeniceController {
           DisabledPartitionStats.DisabledPartitionOtelMetricEntity.class,
           ErrorPartitionStats.ErrorPartitionOtelMetricEntity.class,
           SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.class,
-          ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity.class);
+          ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity.class,
+          PartitionHealthStats.PartitionHealthOtelMetricEntity.class,
+          HeartbeatCheckerOtelMetricEntity.class,
+          ThreadPoolOtelMetricEntity.class);
 
   // services
   private final VeniceControllerService controllerService;

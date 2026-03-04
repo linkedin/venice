@@ -103,10 +103,13 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
   }
 
   protected void reportUnderReplicatedPartition(String version, int underReplicatedPartitions) {
+    // Always record to per-store stats so the OTel gauge reflects recovery (zero) in dashboards.
+    // The MetricEntityStateBase in PartitionHealthStats handles both Tehuti and OTel recording.
+    getStoreStats(version).recordUnderReplicatePartition(underReplicatedPartitions);
+
     if (underReplicatedPartitions > 0) {
       LOGGER.warn("Version: {} has {} partitions which are under replicated.", version, underReplicatedPartitions);
       totalStats.recordUnderReplicatePartition(underReplicatedPartitions);
-      getStoreStats(version).recordUnderReplicatePartition(underReplicatedPartitions);
     }
   }
 }

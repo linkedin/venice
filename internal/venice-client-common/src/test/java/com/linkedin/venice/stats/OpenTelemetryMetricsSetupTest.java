@@ -224,6 +224,32 @@ public class OpenTelemetryMetricsSetupTest {
     assertEquals(baseAttributes.size(), 2);
   }
 
+  @DataProvider(name = "sanitizeStoreNameCases")
+  public Object[][] sanitizeStoreNameCases() {
+    return new Object[][] { { null, OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME },
+        { "", OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME }, { "   ", OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME },
+        { "my-store", "my-store" }, { " my-store ", "my-store" }, };
+  }
+
+  @Test(dataProvider = "sanitizeStoreNameCases")
+  public void testSanitizeStoreName(String input, String expected) {
+    assertEquals(OpenTelemetryMetricsSetup.sanitizeStoreName(input), expected);
+  }
+
+  @Test
+  public void testBuilderSanitizesEmptyStoreName() {
+    setupGlobalOtel(true);
+
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo result =
+        OpenTelemetryMetricsSetup.builder(mockVeniceMetricsRepository).setStoreName("").build();
+
+    assertTrue(result.emitOpenTelemetryMetrics());
+    assertEquals(result.getBaseDimensionsMap().get(VENICE_STORE_NAME), OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME);
+    assertEquals(
+        result.getBaseAttributes().get(AttributeKey.stringKey(VENICE_STORE_NAME.getDimensionNameInDefaultFormat())),
+        OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME);
+  }
+
   @Test
   public void testBuilderMethodChaining() {
     OpenTelemetryMetricsSetup.Builder builder = OpenTelemetryMetricsSetup.builder(mockNonVeniceMetricsRepository);

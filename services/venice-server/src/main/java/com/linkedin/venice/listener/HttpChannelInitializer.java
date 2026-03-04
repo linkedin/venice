@@ -204,8 +204,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       ch.attr(ServerConnectionStatsHandler.CHANNEL_INIT_START_TS).set(System.nanoTime());
       SslInitializer sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
       if (sslHandshakeExecutor != null) {
-        sslInitializer
-            .enableSslTaskExecutor(sslHandshakeExecutor, sslHandshakesThreadPoolStats::recordQueuedTasksCount);
+        sslInitializer.enableSslTaskExecutor(
+            sslHandshakeExecutor,
+            ignored -> sslHandshakesThreadPoolStats.recordQueuedTasksCount());
       }
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
       ch.pipeline().addLast(sslInitializer);
