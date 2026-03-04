@@ -212,7 +212,7 @@ public class PartitionTracker {
   /**
    * Clone the vtSegments and LCVP to the destination PartitionTracker. May be called concurrently.
    */
-  public void cloneVtProducerStates(PartitionTracker destProducerTracker, long maxAgeInMs) {
+  public void cloneVtProducerStates(PartitionTracker destProducerTracker, long maxAgeInMs, boolean emitLog) {
     long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
     List<GUID> staleGuids = new ArrayList<>();
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
@@ -230,7 +230,7 @@ public class PartitionTracker {
       }
     }
     if (removedCount > 0 && !REDUNDANT_LOGGING_FILTER.isRedundantException(topicName + "-cloneVtProducerStates")) {
-      logger.info("Removed {} stale VT producer state(s) for store {}", removedCount, topicName);
+      logger.info("event=globalRtDiv Removed {} stale VT producer state(s) for store {}", removedCount, topicName);
     }
     destProducerTracker.updateLatestConsumedVtPosition(latestConsumedVtPosition.get());
   }

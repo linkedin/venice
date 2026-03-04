@@ -3045,7 +3045,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     try {
-      PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
+      // VT DIV contains the latest consumed VT position (LCVP)
+      PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true);
       CompletableFuture<Void> lastFuture = pcs.getLastQueuedRecordPersistedFuture();
       storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
       // Reset consumer-side VT bytes so the size-based condition in shouldSyncOffsetFromSnapshot does not keep
@@ -3755,7 +3756,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
-    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed vt position (LCVP)
+    // VT DIV contains the latest consumed VT position (LCVP)
+    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true);
     PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl);
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
