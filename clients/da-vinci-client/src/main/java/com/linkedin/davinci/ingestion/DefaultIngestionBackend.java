@@ -238,7 +238,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
         .handle((inputStream, throwable) -> {
           updateBlobTransferResponseStats(throwable, storeName, versionNumber);
           if (throwable != null) {
-            LOGGER.error(
+            LOGGER.warn(
                 "Failed to bootstrap replica {} via blob transfer due to exception {}; will start Kafka ingestion unless cancelled.",
                 replicaId,
                 throwable);
