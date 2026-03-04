@@ -26,17 +26,16 @@ public class OpenTelemetryMetricsSetup {
    * Returns {@link #UNKNOWN_STORE_NAME} if the input is null, empty, or whitespace-only.
    */
   public static String sanitizeStoreName(String storeName) {
-    return (storeName == null || storeName.trim().isEmpty()) ? UNKNOWN_STORE_NAME : storeName;
+    String trimmed = (storeName == null) ? null : storeName.trim();
+    return (trimmed == null || trimmed.isEmpty()) ? UNKNOWN_STORE_NAME : trimmed;
   }
 
   /**
    * Result object containing the setup OpenTelemetry components.
    *
-   * <p>When {@link #emitOpenTelemetryMetrics()} returns {@code false}, the OTel-specific
-   * getters ({@link #getOtelRepository()}, {@link #getBaseDimensionsMap()}, {@link #getBaseAttributes()})
-   * return {@code null}. Callers must check {@link #emitOpenTelemetryMetrics()} before accessing
-   * these values, or pass them directly to {@code MetricEntityStateBase.create()} /
-   * {@code AsyncMetricEntityStateBase.create()} which handle null safely.
+   * <p>When {@link #emitOpenTelemetryMetrics()} returns {@code false}, {@link #getOtelRepository()} and
+   * {@link #getBaseAttributes()} return {@code null}, while {@link #getBaseDimensionsMap()} returns an
+   * empty map (not null) so callers that copy-and-augment the map don't need individual null guards.
    */
   public static class OpenTelemetryMetricsSetupInfo {
     private final boolean emitOpenTelemetryMetrics;
@@ -64,7 +63,7 @@ public class OpenTelemetryMetricsSetup {
       return otelRepository;
     }
 
-    /** Returns {@code null} when {@link #emitOpenTelemetryMetrics()} is {@code false}. */
+    /** Returns an empty map (not null) when {@link #emitOpenTelemetryMetrics()} is {@code false}. */
     public Map<VeniceMetricsDimensions, String> getBaseDimensionsMap() {
       return baseDimensionsMap;
     }

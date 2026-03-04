@@ -126,7 +126,7 @@ public class ControllerMetricEntityTest {
         }
         String fullClassName = packageName + "." + fileName.replace(".class", "");
         try {
-          Class<?> clazz = Class.forName(fullClassName);
+          Class<?> clazz = Class.forName(fullClassName, false, getClass().getClassLoader());
           if (clazz.isEnum() && ModuleMetricEntityInterface.class.isAssignableFrom(clazz)) {
             result.add((Class<? extends ModuleMetricEntityInterface>) clazz);
           }

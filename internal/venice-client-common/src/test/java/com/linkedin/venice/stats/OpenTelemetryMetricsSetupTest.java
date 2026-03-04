@@ -228,7 +228,7 @@ public class OpenTelemetryMetricsSetupTest {
   public Object[][] sanitizeStoreNameCases() {
     return new Object[][] { { null, OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME },
         { "", OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME }, { "   ", OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME },
-        { "my-store", "my-store" }, };
+        { "my-store", "my-store" }, { " my-store ", "my-store" }, };
   }
 
   @Test(dataProvider = "sanitizeStoreNameCases")
