@@ -3,6 +3,9 @@ package com.linkedin.venice.spark.datawriter.task;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 
 
+/**
+ * This class is used to track the metrics for the Spark Data Writer task.
+ */
 public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   private final DataWriterAccumulators accumulators;
 
@@ -86,6 +89,11 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   }
 
   @Override
+  public void trackIncrementalPushThrottledTime(long timeMs) {
+    accumulators.incrementalPushThrottleTimeCounter.add(timeMs);
+  }
+
+  @Override
   public void trackPartitionWriterClose() {
     accumulators.partitionWriterCloseCounter.add(1);
   }
@@ -158,5 +166,10 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   @Override
   public long getRepushTtlFilterCount() {
     return accumulators.repushTtlFilteredRecordCounter.value();
+  }
+
+  @Override
+  public long getIncrementalPushThrottledTimeMs() {
+    return accumulators.incrementalPushThrottleTimeCounter.value();
   }
 }
