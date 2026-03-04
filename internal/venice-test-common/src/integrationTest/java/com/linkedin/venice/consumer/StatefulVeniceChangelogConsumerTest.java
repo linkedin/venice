@@ -107,7 +107,6 @@ public class StatefulVeniceChangelogConsumerTest {
   private D2Client d2Client;
   private MetricsRepository metricsRepository;
   private String zkAddress;
-  private Properties consumerProperties;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -138,8 +137,6 @@ public class StatefulVeniceChangelogConsumerTest {
 
     metricsRepository = getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
 
-    consumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(clusterWrapper);
-
     deleteWithRmdKeyIndex.id = 1000;
   }
 
@@ -154,8 +151,8 @@ public class StatefulVeniceChangelogConsumerTest {
     String storeName = Utils.getUniqueString("store");
     String inputDirPath = setUpStore(storeName);
 
-    Properties testConsumerProperties = new Properties();
-    testConsumerProperties.putAll(consumerProperties);
+    Properties testConsumerProperties =
+        ChangelogConsumerTestUtils.buildConsumerProperties(clusterWrapper, inputDirPath);
     testConsumerProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
     ChangelogClientConfig globalChangelogClientConfig =
         new ChangelogClientConfig().setConsumerProperties(testConsumerProperties)
@@ -163,7 +160,6 @@ public class StatefulVeniceChangelogConsumerTest {
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setLocalD2ZkHosts(zkAddress)
             .setControllerRequestRetryCount(3)
-            .setBootstrapFileSystemPath(inputDirPath)
             .setD2Client(d2Client)
             // Setting the max buffer size to a low threshold to ensure puts to the buffer get blocked and drained
             // correctly during regular operation and restarts
@@ -353,8 +349,8 @@ public class StatefulVeniceChangelogConsumerTest {
       port2 = TestUtils.getFreePort();
     }
 
-    Properties testConsumerProperties = new Properties();
-    testConsumerProperties.putAll(consumerProperties);
+    Properties testConsumerProperties =
+        ChangelogConsumerTestUtils.buildConsumerProperties(clusterWrapper, inputDirPath1);
     testConsumerProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
     testConsumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port1);
     testConsumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port2);
@@ -379,7 +375,6 @@ public class StatefulVeniceChangelogConsumerTest {
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setLocalD2ZkHosts(zkAddress)
             .setControllerRequestRetryCount(3)
-            .setBootstrapFileSystemPath(inputDirPath1)
             .setD2Client(d2Client);
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
@@ -471,14 +466,13 @@ public class StatefulVeniceChangelogConsumerTest {
     String storeName = Utils.getUniqueString("store");
     String inputDirPath = setUpStore(storeName);
 
-    ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setLocalD2ZkHosts(zkAddress)
-            .setControllerRequestRetryCount(3)
-            .setBootstrapFileSystemPath(inputDirPath)
-            .setD2Client(d2Client);
+    ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig()
+        .setConsumerProperties(ChangelogConsumerTestUtils.buildConsumerProperties(clusterWrapper, inputDirPath))
+        .setControllerD2ServiceName(D2_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setLocalD2ZkHosts(zkAddress)
+        .setControllerRequestRetryCount(3)
+        .setD2Client(d2Client);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
     try (StatefulVeniceChangelogConsumer<TestChangelogKey, TestChangelogValue> statefulVeniceChangelogConsumer =
@@ -557,8 +551,8 @@ public class StatefulVeniceChangelogConsumerTest {
       port2 = TestUtils.getFreePort();
     }
 
-    Properties testConsumerProperties = new Properties();
-    testConsumerProperties.putAll(consumerProperties);
+    Properties testConsumerProperties =
+        ChangelogConsumerTestUtils.buildConsumerProperties(clusterWrapper, inputDirPath1);
     testConsumerProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
     testConsumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port1);
     testConsumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port2);
@@ -583,7 +577,6 @@ public class StatefulVeniceChangelogConsumerTest {
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setLocalD2ZkHosts(zkAddress)
             .setControllerRequestRetryCount(3)
-            .setBootstrapFileSystemPath(inputDirPath1)
             .setD2Client(d2Client);
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =

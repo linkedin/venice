@@ -110,7 +110,6 @@ public class VersionSpecificVeniceChangelogConsumerDaVinciRecordTransformerImplT
     changelogClientConfig = new ChangelogClientConfig<>().setD2ControllerClient(mockD2ControllerClient)
         .setSchemaReader(mockSchemaReader)
         .setStoreName(TEST_STORE_NAME)
-        .setBootstrapFileSystemPath(TEST_BOOTSTRAP_FILE_SYSTEM_PATH)
         .setControllerD2ServiceName(D2_SERVICE_NAME)
         .setD2ServiceName(DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setConsumerProperties(new Properties())

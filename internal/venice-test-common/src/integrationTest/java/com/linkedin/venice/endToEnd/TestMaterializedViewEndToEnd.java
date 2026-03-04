@@ -808,8 +808,12 @@ public class TestMaterializedViewEndToEnd extends AbstractMultiRegionTest {
       String testViewName) {
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
     PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
-    Properties consumerProperties = ChangelogConsumerTestUtils
-        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
+    Properties consumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(
+        multiRegionMultiClusterWrapper,
+        localKafka,
+        clusterName,
+        localZkServer,
+        Utils.getUniqueString(inputDirPath));
     consumerProperties.put(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY, true);
 
     return new ChangelogClientConfig().setConsumerProperties(consumerProperties)
@@ -819,7 +823,6 @@ public class TestMaterializedViewEndToEnd extends AbstractMultiRegionTest {
         .setControllerRequestRetryCount(3)
         .setVersionSwapDetectionIntervalTimeInSeconds(3)
         .setD2Client(d2Client)
-        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
         .setViewName(testViewName)
         .setIsNewStatelessClientEnabled(true);
   }

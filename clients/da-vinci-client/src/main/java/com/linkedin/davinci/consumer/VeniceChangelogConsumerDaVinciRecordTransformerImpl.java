@@ -1,6 +1,5 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
@@ -511,7 +510,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @VisibleForTesting
   public final VeniceProperties buildVeniceConfig() {
     return new PropertyBuilder().put(changelogClientConfig.getConsumerProperties())
-        .put(DATA_BASE_PATH, changelogClientConfig.getBootstrapFileSystemPath())
         .put(PUSH_STATUS_STORE_ENABLED, changelogClientConfig.isStateful())
         .build();
   }
