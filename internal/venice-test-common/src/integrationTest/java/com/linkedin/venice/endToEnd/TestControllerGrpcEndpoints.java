@@ -24,6 +24,8 @@ import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetKeySchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreStatusRequest;
+import com.linkedin.venice.protocols.controller.GetStoreStatusResponse;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetValueSchemaGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
@@ -34,6 +36,7 @@ import com.linkedin.venice.protocols.controller.SchemaGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcRequest;
 import com.linkedin.venice.protocols.controller.StoreMigrationCheckGrpcResponse;
+import com.linkedin.venice.protocols.controller.StoreStatus;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.protocols.controller.VeniceControllerGrpcServiceGrpc;
@@ -48,6 +51,8 @@ import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
 import io.grpc.StatusRuntimeException;
 import java.security.cert.X509Certificate;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -391,6 +396,46 @@ public class TestControllerGrpcEndpoints {
   }
 
   @Test(timeOut = TIMEOUT_MS)
+  public void testGetStoreStatusesGrpcEndpoint() {
+    String storeName1 = Utils.getUniqueString("test_health_stores_1");
+    String storeName2 = Utils.getUniqueString("test_health_stores_2");
+    String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
+    ManagedChannel channel = Grpc.newChannelBuilder(controllerGrpcUrl, InsecureChannelCredentials.create()).build();
+    try {
+      StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub storeBlockingStub =
+          StoreGrpcServiceGrpc.newBlockingStub(channel);
+
+      // Step 1: Create two stores
+      createTestStore(storeBlockingStub, veniceCluster.getClusterName(), storeName1);
+      createTestStore(storeBlockingStub, veniceCluster.getClusterName(), storeName2);
+
+      // Step 2: Get store statuses
+      GetStoreStatusRequest healthRequest =
+          GetStoreStatusRequest.newBuilder().setClusterName(veniceCluster.getClusterName()).build();
+
+      GetStoreStatusResponse healthResponse = storeBlockingStub.getStoreStatuses(healthRequest);
+      assertNotNull(healthResponse, "Response should not be null");
+      assertEquals(healthResponse.getClusterName(), veniceCluster.getClusterName());
+
+      // Convert repeated StoreStatus to map for easier verification
+      Map<String, String> storeStatusMap = new HashMap<>();
+      for (StoreStatus status: healthResponse.getStoreStatusesList()) {
+        storeStatusMap.put(status.getStoreName(), status.getStatus());
+      }
+
+      // Verify the stores we created are in the status map
+      assertTrue(storeStatusMap.containsKey(storeName1), "Store status map should contain " + storeName1);
+      assertTrue(storeStatusMap.containsKey(storeName2), "Store status map should contain " + storeName2);
+
+      // Verify the statuses are not null/empty
+      assertNotNull(storeStatusMap.get(storeName1), "Status for " + storeName1 + " should not be null");
+      assertNotNull(storeStatusMap.get(storeName2), "Status for " + storeName2 + " should not be null");
+    } finally {
+      channel.shutdownNow();
+    }
+  }
+
+  @Test(timeOut = TIMEOUT_MS)
   public void testGetRepushInfoGrpcEndpoint() {
     String storeName = Utils.getUniqueString("test_get_repush_info_store");
     String controllerGrpcUrl = veniceCluster.getLeaderVeniceController().getControllerGrpcUrl();
@@ -482,6 +527,21 @@ public class TestControllerGrpcEndpoints {
     StatusRuntimeException exception =
         Assert.expectThrows(StatusRuntimeException.class, () -> storeBlockingStub.getRepushInfo(getRepushInfoRequest));
     assertEquals(exception.getStatus().getCode(), io.grpc.Status.Code.NOT_FOUND);
+  }
+
+  private CreateStoreGrpcResponse createTestStore(
+      StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub stub,
+      String clusterName,
+      String storeName) {
+    CreateStoreGrpcRequest request = CreateStoreGrpcRequest.newBuilder()
+        .setStoreInfo(ClusterStoreGrpcInfo.newBuilder().setClusterName(clusterName).setStoreName(storeName).build())
+        .setOwner("owner")
+        .setKeySchema(DEFAULT_KEY_SCHEMA)
+        .setValueSchema("\"string\"")
+        .build();
+    CreateStoreGrpcResponse response = stub.createStore(request);
+    assertNotNull(response, "Response should not be null");
+    return response;
   }
 
   @Test(timeOut = TIMEOUT_MS)

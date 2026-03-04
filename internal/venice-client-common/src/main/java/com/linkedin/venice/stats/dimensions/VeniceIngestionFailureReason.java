@@ -20,10 +20,10 @@ public enum VeniceIngestionFailureReason implements VeniceDimensionInterface {
   TASK_KILLED,
   /** A checksum verification failure was detected on ingested data, indicating data corruption */
   CHECKSUM_VERIFICATION_FAILURE,
-  /** The ingestion task timed out while waiting for bootstrap (initial data load) to complete */
-  BOOTSTRAP_TIMEOUT,
-  /** The push job timed out before all data could be ingested */
-  PUSH_TIMEOUT,
+  /** A serving (current/backup) version partition's bootstrap exceeded the time limit; the task stays alive */
+  SERVING_VERSION_BOOTSTRAP_TIMEOUT,
+  /** A future version's ingestion task was killed because bootstrap timed out (VeniceTimeoutException) */
+  FUTURE_VERSION_PUSH_TIMEOUT,
   /** A remote Kafka broker in another region was unreachable during cross-region replication */
   REMOTE_BROKER_UNREACHABLE,
   /** A general/uncategorized ingestion failure that does not match any specific reason above */

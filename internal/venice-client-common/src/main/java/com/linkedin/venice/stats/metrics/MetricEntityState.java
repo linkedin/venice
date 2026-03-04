@@ -149,18 +149,20 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
   }
 
   /**
-   * Record otel metrics with MetricAttributesData (double version for histograms)
+   * Record OTel metrics only. Package-private to prevent external callers from bypassing the unified
+   * {@link #record(double, MetricAttributesData)} API, which records to both OTel and Tehuti.
    */
-  public void recordOtelMetric(double value, MetricAttributesData holder) {
+  void recordOtelMetric(double value, MetricAttributesData holder) {
     if (otelMetric != null) {
       otelDoubleRecordingStrategy.accept(holder, value);
     }
   }
 
   /**
-   * Record otel metrics with MetricAttributesData (long version)
+   * Record OTel metrics only. Package-private to prevent external callers from bypassing the unified
+   * {@link #record(long, MetricAttributesData)} API, which records to both OTel and Tehuti.
    */
-  public void recordOtelMetric(long value, MetricAttributesData holder) {
+  void recordOtelMetric(long value, MetricAttributesData holder) {
     if (otelMetric != null) {
       otelLongRecordingStrategy.accept(holder, value);
     }

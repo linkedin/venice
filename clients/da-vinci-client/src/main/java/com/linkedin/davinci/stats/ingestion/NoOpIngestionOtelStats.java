@@ -7,9 +7,9 @@ import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
+import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
-import com.linkedin.venice.stats.dimensions.VeniceWriteComputeOperation;
 
 
 /**
@@ -186,7 +186,7 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   }
 
   @Override
-  public void recordWriteComputeTime(int version, VeniceWriteComputeOperation op, double latencyMs) {
+  public void recordPartialUpdateTime(int version, VenicePartialUpdateOperation op, double latencyMs) {
   }
 
   @Override
@@ -210,7 +210,7 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   }
 
   @Override
-  public void recordWriteComputeCacheHitCount(int version, long value) {
+  public void recordPartialUpdateCacheHitCount(int version, long value) {
   }
 
   @Override

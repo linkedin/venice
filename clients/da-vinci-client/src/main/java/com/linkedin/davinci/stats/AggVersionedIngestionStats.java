@@ -12,9 +12,9 @@ import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
+import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
-import com.linkedin.venice.stats.dimensions.VeniceWriteComputeOperation;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.VeniceView;
@@ -112,7 +112,8 @@ public class AggVersionedIngestionStats
     int currentVersion = getCurrentVersion(storeName);
     int futureVersion = getFutureVersion(storeName);
     return otelStatsMap.computeIfAbsent(storeName, k -> {
-      IngestionOtelStats stats = new IngestionOtelStats(getMetricsRepository(), k, clusterName, localRegionName);
+      IngestionOtelStats stats =
+          new IngestionOtelStats(getMetricsRepository(), k, clusterName, localRegionName, emitOtelIngestionStats);
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
@@ -480,8 +481,12 @@ public class AggVersionedIngestionStats
 
   // Latency methods with 2nd enum dimension
 
-  public void recordWriteComputeTime(String storeName, int version, VeniceWriteComputeOperation op, double latencyMs) {
-    getIngestionOtelStats(storeName).recordWriteComputeTime(version, op, latencyMs);
+  public void recordPartialUpdateTime(
+      String storeName,
+      int version,
+      VenicePartialUpdateOperation op,
+      double latencyMs) {
+    getIngestionOtelStats(storeName).recordPartialUpdateTime(version, op, latencyMs);
   }
 
   public void recordDcrLookupTime(String storeName, int version, VeniceRecordType recordType, double latencyMs) {
@@ -506,8 +511,8 @@ public class AggVersionedIngestionStats
     getIngestionOtelStats(storeName).recordResubscriptionFailureCount(version, 1);
   }
 
-  public void recordWriteComputeCacheHitCount(String storeName, int version) {
-    getIngestionOtelStats(storeName).recordWriteComputeCacheHitCount(version, 1);
+  public void recordPartialUpdateCacheHitCount(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordPartialUpdateCacheHitCount(version, 1);
   }
 
   public void recordChecksumVerificationFailureCount(String storeName, int version) {
