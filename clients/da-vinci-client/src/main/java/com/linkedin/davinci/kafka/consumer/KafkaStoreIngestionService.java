@@ -955,8 +955,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService
   }
 
   /**
-   * Find the task that matches both the storeName and maximumVersion number, enable metrics emission for this task and
-   * update ingestion stats with this task; disable metric emission for all the task that doesn't max version.
+   * Find the task that matches both the storeName and maximumVersion number, enable Tehuti metrics emission for this
+   * task; disable Tehuti metrics emission for all tasks that don't match the max version.
    */
   protected void updateStatsEmission(
       NavigableMap<String, StoreIngestionTask> taskMap,
@@ -967,25 +967,25 @@ public class KafkaStoreIngestionService extends AbstractVeniceService
       taskMap.forEach((topicName, task) -> {
         if (Version.parseStoreFromKafkaTopicName(topicName).equals(storeName)) {
           if (Version.parseVersionFromKafkaTopicName(topicName) < maximumVersion) {
-            task.disableMetricsEmission();
+            task.disableTehutiMetrics();
           } else {
-            task.enableMetricsEmission();
+            task.enableTehutiMetrics();
           }
         }
       });
     } else {
       /**
-       * The version push doesn't exist in this server node at all; it's possible the push for largest version has
-       * already been killed, so instead, emit metrics for the largest known batch push in this node.
+       * The version push doesn't exist in this server node at all; it's possible the push for the largest version has
+       * already been killed, so instead, enable Tehuti metrics for the largest known version in this node.
        */
       updateStatsEmission(taskMap, storeName);
     }
   }
 
   /**
-   * This function will go through all known ingestion task in this server node, find the task that matches the
-   * storeName and has the largest version number; if the task doesn't enable metric emission, enable it and
-   * update store ingestion stats.
+   * This function will go through all known ingestion tasks in this server node, find the task that matches the
+   * storeName and has the largest version number; if the task doesn't have Tehuti metrics emission enabled, enable it
+   * and disable Tehuti metrics emission for all lower version pushes.
    */
   protected void updateStatsEmission(NavigableMap<String, StoreIngestionTask> taskMap, String storeName) {
     int maxVersion = -1;
@@ -1000,16 +1000,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService
         }
       }
     }
-    if (latestOngoingIngestionTask != null && !latestOngoingIngestionTask.isMetricsEmissionEnabled()) {
-      latestOngoingIngestionTask.enableMetricsEmission();
+    if (latestOngoingIngestionTask != null && !latestOngoingIngestionTask.isEmitTehutiMetricsEnabled()) {
+      latestOngoingIngestionTask.enableTehutiMetrics();
       /**
-       * Disable the metrics emission for all lower version pushes.
+       * Disable the Tehuti metrics emission for all lower version pushes.
        */
       Map.Entry<String, StoreIngestionTask> lowerVersionPush =
           taskMap.lowerEntry(Version.composeKafkaTopic(storeName, maxVersion));
       while (lowerVersionPush != null
           && Version.parseStoreFromKafkaTopicName(lowerVersionPush.getKey()).equals(storeName)) {
-        lowerVersionPush.getValue().disableMetricsEmission();
+        lowerVersionPush.getValue().disableTehutiMetrics();
         lowerVersionPush = taskMap.lowerEntry(lowerVersionPush.getKey());
       }
     }
@@ -1038,7 +1038,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService
         return ingestionTask
             .unSubscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
       } else {
-        LOGGER.warn("Ignoring stop consumption message for Topic {} Partition {}", topic, partitionId);
+        LOGGER
+            .warn("Ignoring stop consumption message for topic-partition: {}", Utils.getReplicaId(topic, partitionId));
         return CompletableFuture.completedFuture(null);
       }
     }
@@ -1202,12 +1203,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService
       }
 
       /**
-       * For the same store, there will be only one task emitting metrics, if this is the only task that is emitting
-       * metrics, it means the latest ongoing push job is killed. In such case, find the largest version in the task
-       * map and enable metric emission.
+       * For the same store, there will be only one task emitting Tehuti metrics. If this is the only task that is
+       * emitting Tehuti metrics, it means the latest ongoing push job is killed. In such case, find the largest
+       * version in the task map and enable Tehuti metrics emission.
        */
-      if (consumerTask.isMetricsEmissionEnabled()) {
-        consumerTask.disableMetricsEmission();
+      if (consumerTask.isEmitTehutiMetricsEnabled()) {
+        consumerTask.disableTehutiMetrics();
         updateStatsEmission(topicNameToIngestionTaskMap, Version.parseStoreFromKafkaTopicName(topicName));
       }
     }
@@ -1589,9 +1590,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService
       PartitionConsumptionState partitionConsumptionState = storeIngestionTask.getPartitionConsumptionState(partition);
       if (partitionConsumptionState == null) {
         INGESTION_DEBUGGER_LOGGER.error(
-            "PartitionConsumptionState is not available for version topic: {}, partition {} when preparing ingestion info",
-            versionTopic,
-            partition);
+            "PartitionConsumptionState is not available for topic-partition: {} when preparing ingestion info",
+            Utils.getReplicaId(versionTopic, partition));
         return;
       }
       PubSubTopic ingestingTopic = versionTopic;

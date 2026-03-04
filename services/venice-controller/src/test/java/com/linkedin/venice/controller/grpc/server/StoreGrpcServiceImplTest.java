@@ -34,11 +34,14 @@ import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetRepushInfoGrpcResponse;
 import com.linkedin.venice.protocols.controller.GetStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.GetStoreGrpcResponse;
+import com.linkedin.venice.protocols.controller.GetStoreStatusRequest;
+import com.linkedin.venice.protocols.controller.GetStoreStatusResponse;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcRequest;
 import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ResourceCleanupCheckGrpcResponse;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc;
 import com.linkedin.venice.protocols.controller.StoreGrpcServiceGrpc.StoreGrpcServiceBlockingStub;
+import com.linkedin.venice.protocols.controller.StoreStatus;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcRequest;
 import com.linkedin.venice.protocols.controller.UpdateAclForStoreGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
@@ -52,6 +55,8 @@ import io.grpc.StatusRuntimeException;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -454,6 +459,74 @@ public class StoreGrpcServiceImplTest {
     assertNotNull(actualResponse, "Response should not be null");
     assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
     assertEquals(actualResponse.getStoreNamesCount(), 1, "Should have 1 store after filtering");
+  }
+
+  @Test
+  public void testGetStoreStatusesReturnsSuccessfulResponse() {
+    GetStoreStatusRequest request = GetStoreStatusRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    Map<String, String> storeStatusMap = new HashMap<>();
+    storeStatusMap.put("store1", "ONLINE");
+    storeStatusMap.put("store2", "DEGRADED");
+    storeStatusMap.put("store3", "UNAVAILABLE");
+    when(storeRequestHandler.getStoreStatuses(TEST_CLUSTER)).thenReturn(storeStatusMap);
+
+    GetStoreStatusResponse actualResponse = blockingStub.getStoreStatuses(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
+    assertEquals(actualResponse.getStoreStatusesCount(), 3, "Should have 3 stores");
+
+    // Verify each store status
+    Map<String, String> responseMap = new HashMap<>();
+    for (StoreStatus status: actualResponse.getStoreStatusesList()) {
+      responseMap.put(status.getStoreName(), status.getStatus());
+    }
+    assertEquals(responseMap.get("store1"), "ONLINE", "store1 should be ONLINE");
+    assertEquals(responseMap.get("store2"), "DEGRADED", "store2 should be DEGRADED");
+    assertEquals(responseMap.get("store3"), "UNAVAILABLE", "store3 should be UNAVAILABLE");
+  }
+
+  @Test
+  public void testGetStoreStatusesReturnsEmptyMapWhenNoStores() {
+    GetStoreStatusRequest request = GetStoreStatusRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    when(storeRequestHandler.getStoreStatuses(TEST_CLUSTER)).thenReturn(new HashMap<>());
+
+    GetStoreStatusResponse actualResponse = blockingStub.getStoreStatuses(request);
+
+    assertNotNull(actualResponse, "Response should not be null");
+    assertEquals(actualResponse.getClusterName(), TEST_CLUSTER, "Cluster name should match");
+    assertEquals(actualResponse.getStoreStatusesCount(), 0, "Should have 0 stores");
+  }
+
+  @Test
+  public void testGetStoreStatusesReturnsErrorResponse() {
+    GetStoreStatusRequest request = GetStoreStatusRequest.newBuilder().setClusterName(TEST_CLUSTER).build();
+    when(storeRequestHandler.getStoreStatuses(TEST_CLUSTER))
+        .thenThrow(new VeniceException("Failed to get store statuses"));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getStoreStatuses(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INTERNAL.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.GENERAL_ERROR);
+    assertTrue(errorInfo.getErrorMessage().contains("Failed to get store statuses"));
+  }
+
+  @Test
+  public void testGetStoreStatusesReturnsBadRequestForMissingClusterName() {
+    GetStoreStatusRequest request = GetStoreStatusRequest.newBuilder().build();
+    when(storeRequestHandler.getStoreStatuses("")).thenThrow(new IllegalArgumentException("Cluster name is required"));
+
+    StatusRuntimeException e = expectThrows(StatusRuntimeException.class, () -> blockingStub.getStoreStatuses(request));
+
+    assertNotNull(e.getStatus(), "Status should not be null");
+    assertEquals(e.getStatus().getCode(), Status.INVALID_ARGUMENT.getCode());
+    VeniceControllerGrpcErrorInfo errorInfo = GrpcRequestResponseConverter.parseControllerGrpcError(e);
+    assertNotNull(errorInfo, "Error info should not be null");
+    assertEquals(errorInfo.getErrorType(), ControllerGrpcErrorType.BAD_REQUEST);
+    assertTrue(errorInfo.getErrorMessage().contains("Cluster name is required"));
   }
 
   @Test

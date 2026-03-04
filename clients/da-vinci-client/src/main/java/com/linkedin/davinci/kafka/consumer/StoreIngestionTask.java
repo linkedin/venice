@@ -253,7 +253,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String ingestionTaskName;
   protected final Properties kafkaProps;
   protected final AtomicBoolean isRunning;
-  protected final AtomicBoolean emitMetrics; // TODO: remove this once we migrate to versioned stats
+  /**
+   * Controls whether Tehuti host-level aggregate metrics are emitted by this ingestion task.
+   * Only the task for the largest (most recent) store version should have this enabled,
+   * to prevent double-counting across versions in the host-level aggregates.
+   *
+   * <p>Toggled by {@link KafkaStoreIngestionService#updateStatsEmission} via
+   * {@link #enableTehutiMetrics()} / {@link #disableTehutiMetrics()}.
+   *
+   * <p>This is independent of {@link #recordLevelMetricEnabled}, which is a per-record
+   * performance optimization that suppresses expensive metrics during current version bootstrap.
+   */
+  protected final AtomicBoolean emitTehutiMetrics;
   protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
   protected final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
   protected final Map<Integer, AtomicInteger> partitionToPendingConsumerActionCountMap;
@@ -416,6 +427,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PubSubContext pubSubContext;
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
+  /**
+   * Controls whether expensive per-record metrics (latencies, sizes, timestamps) are recorded.
+   * This is a performance optimization that suppresses these metrics for the <b>current version
+   * while it is bootstrapping</b>, since the high record throughput during bootstrap makes
+   * per-record measurement costly. Non-current versions always have this enabled.
+   *
+   * <p>Initialized to {@code false} for the current version (unless overridden by
+   * {@code isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled}), and automatically
+   * set to {@code true} by {@link #mayResumeRecordLevelMetricsForCurrentVersion()} once all
+   * partitions are ready-to-serve.
+   *
+   * <p>This is independent of {@link #emitTehutiMetrics}, which gates Tehuti host-level aggregates
+   * to the largest version only.
+   */
   protected final AtomicBoolean recordLevelMetricEnabled;
   protected final boolean recordLevelTimestampEnabled;
   protected final boolean isGlobalRtDivEnabled;
@@ -523,7 +548,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionedDIVStats = builder.getVersionedDIVStats();
     this.versionedIngestionStats = builder.getVersionedStorageIngestionStats();
     this.isRunning = new AtomicBoolean(true);
-    this.emitMetrics = new AtomicBoolean(true);
+    this.emitTehutiMetrics = new AtomicBoolean(true);
     this.resetErrorReplicaEnabled = storeVersionConfig.isResetErrorReplicaEnabled();
 
     this.storeBufferService = builder.getStoreBufferService();
@@ -1315,7 +1340,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       String kafkaUrl,
       long beforeProcessingRecordTimestampNs,
       long currentTimeForMetricsMs) throws InterruptedException {
-    boolean measureTime = emitMetrics.get();
+    boolean measureTime = recordLevelMetricEnabled.get();
     long queuePutStartTimeInNS = measureTime ? System.nanoTime() : 0;
     storeBufferService.putConsumerRecord(
         consumedRecord,
@@ -1325,10 +1350,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         kafkaUrl,
         beforeProcessingRecordTimestampNs); // blocking call
 
-    if (measureTime && recordLevelMetricEnabled.get()) {
+    if (measureTime) {
       double queuePutLatency = LatencyUtils.getElapsedTimeFromNSToMS(queuePutStartTimeInNS);
-      hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(queuePutLatency, currentTimeForMetricsMs);
       versionedIngestionStats.recordConsumerQueuePutTime(storeName, versionNumber, queuePutLatency);
+      if (isEmitTehutiMetricsEnabled()) {
+        hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(queuePutLatency, currentTimeForMetricsMs);
+      }
     }
   }
 
@@ -1345,7 +1372,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int kafkaClusterId,
       long beforeProcessingPerRecordTimestampNs,
       long beforeProcessingBatchRecordsTimestampMs,
-      boolean metricsEnabled,
       ValueHolder<Double> elapsedTimeForPuttingIntoQueue) throws InterruptedException {
     DefaultPubSubMessage record = consumerRecordWrapper.getMessage();
     if (record.getKey().isControlMessage()) {
@@ -1378,7 +1404,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     switch (delegateConsumerRecordResult) {
       case QUEUED_TO_DRAINER:
-        long queuePutStartTimeInNS = metricsEnabled ? System.nanoTime() : 0;
+        boolean measureTime = recordLevelMetricEnabled.get();
+        long queuePutStartTimeInNS = measureTime ? System.nanoTime() : 0;
 
         // blocking call
         storeBufferService.putConsumerRecord(
@@ -1389,7 +1416,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             kafkaUrl,
             beforeProcessingPerRecordTimestampNs);
 
-        if (metricsEnabled) {
+        if (measureTime) {
           elapsedTimeForPuttingIntoQueue.setValue(
               elapsedTimeForPuttingIntoQueue.getValue() + LatencyUtils.getElapsedTimeFromNSToMS(queuePutStartTimeInNS));
         }
@@ -1453,7 +1480,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     long totalBytesRead = 0;
     ValueHolder<Double> elapsedTimeForPuttingIntoQueue = new ValueHolder<>(0d);
-    boolean metricsEnabled = emitMetrics.get();
     long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
 
     partitionConsumptionState = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
@@ -1475,7 +1501,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           kafkaClusterId,
           beforeProcessingPerRecordTimestampNs,
           beforeProcessingBatchRecordsTimestampMs,
-          metricsEnabled,
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
       if (isGlobalRtDivEnabled()) {
@@ -1491,20 +1516,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     storageUtilizationManager.enforcePartitionQuota(topicPartition.getPartitionNumber(), totalBytesRead);
 
-    if (metricsEnabled) {
-      if (totalBytesRead > 0) {
-        hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
-        versionedIngestionStats.recordBytesConsumedAsUncompressedSize(storeName, versionNumber, totalBytesRead);
-      }
-      if (elapsedTimeForPuttingIntoQueue.getValue() > 0) {
-        double queuePutLatency = elapsedTimeForPuttingIntoQueue.getValue();
-        hostLevelIngestionStats
-            .recordConsumerRecordsQueuePutLatency(queuePutLatency, beforeProcessingBatchRecordsTimestampMs);
-        versionedIngestionStats.recordConsumerQueuePutTime(storeName, versionNumber, queuePutLatency);
-      }
-
-      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
-    }
+    recordBatchProcessingMetrics(
+        totalBytesRead,
+        elapsedTimeForPuttingIntoQueue,
+        beforeProcessingBatchRecordsTimestampMs);
   }
 
   protected void produceToStoreBufferServiceOrKafkaInBatch(
@@ -1515,7 +1530,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int kafkaClusterId) throws InterruptedException {
     long totalBytesRead = 0;
     ValueHolder<Double> elapsedTimeForPuttingIntoQueue = new ValueHolder<>(0d);
-    boolean metricsEnabled = emitMetrics.get();
     long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
     /**
      * Split the records into mini batches.
@@ -1590,7 +1604,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               kafkaClusterId,
               beforeProcessingPerRecordTimestampNs,
               beforeProcessingBatchRecordsTimestampMs,
-              metricsEnabled,
               elapsedTimeForPuttingIntoQueue);
         }
       } finally {
@@ -1603,18 +1616,41 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     storageUtilizationManager.enforcePartitionQuota(topicPartition.getPartitionNumber(), totalBytesRead);
 
-    if (metricsEnabled) {
-      if (totalBytesRead > 0) {
+    recordBatchProcessingMetrics(
+        totalBytesRead,
+        elapsedTimeForPuttingIntoQueue,
+        beforeProcessingBatchRecordsTimestampMs);
+  }
+
+  /**
+   * Records batch processing metrics for both OTel and Tehuti after consuming a batch of records.
+   * OTel per-version metrics are not gated by {@link #emitTehutiMetrics} (they use a VersionRole dimension).
+   * Tehuti host-level metrics are gated by {@link #emitTehutiMetrics} (only for the largest version).
+   *
+   * @param totalBytesRead total uncompressed bytes consumed in the batch
+   * @param elapsedTimeForPuttingIntoQueue accumulated queue put latency across all records in the batch
+   * @param beforeProcessingBatchRecordsTimestampMs timestamp captured before processing the batch
+   */
+  private void recordBatchProcessingMetrics(
+      long totalBytesRead,
+      ValueHolder<Double> elapsedTimeForPuttingIntoQueue,
+      long beforeProcessingBatchRecordsTimestampMs) {
+    boolean shouldEmitTehuti = isEmitTehutiMetricsEnabled();
+    if (totalBytesRead > 0) {
+      versionedIngestionStats.recordBytesConsumedAsUncompressedSize(storeName, versionNumber, totalBytesRead);
+      if (shouldEmitTehuti) {
         hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
-        versionedIngestionStats.recordBytesConsumedAsUncompressedSize(storeName, versionNumber, totalBytesRead);
       }
-      if (elapsedTimeForPuttingIntoQueue.getValue() > 0) {
-        double queuePutLatency = elapsedTimeForPuttingIntoQueue.getValue();
+    }
+    double queuePutLatency = elapsedTimeForPuttingIntoQueue.getValue();
+    if (queuePutLatency > 0) {
+      versionedIngestionStats.recordConsumerQueuePutTime(storeName, versionNumber, queuePutLatency);
+      if (shouldEmitTehuti) {
         hostLevelIngestionStats
             .recordConsumerRecordsQueuePutLatency(queuePutLatency, beforeProcessingBatchRecordsTimestampMs);
-        versionedIngestionStats.recordConsumerQueuePutTime(storeName, versionNumber, queuePutLatency);
       }
-
+    }
+    if (shouldEmitTehuti) {
       hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
     }
   }
@@ -1775,9 +1811,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     maybeUnsubscribeCompletedPartitions(store);
 
     // record before consumer unsub as it might lead to stale metrics after unsub
-    if (emitMetrics.get()) {
+    recordMaxIdleTime();
+    if (isEmitTehutiMetricsEnabled()) {
       recordQuotaMetrics();
-      recordMaxIdleTime();
     }
 
     /**
@@ -1897,7 +1933,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         oldest = Math.min(oldest, state.getLatestPolledMessageTimestampInMs());
       }
     }
-    versionedIngestionStats.recordMaxIdleTime(storeName, versionNumber, curTime - oldest);
+    long idleTimeMs = curTime - oldest;
+    versionedIngestionStats.recordMaxIdleTime(storeName, versionNumber, idleTimeMs, isEmitTehutiMetricsEnabled());
   }
 
   private void recordQuotaMetrics() {
@@ -2274,11 +2311,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Consumes the kafka actions messages in the queue.
+   * Processes consumer action messages (subscribe, unsubscribe, etc.) from the queue.
+   * Records the total processing latency to both OTel (always) and Tehuti (gated by {@link #emitTehutiMetrics}).
    */
   void processConsumerActions(Store store) throws InterruptedException {
-    boolean metricsEnabled = emitMetrics.get();
-    long startTime = metricsEnabled ? System.currentTimeMillis() : 0;
+    // Unconditional: OTel always records consumer action time
+    long startTime = System.currentTimeMillis();
     for (;;) {
       // Do not want to remove a message from the queue unless it has been processed.
       ConsumerAction action = consumerActionsQueue.peek();
@@ -2314,10 +2352,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
     }
-    if (metricsEnabled) {
-      double actionLatency = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
+    double actionLatency = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
+    versionedIngestionStats.recordConsumerActionTime(storeName, versionNumber, actionLatency);
+    if (isEmitTehutiMetricsEnabled()) {
       hostLevelIngestionStats.recordProcessConsumerActionLatency(actionLatency);
-      versionedIngestionStats.recordConsumerActionTime(storeName, versionNumber, actionLatency);
     }
   }
 
@@ -2804,9 +2842,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return true;
       }
       // emit metric for unexpected messages
-      if (emitMetrics.get()) {
+      versionedIngestionStats.recordUnexpectedMessageCount(storeName, versionNumber);
+      if (isEmitTehutiMetricsEnabled()) {
         hostLevelIngestionStats.recordUnexpectedMessage();
-        versionedIngestionStats.recordUnexpectedMessageCount(storeName, versionNumber);
       }
 
       // Report such kind of message once per minute to reduce logging volume
@@ -2935,7 +2973,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Report ingestion throughput metric based on the store version
      */
     if (!record.getKey().isControlMessage() && !record.getKey().isGlobalRtDiv()) { // skip control messages and DIV
-      // Still track record throughput to understand the performance benefits of disabling other record-level metrics.
+      // Tehuti throughput rates are intentionally NOT gated by emitTehutiMetrics — they must aggregate across all
+      // versions to provide accurate host-level rates.
       hostLevelIngestionStats.recordTotalRecordsConsumed();
       if (recordLevelMetricEnabled.get()) {
         versionedIngestionStats.recordBytesConsumed(storeName, versionNumber, recordSize);
@@ -2957,7 +2996,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long syncBytesInterval = getSyncBytesInterval(partitionConsumptionState);
     boolean recordsProcessedAboveSyncIntervalThreshold = (syncBytesInterval > 0
         && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
+    // Capture completion state before the ready-to-serve check so we can detect a transition.
+    boolean wasComplete = partitionConsumptionState.isComplete();
     getDefaultReadyToServeChecker().apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
+    // Re-evaluate record-level metrics only when the current partition just transitioned to complete, so that records
+    // in the same batch as EOP get full metrics without waiting for the next loop cycle. The guard avoids repeatedly
+    // scanning all partition states on every record while metrics are still disabled.
+    if (!recordLevelMetricEnabled.get() && !wasComplete && partitionConsumptionState.isComplete()) {
+      mayResumeRecordLevelMetricsForCurrentVersion();
+    }
 
     /**
      * Syncing offset checking in syncOffset() should be the very last step for processing a record.
@@ -3150,6 +3197,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * {@link ChunkedValueManifest#size}.
    * Also records the ratio of assembled record size to maximum allowed size, which is intended to be used to alert
    * customers about how close they are to hitting the size limit.
+   *
+   * <p>Tehuti host-level calls are gated by {@link #emitTehutiMetrics} to prevent double-counting across versions.
+   * OTel calls are unconditional as IngestionOtelStats uses a VersionRole dimension to differentiate.</p>
+   *
    * @param keyLen The size of the record's key
    * @param valueBytes {@link Put#putValue} which is expected to be a serialized {@link ChunkedValueManifest}
    * @param rmdBytes {@link Put#replicationMetadataPayload} which can be a serialized {@link ChunkedValueManifest} if
@@ -3157,11 +3208,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected void recordAssembledRecordSize(int keyLen, ByteBuffer valueBytes, ByteBuffer rmdBytes, long currentTimeMs) {
     try {
+      boolean shouldEmitTehuti = isEmitTehutiMetricsEnabled();
       byte[] valueByteArray = ByteUtils.extractByteArray(valueBytes);
       ChunkedValueManifest valueManifest = manifestSerializer.deserialize(valueByteArray, CHUNK_MANIFEST_SCHEMA_ID);
       int recordSize = keyLen + valueManifest.getSize();
-      hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
       versionedIngestionStats.recordAssembledSize(storeName, versionNumber, VeniceRecordType.DATA, recordSize);
+      if (shouldEmitTehuti) {
+        hostLevelIngestionStats.recordAssembledRecordSize(recordSize, currentTimeMs);
+      }
       recordAssembledRecordSizeRatio(calculateAssembledRecordSizeRatio(recordSize), currentTimeMs);
 
       if (rmdBytes == null || rmdBytes.remaining() == 0) {
@@ -3174,9 +3228,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         ChunkedValueManifest rmdManifest = manifestSerializer.deserialize(rmdByteArray, CHUNK_MANIFEST_SCHEMA_ID);
         rmdSize = rmdManifest.getSize();
       }
-      hostLevelIngestionStats.recordAssembledRmdSize(rmdSize, currentTimeMs);
       versionedIngestionStats
           .recordAssembledSize(storeName, versionNumber, VeniceRecordType.REPLICATION_METADATA, rmdSize);
+      if (shouldEmitTehuti) {
+        hostLevelIngestionStats.recordAssembledRmdSize(rmdSize, currentTimeMs);
+      }
     } catch (VeniceException | IllegalArgumentException | AvroRuntimeException e) {
       LOGGER.error("Failed to deserialize ChunkedValueManifest to record the assembled record or RMD size", e);
     }
@@ -4229,10 +4285,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         ? MessageType.valueOf(kafkaValue)
         : leaderProducedRecordContext.getMessageType());
 
-    boolean metricsEnabled = emitMetrics.get();
+    boolean recordMetrics = this.recordLevelMetricEnabled.get();
     boolean traceEnabled = LOGGER.isTraceEnabled();
-    long startTimeNs = (metricsEnabled || traceEnabled) ? System.nanoTime() : 0;
-    boolean emitRecordLevelMetrics = metricsEnabled && recordLevelMetricEnabled.get();
+    // Avoid nanoTime overhead when neither record-level metrics nor trace logging is needed
+    long startTimeNs = (recordMetrics || traceEnabled) ? System.nanoTime() : 0;
+    boolean tehutiRecordMetrics = isEmitTehutiMetricsEnabled() && recordMetrics;
 
     switch (messageType) {
       case PUT:
@@ -4250,7 +4307,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         keyLen = keyBytes.length;
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
-        if (emitRecordLevelMetrics && put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID && messageType == MessageType.PUT) {
+        if (recordMetrics && put.getSchemaId() == CHUNK_MANIFEST_SCHEMA_ID && messageType == MessageType.PUT) {
           // This must be done before the recordTransformer modifies the putValue, otherwise the size will be incorrect.
           recordAssembledRecordSize(keyLen, put.getPutValue(), put.getReplicationMetadataPayload(), currentTimeMs);
         }
@@ -4365,10 +4422,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (writerSchemaId > 0) {
           valueSchemaId = writerSchemaId;
         }
-        if (emitRecordLevelMetrics) {
+        if (recordMetrics) {
           double putLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);
-          hostLevelIngestionStats.recordStorageEnginePutLatency(putLatency, currentTimeMs);
           versionedIngestionStats.recordStorageEnginePutTime(storeName, versionNumber, putLatency);
+          if (tehutiRecordMetrics) {
+            hostLevelIngestionStats.recordStorageEnginePutLatency(putLatency, currentTimeMs);
+          }
         }
         break;
 
@@ -4417,10 +4476,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         keyLen = keyBytes.length;
         deleteFromStorageEngine(producedPartition, keyBytes, delete);
-        if (metricsEnabled && recordLevelMetricEnabled.get()) {
+        if (recordMetrics) {
           double deleteLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);
-          hostLevelIngestionStats.recordStorageEngineDeleteLatency(deleteLatency, currentTimeMs);
           versionedIngestionStats.recordStorageEngineDeleteTime(storeName, versionNumber, deleteLatency);
+          if (tehutiRecordMetrics) {
+            hostLevelIngestionStats.recordStorageEngineDeleteLatency(deleteLatency, currentTimeMs);
+          }
         }
         break;
 
@@ -4458,11 +4519,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           kafkaKey.getKey());
     }
 
-    if (emitRecordLevelMetrics) {
-      hostLevelIngestionStats.recordKeySize(keyLen, currentTimeMs);
-      hostLevelIngestionStats.recordValueSize(valueLen, currentTimeMs);
+    if (recordMetrics) {
       versionedIngestionStats.recordKeySize(storeName, versionNumber, keyLen);
       versionedIngestionStats.recordValueSize(storeName, versionNumber, valueLen);
+      if (tehutiRecordMetrics) {
+        hostLevelIngestionStats.recordKeySize(keyLen, currentTimeMs);
+        hostLevelIngestionStats.recordValueSize(valueLen, currentTimeMs);
+      }
     }
 
     return keyLen + valueLen;
@@ -4741,16 +4804,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return versionTopic;
   }
 
-  public boolean isMetricsEmissionEnabled() {
-    return emitMetrics.get();
+  public boolean isEmitTehutiMetricsEnabled() {
+    return emitTehutiMetrics.get();
   }
 
-  public void enableMetricsEmission() {
-    emitMetrics.set(true);
+  public void enableTehutiMetrics() {
+    emitTehutiMetrics.set(true);
   }
 
-  public void disableMetricsEmission() {
-    emitMetrics.set(false);
+  public void disableTehutiMetrics() {
+    emitTehutiMetrics.set(false);
   }
 
   /**
@@ -5418,18 +5481,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (System.currentTimeMillis() - previousResubscribeTime < SECONDS
           .toMillis(allowedResubscribeIntervalInSeconds)) {
         LOGGER.info(
-            "Skip resubscribe request for partition: {} of SIT: {} as it has been resubscribed recently at: {}",
-            partition,
-            getVersionTopic(),
+            "Skip resubscribe request for topic-partition: {} as it has been resubscribed recently at: {}",
+            getReplicaId(versionTopic, partition),
             previousResubscribeTime);
         continue;
       }
       PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
       if (pcs == null) {
         LOGGER.warn(
-            "Replica: {} does not exist in pcs map for SIT of: {}, will not resubscribe.",
-            Utils.getReplicaId(versionTopic, partition),
-            getVersionTopic());
+            "Topic-partition: {} does not exist in pcs map, will not resubscribe.",
+            getReplicaId(versionTopic, partition));
         continue;
       }
       /**

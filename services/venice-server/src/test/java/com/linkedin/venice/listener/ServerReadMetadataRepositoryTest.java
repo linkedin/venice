@@ -5,6 +5,11 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ServerCurrentVersionResponse;
@@ -44,7 +49,6 @@ import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.mockito.Mockito;
-import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -57,9 +61,11 @@ public class ServerReadMetadataRepositoryTest {
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
   private ServerReadMetadataRepository serverReadMetadataRepository;
   private MetricsRepository metricsRepository;
-  private final static String TEST_STORE = "test_store";
-  private final static String DEST_CLUSTER = "test-cluster-dst";
-  private final static String SRC_CLUSTER = "test-cluster-src";
+  private static final String TEST_STORE = "test_store";
+  private static final String DEST_CLUSTER = "test-cluster-dst";
+  private static final String SRC_CLUSTER = "test-cluster-src";
+  private static final String TEHUTI_INVOKE_METRIC = ".ServerMetadataStats--request_based_metadata_invoke_count.Rate";
+  private static final String TEHUTI_FAILURE_METRIC = ".ServerMetadataStats--request_based_metadata_failure_count.Rate";
 
   @BeforeMethod
   public void setUp() {
@@ -111,33 +117,36 @@ public class ServerReadMetadataRepositoryTest {
     Mockito.when(mockCustomizedViewRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
     Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
 
-    Assert.assertThrows(UnsupportedOperationException.class, () -> serverReadMetadataRepository.getMetadata(storeName));
+    // When storage node read quota is not enabled, UOE is thrown (caught by catch(Exception), metric recorded,
+    // re-thrown)
+    assertThrows(UnsupportedOperationException.class, () -> serverReadMetadataRepository.getMetadata(storeName));
+    assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
+
     mockStore.setStorageNodeReadQuotaEnabled(true);
     MetadataResponse metadataResponse = serverReadMetadataRepository.getMetadata(storeName);
-    Assert.assertNotNull(metadataResponse);
-    Assert.assertEquals(metadataResponse.getResponseRecord().getKeySchema().get("0"), "\"string\"");
+    assertNotNull(metadataResponse);
+    assertEquals(metadataResponse.getResponseRecord().getKeySchema().get("0"), "\"string\"");
     // Verify the metadata
-    Assert.assertEquals(metadataResponse.getResponseRecord().getVersions().size(), 2);
+    assertEquals(metadataResponse.getResponseRecord().getVersions().size(), 2);
     VersionProperties versionProperties = metadataResponse.getResponseRecord().getVersionMetadata();
-    Assert.assertNotNull(versionProperties);
-    Assert.assertEquals(versionProperties.getCurrentVersion(), 2);
-    Assert.assertEquals(versionProperties.getPartitionCount(), 1);
-    Assert.assertEquals(metadataResponse.getResponseRecord().getRoutingInfo().get("0").size(), 1);
+    assertNotNull(versionProperties);
+    assertEquals(versionProperties.getCurrentVersion(), 2);
+    assertEquals(versionProperties.getPartitionCount(), 1);
+    assertEquals(metadataResponse.getResponseRecord().getRoutingInfo().get("0").size(), 1);
     // If batch get limit is not set should use {@link Store.DEFAULT_BATCH_GET_LIMIT}
-    Assert.assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), Store.DEFAULT_BATCH_GET_LIMIT);
-    String metadataInvokeMetricName = ".ServerMetadataStats--request_based_metadata_invoke_count.Rate";
-    String metadataFailureMetricName = ".ServerMetadataStats--request_based_metadata_failure_count.Rate";
-    Assert.assertTrue(metricsRepository.getMetric(metadataInvokeMetricName).value() > 0);
-    Assert.assertEquals(metricsRepository.getMetric(metadataFailureMetricName).value(), 0d);
+    assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), Store.DEFAULT_BATCH_GET_LIMIT);
+    assertTrue(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value() > 0);
+    // Failure count is non-zero because the UnsupportedOperationException path (quota not enabled) records a failure
+    assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
 
     ServerCurrentVersionResponse currentVersionResponse =
         serverReadMetadataRepository.getCurrentVersionResponse(storeName);
-    Assert.assertNotNull(currentVersionResponse);
-    Assert.assertEquals(currentVersionResponse.getCurrentVersion(), 2);
+    assertNotNull(currentVersionResponse);
+    assertEquals(currentVersionResponse.getCurrentVersion(), 2);
 
     mockStore.setBatchGetLimit(300);
     metadataResponse = serverReadMetadataRepository.getMetadata(storeName);
-    Assert.assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), 300);
+    assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), 300);
   }
 
   @Test
@@ -181,27 +190,24 @@ public class ServerReadMetadataRepositoryTest {
         serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
     StoreMetaValue storeMetaValue =
         deserializeStoreMetaValue(storePropertiesPayload.getPayloadRecord().getStoreMetaValueAvro().array());
-    Assert.assertNotNull(storePropertiesPayload);
-    Assert.assertNotNull(storePropertiesPayload.getPayloadRecord());
-    Assert.assertNotNull(storePropertiesPayload.getPayloadRecord().getStoreMetaValueAvro());
+    assertNotNull(storePropertiesPayload);
+    assertNotNull(storePropertiesPayload.getPayloadRecord());
+    assertNotNull(storePropertiesPayload.getPayloadRecord().getStoreMetaValueAvro());
 
     // Assert response
-    Assert
-        .assertEquals(storeMetaValue.getStoreKeySchemas().getKeySchemaMap().get(new Utf8("0")), new Utf8("\"string\""));
-    Assert.assertEquals(storeMetaValue.getStoreProperties().getVersions().size(), 2);
-    Assert.assertNotNull(storePropertiesPayload.getPayloadRecord().getRoutingInfo());
-    Assert.assertNotNull(storePropertiesPayload.getPayloadRecord().getRoutingInfo().get("0"));
-    Assert.assertEquals(storePropertiesPayload.getPayloadRecord().getRoutingInfo().get("0").size(), 1);
+    assertEquals(storeMetaValue.getStoreKeySchemas().getKeySchemaMap().get(new Utf8("0")), new Utf8("\"string\""));
+    assertEquals(storeMetaValue.getStoreProperties().getVersions().size(), 2);
+    assertNotNull(storePropertiesPayload.getPayloadRecord().getRoutingInfo());
+    assertNotNull(storePropertiesPayload.getPayloadRecord().getRoutingInfo().get("0"));
+    assertEquals(storePropertiesPayload.getPayloadRecord().getRoutingInfo().get("0").size(), 1);
     ServerCurrentVersionResponse currentVersionResponse =
         serverReadMetadataRepository.getCurrentVersionResponse(storeName);
-    Assert.assertNotNull(currentVersionResponse);
-    Assert.assertEquals(currentVersionResponse.getCurrentVersion(), 2);
+    assertNotNull(currentVersionResponse);
+    assertEquals(currentVersionResponse.getCurrentVersion(), 2);
 
     // Assert metrics repo
-    String metadataInvokeMetricName = ".ServerMetadataStats--request_based_metadata_invoke_count.Rate";
-    String metadataFailureMetricName = ".ServerMetadataStats--request_based_metadata_failure_count.Rate";
-    Assert.assertTrue(metricsRepository.getMetric(metadataInvokeMetricName).value() > 0);
-    Assert.assertEquals(metricsRepository.getMetric(metadataFailureMetricName).value(), 0d);
+    assertTrue(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value() > 0);
+    assertEquals(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value(), 0d);
 
     // Test largestKnownSchemaID param
     for (int i = 0; i <= schemaCount; i++) {
@@ -209,7 +215,7 @@ public class ServerReadMetadataRepositoryTest {
           serverReadMetadataRepository.getStoreProperties(storeName, Optional.of(i));
       StoreMetaValue storeMetaValueLKSID =
           deserializeStoreMetaValue(storePropertiesPayloadLKSID.getPayloadRecord().getStoreMetaValueAvro().array());
-      Assert.assertEquals(storeMetaValueLKSID.getStoreValueSchemas().getValueSchemaMap().size(), schemaCount - i);
+      assertEquals(storeMetaValueLKSID.getStoreValueSchemas().getValueSchemaMap().size(), schemaCount - i);
     }
 
     // Value update test
@@ -218,7 +224,7 @@ public class ServerReadMetadataRepositoryTest {
         serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
     StoreMetaValue storeMetaValueUpdate =
         deserializeStoreMetaValue(storePropertiesPayloadValueUpdate.getPayloadRecord().getStoreMetaValueAvro().array());
-    Assert.assertEquals(storeMetaValueUpdate.getStoreProperties().getBatchGetLimit(), 300);
+    assertEquals(storeMetaValueUpdate.getStoreProperties().getBatchGetLimit(), 300);
   }
 
   @Test
@@ -256,7 +262,7 @@ public class ServerReadMetadataRepositoryTest {
     when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
 
     MetadataResponse response = serverReadMetadataRepository.getMetadata(TEST_STORE);
-    Assert.assertFalse(response.isError());
+    assertFalse(response.isError());
   }
 
   @Test
@@ -270,8 +276,8 @@ public class ServerReadMetadataRepositoryTest {
     doReturn(storeConfig).when(storeConfigRepository).getStoreConfigOrThrow(TEST_STORE);
 
     MetadataResponse response = serverReadMetadataRepository.getMetadata(TEST_STORE);
-    Assert.assertTrue(response.isError());
-    Assert.assertTrue(response.getMessage().contains(TEST_STORE + " is migrating"));
+    assertTrue(response.isError());
+    assertTrue(response.getMessage().contains(TEST_STORE + " is migrating"));
   }
 
   @Test
@@ -284,8 +290,8 @@ public class ServerReadMetadataRepositoryTest {
 
     // store config is not available
     MetadataResponse response = serverReadMetadataRepository.getMetadata(TEST_STORE);
-    Assert.assertTrue(response.isError());
-    Assert.assertTrue(response.getMessage().contains(TEST_STORE + " does not exist"));
+    assertTrue(response.isError());
+    assertTrue(response.getMessage().contains(TEST_STORE + " does not exist"));
   }
 
   @Test
@@ -331,18 +337,65 @@ public class ServerReadMetadataRepositoryTest {
 
     // Non-SSL repo should generate http:// URLs in metadata routing info
     MetadataResponse nonSslResponse = nonSslRepo.getMetadata(storeName);
-    Assert.assertFalse(nonSslResponse.isError());
+    assertFalse(nonSslResponse.isError());
     // Routing info values are lists of instance URLs built via instance.getUrl(sslEnabled)
     // With sslEnabled=false, URLs should start with "http://"
     CharSequence nonSslUrl = nonSslResponse.getResponseRecord().getRoutingInfo().get("0").get(0);
-    Assert.assertTrue(nonSslUrl.toString().startsWith("http://"), "Expected http:// URL but got: " + nonSslUrl);
-    Assert.assertFalse(nonSslUrl.toString().startsWith("https://"), "Should not be https:// but got: " + nonSslUrl);
+    assertTrue(nonSslUrl.toString().startsWith("http://"), "Expected http:// URL but got: " + nonSslUrl);
+    assertFalse(nonSslUrl.toString().startsWith("https://"), "Should not be https:// but got: " + nonSslUrl);
 
     // Default (SSL) repo should generate https:// URLs
     MetadataResponse sslResponse = serverReadMetadataRepository.getMetadata(storeName);
-    Assert.assertFalse(sslResponse.isError());
+    assertFalse(sslResponse.isError());
     CharSequence sslUrl = sslResponse.getResponseRecord().getRoutingInfo().get("0").get(0);
-    Assert.assertTrue(sslUrl.toString().startsWith("https://"), "Expected https:// URL but got: " + sslUrl);
+    assertTrue(sslUrl.toString().startsWith("https://"), "Expected https:// URL but got: " + sslUrl);
+  }
+
+  @Test
+  public void testGetStorePropertiesRecordsFailureOnVeniceNoStoreException() {
+    String storeName = "nonexistent-store";
+    doThrow(new VeniceNoStoreException(storeName)).when(mockMetadataRepo).getStoreOrThrow(storeName);
+    StorePropertiesPayload response = serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
+    assertStorePropertiesFailure(response, storeName);
+  }
+
+  @Test
+  public void testGetStorePropertiesRecordsFailureOnGenericException() {
+    String storeName = "bad-store";
+    doThrow(new RuntimeException("unexpected error")).when(mockMetadataRepo).getStoreOrThrow(storeName);
+    StorePropertiesPayload response = serverReadMetadataRepository.getStoreProperties(storeName, Optional.empty());
+    assertStorePropertiesFailure(response, "unexpected error");
+  }
+
+  @Test
+  public void testGetMetadataRecordsFailureOnVeniceNoStoreException() {
+    String storeName = "nonexistent-metadata-store";
+    doThrow(new VeniceNoStoreException(storeName)).when(mockMetadataRepo).getStoreOrThrow(storeName);
+
+    MetadataResponse response = serverReadMetadataRepository.getMetadata(storeName);
+    assertTrue(response.isError());
+    assertTrue(response.getMessage().contains(storeName));
+    // Tehuti failure sensor recorded (via no-arg overload), invoke sensor also recorded
+    assertTrue(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value() > 0);
+    assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
+  }
+
+  @Test
+  public void testGetMetadataRecordsFailureOnGenericException() {
+    String storeName = "bad-metadata-store";
+    // RuntimeException is not a VeniceException, so it's caught by catch(Exception e), recorded, and re-thrown
+    doThrow(new RuntimeException("unexpected error")).when(mockMetadataRepo).getStoreOrThrow(storeName);
+
+    assertThrows(RuntimeException.class, () -> serverReadMetadataRepository.getMetadata(storeName));
+    assertTrue(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value() > 0);
+    assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
+  }
+
+  private void assertStorePropertiesFailure(StorePropertiesPayload response, String expectedMessageSubstring) {
+    assertTrue(response.isError());
+    assertTrue(response.getMessage().contains(expectedMessageSubstring));
+    assertTrue(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value() > 0);
+    assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
   }
 
   private StoreMetaValue deserializeStoreMetaValue(byte[] bytes) {

@@ -6,6 +6,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -18,8 +19,23 @@ import java.util.Map;
  * that can be reused when recording metrics.
  */
 public class OpenTelemetryMetricsSetup {
+  public static final String UNKNOWN_STORE_NAME = "unknown_store";
+
   /**
-   * Result object containing the setup OpenTelemetry components
+   * Sanitizes a store name for use as an OTel dimension value.
+   * Returns {@link #UNKNOWN_STORE_NAME} if the input is null, empty, or whitespace-only.
+   */
+  public static String sanitizeStoreName(String storeName) {
+    String trimmed = (storeName == null) ? null : storeName.trim();
+    return (trimmed == null || trimmed.isEmpty()) ? UNKNOWN_STORE_NAME : trimmed;
+  }
+
+  /**
+   * Result object containing the setup OpenTelemetry components.
+   *
+   * <p>When {@link #emitOpenTelemetryMetrics()} returns {@code false}, {@link #getOtelRepository()} and
+   * {@link #getBaseAttributes()} return {@code null}, while {@link #getBaseDimensionsMap()} returns an
+   * empty map (not null) so callers that copy-and-augment the map don't need individual null guards.
    */
   public static class OpenTelemetryMetricsSetupInfo {
     private final boolean emitOpenTelemetryMetrics;
@@ -42,14 +58,17 @@ public class OpenTelemetryMetricsSetup {
       return emitOpenTelemetryMetrics;
     }
 
+    /** Returns {@code null} when {@link #emitOpenTelemetryMetrics()} is {@code false}. */
     public VeniceOpenTelemetryMetricsRepository getOtelRepository() {
       return otelRepository;
     }
 
+    /** Returns an empty map (not null) when {@link #emitOpenTelemetryMetrics()} is {@code false}. */
     public Map<VeniceMetricsDimensions, String> getBaseDimensionsMap() {
       return baseDimensionsMap;
     }
 
+    /** Returns {@code null} when {@link #emitOpenTelemetryMetrics()} is {@code false}. */
     public Attributes getBaseAttributes() {
       return baseAttributes;
     }
@@ -72,6 +91,7 @@ public class OpenTelemetryMetricsSetup {
     private String clusterName;
     private String routeName;
     private RequestRetryType requestRetryType;
+    private String threadPoolName;
     private int helixGroupId = UNASSIGNED_HELIX_GROUP_ID;
 
     public Builder(MetricsRepository metricsRepository) {
@@ -139,6 +159,14 @@ public class OpenTelemetryMetricsSetup {
     }
 
     /**
+     * Set the thread pool name dimension.
+     */
+    public Builder setThreadPoolName(String threadPoolName) {
+      this.threadPoolName = threadPoolName;
+      return this;
+    }
+
+    /**
      * Set the Helix group ID dimension.
      */
     public Builder setHelixGroupId(int helixGroupId) {
@@ -177,6 +205,7 @@ public class OpenTelemetryMetricsSetup {
 
       // Add store name if provided
       if (storeName != null) {
+        storeName = sanitizeStoreName(storeName);
         baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
         baseAttributesBuilder
             .put(otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_STORE_NAME), storeName);
@@ -212,6 +241,16 @@ public class OpenTelemetryMetricsSetup {
             requestRetryType.getDimensionValue());
       }
 
+      // Add thread pool name if provided
+      if (threadPoolName != null) {
+        String trimmed = threadPoolName.trim();
+        String sanitizedThreadPoolName = trimmed.isEmpty() ? "unknown" : trimmed;
+        baseDimensionsMap.put(VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME, sanitizedThreadPoolName);
+        baseAttributesBuilder.put(
+            otelRepository.getDimensionName(VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME),
+            sanitizedThreadPoolName);
+      }
+
       // Add helix group ID if provided
       if (helixGroupId != UNASSIGNED_HELIX_GROUP_ID) {
         String helixGroupIdStr = Integer.toString(helixGroupId);
@@ -225,8 +264,12 @@ public class OpenTelemetryMetricsSetup {
       return new OpenTelemetryMetricsSetupInfo(true, otelRepository, baseDimensionsMap, baseAttributes);
     }
 
+    /**
+     * Returns emptyMap (not null) for baseDimensionsMap so callers that copy-and-augment
+     * the map (e.g., adding VENICE_STORE_NAME) don't need individual null guards.
+     */
     private OpenTelemetryMetricsSetupInfo buildOtelDisabled() {
-      return new OpenTelemetryMetricsSetupInfo(false, null, null, null);
+      return new OpenTelemetryMetricsSetupInfo(false, null, Collections.emptyMap(), null);
     }
   }
 
