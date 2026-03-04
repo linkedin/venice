@@ -687,6 +687,26 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     verify(mockDaVinciClient, never()).subscribe(any());
   }
 
+  @Test
+  public void testSubscribedPartitionsRolledBackOnFailure() {
+    Set<Integer> specificPartitions = Collections.singleton(1);
+
+    veniceChangelogConsumer.seekToBeginningOfPush(specificPartitions);
+    assertTrue(veniceChangelogConsumer.getSubscribedPartitions().contains(1));
+
+    // Simulate subscription failure
+    daVinciClientSubscribeFuture.completeExceptionally(new VeniceException("Test exception"));
+
+    // Partitions should be rolled back after failure
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        true,
+        () -> assertFalse(
+            veniceChangelogConsumer.getSubscribedPartitions().contains(1),
+            "Partition 1 should be removed from subscribedPartitions after failure"));
+  }
+
   private void onStartVersionIngestionHelper(boolean currentRecordTransformer, boolean isCurrentVersion) {
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       if (currentRecordTransformer) {

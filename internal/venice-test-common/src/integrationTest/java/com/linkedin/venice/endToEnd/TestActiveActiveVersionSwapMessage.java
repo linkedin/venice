@@ -106,7 +106,6 @@ public class TestActiveActiveVersionSwapMessage {
   private ControllerClient dc0Client;
   private ControllerClient dc1Client;
   private List<ControllerClient> dcControllerClientList;
-  private Properties consumerProperties;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -156,12 +155,6 @@ public class TestActiveActiveVersionSwapMessage {
     dc0Client = new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     dc1Client = new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
     dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
-
-    consumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(
-        multiRegionMultiClusterWrapper,
-        childDatacenters.get(0).getPubSubBrokerWrapper(),
-        clusterName,
-        childDatacenters.get(0).getZkServerWrapper());
   }
 
   @AfterClass(alwaysRun = true)
@@ -486,17 +479,23 @@ public class TestActiveActiveVersionSwapMessage {
 
   private ChangelogClientConfig getDefaultVersionSwapEnabledChangelogClientConfig(
       VeniceMultiClusterWrapper localRegion) {
-    ChangelogClientConfig changelogClientConfig = new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-        .setControllerD2ServiceName(D2_SERVICE_NAME)
-        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-        .setLocalD2ZkHosts(localRegion.getZkServerWrapper().getAddress())
-        .setD2Client(IntegrationTestPushUtils.getD2Client(localRegion.getZkServerWrapper().getAddress()))
-        .setVersionSwapDetectionIntervalTimeInSeconds(3L)
-        .setControllerRequestRetryCount(3)
-        .setBootstrapFileSystemPath(getTempDataDirectory().getAbsolutePath())
-        .setVersionSwapByControlMessageEnabled(true)
-        .setClientRegionName(localRegion.getRegionName())
-        .setTotalRegionCount(childDatacenters.size());
+    Properties regionConsumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(
+        multiRegionMultiClusterWrapper,
+        localRegion.getPubSubBrokerWrapper(),
+        CLUSTER_NAMES[0],
+        localRegion.getZkServerWrapper());
+    ChangelogClientConfig changelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(regionConsumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setLocalD2ZkHosts(localRegion.getZkServerWrapper().getAddress())
+            .setD2Client(IntegrationTestPushUtils.getD2Client(localRegion.getZkServerWrapper().getAddress()))
+            .setVersionSwapDetectionIntervalTimeInSeconds(3L)
+            .setControllerRequestRetryCount(3)
+            .setBootstrapFileSystemPath(getTempDataDirectory().getAbsolutePath())
+            .setVersionSwapByControlMessageEnabled(true)
+            .setClientRegionName(localRegion.getRegionName())
+            .setTotalRegionCount(childDatacenters.size());
     return changelogClientConfig;
   }
 

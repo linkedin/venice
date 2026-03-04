@@ -576,12 +576,7 @@ public class AvroGenericDaVinciClientTest {
         (AvroGenericSeekableDaVinciClient<Integer, String>) setUpSeekableClient(clientConfig, true);
 
     // Test and verify exception
-    try {
-      CompletableFuture<Void> future = dvcClient.seekToBeginningOfPush(Collections.emptySet());
-      future.get();
-      fail("Expected VeniceClientException to be thrown when client is not ready");
-    } catch (VeniceClientException e) {
-    }
+    assertThrows(VeniceClientException.class, () -> dvcClient.seekToBeginningOfPush(Collections.emptySet()));
   }
 
   @Test
@@ -592,12 +587,7 @@ public class AvroGenericDaVinciClientTest {
         (AvroGenericSeekableDaVinciClient<Integer, String>) setUpSeekableClient(clientConfig, true);
 
     // Test and verify exception
-    try {
-      CompletableFuture<Void> future = dvcClient.seekToTail(Collections.emptySet());
-      future.get();
-      fail("Expected VeniceClientException to be thrown when client is not ready");
-    } catch (VeniceClientException e) {
-    }
+    assertThrows(VeniceClientException.class, () -> dvcClient.seekToTail(Collections.emptySet()));
   }
 
   @Test

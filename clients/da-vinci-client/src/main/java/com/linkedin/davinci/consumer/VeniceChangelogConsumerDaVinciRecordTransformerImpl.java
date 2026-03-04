@@ -268,7 +268,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     */
     subscriptionCall.apply(targetPartitions).whenComplete((result, error) -> {
       if (error != null) {
-        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", subscribedPartitions, storeName, error);
+        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", targetPartitions, storeName, error);
+        subscribedPartitions.removeAll(targetPartitions);
         startFuture.completeExceptionally(new VeniceClientException(error));
         return;
       }
