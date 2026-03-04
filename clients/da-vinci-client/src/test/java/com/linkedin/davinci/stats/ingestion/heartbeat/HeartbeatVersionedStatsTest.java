@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -116,6 +117,13 @@ public class HeartbeatVersionedStatsTest {
         leaderMonitors,
         followerMonitors,
         CLUSTER_NAME);
+  }
+
+  @AfterMethod
+  public void tearDown() {
+    if (metricsRepository != null) {
+      metricsRepository.close();
+    }
   }
 
   @Test

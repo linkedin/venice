@@ -134,7 +134,8 @@ public class OpenTelemetryMetricsSetupTest {
     assertNotNull(result);
     assertFalse(result.emitOpenTelemetryMetrics());
     assertNull(result.getOtelRepository());
-    assertNull(result.getBaseDimensionsMap());
+    assertNotNull(result.getBaseDimensionsMap());
+    assertTrue(result.getBaseDimensionsMap().isEmpty());
     assertNull(result.getBaseAttributes());
   }
 

@@ -102,7 +102,9 @@ public class AggHostLevelIngestionStatsTest {
 
   @AfterTest
   public void cleanUp() {
-    metricsRepository.close();
+    if (metricsRepository != null) {
+      metricsRepository.close();
+    }
   }
 
   @Test
