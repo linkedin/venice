@@ -117,7 +117,11 @@ public class ServerReadMetadataRepositoryTest {
     Mockito.when(mockCustomizedViewRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
     Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
 
+    // When storage node read quota is not enabled, UOE is thrown (caught by catch(Exception), metric recorded,
+    // re-thrown)
     assertThrows(UnsupportedOperationException.class, () -> serverReadMetadataRepository.getMetadata(storeName));
+    assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
+
     mockStore.setStorageNodeReadQuotaEnabled(true);
     MetadataResponse metadataResponse = serverReadMetadataRepository.getMetadata(storeName);
     assertNotNull(metadataResponse);
@@ -363,9 +367,21 @@ public class ServerReadMetadataRepositoryTest {
     assertStorePropertiesFailure(response, "unexpected error");
   }
 
+  @Test
+  public void testGetMetadataRecordsFailureOnGenericException() {
+    String storeName = "bad-metadata-store";
+    // RuntimeException is not a VeniceException, so it's caught by catch(Exception e), recorded, and re-thrown
+    doThrow(new RuntimeException("unexpected error")).when(mockMetadataRepo).getStoreOrThrow(storeName);
+
+    assertThrows(RuntimeException.class, () -> serverReadMetadataRepository.getMetadata(storeName));
+    assertTrue(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value() > 0);
+    assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
+  }
+
   private void assertStorePropertiesFailure(StorePropertiesPayload response, String expectedMessageSubstring) {
     assertTrue(response.isError());
     assertTrue(response.getMessage().contains(expectedMessageSubstring));
+    assertTrue(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value() > 0);
     assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
   }
 

@@ -107,7 +107,6 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
 
       // Check fast client compatibility
       if (!store.isStorageNodeReadQuotaEnabled()) {
-        serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName);
         throw new UnsupportedOperationException(
             String.format(
                 "Fast client is not enabled for store: %s, please ensure storage node read quota is enabled for the given store",
@@ -166,6 +165,9 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       response.setMessage("Failed to populate metadata for store: " + storeName + " due to: " + e.getMessage());
       response.setError(true);
       serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName);
+    } catch (Exception e) {
+      serverMetadataServiceStats.recordRequestBasedMetadataFailureCount(storeName);
+      throw e;
     }
     return response;
   }

@@ -19,7 +19,6 @@ import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Objects;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -150,19 +149,7 @@ public class ServerMetadataServiceStatsOtelTest {
     assertEquals(
         entity.getDimensionsList(),
         Utils.setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY));
-
-    // Verify the metric entity is registered in SERVER_METRIC_ENTITIES
-    boolean found = false;
-    for (MetricEntity registered: SERVER_METRIC_ENTITIES) {
-      if (Objects.equals(registered.getMetricName(), entity.getMetricName())
-          && registered.getMetricType() == entity.getMetricType() && registered.getUnit() == entity.getUnit()
-          && Objects.equals(registered.getDescription(), entity.getDescription())
-          && Objects.equals(registered.getDimensionsList(), entity.getDimensionsList())) {
-        found = true;
-        break;
-      }
-    }
-    assertTrue(found, "MetricEntity not found in SERVER_METRIC_ENTITIES: " + entity.getMetricName());
+    // Registration in SERVER_METRIC_ENTITIES is verified by ServerMetricEntityTest
   }
 
   private Attributes buildExpectedAttributes(String storeName, VeniceResponseStatusCategory statusCategory) {

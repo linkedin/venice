@@ -19,11 +19,22 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Rate;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
 
+/**
+ * Stats for server metadata service endpoints.
+ *
+ * <p>Recording design:
+ * <ul>
+ *   <li>{@code invoke_count}: Tehuti-only (total requests). OTel invoke count is derivable as success + failure.</li>
+ *   <li>{@code success_count}: OTel-only (per-store, per-cluster).</li>
+ *   <li>{@code failure_count}: Tehuti + OTel (dual-recorded).</li>
+ * </ul>
+ */
 public class ServerMetadataServiceStats extends AbstractVeniceStats {
   /**
    * Measure the number of time request based metadata endpoint was invoked
@@ -51,7 +62,11 @@ public class ServerMetadataServiceStats extends AbstractVeniceStats {
         OpenTelemetryMetricsSetup.builder(metricsRepository).setClusterName(clusterName).build();
     this.emitOtelMetrics = otelData.emitOpenTelemetryMetrics();
     this.otelRepository = otelData.getOtelRepository();
-    this.baseDimensionsMap = otelData.getBaseDimensionsMap();
+    // Null-safe: getBaseDimensionsMap() returns null when OTel is disabled. Other stats classes pass
+    // it directly to MetricEntityState.create() which handles null internally, but getStoreMetrics()
+    // copies the map via new HashMap<>(baseDimensionsMap) which would NPE on null.
+    Map<VeniceMetricsDimensions, String> dims = otelData.getBaseDimensionsMap();
+    this.baseDimensionsMap = dims != null ? dims : Collections.emptyMap();
   }
 
   private MetricEntityStateOneEnum<VeniceResponseStatusCategory> getStoreMetrics(String storeName) {
