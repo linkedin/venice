@@ -258,6 +258,7 @@ public class DaVinciBackendTest {
     backend.registerStoreClient(STORE_NAME, null);
     assertEquals(backend.getStoreClientType(STORE_NAME), DaVinciBackend.ClientType.REGULAR);
     assertEquals(backend.getStoreClientRefCount(STORE_NAME), Integer.valueOf(1));
+    assertFalse(backend.getIngestionService().isBlobTransferDisabledForStore(STORE_NAME));
 
     // Register version-specific client
     Integer storeVersion = 1;
@@ -265,42 +266,49 @@ public class DaVinciBackendTest {
     assertEquals(backend.getStoreClientType(versionSpecificStoreName), DaVinciBackend.ClientType.VERSION_SPECIFIC);
     assertEquals(backend.getVersionSpecificStoreVersion(versionSpecificStoreName), storeVersion);
     assertEquals(backend.getStoreClientRefCount(versionSpecificStoreName), Integer.valueOf(1));
+    assertTrue(backend.getIngestionService().isBlobTransferDisabledForStore(versionSpecificStoreName));
 
     // Register another regular client
     backend.registerStoreClient(storeName2, null);
     assertEquals(backend.getStoreClientType(storeName2), DaVinciBackend.ClientType.REGULAR);
     assertEquals(backend.getStoreClientRefCount(storeName2), Integer.valueOf(1));
+    assertFalse(backend.getIngestionService().isBlobTransferDisabledForStore(storeName2));
 
     // Register same version-specific client again
     backend.registerStoreClient(versionSpecificStoreName, storeVersion);
     assertEquals(backend.getVersionSpecificStoreVersion(versionSpecificStoreName), storeVersion);
     assertEquals(backend.getStoreClientType(versionSpecificStoreName), DaVinciBackend.ClientType.VERSION_SPECIFIC);
     assertEquals(backend.getStoreClientRefCount(versionSpecificStoreName), Integer.valueOf(2));
+    assertTrue(backend.getIngestionService().isBlobTransferDisabledForStore(versionSpecificStoreName));
 
     // Unregister regular client
     backend.unregisterStoreClient(STORE_NAME, null);
     assertNull(backend.getStoreClientType(STORE_NAME));
     assertNull(backend.getStoreClientRefCount(STORE_NAME));
+    assertFalse(backend.getIngestionService().isBlobTransferDisabledForStore(STORE_NAME));
     verify(mockStoreBackend).close();
 
-    // Unregister versionSpecificStoreName
+    // Unregister versionSpecificStoreName — still has one ref, blob transfer should stay disabled
     backend.unregisterStoreClient(versionSpecificStoreName, storeVersion);
     assertEquals(backend.getStoreClientRefCount(versionSpecificStoreName), Integer.valueOf(1));
     assertEquals(backend.getStoreClientType(versionSpecificStoreName), DaVinciBackend.ClientType.VERSION_SPECIFIC);
     assertEquals(backend.getVersionSpecificStoreVersion(versionSpecificStoreName), storeVersion);
+    assertTrue(backend.getIngestionService().isBlobTransferDisabledForStore(versionSpecificStoreName));
     verify(mockVersionSpecificStoreBackend, never()).close();
 
-    // Unregister versionSpecificStoreName again, cleanup should happen
+    // Unregister versionSpecificStoreName again, cleanup should happen including blob transfer
     backend.unregisterStoreClient(versionSpecificStoreName, storeVersion);
     assertNull(backend.getStoreClientType(versionSpecificStoreName));
     assertNull(backend.getStoreClientRefCount(versionSpecificStoreName));
     assertNull(backend.getVersionSpecificStoreVersion(versionSpecificStoreName));
+    assertFalse(backend.getIngestionService().isBlobTransferDisabledForStore(versionSpecificStoreName));
     verify(mockVersionSpecificStoreBackend).close();
 
     // Unregister other regular client and cleanup
     backend.unregisterStoreClient(storeName2, null);
     assertNull(backend.getStoreClientType(storeName2));
     assertNull(backend.getStoreClientRefCount(storeName2));
+    assertFalse(backend.getIngestionService().isBlobTransferDisabledForStore(storeName2));
     verify(mockStoreBackend2).close();
   }
 
@@ -322,13 +330,10 @@ public class DaVinciBackendTest {
   }
 
   @Test
-  public void testBlobTransferDisabledForVersionSpecificClient() {
-    backend.registerStoreClient(STORE_NAME, STORE_VERSION);
-    assertTrue(backend.getIngestionService().isBlobTransferDisabledForStore(STORE_NAME));
-  }
-
-  @Test
   public void testBlobTransferDisabledForStatelessClient() {
+    StoreBackend mockStoreBackend = mock(StoreBackend.class);
+    backend.addStoreBackend(STORE_NAME, mockStoreBackend);
+
     // Register a stateless record transformer config before registering the client
     DaVinciRecordTransformerConfig recordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
@@ -338,11 +343,9 @@ public class DaVinciBackendTest {
 
     backend.registerStoreClient(STORE_NAME, null);
     assertTrue(backend.getIngestionService().isBlobTransferDisabledForStore(STORE_NAME));
-  }
 
-  @Test
-  public void testBlobTransferNotDisabledForRegularStatefulClient() {
-    backend.registerStoreClient(STORE_NAME, null);
+    // Unregister should clean up blob transfer disabled flag
+    backend.unregisterStoreClient(STORE_NAME, null);
     assertFalse(backend.getIngestionService().isBlobTransferDisabledForStore(STORE_NAME));
   }
 

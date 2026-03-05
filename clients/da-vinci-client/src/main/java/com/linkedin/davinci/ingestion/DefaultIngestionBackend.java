@@ -737,11 +737,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
     // For DaVinci clients, use the store's blob transfer enabled flag
     if (isDaVinciClient) {
       if (storeIngestionService.isBlobTransferDisabledForStore(store.getName())) {
-        LOGGER.info("Blob transfer disabled for store {} (version-specific or stateless client)", store.getName());
+        LOGGER.debug("Blob transfer disabled for store {} (version-specific or stateless client)", store.getName());
         return false;
       }
       boolean blobTransferEnabledForDVC = store.isBlobTransferEnabled();
-      LOGGER.info("DaVinci client detected. Blob transfer enabled {}", blobTransferEnabledForDVC);
+      LOGGER.debug("DaVinci client detected. Blob transfer enabled {}", blobTransferEnabledForDVC);
       return blobTransferEnabledForDVC;
     }
 

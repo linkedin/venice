@@ -1530,6 +1530,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
+  public void unregisterBlobTransferDisabled(String storeName) {
+    blobTransferDisabledStores.remove(storeName);
+  }
+
+  @Override
   public boolean isBlobTransferDisabledForStore(String storeName) {
     return blobTransferDisabledStores.contains(storeName);
   }

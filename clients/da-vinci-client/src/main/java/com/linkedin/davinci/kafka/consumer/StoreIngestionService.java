@@ -125,6 +125,9 @@ public interface StoreIngestionService {
   default void registerBlobTransferDisabled(String storeName) {
   }
 
+  default void unregisterBlobTransferDisabled(String storeName) {
+  }
+
   default boolean isBlobTransferDisabledForStore(String storeName) {
     return false;
   }
