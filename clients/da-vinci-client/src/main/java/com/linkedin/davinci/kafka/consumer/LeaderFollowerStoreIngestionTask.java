@@ -480,7 +480,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               "State transition from STANDBY to LEADER is paused for replica: {} as this store is undergoing migration",
               partitionConsumptionState.getReplicaId());
         } else {
-          // Set this replica's active leadership term for stamping outgoing messages
+          // Set active leadership term BEFORE initializeAndSendDoLStamp so that any messages
+          // produced during DoL stamp initialization carry the correct term. If DoL init throws,
+          // the outer exception handler will deal with the error state.
           partitionConsumptionState.setActiveLeaderTerm(checker.getLeadershipTerm());
 
           // Initialize DoL state and send DoL stamp to local VT

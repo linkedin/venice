@@ -834,7 +834,8 @@ public class ConfigKeys {
    * <p>Records with DEFAULT_TERM_ID (-1) are never filtered, ensuring backward compatibility during
    * mixed rollout.
    *
-   * Default: false (filtering disabled; enable after validating termId propagation)
+   * Default: false (filtering disabled; enable after validating termId propagation).
+   * This is a static config; changing it requires a server restart.
    */
   public static final String SERVER_LEADER_TERM_FILTERING_ENABLED = "server.leader.term.filtering.enabled";
 

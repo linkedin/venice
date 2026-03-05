@@ -3629,6 +3629,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           LOGGER.error("Failed to record Record heartbeat with message: ", e);
         }
       } else {
+        // Only filter data messages for stale leadership terms. Control messages (heartbeats,
+        // SOS, EOS, DoL stamps) are always processed: DoL stamps are needed to update
+        // highestLeadershipTerm, and SOS/EOS are required for DIV segment tracking.
         if (shouldFilterStaleLeaderRecord(partitionConsumptionState, consumerRecord)) {
           return 0;
         }
@@ -5484,6 +5487,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * during mixed rollout. This method also updates highestLeadershipTerm when a new higher
    * term is observed from regular data messages.
    *
+   * <p>Thread safety: Both this method and {@link #checkAndHandleDoLMessage} run on the same
+   * drainer thread per partition (guaranteed by {@link AbstractStoreBufferService}), so the
+   * read-then-write on {@code highestLeadershipTerm} is safe without additional synchronization.
+   *
    * @return true if the record should be skipped (stale leader), false otherwise
    */
   boolean shouldFilterStaleLeaderRecord(PartitionConsumptionState pcs, DefaultPubSubMessage record) {
@@ -5505,6 +5512,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (recordTermId >= currentHighest) {
       if (recordTermId > currentHighest) {
         pcs.setHighestLeadershipTerm(recordTermId);
+        LOGGER.debug(
+            "Replica: {} observed higher termId from data record: {} (previous: {})",
+            pcs.getReplicaId(),
+            recordTermId,
+            currentHighest);
       }
       return false;
     }
