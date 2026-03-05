@@ -1,10 +1,5 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
-import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
@@ -30,7 +25,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -104,6 +98,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final boolean includeDeserializedReplicationMetadata;
   private final ReplicationMetadataSchemaRepository replicationMetadataSchemaRepository;
   private final StoreDeserializerCache<GenericRecord> rmdDeserializerCache;
+  private final DaVinciConfig daVinciConfig;
   private final String viewName;
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
@@ -118,8 +113,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
     this.changelogClientConfig = changelogClientConfig;
     this.storeName = changelogClientConfig.getStoreName();
-    DaVinciConfig daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setStorageClass(StorageClass.DISK);
+    this.daVinciConfig = new DaVinciConfig();
+    this.daVinciConfig.setStorageClass(StorageClass.DISK);
     ClientConfig innerClientConfig = changelogClientConfig.getInnerClientConfig();
     this.pubSubMessages = new ArrayBlockingQueue<>(changelogClientConfig.getMaxBufferSize());
     this.partitionToVersionToServe = new VeniceConcurrentHashMap<>();
@@ -142,13 +137,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         .setStoreRecordsInDaVinci(changelogClientConfig.isStateful())
         .setRecordMetadataEnabled(true)
         .build();
-    daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
+    this.daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
     this.daVinciClientFactory = new CachingDaVinciClientFactory(
         changelogClientConfig.getD2Client(),
         changelogClientConfig.getD2ServiceName(),
         innerClientConfig.getMetricsRepository(),
-        buildVeniceConfig());
+        new VeniceProperties(changelogClientConfig.getConsumerProperties()));
 
     if (isVersionSpecificClient) {
       LOGGER.info(
@@ -195,7 +190,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
   }
 
-  private void startDaVinciClient() {
+  private synchronized void startDaVinciClient() {
     // Start daVinci client if not already started
     if (!isStarted.get()) {
       daVinciClient.start();
@@ -211,7 +206,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
    * @param subscriptionCall Function that takes subscribedPartitions and returns subscription future
    * @return CompletableFuture that represents the async initialization work
    */
-  private CompletableFuture<Void> initializeAndSubscribe(
+  private synchronized CompletableFuture<Void> initializeAndSubscribe(
       Set<Integer> partitions,
       Function<Set<Integer>, CompletableFuture<Void>> subscriptionCall) {
     startDaVinciClient();
@@ -269,9 +264,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
      * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
      * will wait forever for capacity to become available. This leads to a deadlock.
     */
-    subscriptionCall.apply(subscribedPartitions).whenComplete((result, error) -> {
+    subscriptionCall.apply(targetPartitions).whenComplete((result, error) -> {
       if (error != null) {
-        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", subscribedPartitions, storeName, error);
+        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", targetPartitions, storeName, error);
+        subscribedPartitions.removeAll(targetPartitions);
         startFuture.completeExceptionally(new VeniceClientException(error));
         return;
       }
@@ -321,8 +317,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
-    // ToDo: Start at beginning of topic
-    return this.start(partitions);
+    return this.seekToBeginningOfPush(partitions);
   }
 
   public CompletableFuture<Void> subscribeAll() {
@@ -340,11 +335,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
-    return this.subscribe(partitions);
+    return initializeAndSubscribe(partitions, daVinciClient::seekToBeginningOfPush);
   }
 
   public CompletableFuture<Void> seekToBeginningOfPush() {
-    return this.subscribe(Collections.emptySet());
+    return this.seekToBeginningOfPush(Collections.emptySet());
   }
 
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
@@ -356,11 +351,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   }
 
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
-    return daVinciClient.seekToTail(partitions);
+    return initializeAndSubscribe(partitions, daVinciClient::seekToTail);
   }
 
   public CompletableFuture<Void> seekToTail() {
-    return daVinciClient.seekToTail();
+    return this.seekToTail(Collections.emptySet());
   }
 
   public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
@@ -511,19 +506,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     return compactedMessageList;
   }
 
-  private VeniceProperties buildVeniceConfig() {
-    return new PropertyBuilder().put(changelogClientConfig.getConsumerProperties())
-        // We don't need the block cache, since we only read each key once from disk
-        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0)
-        .put(DATA_BASE_PATH, changelogClientConfig.getBootstrapFileSystemPath())
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(PUSH_STATUS_STORE_ENABLED, !isVersionSpecificClient)
-        .build();
-  }
-
   @VisibleForTesting
   public DaVinciRecordTransformerConfig getRecordTransformerConfig() {
     return recordTransformerConfig;
+  }
+
+  @VisibleForTesting
+  public DaVinciConfig getDaVinciConfig() {
+    return daVinciConfig;
   }
 
   class BackgroundReporterThread extends Thread {

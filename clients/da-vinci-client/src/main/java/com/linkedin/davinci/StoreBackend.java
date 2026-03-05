@@ -8,16 +8,13 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -194,26 +191,24 @@ public class StoreBackend {
       if (daVinciFutureVersion == null) {
         trySubscribeDaVinciFutureVersion();
       } else {
-        daVinciFutureVersion.subscribe(partitions, null).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+        daVinciFutureVersion.subscribe(partitions, null, null).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
       }
     }
 
     VersionBackend savedVersion = daVinciCurrentVersion;
-    List<Integer> partitionList = daVinciCurrentVersion.getPartitions(partitions);
-    if (checkpointInfo != null && checkpointInfo.getAllPartitionsTimestamp() != null) {
-      Map<Integer, Long> timestamps = new HashMap<>();
-      for (int partition: partitionList) {
-        timestamps.put(partition, checkpointInfo.getAllPartitionsTimestamp());
+    Map<Integer, PubSubPosition> resolvedPositionMap = null;
+    Map<Integer, Long> resolvedTimestampsMap = null;
+    if (checkpointInfo != null) {
+      switch (checkpointInfo.getSeekMode()) {
+        case TIMESTAMPS_MAP:
+          resolvedTimestampsMap = checkpointInfo.getTimestampsMap();
+          break;
+        case POSITION_MAP:
+          resolvedPositionMap = checkpointInfo.getPositionMap();
+          break;
       }
-      checkpointInfo.setTimestampsMap(timestamps);
-    } else if (checkpointInfo != null && checkpointInfo.isSeekToTail()) {
-      Map<Integer, PubSubPosition> positionMap = new HashMap<>();
-      for (int partition: partitionList) {
-        positionMap.put(partition, PubSubSymbolicPosition.LATEST);
-      }
-      checkpointInfo.setPositionMap(positionMap);
     }
-    return daVinciCurrentVersion.subscribe(partitions, checkpointInfo).exceptionally(e -> {
+    return daVinciCurrentVersion.subscribe(partitions, resolvedTimestampsMap, resolvedPositionMap).exceptionally(e -> {
       synchronized (this) {
         addFaultyVersion(savedVersion, e);
         // Don't propagate failure to subscribe() caller, if future version has become current and is ready to
@@ -300,7 +295,7 @@ public class StoreBackend {
       LOGGER.info("Subscribing to future version {}", targetVersion.kafkaTopicName());
       setDaVinciFutureVersion(new VersionBackend(backend, targetVersion, stats));
       // For future version subscription, we don't need to pass any timestamps or position map
-      daVinciFutureVersion.subscribe(subscription, null).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
+      daVinciFutureVersion.subscribe(subscription, null, null).whenComplete((v, e) -> trySwapDaVinciCurrentVersion(e));
     } else {
       LOGGER.info(
           "Skipping subscribe to future version: {} in region: {} because the target version status is: {} and the target regions are: {}",

@@ -1234,4 +1234,16 @@ public class DefaultIngestionBackendTest {
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
   }
+
+  @Test
+  public void testBlobTransferDisabledForVersionSpecificOrStatelessClient() {
+    when(storeIngestionService.isDaVinciClient()).thenReturn(true);
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(storeIngestionService.isBlobTransferDisabledForStore(STORE_NAME)).thenReturn(true);
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+
+    // Blob transfer should not be attempted even though store has it enabled
+    verifyBlobTransfer(false);
+  }
 }

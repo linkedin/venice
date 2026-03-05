@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
-import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
@@ -98,8 +97,10 @@ public class VersionBackend {
     this.backend.getIngestionBackend().setStorageEngineReference(version.kafkaTopicName(), storageEngine);
     Store store = backend.getStoreRepository().getStoreOrThrow(version.getStoreName());
     this.storeBackendStats = storeBackendStats;
-    // push status store must be enabled both in Da Vinci and the store
-    this.reportPushStatus = store.isDaVinciPushStatusStoreEnabled()
+    // push status store must be enabled both in Da Vinci and the store, and disabled for version-specific clients
+    boolean isVersionSpecificClient =
+        DaVinciBackend.ClientType.VERSION_SPECIFIC.equals(backend.getStoreClientType(version.getStoreName()));
+    this.reportPushStatus = !isVersionSpecificClient && store.isDaVinciPushStatusStoreEnabled()
         && this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.heartbeatInterval = this.config.getClusterProperties()
         .getInt(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);
@@ -357,7 +358,8 @@ public class VersionBackend {
 
   synchronized CompletableFuture<Void> subscribe(
       ComplementSet<Integer> partitions,
-      DaVinciSeekCheckpointInfo checkpointInfo) {
+      Map<Integer, Long> timestampsMap,
+      Map<Integer, PubSubPosition> positionMap) {
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
     if (partitionList.isEmpty()) {
@@ -399,14 +401,9 @@ public class VersionBackend {
       backend.getHeartbeatMonitoringService()
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
       // AtomicReference of storage engine will be updated internally.
-      Optional<PubSubPosition> pubSubPosition = checkpointInfo == null
+      Optional<PubSubPosition> pubSubPosition = (timestampsMap == null && positionMap == null)
           ? Optional.empty()
-          : backend.getIngestionService()
-              .getPubSubPosition(
-                  config,
-                  partition,
-                  checkpointInfo.getTimestampsMap(),
-                  checkpointInfo.getPostitionMap());
+          : backend.getIngestionService().getPubSubPosition(config, partition, timestampsMap, positionMap);
       String replicaId = Utils.getReplicaId(version.kafkaTopicName(), partition);
       backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition, replicaId);
       tryStartHeartbeat();

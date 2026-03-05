@@ -5,11 +5,8 @@ import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
@@ -40,6 +37,7 @@ import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.consumer.ChangelogConsumerTestUtils;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -444,11 +442,11 @@ public class TestMaterializedViewEndToEnd extends AbstractMultiRegionTest {
     }
     IntegrationTestPushUtils.runVPJ(props);
     // Start a CC consumer in remote region to make sure it can consume all the records properly.
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    consumerProperties.put(
-        KAFKA_BOOTSTRAP_SERVERS,
-        multiRegionMultiClusterWrapper.getChildRegions().get(1).getPubSubBrokerWrapper().getAddress());
+    Properties consumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(
+        multiRegionMultiClusterWrapper,
+        multiRegionMultiClusterWrapper.getChildRegions().get(1).getPubSubBrokerWrapper(),
+        clusterName,
+        multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper());
     ChangelogClientConfig viewChangeLogClientConfig = new ChangelogClientConfig().setViewName(testViewName)
         .setConsumerProperties(consumerProperties)
         .setControllerD2ServiceName(D2_SERVICE_NAME)
@@ -810,12 +808,12 @@ public class TestMaterializedViewEndToEnd extends AbstractMultiRegionTest {
       String testViewName) {
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
     PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    String localKafkaUrl = localKafka.getAddress();
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    Properties consumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(
+        multiRegionMultiClusterWrapper,
+        localKafka,
+        clusterName,
+        localZkServer,
+        Utils.getUniqueString(inputDirPath));
     consumerProperties.put(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY, true);
 
     return new ChangelogClientConfig().setConsumerProperties(consumerProperties)
@@ -825,7 +823,6 @@ public class TestMaterializedViewEndToEnd extends AbstractMultiRegionTest {
         .setControllerRequestRetryCount(3)
         .setVersionSwapDetectionIntervalTimeInSeconds(3)
         .setD2Client(d2Client)
-        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
         .setViewName(testViewName)
         .setIsNewStatelessClientEnabled(true);
   }

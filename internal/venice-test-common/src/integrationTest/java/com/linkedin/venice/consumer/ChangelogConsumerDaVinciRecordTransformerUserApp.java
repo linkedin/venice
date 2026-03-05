@@ -1,6 +1,7 @@
 package com.linkedin.venice.consumer;
 
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
@@ -16,9 +17,12 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.consumer.StatefulVeniceChangelogConsumerTest.pollChangeEventsFromChangeCaptureConsumer;
@@ -90,6 +94,9 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkUrl);
+    consumerProperties.put(PERSISTENCE_TYPE, "ROCKS_DB");
+    consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
+    consumerProperties.put(PUSH_STATUS_STORE_ENABLED, true);
     consumerProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
     consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, blobTransferServerPort);
     consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, blobTransferClientPort);
@@ -114,6 +121,7 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
      */
     consumerProperties.put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 1);
     consumerProperties.put(BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN, 1);
+    consumerProperties.put(DATA_BASE_PATH, baseDataPath);
 
     ChangelogClientConfig globalChangelogClientConfig =
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
@@ -121,7 +129,6 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setLocalD2ZkHosts(zkUrl)
             .setControllerRequestRetryCount(3)
-            .setBootstrapFileSystemPath(baseDataPath)
             .setD2Client(d2Client);
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =

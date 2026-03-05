@@ -13,6 +13,8 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
@@ -25,6 +27,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.meta.ReadOnlyStore;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -201,13 +204,14 @@ public class VersionBackendTest {
             mock(AggVersionedDaVinciRecordTransformerStats.class)));
     when(mockDaVinciBackend.getInternalRecordTransformerConfig(storeName)).thenReturn(internalRecordTransformerConfig);
     when(mockDaVinciBackend.getIngestionService()).thenReturn(mock(KafkaStoreIngestionService.class));
+    when(mockDaVinciBackend.getExecutor()).thenReturn(mock(java.util.concurrent.ScheduledExecutorService.class));
     VersionBackend versionBackend = new VersionBackend(mockDaVinciBackend, version, mockStoreBackendStats);
 
     Collection<Integer> partitionList = Arrays.asList(0, 1, 2);
     ComplementSet<Integer> complementSet = ComplementSet.newSet(partitionList);
 
     // First subscription
-    versionBackend.subscribe(complementSet, null);
+    versionBackend.subscribe(complementSet, null, null);
 
     // Verify the latch count is set to 3 (number of partitions)
     verify(internalRecordTransformerConfig).setStartConsumptionLatchCount(3);
@@ -224,7 +228,7 @@ public class VersionBackendTest {
     // Test with overlapping partitions
     partitionList = Arrays.asList(2, 3, 4);
     complementSet = ComplementSet.newSet(partitionList);
-    versionBackend.subscribe(complementSet, null);
+    versionBackend.subscribe(complementSet, null, null);
 
     // Shouldn't try to start consumption on already subscribed partition (2)
     verify(mockIngestionBackend, never()).startConsumption(any(), eq(2), any(), any());
@@ -235,8 +239,56 @@ public class VersionBackendTest {
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
 
     // Test empty subscription
-    versionBackend.subscribe(ComplementSet.emptySet(), null);
+    versionBackend.subscribe(ComplementSet.emptySet(), null, null);
     verify(mockIngestionBackend, never()).startConsumption(any(), eq(0), any(), any());
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
+  }
+
+  @Test
+  public void testPushStatusDisabledForVersionSpecificClient() {
+    DaVinciBackend mockDaVinciBackend = mock(DaVinciBackend.class);
+    String storeName = "test_store";
+    Version version = new VersionImpl(storeName, 1);
+    version.setPartitionCount(3);
+
+    File baseDataPath = Utils.getTempDataDirectory();
+    VeniceProperties backendConfig = new PropertyBuilder().put(ConfigKeys.CLUSTER_NAME, "test-cluster")
+        .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
+        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
+        .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
+        .put(ConfigKeys.LOCAL_REGION_NAME, "dc-0")
+        .put(ConfigKeys.PUSH_STATUS_STORE_ENABLED, true)
+        .build();
+    VeniceConfigLoader veniceConfigLoader = new VeniceConfigLoader(backendConfig);
+    when(mockDaVinciBackend.getConfigLoader()).thenReturn(veniceConfigLoader);
+    when(mockDaVinciBackend.getStorageService()).thenReturn(mock(StorageService.class));
+    when(mockDaVinciBackend.getIngestionBackend()).thenReturn(mock(IngestionBackend.class));
+
+    SubscriptionBasedReadOnlyStoreRepository mockStoreRepository = mock(SubscriptionBasedReadOnlyStoreRepository.class);
+    when(mockDaVinciBackend.getStoreRepository()).thenReturn(mockStoreRepository);
+
+    StoreBackend mockStoreBackend = mock(StoreBackend.class);
+    when(mockDaVinciBackend.getStoreOrThrow(anyString())).thenReturn(mockStoreBackend);
+
+    HeartbeatMonitoringService mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    when(mockDaVinciBackend.getHeartbeatMonitoringService()).thenReturn(mockHeartbeatMonitoringService);
+    when(mockDaVinciBackend.getIngestionService()).thenReturn(mock(KafkaStoreIngestionService.class));
+    when(mockDaVinciBackend.getExecutor()).thenReturn(mock(java.util.concurrent.ScheduledExecutorService.class));
+
+    Store store = mock(Store.class);
+    when(store.isDaVinciPushStatusStoreEnabled()).thenReturn(true);
+    when(store.getName()).thenReturn(storeName);
+    when(mockStoreRepository.getStoreOrThrow(storeName)).thenReturn(store);
+
+    // Version-specific client should have push status disabled
+    when(mockDaVinciBackend.getStoreClientType(storeName)).thenReturn(DaVinciBackend.ClientType.VERSION_SPECIFIC);
+    VersionBackend versionSpecificBackend =
+        new VersionBackend(mockDaVinciBackend, version, mock(StoreBackendStats.class));
+    assertFalse(versionSpecificBackend.isReportingPushStatus());
+
+    // Regular client should have push status enabled
+    when(mockDaVinciBackend.getStoreClientType(storeName)).thenReturn(DaVinciBackend.ClientType.REGULAR);
+    VersionBackend regularBackend = new VersionBackend(mockDaVinciBackend, version, mock(StoreBackendStats.class));
+    assertTrue(regularBackend.isReportingPushStatus());
   }
 }
