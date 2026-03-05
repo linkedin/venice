@@ -1,13 +1,19 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.stats.PubSubHealthMonitorStats;
 import com.linkedin.venice.pubsub.PubSubHealthCategory;
 import com.linkedin.venice.pubsub.PubSubHealthChangeListener;
 import com.linkedin.venice.pubsub.PubSubHealthStatus;
@@ -129,11 +135,18 @@ public class PubSubHealthMonitorTest {
     PubSubTopic probeTopic = pubSubTopicRepository.getTopic("test_store_v1");
     monitor.setProbeTopic(probeTopic);
 
+    // Set up mock stats to verify metrics are recorded
+    PubSubHealthMonitorStats mockStats = mock(PubSubHealthMonitorStats.class);
+    monitor.setStats(mockStats);
+
     monitor.startInner();
     try {
       // Mark broker unhealthy
       monitor.reportPubSubException("broker1:9092", PubSubHealthCategory.BROKER);
       assertFalse(monitor.isHealthy("broker1:9092", PubSubHealthCategory.BROKER));
+
+      // Verify state transition metric was recorded for UNHEALTHY
+      verify(mockStats).recordStateTransition(PubSubHealthCategory.BROKER);
 
       // Set up listener to wait for recovery
       CountDownLatch recoveryLatch = new CountDownLatch(1);
@@ -149,6 +162,12 @@ public class PubSubHealthMonitorTest {
       assertTrue(recoveryLatch.await(10, TimeUnit.SECONDS), "Should recover within probe interval");
       assertEquals(capturedStatus.get(), PubSubHealthStatus.HEALTHY);
       assertTrue(monitor.isHealthy("broker1:9092", PubSubHealthCategory.BROKER));
+
+      // Verify probe success and state transition metrics were recorded
+      verify(mockStats, atLeastOnce()).recordProbeSuccess(PubSubHealthCategory.BROKER);
+      verify(mockStats, atLeastOnce()).recordProbeLatency(eq(PubSubHealthCategory.BROKER), anyLong());
+      // 2 transitions: HEALTHY->UNHEALTHY and UNHEALTHY->HEALTHY
+      verify(mockStats, atLeastOnce()).recordStateTransition(PubSubHealthCategory.BROKER);
     } finally {
       monitor.stopInner();
     }
@@ -164,6 +183,10 @@ public class PubSubHealthMonitorTest {
     PubSubTopic probeTopic = pubSubTopicRepository.getTopic("test_store_v1");
     monitor.setProbeTopic(probeTopic);
 
+    // Set up mock stats to verify failure metrics
+    PubSubHealthMonitorStats mockStats = mock(PubSubHealthMonitorStats.class);
+    monitor.setStats(mockStats);
+
     monitor.startInner();
     try {
       monitor.reportPubSubException("broker1:9092", PubSubHealthCategory.BROKER);
@@ -173,6 +196,11 @@ public class PubSubHealthMonitorTest {
 
       // Should still be unhealthy
       assertFalse(monitor.isHealthy("broker1:9092", PubSubHealthCategory.BROKER));
+
+      // Verify probe failure metrics were recorded
+      verify(mockStats, atLeastOnce()).recordProbeFailure(PubSubHealthCategory.BROKER);
+      // Probe success should not have been recorded
+      verify(mockStats, never()).recordProbeSuccess(any());
     } finally {
       monitor.stopInner();
     }

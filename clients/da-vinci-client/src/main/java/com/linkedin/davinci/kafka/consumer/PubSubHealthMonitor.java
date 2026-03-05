@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
@@ -40,6 +41,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class PubSubHealthMonitor extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(PubSubHealthMonitor.class);
+  private static final int PROBE_TIMEOUT_SECONDS = 10;
   private final boolean enabled;
   private final int probeIntervalSeconds;
   private final TopicManagerRepository topicManagerRepository;
@@ -98,11 +100,23 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
 
   @Override
   public void stopInner() {
-    if (probeExecutor != null) {
-      probeExecutor.shutdownNow();
+    shutdownExecutor(probeExecutor, "probe");
+    shutdownExecutor(listenerNotificationExecutor, "listener-notification");
+  }
+
+  private void shutdownExecutor(ExecutorService executor, String name) {
+    if (executor == null) {
+      return;
     }
-    if (listenerNotificationExecutor != null) {
-      listenerNotificationExecutor.shutdownNow();
+    executor.shutdown();
+    try {
+      if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+        executor.shutdownNow();
+        LOGGER.warn("Forcefully shut down {} executor after timeout", name);
+      }
+    } catch (InterruptedException e) {
+      executor.shutdownNow();
+      Thread.currentThread().interrupt();
     }
   }
 
@@ -259,7 +273,12 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
 
     for (ProbeTarget target: targets) {
       try {
+        long probeStartMs = System.currentTimeMillis();
         boolean probeSuccess = probe(target.address, target.category, topic);
+        long probeLatencyMs = System.currentTimeMillis() - probeStartMs;
+        if (stats != null) {
+          stats.recordProbeAttempt(target.category);
+        }
         if (probeSuccess) {
           LOGGER.info("Recovery probe succeeded: address={}, category={}", target.address, target.category);
 
@@ -268,12 +287,8 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
             provider.onProbeSuccess(target.address, target.category);
           }
 
-          // Atomically transition to HEALTHY only if no provider still reports unhealthy.
-          // This prevents a race where a new exception arrives between onProbeSuccess and
-          // the status update.
           AtomicBoolean transitioned = new AtomicBoolean(false);
-          Map<PubSubHealthCategory, PubSubHealthStatus> categoryStatuses = healthStatuses.get(target.address);
-          if (categoryStatuses != null) {
+          healthStatuses.computeIfPresent(target.address, (addr, categoryStatuses) -> {
             categoryStatuses.compute(target.category, (k, previous) -> {
               // Re-check all providers under the compute lock
               for (PubSubHealthSignalProvider provider: signalProviders) {
@@ -285,18 +300,20 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
               return PubSubHealthStatus.HEALTHY;
             });
 
-            // Clean up empty/all-healthy entries to prevent unbounded map growth
+            // Clean up the outer map entry if all categories are now healthy
             if (transitioned.get()) {
               boolean allHealthy =
                   categoryStatuses.values().stream().allMatch(status -> status == PubSubHealthStatus.HEALTHY);
               if (allHealthy) {
-                healthStatuses.remove(target.address);
+                return null; // Remove this entry from healthStatuses
               }
             }
-          }
+            return categoryStatuses;
+          });
 
           if (stats != null) {
             stats.recordProbeSuccess(target.category);
+            stats.recordProbeLatency(target.category, probeLatencyMs);
             if (transitioned.get()) {
               stats.recordStateTransition(target.category);
             }
@@ -312,6 +329,7 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
           }
           if (stats != null) {
             stats.recordProbeFailure(target.category);
+            stats.recordProbeLatency(target.category, probeLatencyMs);
           }
         }
       } catch (Exception e) {
@@ -336,7 +354,11 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
   private boolean probe(String address, PubSubHealthCategory category, PubSubTopic topic) {
     try {
       TopicManager topicManager = topicManagerRepository.getTopicManager(address);
-      return topicManager.containsTopic(topic);
+      CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(() -> topicManager.containsTopic(topic));
+      return future.get(PROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    } catch (java.util.concurrent.TimeoutException e) {
+      LOGGER.debug("Probe timed out for {} (category={})", address, category);
+      return false;
     } catch (Exception e) {
       LOGGER.debug("Probe failed for {} (category={}): {}", address, category, e.getMessage());
       return false;
@@ -348,13 +370,18 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
       return;
     }
     for (PubSubHealthChangeListener listener: listeners) {
-      listenerNotificationExecutor.submit(() -> {
-        try {
-          listener.onHealthStatusChanged(pubSubAddress, category, newStatus);
-        } catch (Exception e) {
-          LOGGER.error("Error notifying health change listener", e);
-        }
-      });
+      try {
+        listenerNotificationExecutor.submit(() -> {
+          try {
+            listener.onHealthStatusChanged(pubSubAddress, category, newStatus);
+          } catch (Exception e) {
+            LOGGER.error("Error notifying health change listener", e);
+          }
+        });
+      } catch (java.util.concurrent.RejectedExecutionException e) {
+        LOGGER.warn("Cannot notify health change listener after executor shutdown for address={}", pubSubAddress);
+        return;
+      }
     }
   }
 

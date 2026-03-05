@@ -22,6 +22,8 @@ public class PubSubHealthMonitorStats {
   private final MetricEntityStateOneEnum<PubSubHealthCategory> probeSuccessCount;
   private final MetricEntityStateOneEnum<PubSubHealthCategory> probeFailureCount;
   private final MetricEntityStateOneEnum<PubSubHealthCategory> stateTransitionCount;
+  private final MetricEntityStateOneEnum<PubSubHealthCategory> probeLatency;
+  private final MetricEntityStateOneEnum<PubSubHealthCategory> probeAttemptCount;
 
   public PubSubHealthMonitorStats(
       MetricsRepository metricsRepository,
@@ -68,6 +70,18 @@ public class PubSubHealthMonitorStats {
         otelRepository,
         baseDimensionsMap,
         PubSubHealthCategory.class);
+
+    probeLatency = MetricEntityStateOneEnum.create(
+        PubSubHealthOtelMetricEntity.PUBSUB_HEALTH_PROBE_LATENCY.getMetricEntity(),
+        otelRepository,
+        baseDimensionsMap,
+        PubSubHealthCategory.class);
+
+    probeAttemptCount = MetricEntityStateOneEnum.create(
+        PubSubHealthOtelMetricEntity.PUBSUB_HEALTH_PROBE_ATTEMPT_COUNT.getMetricEntity(),
+        otelRepository,
+        baseDimensionsMap,
+        PubSubHealthCategory.class);
   }
 
   public void recordProbeSuccess(PubSubHealthCategory category) {
@@ -80,5 +94,13 @@ public class PubSubHealthMonitorStats {
 
   public void recordStateTransition(PubSubHealthCategory category) {
     stateTransitionCount.record(1, category);
+  }
+
+  public void recordProbeLatency(PubSubHealthCategory category, long latencyMs) {
+    probeLatency.record(latencyMs, category);
+  }
+
+  public void recordProbeAttempt(PubSubHealthCategory category) {
+    probeAttemptCount.record(1, category);
   }
 }
