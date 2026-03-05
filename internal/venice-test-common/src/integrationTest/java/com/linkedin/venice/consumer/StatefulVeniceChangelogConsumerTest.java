@@ -787,7 +787,7 @@ public class StatefulVeniceChangelogConsumerTest {
       clusterWrapper.createPushStatusSystemStore(storeName);
       TestUtils.assertCommand(controllerClient.updateStore(storeName, storeParms));
       TestUtils.assertCommand(controllerClient.addValueSchema(storeName, valueSchemaStr));
-      IntegrationTestPushUtils.runVPJ(props);
+      IntegrationTestPushUtils.runVPJ(props, 1, controllerClient);
     }
 
     return inputDirPath;

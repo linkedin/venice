@@ -277,7 +277,8 @@ public class TestDaVinciRequestBasedMetaRepository {
         dataDirPath,
         storeName,
         clusterWrapper.getPubSubClientProperties());
-    IntegrationTestPushUtils.runVPJ(props);
+    int expectedVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion() + 1;
+    IntegrationTestPushUtils.runVPJ(props, expectedVersion, controllerClient);
   }
 
   private void deleteStore(String storeName) {
