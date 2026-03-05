@@ -1066,6 +1066,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setStoreLifecycleHooks(convertStoreLifecycleHooks(getStoreLifecycleHooks()));
     storeProperties.setKeyUrnCompressionEnabled(isKeyUrnCompressionEnabled());
     storeProperties.setKeyUrnFields(getKeyUrnFields().stream().map(String::toString).collect(Collectors.toList()));
+    storeProperties.setUncleanLeaderElectionEnabledForRTTopics(getUncleanLeaderElectionEnabledForRTTopics());
     storeProperties.setPreviousCurrentVersion(getPreviousCurrentVersion());
     // Set blobDbEnabled to default value - field exists in schema but not yet exposed via Store interface
     storeProperties.setBlobDbEnabled("NOT_SPECIFIED");
@@ -1672,6 +1673,16 @@ public class ReadOnlyStore implements Store {
   @Override
   public String getBlobTransferInServerEnabled() {
     return this.delegate.getBlobTransferInServerEnabled();
+  }
+
+  @Override
+  public String getUncleanLeaderElectionEnabledForRTTopics() {
+    return this.delegate.getUncleanLeaderElectionEnabledForRTTopics();
+  }
+
+  @Override
+  public void setUncleanLeaderElectionEnabledForRTTopics(String uncleanLeaderElectionEnabledForRTTopics) {
+    throw new UnsupportedOperationException("Unclean leader election config is read-only");
   }
 
   @Override

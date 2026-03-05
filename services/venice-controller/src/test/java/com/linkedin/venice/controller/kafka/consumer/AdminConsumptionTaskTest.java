@@ -25,6 +25,7 @@ import static com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProdu
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -37,7 +38,6 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -1105,9 +1105,9 @@ public class AdminConsumptionTaskTest {
     setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
     setStore.storeLifecycleHooks = Collections.emptyList();
     setStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.ENABLED.name();
+    setStore.uncleanLeaderElectionEnabledForRTTopics = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     setStore.blobDbEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     setStore.keyUrnFields = Collections.emptyList();
-    setStore.blobDbEnabled = "NOT_SPECIFIED";
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;

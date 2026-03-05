@@ -80,6 +80,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SW
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNCLEAN_LEADER_ELECTION_ENABLED_FOR_RT_TOPICS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -164,6 +165,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
             .setBlobTransferInServerEnabled(
                 ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobTransferInServerEnabled()))
+            .setUncleanLeaderElectionEnabledForRTTopics(
+                ConfigCommonUtils.ActivationState.valueOf(srcStore.getUncleanLeaderElectionEnabledForRTTopics()))
             .setBlobDbEnabled(ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobDbEnabled()))
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
@@ -815,6 +818,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<String> getBlobTransferInServerEnabled() {
     return getString(BLOB_TRANSFER_IN_SERVER_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setUncleanLeaderElectionEnabledForRTTopics(ConfigCommonUtils.ActivationState state) {
+    return putString(UNCLEAN_LEADER_ELECTION_ENABLED_FOR_RT_TOPICS, state.name());
+  }
+
+  public Optional<String> getUncleanLeaderElectionEnabledForRTTopics() {
+    return getString(UNCLEAN_LEADER_ELECTION_ENABLED_FOR_RT_TOPICS);
   }
 
   public UpdateStoreQueryParams setBlobDbEnabled(ConfigCommonUtils.ActivationState blobDbEnabled) {

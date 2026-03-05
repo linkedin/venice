@@ -181,6 +181,7 @@ public class TopicManager implements Closeable {
         retentionTimeMs,
         logCompaction,
         minIsr,
+        Optional.empty(),
         useFastPubSubOperationTimeout,
         useAlternativeBackend);
   }
@@ -214,11 +215,26 @@ public class TopicManager implements Closeable {
         retentionTimeMs,
         logCompaction,
         minIsr,
+        Optional.empty(),
         useFastPubSubOperationTimeout,
         false);
   }
 
   /**
+   * Create a topic, and block until the topic is created, with a default timeout of
+   * {@value PubSubConstants#PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE}, after which this function will throw a VeniceException.
+   *
+   * @param topicName Name for the new topic
+   * @param numPartitions number of partitions
+   * @param replication replication factor
+   * @param retentionTimeMs Retention time, in ms, for the topic
+   * @param logCompaction whether to enable log compaction on the topic
+   * @param minIsr if present, will apply the specified min.isr to this topic,
+   *               if absent, PubSub cluster defaults will be used
+   * @param uncleanLeaderElectionEnable if present, will apply the specified unclean.leader.election.enable to this topic,
+   *                                    if absent, PubSub cluster defaults will be used
+   * @param useFastPubSubOperationTimeout if false, normal PubSub operation timeout will be used,
+   *                            if true, a much shorter timeout will be used to make topic creation non-blocking.
    * @param useAlternativeBackend if true, signals that the topic should be created using an alternative PubSub backend
    */
   public void createTopic(
@@ -228,6 +244,7 @@ public class TopicManager implements Closeable {
       long retentionTimeMs,
       boolean logCompaction,
       Optional<Integer> minIsr,
+      Optional<Boolean> uncleanLeaderElectionEnable,
       boolean useFastPubSubOperationTimeout,
       boolean useAlternativeBackend) {
     long startTimeMs = System.currentTimeMillis();
@@ -240,7 +257,8 @@ public class TopicManager implements Closeable {
         minIsr,
         topicManagerContext.getTopicMinLogCompactionLagMs(),
         Optional.empty(),
-        useAlternativeBackend);
+        uncleanLeaderElectionEnable);
+    pubSubTopicConfiguration.setUseAlternativeBackend(useAlternativeBackend);
     logger.info(
         "Creating topic: {} partitions: {} replication: {}, configuration: {}",
         topicName,
