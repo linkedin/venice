@@ -739,7 +739,7 @@ public class TestPartitionTracker {
     partitionTracker.updateLatestConsumedVtPosition(testPosition);
 
     // Clone with DISABLED maxAgeInMs. Verify that all segments were cloned, even the old segments.
-    partitionTracker.cloneVtProducerStates(destTracker, DataIntegrityValidator.DISABLED);
+    partitionTracker.cloneVtProducerStates(destTracker, DataIntegrityValidator.DISABLED, false);
     allSegments.forEach(segments -> assertEquals(segments.size(), 3, "All segments should be present"));
     guids.forEach(guid -> assertTrue(srcVtSegments.containsKey(guid) && destVtSegments.containsKey(guid)));
     assertEquals(destTracker.getLatestConsumedVtPosition(), testPosition, "latestConsumedVtPosition should be copied");
@@ -747,7 +747,7 @@ public class TestPartitionTracker {
     // Clone producer states using maxAgeInMs.
     // Old segments should be removed from the source tracker and not be cloned to the dest tracker .
     destVtSegments.clear();
-    partitionTracker.cloneVtProducerStates(destTracker, MAX_AGE_IN_MS);
+    partitionTracker.cloneVtProducerStates(destTracker, MAX_AGE_IN_MS, false);
     allSegments.forEach(segments -> {
       assertEquals(segments.size(), 2, "Segment 1 (very old) should've been removed so size goes 3->2");
       guids.forEach(guid -> assertTrue(oldGuids.contains(guid) ^ segments.containsKey(guid)));

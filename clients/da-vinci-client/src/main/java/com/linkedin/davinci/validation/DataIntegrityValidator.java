@@ -143,7 +143,7 @@ public class DataIntegrityValidator {
 
   public void cloneVtProducerStates(int partition, DataIntegrityValidator newValidator) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
-    registerPartition(partition).cloneVtProducerStates(destPartitionTracker, maxAgeInMs);
+    registerPartition(partition).cloneVtProducerStates(destPartitionTracker, maxAgeInMs, false);
   }
 
   /**
@@ -159,10 +159,10 @@ public class DataIntegrityValidator {
   /**
    * Returns the VT DIV state and latest consumed vt offset for a given partition.
    */
-  public PartitionTracker cloneVtProducerStates(int partition) {
+  public PartitionTracker cloneVtProducerStates(int partition, boolean emitLog) {
     PartitionTracker clonedPartitionTracker = partitionTrackerCreator.apply(partition);
     final PartitionTracker oldPartitionTracker = registerPartition(partition);
-    oldPartitionTracker.cloneVtProducerStates(clonedPartitionTracker, maxAgeInMs); // for a single broker
+    oldPartitionTracker.cloneVtProducerStates(clonedPartitionTracker, maxAgeInMs, emitLog); // for a single broker
     return clonedPartitionTracker;
   }
 
