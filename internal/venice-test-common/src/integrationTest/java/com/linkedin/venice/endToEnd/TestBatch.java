@@ -920,6 +920,18 @@ public abstract class TestBatch {
       IntegrationTestPushUtils.runVPJ(props);
     }
 
+    // Wait for the current version to be set before reading from the router. There is a race
+    // condition where the VPJ poll returns (version is COMPLETED) but the version has not yet
+    // transitioned to ONLINE / been set as the current version on the controller side.
+    veniceCluster.useControllerClient(controllerClient -> {
+      TestUtils.waitForNonDeterministicAssertion(STORE_VERSION_AVAILABILITY_TIMEOUT_SEC, TimeUnit.SECONDS, true, () -> {
+        Assert.assertTrue(
+            controllerClient.getStore(storeName).getStore().getCurrentVersion() > 0,
+            "Store " + storeName + " does not have a current version yet");
+      });
+    });
+    veniceCluster.refreshAllRouterMetaData();
+
     VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);
     try (
         AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
@@ -928,13 +940,6 @@ public abstract class TestBatch {
                 .setMetricsRepository(metricsRepository)); // metrics only available for Avro client...
         AvroGenericStoreClient vsonClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultVsonGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
-      // Wait for store version to be serving on the router. There is a race condition where the
-      // controller has set the version to ONLINE (allowing VPJ to return) but the router has not
-      // yet picked up the update from ZK.
-      TestUtils.waitForNonDeterministicAssertion(STORE_VERSION_AVAILABILITY_TIMEOUT_SEC, TimeUnit.SECONDS, true, () -> {
-        veniceCluster.refreshAllRouterMetaData();
-        avroClient.get("0").get();
-      });
       dataValidator.validate(avroClient, vsonClient, metricsRepository);
     }
 
