@@ -257,6 +257,7 @@ public class VersionBackendTest {
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
         .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
         .put(ConfigKeys.LOCAL_REGION_NAME, "dc-0")
+        .put(ConfigKeys.PUSH_STATUS_STORE_ENABLED, true)
         .build();
     VeniceConfigLoader veniceConfigLoader = new VeniceConfigLoader(backendConfig);
     when(mockDaVinciBackend.getConfigLoader()).thenReturn(veniceConfigLoader);

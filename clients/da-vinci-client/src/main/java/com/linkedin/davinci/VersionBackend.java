@@ -101,7 +101,7 @@ public class VersionBackend {
     boolean isVersionSpecificClient =
         DaVinciBackend.ClientType.VERSION_SPECIFIC.equals(backend.getStoreClientType(version.getStoreName()));
     this.reportPushStatus = !isVersionSpecificClient && store.isDaVinciPushStatusStoreEnabled()
-        && this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, true);
+        && this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.heartbeatInterval = this.config.getClusterProperties()
         .getInt(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);
     this.stopConsumptionTimeoutInSeconds =

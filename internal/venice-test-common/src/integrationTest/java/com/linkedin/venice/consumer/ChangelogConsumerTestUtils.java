@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 
@@ -94,6 +95,7 @@ public class ChangelogConsumerTestUtils {
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
     consumerProperties.put(PERSISTENCE_TYPE, "ROCKS_DB");
     consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
+    consumerProperties.put(PUSH_STATUS_STORE_ENABLED, true);
     return consumerProperties;
   }
 
