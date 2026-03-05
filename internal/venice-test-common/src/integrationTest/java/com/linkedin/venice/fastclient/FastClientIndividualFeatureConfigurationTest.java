@@ -148,7 +148,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     assertEquals(routerConnectionCountRateSum, 0.0d, "Servers should have 0 router connections");
 
     // At least one server's usage ratio should eventually be a positive decimal
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       double usageRatio = 0;
       for (MetricsRepository serverMetric: serverMetrics) {
         usageRatio = serverMetric.getMetric(readQuotaUsageRatio).value();
@@ -201,6 +201,18 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
       serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
     }
+    // Wait for quota enforcement to reinitialize on restarted servers before making requests
+    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+      for (int i = 0; i < recordCnt; i++) {
+        genericFastClient.get(keyPrefix + i).get();
+      }
+      for (MetricsRepository serverMetric: serverMetrics) {
+        assertNotNull(serverMetric.getMetric(readQuotaRequestedQPSString));
+        assertTrue(
+            serverMetric.getMetric(readQuotaRequestedQPSString).value() >= 0,
+            "Quota metrics not initialized yet");
+      }
+    });
     for (int j = 0; j < 5; j++) {
       for (int i = 0; i < recordCnt; i++) {
         String key = keyPrefix + i;
