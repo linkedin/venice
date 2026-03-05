@@ -702,6 +702,28 @@ public class VenicePushJob implements AutoCloseable {
 
       if (pushJobSetting.isSourceKafka) {
         initKIFRepushDetails();
+        // Retrieve the latest value schema ID from the controller for KIF repush.
+        // This serves as the global fallback when per-record schema IDs are not embedded
+        // in the version topic (put.getSchemaId() returns -1).
+        MultiSchemaResponse allSchemas = ControllerClient.retryableRequest(
+            controllerClient,
+            pushJobSetting.controllerRetries,
+            c -> c.getAllValueSchema(pushJobSetting.storeName));
+        if (allSchemas.isError()) {
+          throw new VeniceException(
+              "Failed to retrieve value schemas for store " + pushJobSetting.storeName + ": " + allSchemas.getError());
+        }
+        MultiSchemaResponse.Schema[] schemas = allSchemas.getSchemas();
+        if (schemas == null || schemas.length == 0) {
+          throw new VeniceException(
+              "No value schemas are registered for store " + pushJobSetting.storeName
+                  + "; cannot determine value schema ID for KIF repush.");
+        }
+        pushJobSetting.valueSchemaId = schemas[schemas.length - 1].getId();
+        LOGGER.info(
+            "Set value schema ID to {} for KIF repush of store {}",
+            pushJobSetting.valueSchemaId,
+            pushJobSetting.storeName);
       }
 
       if (pushJobSetting.targetRegionPushWithDeferredSwapWaitTime > -1) {

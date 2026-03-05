@@ -151,6 +151,26 @@ public class AbstractPartitionWriterTest {
     assertEquals(message.getRmdVersionId(), 7);
   }
 
+  @Test
+  public void testExtractWithPerRecordSchemaIdNegativeUsesGlobalFallback() throws Exception {
+    TestablePartitionWriter writer = createConfiguredWriter(1, 5);
+
+    byte[] keyBytes = "test-key".getBytes();
+    byte[] valueBytes = "test-value".getBytes();
+
+    AbstractPartitionWriter.VeniceRecordWithMetadata record =
+        new AbstractPartitionWriter.VeniceRecordWithMetadata(valueBytes, null, -1, -1);
+    Iterator<AbstractPartitionWriter.VeniceRecordWithMetadata> values = Collections.singletonList(record).iterator();
+
+    AbstractPartitionWriter.VeniceWriterMessage message =
+        writer.testExtract(keyBytes, values, mock(DataWriterTaskTracker.class));
+
+    assertNotNull(message);
+    assertEquals(message.getValueBytes(), valueBytes);
+    assertEquals(message.getValueSchemaId(), 1); // Global fallback
+    assertEquals(message.getRmdVersionId(), 5); // Global fallback
+  }
+
   /**
    * Minimal concrete subclass of AbstractPartitionWriter for testing extract().
    */

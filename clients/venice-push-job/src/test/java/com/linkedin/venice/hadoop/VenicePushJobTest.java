@@ -423,6 +423,47 @@ public class VenicePushJobTest {
     }
   }
 
+  /**
+   * For KIF repush, the value schema ID must be retrieved from the controller so it can serve as a
+   * global fallback when per-record schema IDs are not embedded in the version topic
+   */
+  @Test
+  public void testKifRepushRetrievesValueSchemaIdFromController() throws Exception {
+    Properties repushProps = new Properties();
+    repushProps.setProperty(SOURCE_KAFKA, "true");
+    repushProps.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, REPUSH_VERSION));
+    repushProps.setProperty(KAFKA_INPUT_BROKER_URL, "localhost");
+    repushProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+
+    ControllerClient client = getClient(storeInfo -> {
+      Map<String, Integer> coloVersions = new HashMap<>();
+      coloVersions.put("dc-0", REPUSH_VERSION);
+      coloVersions.put("dc-1", REPUSH_VERSION);
+      storeInfo.setColoToCurrentVersions(coloVersions);
+    });
+
+    MultiSchemaResponse valueSchemaResponse = new MultiSchemaResponse();
+    MultiSchemaResponse.Schema schema1 = new MultiSchemaResponse.Schema();
+    schema1.setId(1);
+    schema1.setSchemaStr(VALUE_SCHEMA_STR);
+    MultiSchemaResponse.Schema schema2 = new MultiSchemaResponse.Schema();
+    schema2.setId(2);
+    schema2.setSchemaStr(VALUE_SCHEMA_STR);
+    valueSchemaResponse.setSchemas(new MultiSchemaResponse.Schema[] { schema1, schema2 });
+    doReturn(valueSchemaResponse).when(client).getAllValueSchema(eq(TEST_STORE));
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(repushProps, client)) {
+      skipVPJValidation(pushJob);
+      doNothing().when(pushJob).pollStatusUntilComplete(any(), any(), any(), any(), anyBoolean(), anyBoolean());
+      pushJob.run();
+
+      assertEquals(
+          pushJob.getPushJobSetting().valueSchemaId,
+          2,
+          "KIF repush should retrieve the latest value schema ID from the controller");
+    }
+  }
+
   @Test
   public void testCompliancePushJobConfig() {
     // Test with compliance push enabled
