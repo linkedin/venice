@@ -129,6 +129,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -7057,5 +7058,96 @@ public abstract class StoreIngestionTaskTest {
     assertFalse(dolStamp.isDolConsumed());
     // Verify highest term was updated
     verify(mockPcs).setHighestLeadershipTerm(100L);
+  }
+
+  @Test
+  public void testGetNewStoreVersionStateFallsBackToInstanceFields() {
+    StoreIngestionTask sit = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(sit).getNewStoreVersionState(anyLong(), anyBoolean(), any());
+    doReturn(true).when(sit).isChunked();
+    doReturn(CompressionStrategy.NO_OP).when(sit).getCompressionStrategy();
+
+    // Test with startOfPush != null: should use SOP fields
+    StartOfPush sop = new StartOfPush();
+    sop.chunked = false;
+    sop.compressionStrategy = CompressionStrategy.GZIP.getValue();
+    sop.compressionDictionary = null;
+    sop.timestampPolicy = 2;
+
+    StoreVersionState svs = sit.getNewStoreVersionState(12345L, true, sop);
+    assertEquals(svs.chunked, false);
+    assertEquals(svs.compressionStrategy, CompressionStrategy.GZIP.getValue());
+    assertEquals(svs.sorted, true);
+    assertEquals(svs.batchConflictResolutionPolicy, 2);
+    assertEquals(svs.startOfPushTimestamp, 12345L);
+
+    // Test with startOfPush == null: should fall back to instance getters
+    StoreVersionState svs2 = sit.getNewStoreVersionState(99999L, false, null);
+    assertEquals(svs2.chunked, true);
+    assertEquals(svs2.compressionStrategy, CompressionStrategy.NO_OP.getValue());
+    assertEquals(svs2.sorted, false);
+    assertEquals(svs2.batchConflictResolutionPolicy, 1);
+    assertEquals(svs2.startOfPushTimestamp, 99999L);
+  }
+
+  @Test
+  public void testGetNewStoreVersionStateWithZstdCompression() {
+    StoreIngestionTask sit = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(sit).getNewStoreVersionState(anyLong(), anyBoolean(), any());
+    doReturn(true).when(sit).isChunked();
+    doReturn(CompressionStrategy.ZSTD_WITH_DICT).when(sit).getCompressionStrategy();
+
+    // Test with startOfPush != null and ZSTD_WITH_DICT: SOP provides the dictionary
+    StartOfPush sopWithDict = new StartOfPush();
+    sopWithDict.chunked = true;
+    sopWithDict.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT.getValue();
+    sopWithDict.compressionDictionary = java.nio.ByteBuffer.wrap("test-dictionary".getBytes());
+    sopWithDict.timestampPolicy = 0;
+
+    StoreVersionState svs = sit.getNewStoreVersionState(12345L, true, sopWithDict);
+    assertEquals(svs.compressionStrategy, CompressionStrategy.ZSTD_WITH_DICT.getValue());
+    assertNotNull(svs.compressionDictionary);
+    assertEquals(svs.startOfPushTimestamp, 12345L);
+
+    // Test with startOfPush != null, ZSTD_WITH_DICT, but null dictionary: should throw
+    StartOfPush sopNullDict = new StartOfPush();
+    sopNullDict.chunked = true;
+    sopNullDict.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT.getValue();
+    sopNullDict.compressionDictionary = null;
+    sopNullDict.timestampPolicy = 0;
+
+    assertThrows(VeniceException.class, () -> sit.getNewStoreVersionState(12345L, true, sopNullDict));
+
+  }
+
+  @Test
+  public void testSVSSynthesizedOnSeekPastSOP() throws Exception {
+    DaVinciRecordTransformerConfig cdcRecordTransformerConfig = buildCdcRecordTransformerConfig();
+
+    // Stub computeStoreVersionState to actually invoke the lambda
+    doAnswer(invocation -> {
+      Function<StoreVersionState, StoreVersionState> mapFunction = invocation.getArgument(1);
+      return mapFunction.apply(null);
+    }).when(mockStorageMetadataService).computeStoreVersionState(anyString(), any());
+
+    // Mock storage engine to return null SVS (simulating fresh RocksDB with no persisted SVS)
+    doReturn(null).when(mockAbstractStorageEngine).getStoreVersionState();
+
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+      // Resubscribe with a non-EARLIEST position to trigger SVS synthesis
+      storeIngestionTaskUnderTest.subscribePartition(
+          new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
+          Optional.of(PubSubSymbolicPosition.LATEST));
+
+      // Verify computeStoreVersionState was called (SVS synthesis triggered)
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeastOnce())
+          .computeStoreVersionState(eq(topic), any());
+    }, AA_OFF);
+
+    config.setRecordTransformerConfig(cdcRecordTransformerConfig).setDaVinci(true);
+    config.setHybridStoreConfig(
+        Optional.of(new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_SOP)));
+
+    runTest(config);
   }
 }
