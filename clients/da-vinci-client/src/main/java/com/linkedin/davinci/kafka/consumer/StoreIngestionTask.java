@@ -2508,6 +2508,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           // report completion immediately for user seek subscription
           partitionConsumptionStateMap.get(partition).lagHasCaughtUp();
           reportCompleted(partitionConsumptionStateMap.get(partition), true);
+
+          // Synthesize StoreVersionState when seeking past SOP (SOP was not consumed).
+          // Skip for EARLIEST since SOP will be consumed naturally and populate SVS correctly.
+          if (!PubSubSymbolicPosition.EARLIEST.equals(subscribePosition)
+              && storageEngine.getStoreVersionState() == null) {
+            storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
+              if (previousStoreVersionState != null) {
+                return previousStoreVersionState;
+              }
+              return getNewStoreVersionState(0L, !isHybridMode(), null);
+            });
+          }
         } else {
           subscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
           LOGGER.info("Subscribed to local: {} position: {}", topicPartition, subscribePosition);
@@ -3275,7 +3287,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return previousStoreVersionState;
       } else {
         if (skipValidationsForDaVinciClientEnabled) {
-          StoreVersionState storeVersionState = getNewStoreVersionState(kafkaMessageEnvelope, !isHybridMode(), null);
+          StoreVersionState storeVersionState =
+              getNewStoreVersionState(kafkaMessageEnvelope.producerMetadata.messageTimestamp, !isHybridMode(), null);
           return storeVersionState;
         } else {
           throw new VeniceException(
@@ -3338,7 +3351,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
           if (previousStoreVersionState == null) {
             // No other partition of the same topic has started yet, let's initialize the StoreVersionState
-            StoreVersionState newStoreVersionState = getNewStoreVersionState(startOfPushKME, sorted, startOfPush);
+            StoreVersionState newStoreVersionState =
+                getNewStoreVersionState(startOfPushKME.producerMetadata.messageTimestamp, sorted, startOfPush);
             return newStoreVersionState;
           } else if (previousStoreVersionState.chunked != startOfPush.chunked) {
             // Something very wrong is going on ): ...
@@ -3393,27 +3407,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private StoreVersionState getNewStoreVersionState(KafkaMessageEnvelope KME, boolean sorted, StartOfPush startOfPush) {
+  @VisibleForTesting
+  StoreVersionState getNewStoreVersionState(long timestamp, boolean sorted, StartOfPush startOfPush) {
     StoreVersionState newStoreVersionState = new StoreVersionState();
     newStoreVersionState.sorted = sorted;
-    newStoreVersionState.chunked = startOfPush != null ? startOfPush.chunked : isChunked;
+    newStoreVersionState.chunked = startOfPush != null ? startOfPush.chunked : isChunked();
     newStoreVersionState.compressionStrategy =
-        startOfPush != null ? startOfPush.compressionStrategy : compressionStrategy.getValue();
+        startOfPush != null ? startOfPush.compressionStrategy : getCompressionStrategy().getValue();
     newStoreVersionState.compressionDictionary = startOfPush != null ? startOfPush.compressionDictionary : null;
     if (newStoreVersionState.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
       if (startOfPush != null && startOfPush.compressionDictionary == null) {
         throw new VeniceException(
             "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
-      } else if (startOfPush == null) { // only retrieve the dictionary if it is new EOP created during seek calls
-        // we need to retrieve the dictionary from the kafka topic
+      } else if (startOfPush == null) {
+        // No SOP available; retrieve the dictionary directly from the VT
         newStoreVersionState.compressionDictionary = DictionaryUtils.readDictionaryFromKafka(
-            storeName,
-            serverConfig.getKafkaConsumerConfigsForLocalConsumption(),
+            kafkaVersionTopic,
+            new VeniceProperties(kafkaProps),
             PubSubMessageDeserializer.createDefaultDeserializer());
       }
     }
     newStoreVersionState.batchConflictResolutionPolicy = startOfPush != null ? startOfPush.timestampPolicy : 1;
-    newStoreVersionState.startOfPushTimestamp = KME.producerMetadata.messageTimestamp;
+    newStoreVersionState.startOfPushTimestamp = timestamp;
 
     if (startOfPush != null) {
       LOGGER.info(

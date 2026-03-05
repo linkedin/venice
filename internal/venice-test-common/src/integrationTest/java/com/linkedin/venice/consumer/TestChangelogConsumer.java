@@ -41,6 +41,7 @@ import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -853,6 +854,116 @@ public class TestChangelogConsumer {
           assertEquals((int) pubSubMessage.getKey(), 10000);
           assertEquals(pubSubMessage.getValue().getCurrentValue().toString(), "10000");
         }
+      });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testSeekToCheckpointPastSOPWithChunking() throws IOException, ExecutionException, InterruptedException {
+    runSeekToCheckpointPastSOP(CompressionStrategy.NO_OP);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testSeekToCheckpointPastSOPWithGzipChunking()
+      throws IOException, ExecutionException, InterruptedException {
+    runSeekToCheckpointPastSOP(CompressionStrategy.GZIP);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testSeekToCheckpointPastSOPWithZstdChunking()
+      throws IOException, ExecutionException, InterruptedException {
+    runSeekToCheckpointPastSOP(CompressionStrategy.ZSTD_WITH_DICT);
+  }
+
+  /**
+   * Verifies that seekToCheckpoint works when SOP was never consumed (fresh RocksDB, no persisted SVS).
+   * Uses large (>950KB) values to trigger chunking on VT. Without SVS synthesis, the consumer fails
+   * because chunked records need SVS for validation (waitVersionStateAvailable), ZSTD_WITH_DICT needs
+   * SVS for the compression dictionary, and all records eventually fail when waitForStateVersion kills
+   * the ingestion task.
+   */
+  private void runSeekToCheckpointPastSOP(CompressionStrategy compressionStrategy)
+      throws IOException, ExecutionException, InterruptedException {
+    int numKeys = 2;
+    char[] largeChars = new char[1024 * 1024];
+    Arrays.fill(largeChars, 'x');
+    String largeValue = new String(largeChars);
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, largeValue, numKeys);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    testStoresToDelete.add(storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        clusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = STRING_SCHEMA.toString();
+    UpdateStoreQueryParams storeParms =
+        ChangelogConsumerTestUtils.buildDefaultStoreParams().setCompressionStrategy(compressionStrategy);
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
+    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
+
+    Properties consumerProperties = ChangelogConsumerTestUtils
+        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
+    ChangelogClientConfig globalChangelogClientConfig =
+        ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 1)
+            .setD2Client(d2Client);
+
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+
+    // Subscribe normally to consume batch data and collect checkpoints
+    Map<Integer, VeniceChangeCoordinate> partitionToCheckpoint = new HashMap<>();
+    try (VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
+      changeLogConsumer.subscribeAll().get();
+      Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap =
+          new HashMap<>();
+      pollAndCollectVersionSpecificMessages(changeLogConsumer, pubSubMessagesMap, numKeys);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> msg: pubSubMessagesMap.values()) {
+        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> immMsg =
+            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) msg;
+        partitionToCheckpoint.put(immMsg.getPartition(), immMsg.getPosition());
+      }
+    }
+
+    // seekToCheckpoint with a fresh RocksDB path (no persisted SVS/dictionary from first subscription)
+    Properties freshConsumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(
+        multiRegionMultiClusterWrapper,
+        localKafka,
+        clusterName,
+        localZkServer,
+        Utils.getUniqueString(inputDirPath));
+    ChangelogClientConfig freshChangelogClientConfig = ChangelogConsumerTestUtils
+        .buildBaseChangelogClientConfig(freshConsumerProperties, localZkServer.getAddress(), 1)
+        .setD2Client(d2Client);
+    VeniceChangelogConsumerClientFactory freshFactory =
+        new VeniceChangelogConsumerClientFactory(freshChangelogClientConfig, metricsRepository);
+
+    try (VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
+        freshFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
+      changeLogConsumer.seekToCheckpoint(new HashSet<>(partitionToCheckpoint.values())).get();
+
+      try (VeniceSystemProducer veniceProducer =
+          IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
+        sendStreamingRecord(veniceProducer, storeName, 10000, "10000", null);
+      }
+
+      Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> receivedMessages =
+          new HashMap<>();
+      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> {
+        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> messages =
+            changeLogConsumer.poll(5);
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> msg: messages) {
+          receivedMessages.put(msg.getKey(), msg);
+        }
+        assertTrue(receivedMessages.containsKey(10000), "Should have received streaming record with key 10000");
+        assertEquals(receivedMessages.get(10000).getValue().getCurrentValue().toString(), "10000");
       });
     }
   }
