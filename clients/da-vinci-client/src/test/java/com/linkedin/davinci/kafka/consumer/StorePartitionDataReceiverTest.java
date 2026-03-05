@@ -53,7 +53,7 @@ public class StorePartitionDataReceiverTest {
 
     receiver.write(emptyMessages);
 
-    verify(mockSIT).setIngestionException(eq(3), eq(pubSubException));
+    verify(mockSIT).setIngestionException(eq(3), eq(pubSubException), eq("broker1:9092"));
     verify(mockSIT, never()).setLastConsumerException(any());
   }
 
@@ -65,7 +65,7 @@ public class StorePartitionDataReceiverTest {
 
     receiver.write(emptyMessages);
 
-    verify(mockSIT).setIngestionException(eq(3), eq(retriableException));
+    verify(mockSIT).setIngestionException(eq(3), eq(retriableException), eq("broker1:9092"));
     verify(mockSIT, never()).setLastConsumerException(any());
   }
 
@@ -78,7 +78,7 @@ public class StorePartitionDataReceiverTest {
 
     receiver.write(emptyMessages);
 
-    verify(mockSIT).setIngestionException(eq(3), eq(wrappedException));
+    verify(mockSIT).setIngestionException(eq(3), eq(wrappedException), eq("broker1:9092"));
     verify(mockSIT, never()).setLastConsumerException(any());
   }
 

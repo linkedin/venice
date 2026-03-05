@@ -123,7 +123,7 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Def
           "Received PubSub exception {} for topic: {}. Propagating as partition-level exception.",
           e.getClass().getSimpleName(),
           topicPartition);
-      storeIngestionTask.setIngestionException(topicPartition.getPartitionNumber(), e);
+      storeIngestionTask.setIngestionException(topicPartition.getPartitionNumber(), e, kafkaUrl);
     } else {
       LOGGER.error(
           "Received {} while StoreIngestionTask is processing the polled consumer record for topic: {}. Will propagate via setLastConsumerException(e).",

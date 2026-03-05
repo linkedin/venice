@@ -1716,7 +1716,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             exceptionPartition,
             getReplicaId(kafkaVersionTopic, exceptionPartition),
             partitionException);
-        pausePartitionForPubSubHealth(exceptionPartition, partitionConsumptionState);
+        pausePartitionForPubSubHealth(
+            exceptionPartition,
+            partitionConsumptionState,
+            partitionExceptionInfo.getPubSubExceptionSourceUrl());
         partitionIngestionExceptionList.set(exceptionPartition, null);
         if (failedPartitions.remove(exceptionPartition)) {
           LOGGER.info(
@@ -1792,7 +1795,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerException.getMessage(),
             consumerException);
         for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
-          pausePartitionForPubSubHealth(entry.getKey(), entry.getValue());
+          pausePartitionForPubSubHealth(entry.getKey(), entry.getValue(), null);
         }
         lastConsumerException = null;
       } else {
@@ -3165,12 +3168,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   void setIngestionException(int partitionId, Exception e) {
+    setIngestionException(partitionId, e, null);
+  }
+
+  void setIngestionException(int partitionId, Exception e, String pubSubExceptionSourceUrl) {
     boolean replicaCompleted = false;
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
     if (partitionConsumptionState != null && partitionConsumptionState.isCompletionReported()) {
       replicaCompleted = true;
     }
-    partitionIngestionExceptionList.set(partitionId, new PartitionExceptionInfo(e, partitionId, replicaCompleted));
+    partitionIngestionExceptionList
+        .set(partitionId, new PartitionExceptionInfo(e, partitionId, replicaCompleted, pubSubExceptionSourceUrl));
     failedPartitions.add(partitionId);
   }
 
@@ -5678,9 +5686,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *
    * <p>Overridden in {@link LeaderFollowerStoreIngestionTask} to also unsubscribe from the leader
    * topic (RT) when the partition is a leader consuming from a non-VT topic.
+   *
+   * @param exceptionSourceUrl the broker URL where the exception originated, or null if unknown
+   *                           (defaults to localKafkaServer)
    */
-  protected void pausePartitionForPubSubHealth(int partitionId, PartitionConsumptionState pcs) {
-    String pubSubAddress = localKafkaServer;
+  protected void pausePartitionForPubSubHealth(
+      int partitionId,
+      PartitionConsumptionState pcs,
+      String exceptionSourceUrl) {
+    String pubSubAddress = exceptionSourceUrl != null ? exceptionSourceUrl : localKafkaServer;
     pubSubHealthPausedPartitions.put(partitionId, pubSubAddress);
     unsubscribeFromTopic(versionTopic, pcs);
     reportPubSubHealthException(pubSubAddress);
@@ -5758,6 +5772,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionsToResume.size(),
           pubSubAddress);
 
+      boolean allResumed = true;
       for (int partitionId: partitionsToResume) {
         PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partitionId);
         if (pcs == null || !pcs.isSubscribed()) {
@@ -5772,8 +5787,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Thread.currentThread().interrupt();
           return;
         } catch (Exception e) {
-          LOGGER.error("Failed to resume partition {} for PubSub health, will retry on next recovery", partitionId, e);
+          LOGGER.error("Failed to resume partition {} for PubSub health, will retry next cycle", partitionId, e);
+          allResumed = false;
         }
+      }
+      // Re-enqueue the address so failed partitions are retried on the next checkIngestionProgress
+      // cycle. The monitor only emits HEALTHY once, so without this the partitions would be stuck.
+      if (!allResumed) {
+        pendingPubSubHealthResumes.add(pubSubAddress);
       }
     }
   }

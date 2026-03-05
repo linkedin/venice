@@ -4480,23 +4480,40 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void pausePartitionForPubSubHealth(int partitionId, PartitionConsumptionState pcs) {
+  protected void pausePartitionForPubSubHealth(
+      int partitionId,
+      PartitionConsumptionState pcs,
+      String exceptionSourceUrl) {
     boolean isLeader = isActiveLeaderOnNonVtTopic(pcs);
 
-    // Determine the actual PubSub address being consumed from. For leaders in A/A mode,
-    // this may be a remote Kafka address rather than the local one.
+    // Use the exception source URL if available (tells us exactly which broker had the problem).
+    // Otherwise, infer from PCS: leaders in A/A may be consuming from a remote broker.
     String pubSubAddress;
-    if (isLeader) {
+    if (exceptionSourceUrl != null) {
+      pubSubAddress = exceptionSourceUrl;
+    } else if (isLeader) {
       Set<String> sourceAddresses = getConsumptionSourceKafkaAddress(pcs);
       pubSubAddress = sourceAddresses.size() == 1 ? sourceAddresses.iterator().next() : localKafkaServer;
     } else {
       pubSubAddress = localKafkaServer;
     }
 
+    // Determine which topic to unsubscribe from based on where the exception originated.
+    // If the exception came from the local broker (produce path) and the leader is consuming
+    // from a remote RT, we should unsubscribe from VT (the local produce target), not the
+    // remote RT. If the exception came from the consume path (remote RT), unsubscribe from
+    // the leader topic.
     pubSubHealthPausedPartitions.put(partitionId, pubSubAddress);
     if (isLeader) {
       PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
-      unsubscribeFromTopic(leaderTopic, pcs);
+      boolean exceptionFromLocalProducePath = localKafkaServer.equals(pubSubAddress) && pcs.consumeRemotely();
+      if (exceptionFromLocalProducePath) {
+        // Exception on the local VT produce path — unsubscribe from VT, not the remote RT
+        unsubscribeFromTopic(versionTopic, pcs);
+      } else {
+        // Exception on the consume path — unsubscribe from the leader topic (remote RT or local RT)
+        unsubscribeFromTopic(leaderTopic, pcs);
+      }
     } else {
       unsubscribeFromTopic(versionTopic, pcs);
     }
