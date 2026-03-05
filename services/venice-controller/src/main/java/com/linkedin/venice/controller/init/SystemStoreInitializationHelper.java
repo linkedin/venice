@@ -231,7 +231,7 @@ public final class SystemStoreInitializationHelper {
   }
 
   // Visible for testing
-  static void setDelayBetweenStoreUpdateRetries(Duration delayForTests) {
+  public static void setDelayBetweenStoreUpdateRetries(Duration delayForTests) {
     delayBetweenStoreUpdateRetries = delayForTests;
   }
 }
