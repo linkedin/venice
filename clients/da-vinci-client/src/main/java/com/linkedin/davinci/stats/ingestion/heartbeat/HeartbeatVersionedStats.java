@@ -2,6 +2,7 @@ package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.stats.AbstractVeniceAggVersionedStats;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.stats.StatsSupplier;
@@ -284,7 +285,7 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
     }
     try {
       return getOrCreateRecordLevelDelayOtelStats(storeName);
-    } catch (Exception e) {
+    } catch (VeniceNoStoreException e) {
       return null;
     }
   }

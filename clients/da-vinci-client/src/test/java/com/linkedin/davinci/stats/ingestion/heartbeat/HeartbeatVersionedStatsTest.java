@@ -17,6 +17,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -487,11 +488,18 @@ public class HeartbeatVersionedStatsTest {
   }
 
   @Test
-  public void testEmitPerRecordOtelMetricWhenStoreNotInitialized() {
-    // emitPerRecord* should lazily create stats even for a previously unknown store
+  public void testEmitPerRecordOtelMetricWhenStoreNotInMetadataRepository() {
+    // Stub getStoreOrThrow to throw VeniceNoStoreException for the unknown store
+    when(mockMetadataRepository.getStoreOrThrow("unknown_store"))
+        .thenThrow(new VeniceNoStoreException("unknown_store"));
+
+    // Should be a graceful no-op: no exception thrown, no stats entry created
     heartbeatVersionedStats.emitPerRecordLeaderOtelMetric("unknown_store", 1, REGION, 100);
     heartbeatVersionedStats.emitPerRecordFollowerOtelMetric("unknown_store", 1, REGION, 100, true);
-    // No exception should be thrown
+
+    assertNull(
+        heartbeatVersionedStats.getRecordLevelDelayOtelStatsForTesting("unknown_store"),
+        "No stats entry should be created for a store not in the metadata repository");
   }
 
   /**
