@@ -97,9 +97,11 @@ public class VersionBackend {
     this.backend.getIngestionBackend().setStorageEngineReference(version.kafkaTopicName(), storageEngine);
     Store store = backend.getStoreRepository().getStoreOrThrow(version.getStoreName());
     this.storeBackendStats = storeBackendStats;
-    // push status store must be enabled both in Da Vinci and the store
-    this.reportPushStatus = store.isDaVinciPushStatusStoreEnabled()
-        && this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, false);
+    // push status store must be enabled both in Da Vinci and the store, and disabled for version-specific clients
+    boolean isVersionSpecificClient =
+        DaVinciBackend.ClientType.VERSION_SPECIFIC.equals(backend.getStoreClientType(version.getStoreName()));
+    this.reportPushStatus = !isVersionSpecificClient && store.isDaVinciPushStatusStoreEnabled()
+        && this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, true);
     this.heartbeatInterval = this.config.getClusterProperties()
         .getInt(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);
     this.stopConsumptionTimeoutInSeconds =

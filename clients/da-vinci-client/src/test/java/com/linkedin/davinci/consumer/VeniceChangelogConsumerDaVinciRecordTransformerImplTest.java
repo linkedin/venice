@@ -1,7 +1,6 @@
 package com.linkedin.davinci.consumer;
 
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
-import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
@@ -558,31 +557,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       assertTrue(veniceChangelogConsumer.isCaughtUp());
     });
-  }
-
-  @Test
-  public void testPushStatusStoreDisabledForStatelessClient() {
-    // Default config is stateless (isStateful = false)
-    assertFalse(changelogClientConfig.isStateful(), "Default config should be stateless");
-    assertFalse(
-        veniceChangelogConsumer.buildVeniceConfig().getBoolean(PUSH_STATUS_STORE_ENABLED),
-        "PUSH_STATUS_STORE_ENABLED should be false for stateless client");
-  }
-
-  @Test
-  public void testPushStatusStoreEnabledForStatefulClient() {
-    // Set isStateful to true to test stateful config
-    changelogClientConfig.setIsStateful(true);
-
-    VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> statefulConsumer =
-        new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
-            changelogClientConfig,
-            veniceChangelogConsumerClientFactory);
-
-    assertTrue(changelogClientConfig.isStateful(), "Config should be stateful");
-    assertTrue(
-        statefulConsumer.buildVeniceConfig().getBoolean(PUSH_STATUS_STORE_ENABLED),
-        "PUSH_STATUS_STORE_ENABLED should be true for stateful client");
   }
 
   private void verifyPuts(int value, boolean compactionEvent) {

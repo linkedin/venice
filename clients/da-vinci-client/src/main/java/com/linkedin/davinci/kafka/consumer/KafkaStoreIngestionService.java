@@ -197,6 +197,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final Map<String, InternalDaVinciRecordTransformerConfig> storeNameToInternalRecordTransformerConfig =
       new VeniceConcurrentHashMap<>();
   private AggVersionedDaVinciRecordTransformerStats recordTransformerStats = null;
+  private final Set<String> blobTransferDisabledStores = VeniceConcurrentHashMap.newKeySet();
 
   private final PubSubProducerAdapterFactory producerAdapterFactory;
 
@@ -1521,6 +1522,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {
     return storeNameToInternalRecordTransformerConfig.get(storeName);
+  }
+
+  @Override
+  public void registerBlobTransferDisabled(String storeName) {
+    blobTransferDisabledStores.add(storeName);
+  }
+
+  @Override
+  public boolean isBlobTransferDisabledForStore(String storeName) {
+    return blobTransferDisabledStores.contains(storeName);
   }
 
   public void attemptToPrintIngestionInfoFor(String storeName, Integer version, Integer partition, String regionName) {

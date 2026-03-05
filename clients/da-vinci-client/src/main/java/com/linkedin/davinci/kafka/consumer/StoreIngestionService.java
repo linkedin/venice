@@ -121,4 +121,11 @@ public interface StoreIngestionService {
       int partitionId,
       Map<Integer, Long> timestampMap,
       Map<Integer, PubSubPosition> pubSubPosition);
+
+  default void registerBlobTransferDisabled(String storeName) {
+  }
+
+  default boolean isBlobTransferDisabledForStore(String storeName) {
+    return false;
+  }
 }

@@ -1,6 +1,5 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
@@ -26,7 +25,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -145,7 +143,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         changelogClientConfig.getD2Client(),
         changelogClientConfig.getD2ServiceName(),
         innerClientConfig.getMetricsRepository(),
-        buildVeniceConfig());
+        new VeniceProperties(changelogClientConfig.getConsumerProperties()));
 
     if (isVersionSpecificClient) {
       LOGGER.info(
@@ -506,13 +504,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
     }
     return compactedMessageList;
-  }
-
-  @VisibleForTesting
-  public final VeniceProperties buildVeniceConfig() {
-    return new PropertyBuilder().put(changelogClientConfig.getConsumerProperties())
-        .put(PUSH_STATUS_STORE_ENABLED, changelogClientConfig.isStateful())
-        .build();
   }
 
   @VisibleForTesting

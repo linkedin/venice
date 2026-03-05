@@ -679,6 +679,16 @@ public class DaVinciBackend implements Closeable {
     }
 
     storeClientTypes.put(storeName, newClientType);
+
+    // Disable blob transfer for version-specific or stateless clients
+    if (isVersionSpecific || isStatelessRecordTransformer(storeName)) {
+      ingestionService.registerBlobTransferDisabled(storeName);
+    }
+  }
+
+  private boolean isStatelessRecordTransformer(String storeName) {
+    InternalDaVinciRecordTransformerConfig config = ingestionService.getInternalRecordTransformerConfig(storeName);
+    return config != null && !config.getRecordTransformerConfig().getStoreRecordsInDaVinci();
   }
 
   public synchronized void unregisterStoreClient(String storeName, Integer storeVersion) {

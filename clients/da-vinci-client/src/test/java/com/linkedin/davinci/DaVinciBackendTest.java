@@ -21,13 +21,17 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 import static org.testng.AssertJUnit.assertNull;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
+import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -315,6 +319,31 @@ public class DaVinciBackendTest {
     // Different versions for same store should throw
     backend.registerStoreClient(STORE_NAME, STORE_VERSION);
     assertThrows(VeniceClientException.class, () -> backend.registerStoreClient(STORE_NAME, 2));
+  }
+
+  @Test
+  public void testBlobTransferDisabledForVersionSpecificClient() {
+    backend.registerStoreClient(STORE_NAME, STORE_VERSION);
+    assertTrue(backend.getIngestionService().isBlobTransferDisabledForStore(STORE_NAME));
+  }
+
+  @Test
+  public void testBlobTransferDisabledForStatelessClient() {
+    // Register a stateless record transformer config before registering the client
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setStoreRecordsInDaVinci(false)
+            .build();
+    backend.getIngestionService().registerRecordTransformerConfig(STORE_NAME, recordTransformerConfig);
+
+    backend.registerStoreClient(STORE_NAME, null);
+    assertTrue(backend.getIngestionService().isBlobTransferDisabledForStore(STORE_NAME));
+  }
+
+  @Test
+  public void testBlobTransferNotDisabledForRegularStatefulClient() {
+    backend.registerStoreClient(STORE_NAME, null);
+    assertFalse(backend.getIngestionService().isBlobTransferDisabledForStore(STORE_NAME));
   }
 
   @Test
