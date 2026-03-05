@@ -5732,14 +5732,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * own thread (via {@link #processPendingPubSubHealthResumes()}) to avoid concurrent PCS modification.
    */
   public void resumePartitionsForPubSubHealth(String pubSubAddress) {
-    if (pubSubHealthPausedPartitions.isEmpty()) {
-      return;
-    }
-    // Check if any paused partition matches this address before enqueuing
-    boolean hasMatchingPartition = pubSubHealthPausedPartitions.values().stream().anyMatch(pubSubAddress::equals);
-    if (hasMatchingPartition) {
-      pendingPubSubHealthResumes.add(pubSubAddress);
-    }
+    // Always enqueue the address for processing. The SIT thread will filter to only matching
+    // partitions in processPendingPubSubHealthResumes(). Avoiding the isEmpty()/anyMatch()
+    // pre-check eliminates a race where a partition is re-paused between the check and
+    // when processPendingPubSubHealthResumes() executes.
+    pendingPubSubHealthResumes.add(pubSubAddress);
   }
 
   /**
@@ -5808,8 +5805,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected void seekToCheckpointAndResume(PartitionConsumptionState pcs) throws InterruptedException {
     // Default implementation for non-L/F SITs (currently all SITs are L/F, so this is a safety fallback)
-    PubSubPosition vtPosition = getLocalVtSubscribePosition(pcs);
     int partitionId = pcs.getPartition();
+    // Drain buffered records before resubscribing to ensure checkpoint is up-to-date
+    waitForAllMessageToBeProcessedFromTopicPartition(new PubSubTopicPartitionImpl(versionTopic, partitionId), pcs);
+    PubSubPosition vtPosition = getLocalVtSubscribePosition(pcs);
     LOGGER.info(
         "Re-subscribing replica: {} resubscribe to offset: {} for PubSub health resume.",
         pcs.getReplicaId(),

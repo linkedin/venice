@@ -36,6 +36,17 @@ public enum PubSubHealthOtelMetricEntity implements ModuleMetricEntityInterface 
   PUBSUB_HEALTH_PAUSED_PARTITION_COUNT(
       "pubsub.health.paused_partition_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
       "Total count of partitions paused due to PubSub health issues", setOf(VENICE_CLUSTER_NAME)
+  ),
+
+  PUBSUB_HEALTH_PROBE_LATENCY(
+      "pubsub.health.probe.latency", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+      "Latency of recovery probe attempts", setOf(VENICE_CLUSTER_NAME, VENICE_PUBSUB_HEALTH_CATEGORY)
+  ),
+
+  PUBSUB_HEALTH_PROBE_ATTEMPT_COUNT(
+      "pubsub.health.probe.attempt_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Total count of recovery probe attempts (success + failure)",
+      setOf(VENICE_CLUSTER_NAME, VENICE_PUBSUB_HEALTH_CATEGORY)
   );
 
   private final MetricEntity metricEntity;

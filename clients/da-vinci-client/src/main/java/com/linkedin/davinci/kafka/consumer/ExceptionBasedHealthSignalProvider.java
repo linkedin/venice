@@ -2,9 +2,12 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.pubsub.PubSubHealthCategory;
 import com.linkedin.venice.pubsub.PubSubHealthSignalProvider;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -16,6 +19,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link #onProbeSuccess(String, PubSubHealthCategory)}.
  */
 public class ExceptionBasedHealthSignalProvider implements PubSubHealthSignalProvider {
+  private static final Logger LOGGER = LogManager.getLogger(ExceptionBasedHealthSignalProvider.class);
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
   private static final String NAME = "exception";
 
   // Outer map: pubSubAddress -> inner map: category -> true (present means unhealthy)
@@ -46,5 +52,13 @@ public class ExceptionBasedHealthSignalProvider implements PubSubHealthSignalPro
       categories.remove(category);
       return categories.isEmpty() ? null : categories;
     });
+  }
+
+  @Override
+  public void onProbeFailure(String pubSubAddress, PubSubHealthCategory category) {
+    String filterKey = "probe_failure_" + pubSubAddress + "_" + category;
+    if (!REDUNDANT_LOGGING_FILTER.isRedundantException(filterKey)) {
+      LOGGER.warn("Recovery probe failed for address={}, category={}", pubSubAddress, category);
+    }
   }
 }
