@@ -21,6 +21,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.writer.LeaderCompleteState;
+import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.WriterChunkingHelper;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -244,6 +245,56 @@ public class PartitionConsumptionStateTest {
     // Test setting to a lower term (should be allowed)
     pcs.setHighestLeadershipTerm(50L);
     assertEquals(pcs.getHighestLeadershipTerm(), 50L);
+  }
+
+  @Test
+  public void testActiveLeaderTermOperations() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+
+    // Initially should be DEFAULT_TERM_ID (-1)
+    assertEquals(pcs.getActiveLeaderTerm(), VeniceWriter.DEFAULT_TERM_ID);
+
+    // Set to a valid leadership term
+    pcs.setActiveLeaderTerm(100L);
+    assertEquals(pcs.getActiveLeaderTerm(), 100L);
+
+    // Update to a higher term
+    pcs.setActiveLeaderTerm(200L);
+    assertEquals(pcs.getActiveLeaderTerm(), 200L);
+
+    // Clear back to DEFAULT_TERM_ID (simulating LEADER_TO_STANDBY)
+    pcs.setActiveLeaderTerm(VeniceWriter.DEFAULT_TERM_ID);
+    assertEquals(pcs.getActiveLeaderTerm(), VeniceWriter.DEFAULT_TERM_ID);
+  }
+
+  @Test
+  public void testActiveLeaderTermIndependentFromHighestLeadershipTerm() {
+    PartitionConsumptionState pcs = new PartitionConsumptionState(
+        TOPIC_PARTITION,
+        mock(OffsetRecord.class),
+        pubSubContext,
+        false,
+        Schema.create(Schema.Type.STRING));
+
+    // Set activeLeaderTerm and highestLeadershipTerm to different values
+    pcs.setActiveLeaderTerm(100L);
+    pcs.setHighestLeadershipTerm(200L);
+
+    // Verify they are independent
+    assertEquals(pcs.getActiveLeaderTerm(), 100L);
+    assertEquals(pcs.getHighestLeadershipTerm(), 200L);
+
+    // Changing one should not affect the other
+    pcs.setHighestLeadershipTerm(300L);
+    assertEquals(pcs.getActiveLeaderTerm(), 100L);
+
+    pcs.setActiveLeaderTerm(VeniceWriter.DEFAULT_TERM_ID);
+    assertEquals(pcs.getHighestLeadershipTerm(), 300L);
   }
 
   @Test
