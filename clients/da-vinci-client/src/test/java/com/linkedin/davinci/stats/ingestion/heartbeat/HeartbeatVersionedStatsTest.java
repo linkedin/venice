@@ -488,11 +488,39 @@ public class HeartbeatVersionedStatsTest {
 
   @Test
   public void testEmitPerRecordOtelMetricWhenStoreNotInitialized() {
-    // Test that emitting metrics for an unknown store doesn't throw exception
-    // This tests the null check fast path - should be a graceful no-op
+    // emitPerRecord* should lazily create stats even for a previously unknown store
     heartbeatVersionedStats.emitPerRecordLeaderOtelMetric("unknown_store", 1, REGION, 100);
     heartbeatVersionedStats.emitPerRecordFollowerOtelMetric("unknown_store", 1, REGION, 100, true);
-    // No exception should be thrown - graceful no-op since recordLevelDelayOtelStatsMap.get() returns null
+    // No exception should be thrown
+  }
+
+  /**
+   * Verifies that emitPerRecordLeaderOtelMetric works without the periodic path
+   * (recordLeaderRecordLag) ever being called first
+   */
+  @Test
+  public void testEmitPerRecordLeaderOtelMetricWithoutPeriodicInitialization() {
+    heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
+
+    // Call emitPerRecordLeaderOtelMetric directly without any prior recordLeaderRecordLag call
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 100);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 200);
+    heartbeatVersionedStats.emitPerRecordLeaderOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 150);
+
+    validateRecordOtelHistogram(ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, 100.0, 200.0, 3, 450.0);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testEmitPerRecordFollowerOtelMetricWithoutPeriodicInitialization(boolean isReadyToServe) {
+    heartbeatVersionedStats.setCurrentTimeSupplier(() -> FIXED_CURRENT_TIME);
+
+    // Call emitPerRecordFollowerOtelMetric directly without any prior recordFollowerRecordLag call
+    heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 100, isReadyToServe);
+    heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 200, isReadyToServe);
+    heartbeatVersionedStats.emitPerRecordFollowerOtelMetric(STORE_NAME, CURRENT_VERSION, REGION, 150, isReadyToServe);
+
+    ReplicaState activeState = isReadyToServe ? ReplicaState.READY_TO_SERVE : ReplicaState.CATCHING_UP;
+    validateRecordOtelHistogram(ReplicaType.FOLLOWER, activeState, 100.0, 200.0, 3, 450.0);
   }
 
   // ==================================================================================
