@@ -9,7 +9,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -371,13 +371,13 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     List<String> consumingTopics = Collections.singletonList(versionTopic);
 
     if (pcs.getLeaderFollowerState().equals(LEADER)) {
-      OffsetRecord offsetRecord = pcs.getOffsetRecord();
-      if (offsetRecord.getLeaderTopic() != null) {
+      PubSubTopic leaderTopic = pcs.getLeaderTopic();
+      if (leaderTopic != null) {
         consumingTopics = new ArrayList<>();
-        consumingTopics.add(offsetRecord.getLeaderTopic());
+        consumingTopics.add(leaderTopic.getName());
         // For separate RT topic enabled SIT, we should include separate RT topic, if leader topic is a RT topic.
-        if (isSeparateRealtimeTopicEnabled && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
-          consumingTopics.add(Utils.getSeparateRealTimeTopicName(offsetRecord.getLeaderTopic()));
+        if (isSeparateRealtimeTopicEnabled && leaderTopic.isRealTime()) {
+          consumingTopics.add(Utils.getSeparateRealTimeTopicName(leaderTopic.getName()));
         }
       }
     }

@@ -53,6 +53,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
@@ -373,6 +374,66 @@ public class LeaderFollowerStoreIngestionTaskTest {
     lazyMockWriter.get();
     leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
     verify(mockWriter, times(1)).closePartition(0);
+  }
+
+  /**
+   * Verify that leaderTopic is persisted to storage metadata service during LEADER_TO_STANDBY transition.
+   * This prevents blob transfer from copying stale leaderTopic (VT instead of RT) to new hosts.
+   */
+  @Test
+  public void testLeaderTopicPersistedDuringLeaderToStandby() throws InterruptedException {
+    setUp(true); // hybrid store
+    when(mockConsumerAction.getType()).thenReturn(ConsumerActionType.LEADER_TO_STANDBY);
+    when(mockConsumerAction.getTopic()).thenReturn("test-topic");
+    when(mockConsumerAction.getPartition()).thenReturn(0);
+    LeaderFollowerPartitionStateModel.LeaderSessionIdChecker mockLeaderSessionIdChecker =
+        mock(LeaderFollowerPartitionStateModel.LeaderSessionIdChecker.class);
+    when(mockConsumerAction.getLeaderSessionIdChecker()).thenReturn(mockLeaderSessionIdChecker);
+    when(mockLeaderSessionIdChecker.isSessionIdValid()).thenReturn(true);
+
+    mockTopicPartition = mock(PubSubTopicPartition.class);
+    PubSubTopic vtTopic = TOPIC_REPOSITORY.getTopic("test-topic_v1");
+    when(mockConsumerAction.getTopicPartition()).thenReturn(mockTopicPartition);
+    when(mockTopicPartition.getPubSubTopic()).thenReturn(vtTopic);
+
+    // Set up OffsetRecord with no leaderTopic (null means consuming from VT — the stale state)
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    when(mockPartitionConsumptionState.getOffsetRecord()).thenReturn(mockOffsetRecord);
+    when(mockOffsetRecord.getLeaderTopic(any())).thenReturn(null);
+    // PCS transient leaderTopic is null (stale — should be updated by updateLeaderTopicOnFollower)
+    when(mockPartitionConsumptionState.getLeaderTopic()).thenReturn(null);
+
+    // PCS starts as LEADER; when setLeaderFollowerState(STANDBY) is called, subsequent
+    // getLeaderFollowerState() returns STANDBY so updateLeaderTopicOnFollower doesn't skip
+    when(mockPartitionConsumptionState.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.LEADER);
+    doAnswer(invocation -> {
+      doReturn(invocation.getArgument(0)).when(mockPartitionConsumptionState).getLeaderFollowerState();
+      return null;
+    }).when(mockPartitionConsumptionState).setLeaderFollowerState(any());
+
+    when(mockPartitionConsumptionState.getVeniceWriterLazyRef()).thenReturn(null);
+    when(mockPartitionConsumptionState.getPartition()).thenReturn(0);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test-topic_v1-0");
+
+    // Set up topicSwitch pointing to RT — this is what updateLeaderTopicOnFollower reads
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-topic_rt");
+    TopicSwitch topicSwitch = new TopicSwitch();
+    topicSwitch.sourceKafkaServers = new ArrayList<>();
+    topicSwitch.sourceKafkaServers.add("kafka-server");
+    topicSwitch.sourceTopicName = rtTopic.getName();
+    topicSwitch.rewindStartTimestamp = System.currentTimeMillis();
+    TopicSwitchWrapper topicSwitchWrapper = new TopicSwitchWrapper(topicSwitch, rtTopic);
+    when(mockPartitionConsumptionState.getTopicSwitch()).thenReturn(topicSwitchWrapper);
+
+    // Process LEADER_TO_STANDBY transition
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
+
+    // Verify leaderTopic was updated to RT on PCS transient field (Phase 2: no longer writes to OffsetRecord)
+    verify(mockPartitionConsumptionState).setLeaderTopic(rtTopic);
+    verify(mockOffsetRecord, never()).setLeaderTopic(any());
+
+    // Phase 2: no storageMetadataService.put() needed since leaderTopic is not persisted
+    verify(mockStorageMetadataService, never()).put(anyString(), eq(0), eq(mockOffsetRecord));
   }
 
   @Test
@@ -1714,5 +1775,71 @@ public class LeaderFollowerStoreIngestionTaskTest {
     clusterIdToAlias.put(2, "");
     String empty = RegionUtils.normalizeRegionName(clusterIdToAlias.get(2));
     assertEquals(empty, RegionUtils.UNKNOWN_REGION, "Empty alias should normalize to 'unknown' region");
+  }
+
+  @Test
+  public void testPcsLeaderTopicInitializedFromOffsetRecord() {
+    // When OffsetRecord has leaderTopic=RT, PCS should initialize its transient field from it
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-store_rt");
+    PubSubTopic vtTopic = TOPIC_REPOSITORY.getTopic("test-store_v1");
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(vtTopic, 0);
+
+    PubSubContext pubSubContext = mock(PubSubContext.class);
+    when(pubSubContext.getPubSubTopicRepository()).thenReturn(TOPIC_REPOSITORY);
+
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    offsetRecord.setLeaderTopic(rtTopic);
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, false, null);
+
+    // Transient leaderTopic should be initialized from OffsetRecord
+    assertNotNull(pcs.getLeaderTopic());
+    assertEquals(pcs.getLeaderTopic(), rtTopic);
+  }
+
+  @Test
+  public void testPcsLeaderTopicNullWhenOffsetRecordHasNoLeaderTopic() {
+    // When OffsetRecord has no leaderTopic, PCS transient field should be null
+    PubSubTopic vtTopic = TOPIC_REPOSITORY.getTopic("test-store_v1");
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(vtTopic, 0);
+
+    PubSubContext pubSubContext = mock(PubSubContext.class);
+    when(pubSubContext.getPubSubTopicRepository()).thenReturn(TOPIC_REPOSITORY);
+
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    // Don't set leaderTopic — leave it null
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, false, null);
+
+    // Transient leaderTopic should be null
+    Assert.assertNull(pcs.getLeaderTopic());
+  }
+
+  @Test
+  public void testPcsSetLeaderTopicUpdatesTransientField() {
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-store_rt");
+    PubSubTopic vtTopic = TOPIC_REPOSITORY.getTopic("test-store_v1");
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(vtTopic, 0);
+
+    PubSubContext pubSubContext = mock(PubSubContext.class);
+    when(pubSubContext.getPubSubTopicRepository()).thenReturn(TOPIC_REPOSITORY);
+
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, false, null);
+
+    // Initially null
+    Assert.assertNull(pcs.getLeaderTopic());
+
+    // Set to RT
+    pcs.setLeaderTopic(rtTopic);
+    assertEquals(pcs.getLeaderTopic(), rtTopic);
+
+    // Set to VT
+    pcs.setLeaderTopic(vtTopic);
+    assertEquals(pcs.getLeaderTopic(), vtTopic);
   }
 }
