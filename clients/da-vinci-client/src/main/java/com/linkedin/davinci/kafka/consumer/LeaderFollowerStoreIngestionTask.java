@@ -1187,7 +1187,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * checkpointed in leader offset metadata.
      */
     final int partition = partitionConsumptionState.getPartition();
-    final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     if (isNativeReplicationEnabled) {
       if (nativeReplicationSourceVersionTopicKafkaURL == null
           || nativeReplicationSourceVersionTopicKafkaURL.isEmpty()) {
