@@ -38,7 +38,7 @@ public final class SystemStoreInitializationHelper {
   static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
 
   // How much time to wait between checks of store updates
-  private static Duration delayBetweenStoreUpdateRetries = Duration.ofSeconds(10);
+  private static Duration delayBetweenStoreUpdateRetries = Duration.ofSeconds(2);
 
   private SystemStoreInitializationHelper() {
   }

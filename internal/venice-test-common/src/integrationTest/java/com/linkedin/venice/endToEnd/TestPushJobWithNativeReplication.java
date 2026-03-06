@@ -161,6 +161,21 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
     VeniceClusterWrapper clusterWrapper =
         multiRegionMultiClusterWrapper.getChildRegions().get(0).getClusters().get(CLUSTER_NAME);
     serverWrapper = clusterWrapper.getVeniceServers().get(0);
+
+    // Wait for the participant store to be up in dc-1. This is needed by
+    // testTargetedRegionPushJobFullConsumptionForBatchStore for data recovery, but we do it here
+    // so the async controller initialization has the entire class setup + earlier test execution
+    // time to complete, rather than burning a single test's timeout budget polling for it.
+    String destClusterName = CLUSTER_NAME;
+    try (ControllerClient controllerClient =
+        new ControllerClient(destClusterName, childDatacenters.get(1).getControllerConnectString())) {
+      String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(destClusterName);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(participantStoreName, 1),
+          controllerClient,
+          5,
+          TimeUnit.MINUTES);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
@@ -573,23 +588,9 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
    * not receive any data.
    * @throws IOException
    */
-  @Test(timeOut = TEST_TIMEOUT * 3)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testTargetedRegionPushJobFullConsumptionForBatchStore() throws Exception {
-    // make sure the participant store is up and running in dest region otherwise the test will be flaky
-    // the participant store is needed for data recovery
-    String destClusterName = CLUSTER_NAME;
-
-    try (ControllerClient controllerClient =
-        new ControllerClient(destClusterName, childDatacenters.get(1).getControllerConnectString())) {
-      // Verify the participant store is up and running in dest region.
-      // Participant store is needed for checking kill record existence and dest region readiness for data recovery.
-      String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(destClusterName);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(participantStoreName, 1),
-          controllerClient,
-          10,
-          TimeUnit.MINUTES);
-    }
+    // Participant store readiness is ensured in @BeforeClass setUp() so we don't burn test timeout polling for it.
     motherOfAllTests(
         "testTargetedRegionPushJobBatchStore",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
@@ -600,7 +601,7 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
           try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
             job.run(); // the job should succeed
 
-            TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
               // Current version should become 1
               for (int version: parentControllerClient.getStore(storeName)
                   .getStore()
@@ -615,7 +616,7 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
           try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
             job.run();
 
-            TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
               for (int version: parentControllerClient.getStore(storeName)
                   .getStore()
                   .getColoToCurrentVersions()
@@ -644,18 +645,19 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
                   storeSize * 2 >= totalStoreSize,
                   "2x of store size " + storeSize + " is more than total " + totalStoreSize);
             }
-            TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
-              // Current version should become 2
+            // Wait for version 3 to propagate to all regions first
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
               for (int version: parentControllerClient.getStore(storeName)
                   .getStore()
                   .getColoToCurrentVersions()
                   .values()) {
                 Assert.assertEquals(version, 3);
               }
-              // should be able to read all 20 records.
-              validateDaVinciClient(storeName, 20);
-              validatePushJobDetails(clusterName, storeName);
             });
+            // Validate separately — these are expensive operations (DaVinci client creation +
+            // subscribeAll with 30s timeout) that should not be retried inside the version wait loop
+            validateDaVinciClient(storeName, 20);
+            validatePushJobDetails(clusterName, storeName);
           }
         });
   }
