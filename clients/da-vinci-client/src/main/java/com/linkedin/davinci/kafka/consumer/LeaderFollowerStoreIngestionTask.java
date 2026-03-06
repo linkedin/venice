@@ -3472,6 +3472,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           hostLevelIngestionStats.recordWriteComputeUpdateLatency(wcUpdateLatency);
           versionedIngestionStats
               .recordPartialUpdateTime(storeName, versionNumber, VenicePartialUpdateOperation.UPDATE, wcUpdateLatency);
+
+          // Write-compute amplification detection
+          int largeResultThreshold = serverConfig.getWriteComputeLargeResultLogThresholdBytes();
+          WriteComputeAmplificationDetector amplificationDetector =
+              partitionConsumptionState.getOrCreateWriteComputeAmplificationDetector(
+                  serverConfig.getWriteComputeAmplificationReportIntervalMs());
+          amplificationDetector
+              .record(keyBytes, update.updateValue.remaining(), updatedValueBytes.length, largeResultThreshold);
+          WriteComputeAmplificationDetector.AmplificationReport ampReport =
+              amplificationDetector.tryBuildReportAndReset(System.currentTimeMillis(), largeResultThreshold);
+          if (ampReport != null) {
+            LOGGER.warn(
+                "Write-compute amplification report for {} [Partition {}]\n{}",
+                partitionConsumptionState.getReplicaId(),
+                consumerRecord.getTopicPartition().getPartitionNumber(),
+                ampReport);
+            versionedIngestionStats.recordWriteComputeAmplificationAlertCount(storeName, versionNumber);
+          }
         } catch (Exception e) {
           setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
           throw new RuntimeException(e);
