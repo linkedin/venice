@@ -17,7 +17,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -93,6 +92,7 @@ public class HeartbeatVersionedStatsTest {
     when(mockStore.getVersions()).thenReturn(versions);
 
     when(mockMetadataRepository.getStoreOrThrow(STORE_NAME)).thenReturn(mockStore);
+    when(mockMetadataRepository.hasStore(STORE_NAME)).thenReturn(true);
     when(mockMetadataRepository.getAllStores()).thenReturn(Collections.singletonList(mockStore));
 
     leaderMonitors = new VeniceConcurrentHashMap<>();
@@ -489,10 +489,6 @@ public class HeartbeatVersionedStatsTest {
 
   @Test
   public void testEmitPerRecordOtelMetricWhenStoreNotInMetadataRepository() {
-    // Stub getStoreOrThrow to throw VeniceNoStoreException for the unknown store
-    when(mockMetadataRepository.getStoreOrThrow("unknown_store"))
-        .thenThrow(new VeniceNoStoreException("unknown_store"));
-
     // Should be a graceful no-op: no exception thrown, no stats entry created
     heartbeatVersionedStats.emitPerRecordLeaderOtelMetric("unknown_store", 1, REGION, 100);
     heartbeatVersionedStats.emitPerRecordFollowerOtelMetric("unknown_store", 1, REGION, 100, true);
