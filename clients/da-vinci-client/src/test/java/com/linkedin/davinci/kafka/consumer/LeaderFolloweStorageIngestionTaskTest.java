@@ -44,6 +44,7 @@ public class LeaderFolloweStorageIngestionTaskTest {
     field.setAccessible(true);
     field.set(leaderFollowerStoreIngestionTask, realTimeTopic);
     when(partitionConsumptionState.getOffsetRecord().getLeaderTopic(any())).thenReturn(realTimeTopic);
+    when(partitionConsumptionState.getLeaderTopic()).thenReturn(realTimeTopic);
     Assert.assertTrue(leaderFollowerStoreIngestionTask.shouldCompressData(partitionConsumptionState));
 
     // test 2 - do not compress for version topic
@@ -51,6 +52,7 @@ public class LeaderFolloweStorageIngestionTaskTest {
     field.setAccessible(true);
     field.set(leaderFollowerStoreIngestionTask, null);
     when(partitionConsumptionState.getOffsetRecord().getLeaderTopic(any())).thenReturn(versionTopic);
+    when(partitionConsumptionState.getLeaderTopic()).thenReturn(versionTopic);
     Assert.assertFalse(leaderFollowerStoreIngestionTask.shouldCompressData(partitionConsumptionState));
   }
 }
