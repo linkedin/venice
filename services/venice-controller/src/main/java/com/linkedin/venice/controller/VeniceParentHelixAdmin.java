@@ -2389,11 +2389,16 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       Set<String> failedRegions = new HashSet<>();
       for (Map.Entry<String, Future<?>> entry: regionFutures.entrySet()) {
+        String region = entry.getKey();
         try {
           entry.getValue().get(ROLL_FORWARD_REQUEST_TIMEOUT, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          LOGGER.error("Roll forward in region {} was interrupted", region, e);
+          failedRegions.add(region);
         } catch (Exception e) {
-          LOGGER.error("Roll forward in region {} failed", entry.getKey(), e);
-          failedRegions.add(entry.getKey());
+          LOGGER.error("Roll forward in region {} failed", region, e);
+          failedRegions.add(region);
         }
       }
       if (!failedRegions.isEmpty()) {
