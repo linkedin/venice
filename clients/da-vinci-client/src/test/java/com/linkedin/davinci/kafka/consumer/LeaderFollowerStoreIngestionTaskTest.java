@@ -429,9 +429,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Verify leaderTopic was updated to RT by updateLeaderTopicOnFollower
     verify(mockOffsetRecord).setLeaderTopic(rtTopic);
 
-    // Verify offset record was persisted — the fix that prevents stale leaderTopic in blob transfer.
+    // Verify offset record was persisted under the correct version topic — the fix that prevents
+    // stale leaderTopic in blob transfer from being copied to new hosts.
     // mockStorageMetadataService is a Mockito mock (created by TestUtils.getStoreIngestionTaskBuilder).
-    verify(mockStorageMetadataService).put(anyString(), eq(0), eq(mockOffsetRecord));
+    verify(mockStorageMetadataService)
+        .put(eq(leaderFollowerStoreIngestionTask.kafkaVersionTopic), eq(0), eq(mockOffsetRecord));
   }
 
   @Test
