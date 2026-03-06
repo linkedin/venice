@@ -544,9 +544,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // Followers always consume local VT and should not skip kafka message
           partitionConsumptionState.setSkipKafkaMessage(false);
           partitionConsumptionState.setLeaderFollowerState(STANDBY);
-          updateLeaderTopicOnFollower(partitionConsumptionState);
-          // Persist updated leaderTopic so blob transfer copies correct state
-          storageMetadataService.put(kafkaVersionTopic, partition, partitionConsumptionState.getOffsetRecord());
+          deriveLeaderTopicFromTopicSwitch(partitionConsumptionState);
           // subscribe back to local VT/partition
           PubSubPosition subscribePosition = getLocalVtSubscribePosition(partitionConsumptionState);
           if (isGlobalRtDivEnabled()) {
@@ -572,9 +570,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
         } else {
           partitionConsumptionState.setLeaderFollowerState(STANDBY);
-          updateLeaderTopicOnFollower(partitionConsumptionState);
-          // Persist updated leaderTopic so blob transfer copies correct state
-          storageMetadataService.put(kafkaVersionTopic, partition, partitionConsumptionState.getOffsetRecord());
+          deriveLeaderTopicFromTopicSwitch(partitionConsumptionState);
         }
         // Make sure we stop consuming from leader upstream before we switch heartbeat monitoring.
         getHeartbeatMonitoringService().updateLagMonitor(
@@ -671,7 +667,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                * consuming from version topic. Now it is becoming the leader. So the VT becomes its leader topic.
                */
               partitionConsumptionState.setLeaderTopic(versionTopic);
-              offsetRecord.setLeaderTopic(versionTopic);
             }
 
             // Setup venice writer reference for producing
@@ -739,7 +734,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 partitionConsumptionState.getReplicaId());
             if (isDataRecovery && partitionConsumptionState.isBatchOnly() && !versionTopic.equals(currentLeaderTopic)) {
               partitionConsumptionState.setLeaderTopic(versionTopic);
-              partitionConsumptionState.getOffsetRecord().setLeaderTopic(versionTopic);
               currentLeaderTopic = versionTopic;
             }
             /**
@@ -1213,7 +1207,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String dataRecoveryVersionTopic = Version.composeKafkaTopic(storeName, dataRecoverySourceVersionNumber);
       PubSubTopic dataRecoveryTopic = pubSubTopicRepository.getTopic(dataRecoveryVersionTopic);
       partitionConsumptionState.setLeaderTopic(dataRecoveryTopic);
-      offsetRecord.setLeaderTopic(dataRecoveryTopic);
     }
     partitionConsumptionState.setLeaderFollowerState(LEADER);
     final PubSubTopic leaderTopic = partitionConsumptionState.getLeaderTopic();
@@ -1262,7 +1255,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.getReplicaId());
     }
     partitionConsumptionState.setLeaderTopic(newSourceTopic);
-    partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
 
     preparePositionCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
   }
@@ -1576,7 +1568,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * For follower, just keep track of what leader is doing now.
        */
       partitionConsumptionState.setLeaderTopic(newSourceTopic);
-      partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     }
   }
 
@@ -3274,27 +3265,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   public void updateLeaderTopicOnFollower(PartitionConsumptionState partitionConsumptionState) {
+    // Deprecated: leaderTopic is now transient on PCS. Use deriveLeaderTopicFromTopicSwitch() instead.
+    deriveLeaderTopicFromTopicSwitch(partitionConsumptionState);
+  }
+
+  /**
+   * Derives the correct leaderTopic from topicSwitch and sets it on PCS. Called during:
+   * - LEADER_TO_STANDBY transitions (to track what the leader should consume)
+   * - Startup (via updateLeaderTopicOnFollower for backward compat with StoreIngestionTask)
+   *
+   * For data recovery batch-only stores with non-VT leader, resets to VT.
+   * For hybrid stores with topicSwitch, sets to the topicSwitch's new source topic.
+   */
+  private void deriveLeaderTopicFromTopicSwitch(PartitionConsumptionState partitionConsumptionState) {
     if (isLeader(partitionConsumptionState)) {
       return;
     }
-    OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     PubSubTopic leaderTopic = partitionConsumptionState.getLeaderTopic();
     if (isDataRecovery && partitionConsumptionState.isBatchOnly() && !versionTopic.equals(leaderTopic)) {
       partitionConsumptionState.setLeaderTopic(versionTopic);
-      partitionConsumptionState.getOffsetRecord().setLeaderTopic(versionTopic);
     }
-    /**
-     * When the node works as a leader, it does not update leader topic when processing TS. When the node demotes to
-     * follower after leadership handover or becomes follower after restart, it should track the topic that leader will
-     * consume. Otherwise, for hybrid stores: 1. If the node remains as follower, it might never become online because
-     * hybrid lag measurement will return a large value for VT. 2. If the node promotes to leader, it will subscribe to
-     * VT at RT offset.
-     */
     TopicSwitchWrapper topicSwitch = partitionConsumptionState.getTopicSwitch();
     if (topicSwitch != null) {
-      if (!topicSwitch.getNewSourceTopic().equals(leaderTopic)) {
+      if (!topicSwitch.getNewSourceTopic().equals(partitionConsumptionState.getLeaderTopic())) {
         partitionConsumptionState.setLeaderTopic(topicSwitch.getNewSourceTopic());
-        offsetRecord.setLeaderTopic(topicSwitch.getNewSourceTopic());
       }
     }
   }

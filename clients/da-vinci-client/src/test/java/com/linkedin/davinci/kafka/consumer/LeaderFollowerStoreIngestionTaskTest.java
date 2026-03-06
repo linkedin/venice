@@ -428,13 +428,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Process LEADER_TO_STANDBY transition
     leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
 
-    // Verify leaderTopic was updated to RT by updateLeaderTopicOnFollower — both PCS transient and OffsetRecord
+    // Verify leaderTopic was updated to RT on PCS transient field (Phase 2: no longer writes to OffsetRecord)
     verify(mockPartitionConsumptionState).setLeaderTopic(rtTopic);
-    verify(mockOffsetRecord).setLeaderTopic(rtTopic);
+    verify(mockOffsetRecord, never()).setLeaderTopic(any());
 
-    // Verify offset record was persisted — the fix that prevents stale leaderTopic in blob transfer.
-    // mockStorageMetadataService is a Mockito mock (created by TestUtils.getStoreIngestionTaskBuilder).
-    verify(mockStorageMetadataService).put(anyString(), eq(0), eq(mockOffsetRecord));
+    // Phase 2: no storageMetadataService.put() needed since leaderTopic is not persisted
+    verify(mockStorageMetadataService, never()).put(anyString(), eq(0), eq(mockOffsetRecord));
   }
 
   @Test

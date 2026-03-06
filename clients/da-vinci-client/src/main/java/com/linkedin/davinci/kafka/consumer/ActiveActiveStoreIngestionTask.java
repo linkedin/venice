@@ -1099,7 +1099,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
     // Update leader topic.
     partitionConsumptionState.setLeaderTopic(newSourceTopic);
-    partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     // Calculate leader offset and start consumption
     preparePositionCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
   }
@@ -1125,7 +1124,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     syncTopicSwitchToIngestionMetadataService(topicSwitch, partitionConsumptionState);
     if (!isLeader(partitionConsumptionState)) {
       partitionConsumptionState.setLeaderTopic(newSourceTopic);
-      partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     }
   }
 
