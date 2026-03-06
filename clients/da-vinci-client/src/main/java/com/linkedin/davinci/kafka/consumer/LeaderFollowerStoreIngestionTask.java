@@ -528,7 +528,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          *    produce; finally the new follower will switch back to consume from local VT using the latest VT offset
          *    tracked by producer callback.
          */
-        OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
         PubSubTopic topic = message.getTopicPartition().getPubSubTopic();
         PubSubTopic leaderTopic = partitionConsumptionState.getLeaderTopic();
         if (leaderTopic != null && (!topic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely())) {
@@ -1669,7 +1668,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
       updateVersionTopicOffsetFunction.apply(consumerRecord.getPosition());
 
-      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       // DaVinci clients don't need to maintain leader production states
       if (!isDaVinciClient) {
         // also update the leader topic position using the upstream position in LeaderMetadata
@@ -2021,8 +2019,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   protected long measureHybridOffsetLag(PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
-    OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-
     /**
      * After END_OF_PUSH received, `isReadyToServe()` is invoked for each message until the lag is caught up (otherwise,
      * if we only check ready to serve periodically, the lag may never catch up); in order not to slow down the hybrid

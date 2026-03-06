@@ -38,7 +38,6 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -1022,7 +1021,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   protected void startConsumingAsLeader(PartitionConsumptionState partitionConsumptionState) {
     final int partition = partitionConsumptionState.getPartition();
-    final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     final PubSubTopic leaderTopic = partitionConsumptionState.getLeaderTopic();
 
     /**
