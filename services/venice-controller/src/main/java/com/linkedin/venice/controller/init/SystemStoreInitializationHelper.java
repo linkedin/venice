@@ -38,7 +38,8 @@ public final class SystemStoreInitializationHelper {
   static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
 
   // How much time to wait between checks of store updates
-  private static Duration delayBetweenStoreUpdateRetries = Duration.ofSeconds(2);
+  private static Duration delayBetweenStoreUpdateRetries = Duration.ofSeconds(1);
+  private static int maxRetryAttempts = 10;
 
   private SystemStoreInitializationHelper() {
   }
@@ -104,7 +105,7 @@ public final class SystemStoreInitializationHelper {
           Store internalStore = admin.getStore(clusterName, systemStoreName);
           Validate.notNull(internalStore);
           return internalStore;
-        }, 5, delayBetweenStoreUpdateRetries, Collections.singletonList(IllegalArgumentException.class));
+        }, maxRetryAttempts, delayBetweenStoreUpdateRetries, Collections.singletonList(IllegalArgumentException.class));
       } catch (IllegalArgumentException e) {
         throw new VeniceException("Unable to create or fetch store " + systemStoreName);
       }
@@ -197,7 +198,7 @@ public final class SystemStoreInitializationHelper {
         }
 
         return internalStore;
-      }, 5, delayBetweenStoreUpdateRetries, Collections.singletonList(VeniceException.class));
+      }, maxRetryAttempts, delayBetweenStoreUpdateRetries, Collections.singletonList(VeniceException.class));
 
       LOGGER.info("Updated internal store " + systemStoreName + " in cluster " + clusterName);
     }
@@ -222,7 +223,7 @@ public final class SystemStoreInitializationHelper {
         if (internalStore.getVersions().isEmpty()) {
           throw new VeniceException("Unable to initialize a version for store " + systemStoreName);
         }
-      }, 5, delayBetweenStoreUpdateRetries, Collections.singletonList(VeniceException.class));
+      }, maxRetryAttempts, delayBetweenStoreUpdateRetries, Collections.singletonList(VeniceException.class));
 
       LOGGER.info("Created a version for internal store {} in cluster {}", systemStoreName, clusterName);
     }

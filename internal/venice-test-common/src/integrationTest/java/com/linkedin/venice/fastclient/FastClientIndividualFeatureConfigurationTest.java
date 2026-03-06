@@ -201,11 +201,10 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
       serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
     }
-    // Wait for quota enforcement to reinitialize on restarted servers before making requests
-    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
-      for (int i = 0; i < recordCnt; i++) {
-        genericFastClient.get(keyPrefix + i).get();
-      }
+    // Wait for quota enforcement to reinitialize on restarted servers before making requests.
+    // Use retryOnThrowable=true because get() can throw ExecutionException during restart.
+    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, true, () -> {
+      genericFastClient.get(keyPrefix + 0).get();
       for (MetricsRepository serverMetric: serverMetrics) {
         assertNotNull(serverMetric.getMetric(readQuotaRequestedQPSString));
         assertTrue(

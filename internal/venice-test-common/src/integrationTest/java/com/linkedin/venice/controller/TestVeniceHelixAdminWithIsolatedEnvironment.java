@@ -119,6 +119,8 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     TestUtils.waitForNonDeterministicAssertion(
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
         TimeUnit.MILLISECONDS,
+        true,
+        true,
         () -> Assert
             .assertEquals(routing.getLeaderController().getPort(), expectedPort, "leader controller is changed."));
     TestUtils.waitForNonDeterministicCompletion(

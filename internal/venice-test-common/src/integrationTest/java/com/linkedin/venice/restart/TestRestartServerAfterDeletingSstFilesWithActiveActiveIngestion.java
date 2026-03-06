@@ -144,7 +144,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    // Generate a fresh store name on each setUp invocation so TestNG retries don't hit 409 "already exists"
+    // Generate a fresh store name per test class to avoid 409 "already exists" conflicts across runs
     storeName = Utils.getUniqueString("store");
     // create an active-active enabled store
     File inputDir = getTempDataDirectory();
@@ -167,7 +167,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    if (parentControllerClient != null) {
+    if (parentControllerClient != null && storeName != null && !storeName.isEmpty()) {
       parentControllerClient.disableAndDeleteStore(storeName);
     }
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);

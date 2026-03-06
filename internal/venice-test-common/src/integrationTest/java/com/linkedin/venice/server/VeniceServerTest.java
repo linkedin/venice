@@ -511,10 +511,8 @@ public class VeniceServerTest {
 
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         // All partitions should have been dropped after the store is deleted
-        Assert.assertNull(
-            storageService.getStorageEngine(storeVersionName),
-            "Storage engine should have been dropped expected [null] but found ["
-                + storageService.getStorageEngine(storeVersionName) + "]");
+        Object engine = storageService.getStorageEngine(storeVersionName);
+        Assert.assertNull(engine, "Storage engine should have been dropped expected [null] but found [" + engine + "]");
       });
     }
   }
