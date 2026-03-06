@@ -260,7 +260,7 @@ public class QueryTool {
       List<String> keyStrings = parseKeys(keysString);
       Set<Object> keys = new HashSet<>();
       for (String ks: keyStrings) {
-        keys.add(convertKey(ks.trim(), keySchema));
+        keys.add(convertKey(removeQuotes(ks.trim()), keySchema));
       }
       System.out.println("Parsed " + keys.size() + " keys. About to run countByValue aggregation.");
 
@@ -301,7 +301,7 @@ public class QueryTool {
       List<String> keyStrings = parseKeys(keysString);
       Set<Object> keys = new HashSet<>();
       for (String ks: keyStrings) {
-        keys.add(convertKey(ks.trim(), keySchema));
+        keys.add(convertKey(removeQuotes(ks.trim()), keySchema));
       }
       System.out.println("Parsed " + keys.size() + " keys. About to run countByBucket aggregation.");
 
@@ -347,7 +347,6 @@ public class QueryTool {
     return keySchema;
   }
 
-  @SuppressWarnings("unchecked")
   static Map<String, Predicate> parseBucketPredicates(String bucketsArg) {
     Map<String, Predicate> predicates = new LinkedHashMap<>();
     String[] expressions = bucketsArg.split(",");
