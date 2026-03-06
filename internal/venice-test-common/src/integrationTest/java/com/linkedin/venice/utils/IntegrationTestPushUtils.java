@@ -397,10 +397,13 @@ public class IntegrationTestPushUtils {
       UpdateStoreQueryParams storeParams) {
     ControllerClient controllerClient = getControllerClient(veniceClusterName, props);
     String storeName = props.getProperty(VENICE_STORE_NAME_PROP);
-    NewStoreResponse newStoreResponse = controllerClient
-        .retryableRequest(5, c -> c.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr));
+    NewStoreResponse newStoreResponse = controllerClient.retryableRequest(
+        5,
+        c -> c.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr),
+        r -> r.getError() != null && r.getError().contains("already exists"));
 
-    if (newStoreResponse.isError()) {
+    if (newStoreResponse.isError()
+        && (newStoreResponse.getError() == null || !newStoreResponse.getError().contains("already exists"))) {
       throw new VeniceException("Could not create store " + storeName + ". Error: " + newStoreResponse.getError());
     }
 
