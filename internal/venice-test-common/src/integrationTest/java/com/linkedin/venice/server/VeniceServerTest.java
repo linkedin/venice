@@ -408,8 +408,14 @@ public class VeniceServerTest {
         cluster.useControllerClient(
             controllerClient -> controllerClient
                 .updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
-        RestResponse response = d2Client.restRequest(request).get();
-        Assert.assertEquals(response.getStatus(), HttpStatus.SC_OK);
+        // The store config update propagates asynchronously via ZK to the server's store repository,
+        // so the server may still return 403 for a brief window after updateStore returns.
+        // Use retryOnThrowable=true because the D2 request throws ExecutionException (not AssertionError)
+        // when the server returns 403 before it has received the config update.
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
+          RestResponse response = d2Client.restRequest(request).get();
+          Assert.assertEquals(response.getStatus(), HttpStatus.SC_OK);
+        });
       } finally {
         D2ClientUtils.shutdownClient(d2Client);
       }

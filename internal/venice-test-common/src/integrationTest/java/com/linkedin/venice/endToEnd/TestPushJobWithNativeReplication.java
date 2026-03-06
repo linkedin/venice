@@ -161,21 +161,6 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
     VeniceClusterWrapper clusterWrapper =
         multiRegionMultiClusterWrapper.getChildRegions().get(0).getClusters().get(CLUSTER_NAME);
     serverWrapper = clusterWrapper.getVeniceServers().get(0);
-
-    // Wait for the participant store to be up in dc-1. This is needed by
-    // testTargetedRegionPushJobFullConsumptionForBatchStore for data recovery, but we do it here
-    // so the async controller initialization has the entire class setup + earlier test execution
-    // time to complete, rather than burning a single test's timeout budget polling for it.
-    String destClusterName = CLUSTER_NAME;
-    try (ControllerClient controllerClient =
-        new ControllerClient(destClusterName, childDatacenters.get(1).getControllerConnectString())) {
-      String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(destClusterName);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(participantStoreName, 1),
-          controllerClient,
-          5,
-          TimeUnit.MINUTES);
-    }
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
@@ -588,9 +573,21 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
    * not receive any data.
    * @throws IOException
    */
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test(timeOut = TEST_TIMEOUT * 3)
   public void testTargetedRegionPushJobFullConsumptionForBatchStore() throws Exception {
-    // Participant store readiness is ensured in @BeforeClass setUp() so we don't burn test timeout polling for it.
+    // Wait for the participant store push to complete in dc-1. This is needed for data recovery
+    // operations later in the test. By the time this test runs, the cluster has been warmed up by
+    // earlier tests so this should complete quickly. We allow up to 5 minutes for slow CI environments.
+    String destClusterName = CLUSTER_NAME;
+    try (ControllerClient controllerClient =
+        new ControllerClient(destClusterName, childDatacenters.get(1).getControllerConnectString())) {
+      String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(destClusterName);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(participantStoreName, 1),
+          controllerClient,
+          5,
+          TimeUnit.MINUTES);
+    }
     motherOfAllTests(
         "testTargetedRegionPushJobBatchStore",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
