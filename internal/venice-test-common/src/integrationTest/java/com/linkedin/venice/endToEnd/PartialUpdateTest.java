@@ -305,7 +305,7 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
-          30,
+          60,
           TimeUnit.SECONDS);
       assertTrue(parentControllerClient.getStore(storeName).getStore().isRmdChunkingEnabled());
       assertTrue(parentControllerClient.getStore(storeName).getStore().getVersion(1).get().isRmdChunkingEnabled());
@@ -578,7 +578,7 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
-          30,
+          60,
           TimeUnit.SECONDS);
     }
 

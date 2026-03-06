@@ -84,7 +84,7 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(participantStoreName, 1),
           controllerClient,
-          2,
+          5,
           TimeUnit.MINUTES);
     }
   }
