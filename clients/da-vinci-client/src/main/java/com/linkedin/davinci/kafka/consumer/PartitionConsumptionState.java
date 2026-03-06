@@ -309,6 +309,9 @@ public class PartitionConsumptionState {
    */
   private final Map<String, HeartbeatKey> cachedHeartbeatKeys = new VeniceConcurrentHashMap<>(3);
 
+  /** Lazily allocated per-partition detector for write-compute amplification. */
+  private volatile WriteComputeAmplificationDetector writeComputeAmplificationDetector;
+
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
       OffsetRecord offsetRecord,
@@ -1196,5 +1199,20 @@ public class PartitionConsumptionState {
       int version = Version.parseVersionFromKafkaTopicName(topicName);
       return new HeartbeatKey(storeName, version, getPartition(), r);
     });
+  }
+
+  /**
+   * Get or create the per-partition write-compute amplification detector. Lazily allocated using
+   * double-checked locking — only partitions that actually receive write-compute events will allocate.
+   */
+  public WriteComputeAmplificationDetector getOrCreateWriteComputeAmplificationDetector(long reportIntervalMs) {
+    if (writeComputeAmplificationDetector == null) {
+      synchronized (this) {
+        if (writeComputeAmplificationDetector == null) {
+          writeComputeAmplificationDetector = new WriteComputeAmplificationDetector(reportIntervalMs);
+        }
+      }
+    }
+    return writeComputeAmplificationDetector;
   }
 }

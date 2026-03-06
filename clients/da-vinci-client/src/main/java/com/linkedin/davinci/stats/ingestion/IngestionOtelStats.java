@@ -50,6 +50,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STO
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNEXPECTED_MESSAGE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.WRITE_COMPUTE_AMPLIFICATION_ALERT_COUNT;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -168,6 +169,7 @@ public class IngestionOtelStats {
   private final MetricEntityStateOneEnum<VersionRole> resubscriptionFailureCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> partialUpdateCacheHitCountMetric;
   private final MetricEntityStateOneEnum<VersionRole> checksumVerificationFailureCountMetric;
+  private final MetricEntityStateOneEnum<VersionRole> writeComputeAmplificationAlertCountMetric;
 
   // Counter metrics with 2nd enum dimension
   private final MetricEntityStateTwoEnums<VersionRole, VeniceIngestionFailureReason> ingestionFailureCountMetric;
@@ -238,6 +240,7 @@ public class IngestionOtelStats {
     this.resubscriptionFailureCountMetric = null;
     this.partialUpdateCacheHitCountMetric = null;
     this.checksumVerificationFailureCountMetric = null;
+    this.writeComputeAmplificationAlertCountMetric = null;
     this.ingestionFailureCountMetric = null;
     this.dcrLookupCacheHitCountMetric = null;
     this.bytesConsumedAsUncompressedSizeMetric = null;
@@ -363,6 +366,8 @@ public class IngestionOtelStats {
     resubscriptionFailureCountMetric = createOneEnumMetric(RESUBSCRIPTION_FAILURE_COUNT.getMetricEntity());
     partialUpdateCacheHitCountMetric = createOneEnumMetric(PARTIAL_UPDATE_CACHE_HIT_COUNT.getMetricEntity());
     checksumVerificationFailureCountMetric = createOneEnumMetric(CHECKSUM_VERIFICATION_FAILURE_COUNT.getMetricEntity());
+    writeComputeAmplificationAlertCountMetric =
+        createOneEnumMetric(WRITE_COMPUTE_AMPLIFICATION_ALERT_COUNT.getMetricEntity());
 
     // Initialize HostLevelIngestionStats OTel metrics - counters with 2nd enum dimension
     ingestionFailureCountMetric =
@@ -765,6 +770,10 @@ public class IngestionOtelStats {
 
   public void recordAssembledSizeRatio(int version, double ratio) {
     recordAssembledSizeRatioMetric.record(ratio, classifyVersion(version, versionInfo));
+  }
+
+  public void recordWriteComputeAmplificationAlertCount(int version, long value) {
+    writeComputeAmplificationAlertCountMetric.record(value, classifyVersion(version, versionInfo));
   }
 
   // Async gauge callback
