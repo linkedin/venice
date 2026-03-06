@@ -151,7 +151,10 @@ public class TestAdminToolDataOperations {
       Assert.assertFalse(
           versionCreationResponse.isError(),
           "Empty push after wipe failed: " + versionCreationResponse.getError());
-      Assert.assertEquals(versionCreationResponse.getVersion(), 1);
+      // Version may be > 1 if retryableRequest retried the emptyPush (each attempt increments the version counter)
+      Assert.assertTrue(
+          versionCreationResponse.getVersion() >= 1,
+          "Expected version >= 1 but got " + versionCreationResponse.getVersion());
     }
   }
 

@@ -913,6 +913,7 @@ public class StatefulVeniceChangelogConsumerTest {
       String key = Integer.toString(i);
       PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> message =
           polledChangeEventsMap.get((key));
+      assertNotNull(message, "No change event found for key " + key);
       ChangeEvent<GenericRecord> changeEvent = message.getValue();
       int versionFromMessage = Version.parseVersionFromVersionTopicName(message.getTopicPartition().getTopicName());
       assertEquals(versionFromMessage, version);
@@ -938,6 +939,7 @@ public class StatefulVeniceChangelogConsumerTest {
       String key = Integer.toString(i);
       PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> message =
           polledChangeEventsMap.get((key));
+      assertNotNull(message, "No change event found for key " + key);
       ChangeEvent<TestChangelogValue> changeEvent = message.getValue();
       int versionFromMessage = Version.parseVersionFromVersionTopicName(message.getTopicPartition().getTopicName());
       assertEquals(versionFromMessage, version);
@@ -959,6 +961,7 @@ public class StatefulVeniceChangelogConsumerTest {
       String key = Integer.toString(i);
       PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> message =
           polledChangeEventsMap.get((key));
+      assertNotNull(message, "No change event found for key " + key);
       ChangeEvent<GenericRecord> changeEvent = message.getValue();
       int versionFromMessage = Version.parseVersionFromVersionTopicName(message.getTopicPartition().getTopicName());
       assertEquals(versionFromMessage, version);
@@ -976,6 +979,7 @@ public class StatefulVeniceChangelogConsumerTest {
     for (int i = startIndex; i < endIndex; i++) {
       PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> message =
           polledChangeEventsMap.get((Integer.toString(i)));
+      assertNotNull(message, "No change event found for key " + i);
 
       TestChangelogKey key = message.getKey();
       assertEquals(key.id, i);
