@@ -80,18 +80,27 @@ public class WriteComputeAmplificationDetector {
     }
   }
 
-  /** Check if the reporting window has elapsed and there are large results to report. */
-  public synchronized boolean shouldReport(long currentTimeMs) {
-    return largeResultCount > 0 && (currentTimeMs - windowStartMs) >= reportIntervalMs;
-  }
-
-  /** Build an immutable report snapshot and reset the window for the next interval. */
-  public synchronized AmplificationReport buildReportAndReset(long currentTimeMs) {
+  /**
+   * Atomically check if the reporting window has elapsed, and if so, build the report and reset the window.
+   * Returns {@code null} if no report is due (window not elapsed or no large results).
+   *
+   * <p>This avoids TOCTOU races when multiple threads call concurrently in the parallel AA-WC path:
+   * only one thread wins the report; others get {@code null}.
+   *
+   * @param currentTimeMs current wall-clock time
+   * @param largeResultThreshold the threshold used, included in the report for self-contained logging
+   * @return an immutable report snapshot, or {@code null} if no report is due
+   */
+  public synchronized AmplificationReport tryBuildReportAndReset(long currentTimeMs, int largeResultThreshold) {
+    if (largeResultCount == 0 || (currentTimeMs - windowStartMs) < reportIntervalMs) {
+      return null;
+    }
     AmplificationReport report = new AmplificationReport(
         currentTimeMs - windowStartMs,
         writeComputeCount,
         writeComputeTotalResultBytes,
         largeResultCount,
+        largeResultThreshold,
         getTopKeys(TOP_KEYS_TO_REPORT));
 
     // Reset for next window
@@ -166,6 +175,7 @@ public class WriteComputeAmplificationDetector {
     final int totalWriteComputeCount;
     final long totalResultBytes;
     final int largeResultCount;
+    final int largeResultThreshold;
     final List<Map.Entry<ByteArrayKey, KeyAmplificationStats>> topKeys;
 
     AmplificationReport(
@@ -173,11 +183,13 @@ public class WriteComputeAmplificationDetector {
         int totalWriteComputeCount,
         long totalResultBytes,
         int largeResultCount,
+        int largeResultThreshold,
         List<Map.Entry<ByteArrayKey, KeyAmplificationStats>> topKeys) {
       this.windowDurationMs = windowDurationMs;
       this.totalWriteComputeCount = totalWriteComputeCount;
       this.totalResultBytes = totalResultBytes;
       this.largeResultCount = largeResultCount;
+      this.largeResultThreshold = largeResultThreshold;
       this.topKeys = topKeys;
     }
 
@@ -187,9 +199,10 @@ public class WriteComputeAmplificationDetector {
       StringBuilder sb = new StringBuilder();
       sb.append(
           String.format(
-              "  Window: %ds | WC total: %d | Large (>threshold): %d (%.1f%%) | Total result: %s%n",
+              "  Window: %ds | WC total: %d | Large (>%s): %d (%.1f%%) | Total result: %s%n",
               windowDurationMs / 1000,
               totalWriteComputeCount,
+              formatBytes(largeResultThreshold),
               largeResultCount,
               largeResultPct,
               formatBytes(totalResultBytes)));
