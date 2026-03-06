@@ -546,6 +546,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.setSkipKafkaMessage(false);
           partitionConsumptionState.setLeaderFollowerState(STANDBY);
           updateLeaderTopicOnFollower(partitionConsumptionState);
+          // Persist updated leaderTopic so blob transfer copies correct state
+          storageMetadataService.put(kafkaVersionTopic, partition, partitionConsumptionState.getOffsetRecord());
           // subscribe back to local VT/partition
           PubSubPosition subscribePosition = getLocalVtSubscribePosition(partitionConsumptionState);
           if (isGlobalRtDivEnabled()) {
@@ -572,6 +574,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         } else {
           partitionConsumptionState.setLeaderFollowerState(STANDBY);
           updateLeaderTopicOnFollower(partitionConsumptionState);
+          // Persist updated leaderTopic so blob transfer copies correct state
+          storageMetadataService.put(kafkaVersionTopic, partition, partitionConsumptionState.getOffsetRecord());
         }
         // Make sure we stop consuming from leader upstream before we switch heartbeat monitoring.
         getHeartbeatMonitoringService().updateLagMonitor(
