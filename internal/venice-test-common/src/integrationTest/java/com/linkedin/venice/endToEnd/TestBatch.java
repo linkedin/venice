@@ -961,9 +961,14 @@ public abstract class TestBatch {
       // there is a window where routing data is present but the decompressor is not yet ready.
       // Additionally, the thin client connects to a random router which may have a slightly
       // different view than the routers checked above. Retrying handles all these edge cases.
-      TestUtils.waitForNonDeterministicAssertion(STORE_VERSION_AVAILABILITY_TIMEOUT_SEC, TimeUnit.SECONDS, true, () -> {
-        dataValidator.validate(avroClient, vsonClient, metricsRepository);
-      });
+      TestUtils.waitForNonDeterministicAssertion(
+          STORE_VERSION_AVAILABILITY_TIMEOUT_SEC,
+          TimeUnit.SECONDS,
+          true,
+          true,
+          () -> {
+            dataValidator.validate(avroClient, vsonClient, metricsRepository);
+          });
     }
 
     return storeName;

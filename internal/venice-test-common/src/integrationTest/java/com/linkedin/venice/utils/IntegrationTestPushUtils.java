@@ -396,11 +396,12 @@ public class IntegrationTestPushUtils {
       Properties props,
       UpdateStoreQueryParams storeParams) {
     ControllerClient controllerClient = getControllerClient(veniceClusterName, props);
+    String storeName = props.getProperty(VENICE_STORE_NAME_PROP);
     NewStoreResponse newStoreResponse = controllerClient
-        .createNewStore(props.getProperty(VENICE_STORE_NAME_PROP), "test@linkedin.com", keySchemaStr, valueSchemaStr);
+        .retryableRequest(5, c -> c.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr));
 
     if (newStoreResponse.isError()) {
-      throw new VeniceException("Could not create store " + props.getProperty(VENICE_STORE_NAME_PROP));
+      throw new VeniceException("Could not create store " + storeName + ". Error: " + newStoreResponse.getError());
     }
 
     updateStore(veniceClusterName, props, storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));

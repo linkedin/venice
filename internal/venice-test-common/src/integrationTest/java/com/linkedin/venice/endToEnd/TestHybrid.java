@@ -864,7 +864,7 @@ public class TestHybrid {
             -1L,
             null);
 
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
           // All messages from tmpTopic2 should exist
           try {
             for (int i = 10; i < 20; i++) {

@@ -1,16 +1,10 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
-import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
-import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
 import static com.linkedin.venice.client.store.predicate.Predicate.and;
 import static com.linkedin.venice.client.store.predicate.Predicate.equalTo;
-import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
-import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static org.testng.Assert.assertThrows;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -25,7 +19,6 @@ import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
-import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -33,16 +26,12 @@ import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -644,21 +633,6 @@ public class DaVinciComputeTest {
                 VALUE_SCHEMA_FOR_COMPUTE)));
     cluster.createMetaSystemStore(storeName);
 
-    // Wait for the router's routing data to be ready for the meta system store so the
-    // DaVinci client's thin-client-based metadata repository can read store metadata
-    String metaStoreTopic =
-        Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
-    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
-      cluster.refreshAllRouterMetaData();
-      for (VeniceRouterWrapper router: cluster.getVeniceRouters()) {
-        if (router.isRunning()) {
-          Assert.assertTrue(
-              router.getRoutingDataRepository().containsKafkaTopic(metaStoreTopic),
-              "Router routing data not ready for meta system store " + metaStoreTopic);
-        }
-      }
-    });
-
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory =
@@ -667,31 +641,27 @@ public class DaVinciComputeTest {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_PARTIAL_KEY_LOOKUP);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-
-    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .build();
-
     int numRecords = 100;
 
+    Map<String, Object> extraBackendProperties = new HashMap<>();
+    extraBackendProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L);
+
+    DaVinciTestContext<GenericRecord, GenericRecord> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            cluster,
+            storeName,
+            new DaVinciConfig().setStorageClass(StorageClass.DISK),
+            extraBackendProperties);
     try (
         VeniceWriter<GenericRecord, GenericRecord, byte[]> writer = vwFactory.createVeniceWriter(
             new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
                 .setValuePayloadSerializer(valueSerializer)
                 .build());
-        CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
-            d2Client,
-            VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-            metricsRepository,
-            backendConfig,
-            cluster);
-        DaVinciClient<GenericRecord, GenericRecord> client =
-            factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig().setStorageClass(StorageClass.DISK))) {
+        CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory();
+        DaVinciClient<GenericRecord, GenericRecord> client = daVinciTestContext.getDaVinciClient()) {
 
       pushSyntheticDataToStoreForPartialKeyLookup(
           writer,
@@ -762,21 +732,6 @@ public class DaVinciComputeTest {
                 VALUE_SCHEMA_FOR_COMPUTE)));
     cluster.createMetaSystemStore(storeName);
 
-    // Wait for the router's routing data to be ready for the meta system store so the
-    // DaVinci client's thin-client-based metadata repository can read store metadata
-    String metaStoreTopic =
-        Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
-    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
-      cluster.refreshAllRouterMetaData();
-      for (VeniceRouterWrapper router: cluster.getVeniceRouters()) {
-        if (router.isRunning()) {
-          Assert.assertTrue(
-              router.getRoutingDataRepository().containsKafkaTopic(metaStoreTopic),
-              "Router routing data not ready for meta system store " + metaStoreTopic);
-        }
-      }
-    });
-
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory =
@@ -785,31 +740,27 @@ public class DaVinciComputeTest {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_PARTIAL_KEY_LOOKUP);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-
-    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .build();
-
     int numRecords = 100;
 
+    Map<String, Object> extraBackendProperties = new HashMap<>();
+    extraBackendProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L);
+
+    DaVinciTestContext<GenericRecord, GenericRecord> daVinciTestContext =
+        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+            d2Client,
+            new MetricsRepository(),
+            Optional.empty(),
+            cluster,
+            storeName,
+            new DaVinciConfig(),
+            extraBackendProperties);
     try (
         VeniceWriter<GenericRecord, GenericRecord, byte[]> writer = vwFactory.createVeniceWriter(
             new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
                 .setValuePayloadSerializer(valueSerializer)
                 .build());
-        CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
-            d2Client,
-            VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-            metricsRepository,
-            backendConfig,
-            cluster);
-        DaVinciClient<GenericRecord, GenericRecord> client =
-            factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
+        CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory();
+        DaVinciClient<GenericRecord, GenericRecord> client = daVinciTestContext.getDaVinciClient()) {
 
       pushSyntheticDataToStoreForPartialKeyLookup(
           writer,
