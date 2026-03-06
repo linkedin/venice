@@ -62,6 +62,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_RE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
@@ -390,6 +391,8 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
+    pushJobSettingToReturn.repushUseFallbackValueSchemaId =
+        props.getBoolean(REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID, false);
     pushJobSettingToReturn.isCompliancePush = props.getBoolean(COMPLIANCE_PUSH, false);
     pushJobSettingToReturn.allowRegularPushWithTTLRepush = props.getBoolean(ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH, false);
     pushJobSettingToReturn.enableUncompressedRecordSizeLimit =
@@ -702,28 +705,33 @@ public class VenicePushJob implements AutoCloseable {
 
       if (pushJobSetting.isSourceKafka) {
         initKIFRepushDetails();
-        // Retrieve the latest value schema ID from the controller for KIF repush.
-        // This serves as the global fallback when per-record schema IDs are not embedded
-        // in the version topic (put.getSchemaId() returns -1).
-        MultiSchemaResponse allSchemas = ControllerClient.retryableRequest(
-            controllerClient,
-            pushJobSetting.controllerRetries,
-            c -> c.getAllValueSchema(pushJobSetting.storeName));
-        if (allSchemas.isError()) {
-          throw new VeniceException(
-              "Failed to retrieve value schemas for store " + pushJobSetting.storeName + ": " + allSchemas.getError());
+        if (pushJobSetting.repushUseFallbackValueSchemaId) {
+          // Retrieve the latest value schema ID from the controller to use as a global fallback
+          // when per-record schema IDs are not embedded in the source version topic
+          // (put.getSchemaId() returns -1). This is opt-in because using the latest schema as
+          // the writer schema can produce incorrect data if the source records were written with
+          // an older, incompatible schema.
+          MultiSchemaResponse allSchemas = ControllerClient.retryableRequest(
+              controllerClient,
+              pushJobSetting.controllerRetries,
+              c -> c.getAllValueSchema(pushJobSetting.storeName));
+          if (allSchemas.isError()) {
+            throw new VeniceException(
+                "Failed to retrieve value schemas for store " + pushJobSetting.storeName + ": "
+                    + allSchemas.getError());
+          }
+          MultiSchemaResponse.Schema[] schemas = allSchemas.getSchemas();
+          if (schemas == null || schemas.length == 0) {
+            throw new VeniceException(
+                "No value schemas are registered for store " + pushJobSetting.storeName
+                    + "; cannot determine value schema ID for KIF repush.");
+          }
+          pushJobSetting.valueSchemaId = schemas[schemas.length - 1].getId();
+          LOGGER.info(
+              "Set fallback value schema ID to {} for KIF repush of store {}",
+              pushJobSetting.valueSchemaId,
+              pushJobSetting.storeName);
         }
-        MultiSchemaResponse.Schema[] schemas = allSchemas.getSchemas();
-        if (schemas == null || schemas.length == 0) {
-          throw new VeniceException(
-              "No value schemas are registered for store " + pushJobSetting.storeName
-                  + "; cannot determine value schema ID for KIF repush.");
-        }
-        pushJobSetting.valueSchemaId = schemas[schemas.length - 1].getId();
-        LOGGER.info(
-            "Set value schema ID to {} for KIF repush of store {}",
-            pushJobSetting.valueSchemaId,
-            pushJobSetting.storeName);
       }
 
       if (pushJobSetting.targetRegionPushWithDeferredSwapWaitTime > -1) {

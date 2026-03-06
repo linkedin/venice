@@ -352,6 +352,14 @@ public final class VenicePushJobConstants {
   /**
    * Config to control the TTL behaviors in repush.
    */
+  /**
+   * When enabled, KIF repush will use the store's latest value schema ID as a fallback if per-record
+   * schema IDs are not embedded in the source version topic (put.getSchemaId() returns -1). By default
+   * this is disabled and the job will fail if per-record schema IDs are missing, to avoid silently
+   * re-writing records with a potentially incorrect schema.
+   */
+  public static final String REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID = "repush.use.fallback.value.schema.id";
+
   public static final String REPUSH_TTL_ENABLE = "repush.ttl.enable";
   public static final String REPUSH_TTL_POLICY = "repush.ttl.policy";
   public static final String REPUSH_TTL_SECONDS = "repush.ttl.seconds";

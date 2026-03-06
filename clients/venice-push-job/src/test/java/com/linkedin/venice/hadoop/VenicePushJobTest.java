@@ -28,6 +28,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OV
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
@@ -424,16 +425,17 @@ public class VenicePushJobTest {
   }
 
   /**
-   * For KIF repush, the value schema ID must be retrieved from the controller so it can serve as a
-   * global fallback when per-record schema IDs are not embedded in the version topic
+   * When repush.use.fallback.value.schema.id is enabled, the latest value schema ID should be
+   * retrieved from the controller as a global fallback for records missing per-record schema IDs.
    */
   @Test
-  public void testKifRepushRetrievesValueSchemaIdFromController() throws Exception {
+  public void testKifRepushRetrievesValueSchemaIdWhenFallbackEnabled() throws Exception {
     Properties repushProps = new Properties();
     repushProps.setProperty(SOURCE_KAFKA, "true");
     repushProps.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, REPUSH_VERSION));
     repushProps.setProperty(KAFKA_INPUT_BROKER_URL, "localhost");
     repushProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    repushProps.setProperty(REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID, "true");
 
     ControllerClient client = getClient(storeInfo -> {
       Map<String, Integer> coloVersions = new HashMap<>();
@@ -460,7 +462,39 @@ public class VenicePushJobTest {
       assertEquals(
           pushJob.getPushJobSetting().valueSchemaId,
           2,
-          "KIF repush should retrieve the latest value schema ID from the controller");
+          "KIF repush should retrieve the latest value schema ID from the controller when fallback is enabled");
+    }
+  }
+
+  /**
+   * By default (repush.use.fallback.value.schema.id=false), the value schema ID should NOT be
+   * retrieved from the controller. The job will fail later if per-record schema IDs are missing.
+   */
+  @Test
+  public void testKifRepushDoesNotRetrieveValueSchemaIdByDefault() throws Exception {
+    Properties repushProps = new Properties();
+    repushProps.setProperty(SOURCE_KAFKA, "true");
+    repushProps.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, REPUSH_VERSION));
+    repushProps.setProperty(KAFKA_INPUT_BROKER_URL, "localhost");
+    repushProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    // No REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID set — defaults to false
+
+    ControllerClient client = getClient(storeInfo -> {
+      Map<String, Integer> coloVersions = new HashMap<>();
+      coloVersions.put("dc-0", REPUSH_VERSION);
+      coloVersions.put("dc-1", REPUSH_VERSION);
+      storeInfo.setColoToCurrentVersions(coloVersions);
+    });
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(repushProps, client)) {
+      skipVPJValidation(pushJob);
+      doNothing().when(pushJob).pollStatusUntilComplete(any(), any(), any(), any(), anyBoolean(), anyBoolean());
+      pushJob.run();
+
+      assertEquals(
+          pushJob.getPushJobSetting().valueSchemaId,
+          0,
+          "KIF repush should NOT retrieve value schema ID when fallback is disabled (default)");
     }
   }
 
