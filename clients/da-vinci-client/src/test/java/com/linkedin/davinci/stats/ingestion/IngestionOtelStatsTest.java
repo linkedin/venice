@@ -51,6 +51,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STO
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNEXPECTED_MESSAGE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.WRITE_COMPUTE_AMPLIFICATION_ALERT_COUNT;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_EVENT;
@@ -1632,8 +1633,17 @@ public class IngestionOtelStatsTest {
         "Whether an active ingestion task exists for this store version (0 or 1)",
         storeClusterVersion);
 
-    // Verify total count (24 original + 26 new = 50)
-    assertEquals(IngestionOtelMetricEntity.values().length, 50, "Expected 50 metric entities");
+    // --- Write-compute amplification alert counter ---
+    assertMetricEntity(
+        WRITE_COMPUTE_AMPLIFICATION_ALERT_COUNT.getMetricEntity(),
+        "ingestion.write_compute.amplification_alert_count",
+        MetricType.COUNTER,
+        MetricUnit.NUMBER,
+        "Count of reporting windows where write-compute amplification was detected (large result values)",
+        storeClusterVersion);
+
+    // Verify total count (24 original + 27 new = 51)
+    assertEquals(IngestionOtelMetricEntity.values().length, 51, "Expected 51 metric entities");
   }
 
   private static void assertMetricEntity(
