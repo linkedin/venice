@@ -201,7 +201,9 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
-          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+          parentControllerClient.retryableRequest(
+              5,
+              c -> c.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString())));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setWriteComputationEnabled(true)

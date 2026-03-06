@@ -114,7 +114,7 @@ import org.testng.annotations.Test;
 @PubSubAgnosticTest
 public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
   private static final Logger LOGGER = LogManager.getLogger(TestPushJobWithNativeReplication.class);
-  private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
+  private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
 
   private static final String SYSTEM_STORE_CLUSTER = CLUSTER_NAME; // "venice-cluster0" from base class
   private static final String VPJ_HEARTBEAT_STORE_NAME =

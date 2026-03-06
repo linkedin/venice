@@ -62,6 +62,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
@@ -920,17 +921,25 @@ public abstract class TestBatch {
       IntegrationTestPushUtils.runVPJ(props);
     }
 
-    // Wait for the current version to be set before reading from the router. There is a race
-    // condition where the VPJ poll returns (version is COMPLETED) but the version has not yet
-    // transitioned to ONLINE / been set as the current version on the controller side.
+    // Wait for the current version to be set AND the router's routing data to be ready.
+    // There is a race where VPJ returns (version is COMPLETED) but: (a) the version has not
+    // yet transitioned to ONLINE / been set as current, or (b) the Helix external view hasn't
+    // propagated to the router's routing data repository. Both cause "no version for store".
     veniceCluster.useControllerClient(controllerClient -> {
       TestUtils.waitForNonDeterministicAssertion(STORE_VERSION_AVAILABILITY_TIMEOUT_SEC, TimeUnit.SECONDS, true, () -> {
-        Assert.assertTrue(
-            controllerClient.getStore(storeName).getStore().getCurrentVersion() > 0,
-            "Store " + storeName + " does not have a current version yet");
+        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+        Assert.assertTrue(currentVersion > 0, "Store " + storeName + " does not have a current version yet");
+        veniceCluster.refreshAllRouterMetaData();
+        String kafkaTopic = Version.composeKafkaTopic(storeName, currentVersion);
+        for (VeniceRouterWrapper router: veniceCluster.getVeniceRouters()) {
+          if (router.isRunning()) {
+            Assert.assertTrue(
+                router.getRoutingDataRepository().containsKafkaTopic(kafkaTopic),
+                "Router routing data not ready for " + kafkaTopic);
+          }
+        }
       });
     });
-    veniceCluster.refreshAllRouterMetaData();
 
     VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);
     try (
