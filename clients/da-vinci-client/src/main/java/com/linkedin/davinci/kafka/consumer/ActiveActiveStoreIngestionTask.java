@@ -580,17 +580,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
       // Write-compute amplification detection (AA path)
       if (msgType == MessageType.UPDATE && updatedValueBytes != null) {
+        int largeResultThreshold = serverConfig.getWriteComputeLargeResultLogThresholdBytes();
         WriteComputeAmplificationDetector amplificationDetector = partitionConsumptionState
             .getOrCreateWriteComputeAmplificationDetector(serverConfig.getWriteComputeAmplificationReportIntervalMs());
-        amplificationDetector.record(
-            keyBytes,
-            incomingUpdatePayloadSize,
-            updatedValueBytes.remaining(),
-            serverConfig.getWriteComputeLargeResultLogThresholdBytes());
-        long now = System.currentTimeMillis();
-        if (amplificationDetector.shouldReport(now)) {
-          WriteComputeAmplificationDetector.AmplificationReport ampReport =
-              amplificationDetector.buildReportAndReset(now);
+        amplificationDetector
+            .record(keyBytes, incomingUpdatePayloadSize, updatedValueBytes.remaining(), largeResultThreshold);
+        WriteComputeAmplificationDetector.AmplificationReport ampReport =
+            amplificationDetector.tryBuildReportAndReset(System.currentTimeMillis(), largeResultThreshold);
+        if (ampReport != null) {
           LOGGER.warn(
               "Write-compute amplification report for {} [Partition {}]\n{}",
               partitionConsumptionState.getReplicaId(),

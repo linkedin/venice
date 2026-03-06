@@ -3491,18 +3491,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               .recordPartialUpdateTime(storeName, versionNumber, VenicePartialUpdateOperation.UPDATE, wcUpdateLatency);
 
           // Write-compute amplification detection
+          int largeResultThreshold = serverConfig.getWriteComputeLargeResultLogThresholdBytes();
           WriteComputeAmplificationDetector amplificationDetector =
               partitionConsumptionState.getOrCreateWriteComputeAmplificationDetector(
                   serverConfig.getWriteComputeAmplificationReportIntervalMs());
-          amplificationDetector.record(
-              keyBytes,
-              update.updateValue.remaining(),
-              updatedValueBytes.length,
-              serverConfig.getWriteComputeLargeResultLogThresholdBytes());
-          long now = System.currentTimeMillis();
-          if (amplificationDetector.shouldReport(now)) {
-            WriteComputeAmplificationDetector.AmplificationReport ampReport =
-                amplificationDetector.buildReportAndReset(now);
+          amplificationDetector
+              .record(keyBytes, update.updateValue.remaining(), updatedValueBytes.length, largeResultThreshold);
+          WriteComputeAmplificationDetector.AmplificationReport ampReport =
+              amplificationDetector.tryBuildReportAndReset(System.currentTimeMillis(), largeResultThreshold);
+          if (ampReport != null) {
             LOGGER.warn(
                 "Write-compute amplification report for {} [Partition {}]\n{}",
                 partitionConsumptionState.getReplicaId(),

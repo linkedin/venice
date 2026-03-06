@@ -3288,7 +3288,7 @@ public class ConfigKeys {
 
   /**
    * How often (in ms) to emit a per-partition summary report of write-compute amplification.
-   * Only partitions with large results are reported. Default: 60 000 ms (1 minute).
+   * Only partitions with large results are reported. Default: 60,000 ms (1 minute).
    */
   public static final String WRITE_COMPUTE_AMPLIFICATION_REPORT_INTERVAL_MS =
       "write.compute.amplification.report.interval.ms";
