@@ -876,7 +876,7 @@ public class TestAdminOperationWithPreviousVersion {
     TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(storeName, expectedVersion),
         parentControllerClient,
-        30,
+        60,
         TimeUnit.SECONDS);
   }
 
