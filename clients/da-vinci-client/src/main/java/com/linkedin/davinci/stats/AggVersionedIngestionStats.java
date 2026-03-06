@@ -550,4 +550,8 @@ public class AggVersionedIngestionStats
   public void recordAssembledSizeRatio(String storeName, int version, double ratio) {
     getIngestionOtelStats(storeName).recordAssembledSizeRatio(version, ratio);
   }
+
+  public void recordWriteComputeAmplificationAlertCount(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordWriteComputeAmplificationAlertCount(version, 1);
+  }
 }
