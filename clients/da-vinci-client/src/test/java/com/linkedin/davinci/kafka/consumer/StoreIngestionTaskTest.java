@@ -5157,7 +5157,9 @@ public abstract class StoreIngestionTaskTest {
     storeIngestionTaskUnderTest.updateLeaderTopicOnFollower(partitionConsumptionState);
     storeIngestionTaskUnderTest.startConsumingAsLeader(partitionConsumptionState);
     String dataRecoverySourceTopic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
-    verify(offsetRecord, times(1)).setLeaderTopic(pubSubTopicRepository.getTopic(dataRecoverySourceTopic));
+    // Phase 2: leaderTopic is transient on PCS, no longer written to OffsetRecord
+    verify(offsetRecord, never()).setLeaderTopic(any());
+    assertEquals(partitionConsumptionState.getLeaderTopic(), pubSubTopicRepository.getTopic(dataRecoverySourceTopic));
   }
 
   @Test
