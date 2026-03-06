@@ -310,6 +310,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -2371,11 +2372,11 @@ public class VeniceParentHelixAdmin implements Admin {
           futureVersionBeforeRollForward,
           storeName);
       Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-      Map<String, Future<?>> regionFutures = new HashMap<>();
+      List<CompletableFuture<Void>> regionFutures = new ArrayList<>();
       for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
         String region = entry.getKey();
         ControllerClient controllerClient = entry.getValue();
-        regionFutures.put(region, asyncSetupExecutor.submit(() -> {
+        regionFutures.add(CompletableFuture.runAsync(() -> {
           RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
             ControllerResponse response =
                 controllerClient.rollForwardToFutureVersion(storeName, regionFilter, ROLL_FORWARD_REQUEST_TIMEOUT);
@@ -2387,24 +2388,14 @@ public class VeniceParentHelixAdmin implements Admin {
           }, 5, Duration.ofMillis(100), Duration.ofMillis(500), Duration.ofSeconds(10), RETRY_FAILURE_TYPES);
         }));
       }
-      Set<String> failedRegions = new HashSet<>();
-      for (Map.Entry<String, Future<?>> entry: regionFutures.entrySet()) {
-        String region = entry.getKey();
-        try {
-          entry.getValue().get(ROLL_FORWARD_REQUEST_TIMEOUT, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          LOGGER.error("Roll forward in region {} was interrupted", region, e);
-          failedRegions.add(region);
-        } catch (Exception e) {
-          LOGGER.error("Roll forward in region {} failed", region, e);
-          failedRegions.add(region);
-        }
-      }
-      if (!failedRegions.isEmpty()) {
-        throw new VeniceException(
-            "Roll forward failed in the following regions: " + failedRegions
-                + " Please try the roll forward action again");
+      try {
+        CompletableFuture.allOf(regionFutures.toArray(new CompletableFuture[0]))
+            .get(ROLL_FORWARD_REQUEST_TIMEOUT, TimeUnit.MILLISECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException("Roll forward was interrupted. Please try the roll forward action again", e);
+      } catch (Exception e) {
+        throw new VeniceException("Roll forward failed. Please try the roll forward action again", e);
       }
 
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
