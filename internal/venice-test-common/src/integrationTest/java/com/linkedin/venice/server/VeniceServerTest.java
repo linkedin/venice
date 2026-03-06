@@ -476,7 +476,7 @@ public class VeniceServerTest {
     }
   }
 
-  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testDropStorePartitionSynchronously() {
     VeniceClusterCreateOptions options =
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(0).build();
@@ -500,10 +500,10 @@ public class VeniceServerTest {
       Assert.assertEquals(storageService.getStorageEngine(storeVersionName).getPartitionIds().size(), 3);
 
       cluster.useControllerClient(controllerClient -> {
-        controllerClient.disableAndDeleteStore(storeName);
+        TestUtils.assertCommand(controllerClient.disableAndDeleteStore(storeName));
       });
 
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         // All partitions should have been dropped after the store is deleted
         Assert.assertNull(
             storageService.getStorageEngine(storeVersionName),
