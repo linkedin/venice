@@ -762,6 +762,21 @@ public class DaVinciComputeTest {
                 VALUE_SCHEMA_FOR_COMPUTE)));
     cluster.createMetaSystemStore(storeName);
 
+    // Wait for the router's routing data to be ready for the meta system store so the
+    // DaVinci client's thin-client-based metadata repository can read store metadata
+    String metaStoreTopic =
+        Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
+    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
+      cluster.refreshAllRouterMetaData();
+      for (VeniceRouterWrapper router: cluster.getVeniceRouters()) {
+        if (router.isRunning()) {
+          Assert.assertTrue(
+              router.getRoutingDataRepository().containsKafkaTopic(metaStoreTopic),
+              "Router routing data not ready for meta system store " + metaStoreTopic);
+        }
+      }
+    });
+
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory =

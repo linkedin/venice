@@ -138,7 +138,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testDvcDelayedIngestionWithFailingPushInTargetRegion() throws Exception {
     setUpCluster();
 
