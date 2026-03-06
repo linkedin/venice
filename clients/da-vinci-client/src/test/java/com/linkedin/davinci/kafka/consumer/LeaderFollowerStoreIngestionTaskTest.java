@@ -400,6 +400,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     when(mockPartitionConsumptionState.getOffsetRecord()).thenReturn(mockOffsetRecord);
     when(mockOffsetRecord.getLeaderTopic(any())).thenReturn(null);
+    // PCS transient leaderTopic is null (stale — should be updated by updateLeaderTopicOnFollower)
+    when(mockPartitionConsumptionState.getLeaderTopic()).thenReturn(null);
 
     // PCS starts as LEADER; when setLeaderFollowerState(STANDBY) is called, subsequent
     // getLeaderFollowerState() returns STANDBY so updateLeaderTopicOnFollower doesn't skip
@@ -426,7 +428,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Process LEADER_TO_STANDBY transition
     leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
 
-    // Verify leaderTopic was updated to RT by updateLeaderTopicOnFollower
+    // Verify leaderTopic was updated to RT by updateLeaderTopicOnFollower — both PCS transient and OffsetRecord
+    verify(mockPartitionConsumptionState).setLeaderTopic(rtTopic);
     verify(mockOffsetRecord).setLeaderTopic(rtTopic);
 
     // Verify offset record was persisted — the fix that prevents stale leaderTopic in blob transfer.
@@ -1773,5 +1776,71 @@ public class LeaderFollowerStoreIngestionTaskTest {
     clusterIdToAlias.put(2, "");
     String empty = RegionUtils.normalizeRegionName(clusterIdToAlias.get(2));
     assertEquals(empty, RegionUtils.UNKNOWN_REGION, "Empty alias should normalize to 'unknown' region");
+  }
+
+  @Test
+  public void testPcsLeaderTopicInitializedFromOffsetRecord() {
+    // When OffsetRecord has leaderTopic=RT, PCS should initialize its transient field from it
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-store_rt");
+    PubSubTopic vtTopic = TOPIC_REPOSITORY.getTopic("test-store_v1");
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(vtTopic, 0);
+
+    PubSubContext pubSubContext = mock(PubSubContext.class);
+    when(pubSubContext.getPubSubTopicRepository()).thenReturn(TOPIC_REPOSITORY);
+
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    offsetRecord.setLeaderTopic(rtTopic);
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, false, null);
+
+    // Transient leaderTopic should be initialized from OffsetRecord
+    assertNotNull(pcs.getLeaderTopic());
+    assertEquals(pcs.getLeaderTopic(), rtTopic);
+  }
+
+  @Test
+  public void testPcsLeaderTopicNullWhenOffsetRecordHasNoLeaderTopic() {
+    // When OffsetRecord has no leaderTopic, PCS transient field should be null
+    PubSubTopic vtTopic = TOPIC_REPOSITORY.getTopic("test-store_v1");
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(vtTopic, 0);
+
+    PubSubContext pubSubContext = mock(PubSubContext.class);
+    when(pubSubContext.getPubSubTopicRepository()).thenReturn(TOPIC_REPOSITORY);
+
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    // Don't set leaderTopic — leave it null
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, false, null);
+
+    // Transient leaderTopic should be null
+    Assert.assertNull(pcs.getLeaderTopic());
+  }
+
+  @Test
+  public void testPcsSetLeaderTopicUpdatesTransientField() {
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-store_rt");
+    PubSubTopic vtTopic = TOPIC_REPOSITORY.getTopic("test-store_v1");
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(vtTopic, 0);
+
+    PubSubContext pubSubContext = mock(PubSubContext.class);
+    when(pubSubContext.getPubSubTopicRepository()).thenReturn(TOPIC_REPOSITORY);
+
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+
+    PartitionConsumptionState pcs =
+        new PartitionConsumptionState(topicPartition, offsetRecord, pubSubContext, false, null);
+
+    // Initially null
+    Assert.assertNull(pcs.getLeaderTopic());
+
+    // Set to RT
+    pcs.setLeaderTopic(rtTopic);
+    assertEquals(pcs.getLeaderTopic(), rtTopic);
+
+    // Set to VT
+    pcs.setLeaderTopic(vtTopic);
+    assertEquals(pcs.getLeaderTopic(), vtTopic);
   }
 }

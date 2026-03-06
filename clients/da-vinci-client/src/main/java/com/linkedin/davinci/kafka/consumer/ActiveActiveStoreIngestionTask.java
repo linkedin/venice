@@ -1023,7 +1023,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void startConsumingAsLeader(PartitionConsumptionState partitionConsumptionState) {
     final int partition = partitionConsumptionState.getPartition();
     final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-    final PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
+    final PubSubTopic leaderTopic = partitionConsumptionState.getLeaderTopic();
 
     /**
      * Note that this function is called after the new leader has waited for 5 minutes of inactivity on the local VT topic.
@@ -1078,8 +1078,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     final int partition = partitionConsumptionState.getPartition();
-    final PubSubTopic currentLeaderTopic =
-        partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    final PubSubTopic currentLeaderTopic = partitionConsumptionState.getLeaderTopic();
     final PubSubTopicPartition sourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
 
     // unsubscribe the old source and subscribe to the new source
@@ -1101,6 +1100,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           sourceTopicPartition);
     }
     // Update leader topic.
+    partitionConsumptionState.setLeaderTopic(newSourceTopic);
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     // Calculate leader offset and start consumption
     preparePositionCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
@@ -1126,6 +1126,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
      */
     syncTopicSwitchToIngestionMetadataService(topicSwitch, partitionConsumptionState);
     if (!isLeader(partitionConsumptionState)) {
+      partitionConsumptionState.setLeaderTopic(newSourceTopic);
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     }
   }
@@ -1307,7 +1308,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         LOGGER.error(
             "Failed to measure RT offset lag for replica: {} in {}/{}",
             pcs.getReplicaId(),
-            Utils.getReplicaId(pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository), pcs.getPartition()),
+            Utils.getReplicaId(pcs.getLeaderTopic(), pcs.getPartition()),
             sourceRealTimeTopicKafkaURL,
             e);
         if (++numberOfUnreachableRegions > 1) {

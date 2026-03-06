@@ -161,6 +161,13 @@ public class PartitionConsumptionState {
   private TopicSwitchWrapper topicSwitch = null;
 
   /**
+   * Transient in-memory cache of the topic the leader is (or should be) consuming.
+   * Initialized from OffsetRecord at construction time, then maintained in-memory only.
+   * NOT persisted to OffsetRecord — eliminates stale-state bugs during blob transfer.
+   */
+  private PubSubTopic leaderTopic;
+
+  /**
    * The following priorities are used to store the progress of processed records since it is not efficient to
    * update offset db for every record.
    */
@@ -344,13 +351,20 @@ public class PartitionConsumptionState {
     this.latestPolledMessageTimestampInMs = currentTimeInMs;
     this.consumptionStartTimeInMs = currentTimeInMs;
 
+    // Initialize transient leaderTopic from OffsetRecord (Phase 1 backward compat — Phase 2 will derive from
+    // topicSwitch)
+    String leaderTopicStr = offsetRecord.getLeaderTopic();
+    if (leaderTopicStr != null) {
+      this.leaderTopic = pubSubContext.getPubSubTopicRepository().getTopic(leaderTopicStr);
+    }
+
     // Restore in-memory consumption RT positions and latest processed RT
     // positions from the checkpoint upstream positions map
     latestConsumedRtPositions = new VeniceConcurrentHashMap<>(3);
     divRtCheckpointPositions = new VeniceConcurrentHashMap<>(3);
     latestProcessedRtPositions = new VeniceConcurrentHashMap<>(3);
     trackingIncrementalPushStatus = new VeniceConcurrentHashMap<>(3);
-    if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
+    if (this.leaderTopic != null && !this.leaderTopic.isVersionTopic()) {
       offsetRecord.cloneRtPositionCheckpoints(latestConsumedRtPositions);
       offsetRecord.cloneRtPositionCheckpoints(latestProcessedRtPositions);
     }
@@ -596,6 +610,17 @@ public class PartitionConsumptionState {
 
   public TopicSwitchWrapper getTopicSwitch() {
     return this.topicSwitch;
+  }
+
+  /**
+   * Returns the transient in-memory leader topic — the topic the leader is (or should be) consuming.
+   */
+  public PubSubTopic getLeaderTopic() {
+    return this.leaderTopic;
+  }
+
+  public void setLeaderTopic(PubSubTopic leaderTopic) {
+    this.leaderTopic = leaderTopic;
   }
 
   public void setConsumeRemotely(boolean isConsumingRemotely) {
@@ -1001,7 +1026,7 @@ public class PartitionConsumptionState {
    * @return the position the leader should consume from
    */
   public PubSubPosition getLeaderPosition(String pubSubBrokerAddress, boolean useCheckpointedDivRtPosition) {
-    PubSubTopic leaderTopic = getOffsetRecord().getLeaderTopic(getPubSubContext().getPubSubTopicRepository());
+    PubSubTopic leaderTopic = getLeaderTopic();
     if (leaderTopic != null && !leaderTopic.isVersionTopic()) {
       // consumed corresponds to messages seen by consumer, processed corresponds to messages seen by drainer
       return (useCheckpointedDivRtPosition)
