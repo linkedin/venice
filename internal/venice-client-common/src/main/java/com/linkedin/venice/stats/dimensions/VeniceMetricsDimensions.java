@@ -122,6 +122,9 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceIngestionFailureReason} Categorized reason for ingestion failure */
   VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason"),
 
+  /** {@link com.linkedin.venice.pubsub.PubSubHealthCategory} */
+  VENICE_PUBSUB_HEALTH_CATEGORY("venice.pubsub.health.category"),
+  
   /** {@link VeniceChunkingStatus} */
   VENICE_CHUNKING_STATUS("venice.chunking.status"),
 

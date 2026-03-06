@@ -20,7 +20,7 @@ import org.testng.annotations.Test;
 public class ServerMetricEntityTest {
   @Test
   public void testServerMetricEntitiesCount() {
-    assertEquals(SERVER_METRIC_ENTITIES.size(), 74, "Expected 74 unique metric entities");
+    assertEquals(SERVER_METRIC_ENTITIES.size(), 81, "Expected 81 unique metric entities");
   }
 
   @Test

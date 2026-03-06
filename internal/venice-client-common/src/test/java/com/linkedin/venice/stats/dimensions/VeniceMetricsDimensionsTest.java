@@ -124,6 +124,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_INGESTION_FAILURE_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.ingestion.failure.reason");
           break;
+        case VENICE_PUBSUB_HEALTH_CATEGORY:
+          assertEquals(dimension.getDimensionName(format), "venice.pubsub.health.category");
+          break;
         case VENICE_CHUNKING_STATUS:
           assertEquals(dimension.getDimensionName(format), "venice.chunking.status");
           break;
@@ -252,6 +255,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_INGESTION_FAILURE_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.ingestion.failure.reason");
           break;
+        case VENICE_PUBSUB_HEALTH_CATEGORY:
+          assertEquals(dimension.getDimensionName(format), "venice.pubsub.health.category");
+          break;
         case VENICE_CHUNKING_STATUS:
           assertEquals(dimension.getDimensionName(format), "venice.chunking.status");
           break;
@@ -379,6 +385,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_INGESTION_FAILURE_REASON:
           assertEquals(dimension.getDimensionName(format), "Venice.Ingestion.Failure.Reason");
+          break;
+        case VENICE_PUBSUB_HEALTH_CATEGORY:
+          assertEquals(dimension.getDimensionName(format), "Venice.Pubsub.Health.Category");
           break;
         case VENICE_CHUNKING_STATUS:
           assertEquals(dimension.getDimensionName(format), "Venice.Chunking.Status");

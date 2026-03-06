@@ -18,6 +18,7 @@ public final class ServerMetricEntity {
       IngestionOtelMetricEntity.class,
       HeartbeatOtelMetricEntity.class,
       RecordLevelDelayOtelMetricEntity.class,
+      PubSubHealthOtelMetricEntity.class,
       ServerReadOtelMetricEntity.class,
       ThreadPoolOtelMetricEntity.class,
       ServerMetadataOtelMetricEntity.class);

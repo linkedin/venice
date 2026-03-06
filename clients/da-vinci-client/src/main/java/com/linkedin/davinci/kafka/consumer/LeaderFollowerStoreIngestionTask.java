@@ -4476,6 +4476,78 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     preparePositionCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, false);
   }
 
+  /**
+   * @return true if the partition is a leader consuming from a non-VT topic (e.g., RT in A/A mode)
+   */
+  private boolean isActiveLeaderOnNonVtTopic(PartitionConsumptionState pcs) {
+    PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
+    return pcs.getLeaderFollowerState().equals(LeaderFollowerStateType.LEADER) && leaderTopic != null
+        && !leaderTopic.isVersionTopic();
+  }
+
+  @Override
+  protected void pausePartitionForPubSubHealth(
+      int partitionId,
+      PartitionConsumptionState pcs,
+      String exceptionSourceUrl) {
+    boolean isLeader = isActiveLeaderOnNonVtTopic(pcs);
+
+    // Use the exception source URL if available (tells us exactly which broker had the problem).
+    // Otherwise, infer from PCS: leaders in A/A may be consuming from a remote broker.
+    String pubSubAddress;
+    if (exceptionSourceUrl != null) {
+      pubSubAddress = exceptionSourceUrl;
+    } else if (isLeader) {
+      Set<String> sourceAddresses = getConsumptionSourceKafkaAddress(pcs);
+      pubSubAddress = sourceAddresses.size() == 1 ? sourceAddresses.iterator().next() : localKafkaServer;
+    } else {
+      pubSubAddress = localKafkaServer;
+    }
+
+    // Determine which topic to unsubscribe from based on where the exception originated.
+    // If the exception came from the local broker (produce path) and the leader is consuming
+    // from a remote RT, we should unsubscribe from VT (the local produce target), not the
+    // remote RT. If the exception came from the consume path (remote RT), unsubscribe from
+    // the leader topic.
+    pubSubHealthPausedPartitions.put(partitionId, pubSubAddress);
+    if (isLeader) {
+      PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
+      boolean exceptionFromLocalProducePath = localKafkaServer.equals(pubSubAddress) && pcs.consumeRemotely();
+      if (exceptionFromLocalProducePath) {
+        // Exception on the local VT produce path — unsubscribe from VT, not the remote RT
+        unsubscribeFromTopic(versionTopic, pcs);
+      } else {
+        // Exception on the consume path — unsubscribe from the leader topic (remote RT or local RT)
+        unsubscribeFromTopic(leaderTopic, pcs);
+      }
+    } else {
+      unsubscribeFromTopic(versionTopic, pcs);
+    }
+    reportPubSubHealthException(pubSubAddress);
+  }
+
+  @Override
+  protected void seekToCheckpointAndResume(PartitionConsumptionState pcs) throws InterruptedException {
+    int partitionId = pcs.getPartition();
+    boolean isLeader = isActiveLeaderOnNonVtTopic(pcs);
+    if (isLeader) {
+      PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
+      // Drain buffered records before resubscribing to ensure checkpoint is up-to-date
+      waitForAllMessageToBeProcessedFromTopicPartition(new PubSubTopicPartitionImpl(leaderTopic, partitionId), pcs);
+      LOGGER.info("Leader replica: {} drain finished for PubSub health resubscribe.", pcs.getReplicaId());
+      preparePositionCheckpointAndStartConsumptionAsLeader(leaderTopic, pcs, false);
+    } else {
+      // Drain buffered records before resubscribing to ensure checkpoint is up-to-date
+      waitForAllMessageToBeProcessedFromTopicPartition(new PubSubTopicPartitionImpl(versionTopic, partitionId), pcs);
+      PubSubPosition vtPosition = pcs.getLatestProcessedVtPosition();
+      LOGGER.info(
+          "Follower replica: {} resubscribe to offset: {} for PubSub health resume.",
+          pcs.getReplicaId(),
+          vtPosition);
+      consumerSubscribe(versionTopic, pcs, vtPosition, localKafkaServer);
+    }
+  }
+
   protected void queueUpVersionTopicWritesWithViewWriters(
       PartitionConsumptionState partitionConsumptionState,
       BiFunction<VeniceViewWriter, Set<Integer>, CompletableFuture<Void>> viewWriterRecordProcessor,
