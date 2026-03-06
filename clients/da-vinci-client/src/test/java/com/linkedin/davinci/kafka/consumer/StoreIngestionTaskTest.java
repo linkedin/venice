@@ -4293,6 +4293,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(topicSwitchWrapper).when(mockPcs).getTopicSwitch();
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopicRepository.getTopic("test_rt")).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(pubSubTopicRepository.getTopic("test_rt")).when(mockPcs).getLeaderTopic();
 
     PubSubPosition p1000 = InMemoryPubSubPosition.of(1000L);
     doReturn(p1000).when(mockPcs).getLeaderPosition(anyString(), anyBoolean());
@@ -4312,6 +4313,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(topicSwitchWrapper).when(mock).getTopicSwitch();
       OffsetRecord mockOR = mock(OffsetRecord.class);
       doReturn(rtTopic).when(mockOR).getLeaderTopic(any());
+      doReturn(rtTopic).when(mock).getLeaderTopic();
       doReturn(p1000).when(mock).getLeaderPosition(anyString(), anyBoolean());
       System.out.println(mockOR.getLeaderTopic(null));
       doReturn(p1000).when(mockOR).getCheckpointedRtPosition(anyString());
@@ -4403,6 +4405,7 @@ public abstract class StoreIngestionTaskTest {
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(versionTopicName);
     doReturn(versionTopic).when(offsetRecord).getLeaderTopic(any());
+    doReturn(versionTopicName).when(offsetRecord).getLeaderTopic();
     PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(
         new PubSubTopicPartitionImpl(versionTopic, 0),
         offsetRecord,
@@ -5234,6 +5237,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(nodeType == NodeType.LEADER ? LeaderFollowerStateType.LEADER : STANDBY).when(pcs).getLeaderFollowerState();
     PubSubTopic pubsubTopic = mock(PubSubTopic.class);
     doReturn(pubsubTopic).when(offsetRecord).getLeaderTopic(any());
+    doReturn(pubsubTopic).when(pcs).getLeaderTopic();
     doReturn(isRealTimeTopic).when(pubsubTopic).isRealTime();
 
     VeniceWriter veniceWriter = mock(VeniceWriter.class);
@@ -5330,6 +5334,8 @@ public abstract class StoreIngestionTaskTest {
 
     PubSubTopic pubsubTopic = mock(PubSubTopic.class);
     doReturn(pubsubTopic).when(offsetRecord).getLeaderTopic(any());
+    doReturn(pubsubTopic).when(pcs0).getLeaderTopic();
+    doReturn(pubsubTopic).when(pcs1).getLeaderTopic();
     doReturn(true).when(pubsubTopic).isRealTime();
 
     PubSubTopic pubsubTopicSepRT = mock(PubSubTopic.class);
@@ -6102,6 +6108,7 @@ public abstract class StoreIngestionTaskTest {
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(offsetRecord).when(pcs).getOffsetRecord();
     doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(offsetRecord).getLeaderTopic(any());
+    doReturn(pubSubTopicRepository.getTopic(versionTopicName)).when(pcs).getLeaderTopic();
     ingestionTask.setPartitionConsumptionState(PARTITION_FOO, pcs);
 
     assertFalse(ingestionTask.shouldProcessRecord(vtRecord), "RT DIV From remote VT should not be processed");
@@ -6180,6 +6187,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     doReturn(offsetRecord).when(pcs).getOffsetRecord();
+    doReturn(pubSubTopic).when(pcs).getLeaderTopic();
     doReturn(pcs).when(ingestionTask).getPartitionConsumptionState(PARTITION_FOO);
     doReturn(pubSubContext).when(ingestionTask).getPubSubContext();
 
