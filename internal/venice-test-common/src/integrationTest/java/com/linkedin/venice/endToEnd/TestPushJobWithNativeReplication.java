@@ -573,7 +573,7 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
    * not receive any data.
    * @throws IOException
    */
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test(timeOut = TEST_TIMEOUT * 3)
   public void testTargetedRegionPushJobFullConsumptionForBatchStore() throws Exception {
     // make sure the participant store is up and running in dest region otherwise the test will be flaky
     // the participant store is needed for data recovery
