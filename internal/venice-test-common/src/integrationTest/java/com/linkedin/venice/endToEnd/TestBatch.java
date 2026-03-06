@@ -929,19 +929,24 @@ public abstract class TestBatch {
     // with ZSTD_WITH_DICT compression). All of these cause "no version for store" from
     // VeniceVersionFinder.
     veniceCluster.useControllerClient(controllerClient -> {
-      TestUtils.waitForNonDeterministicAssertion(STORE_VERSION_AVAILABILITY_TIMEOUT_SEC, TimeUnit.SECONDS, true, () -> {
-        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
-        Assert.assertTrue(currentVersion > 0, "Store " + storeName + " does not have a current version yet");
-        veniceCluster.refreshAllRouterMetaData();
-        String kafkaTopic = Version.composeKafkaTopic(storeName, currentVersion);
-        for (VeniceRouterWrapper router: veniceCluster.getVeniceRouters()) {
-          if (router.isRunning()) {
-            Assert.assertTrue(
-                router.getRoutingDataRepository().containsKafkaTopic(kafkaTopic),
-                "Router routing data not ready for " + kafkaTopic);
-          }
-        }
-      });
+      TestUtils.waitForNonDeterministicAssertion(
+          STORE_VERSION_AVAILABILITY_TIMEOUT_SEC,
+          TimeUnit.SECONDS,
+          true,
+          true,
+          () -> {
+            int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+            Assert.assertTrue(currentVersion > 0, "Store " + storeName + " does not have a current version yet");
+            veniceCluster.refreshAllRouterMetaData();
+            String kafkaTopic = Version.composeKafkaTopic(storeName, currentVersion);
+            for (VeniceRouterWrapper router: veniceCluster.getVeniceRouters()) {
+              if (router.isRunning()) {
+                Assert.assertTrue(
+                    router.getRoutingDataRepository().containsKafkaTopic(kafkaTopic),
+                    "Router routing data not ready for " + kafkaTopic);
+              }
+            }
+          });
     });
 
     VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);

@@ -93,6 +93,7 @@ import org.testng.annotations.Test;
 
 public class VeniceServerTest {
   static final long TOTAL_TIMEOUT_FOR_LONG_TEST_MS = 70 * Time.MS_PER_SECOND;
+  static final long TOTAL_TIMEOUT_FOR_VERY_LONG_TEST_MS = 120 * Time.MS_PER_SECOND;
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerTest.class);
 
   @Test
@@ -474,15 +475,16 @@ public class VeniceServerTest {
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         // All partitions should have been dropped asynchronously due to instance being disabled
+        Object engine = storageService.getStorageEngine(storeVersionName);
         Assert.assertNull(
-            storageService.getStorageEngine(storeVersionName),
-            "Storage engine: " + storeVersionName + " should have been dropped");
+            engine,
+            "Storage engine: " + storeVersionName + " should have been dropped but found [" + engine + "]");
         Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 0);
       });
     }
   }
 
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_VERY_LONG_TEST_MS)
   public void testDropStorePartitionSynchronously() {
     VeniceClusterCreateOptions options =
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(0).build();
