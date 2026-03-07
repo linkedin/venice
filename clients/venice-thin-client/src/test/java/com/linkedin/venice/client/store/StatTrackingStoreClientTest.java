@@ -270,6 +270,10 @@ public class StatTrackingStoreClientTest {
       Assert.assertEquals(batchGetResult, result);
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        // Issue a fresh batchGet to keep rate-based metrics active within the measurement window;
+        // SimpleRatioStat returns NaN when the underlying Rate metrics decay to zero.
+        statTrackingStoreClient.batchGet(keySet).get();
+
         Map<String, ? extends Metric> metrics = repository.metrics();
         Metric requestMetric = metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate");
         Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
