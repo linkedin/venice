@@ -138,6 +138,7 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
@@ -4291,6 +4292,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LeaderCompleteState leaderCompleteState,
       long originTimeStampMs) {
     CompletableFuture<PubSubProduceResult> heartBeatFuture;
+    Map<String, String> processedRtPositions = partitionConsumptionState.getLatestProcessedRtPositions()
+        .entrySet()
+        .stream()
+        .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString()));
     try {
       heartBeatFuture = partitionConsumptionState.getVeniceWriterLazyRef()
           .get()
@@ -4300,7 +4305,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               leaderMetadataWrapper,
               addLeaderCompleteState,
               leaderCompleteState,
-              originTimeStampMs);
+              originTimeStampMs,
+              processedRtPositions);
       if (shouldLog) {
         heartBeatFuture
             .whenComplete((ignore, throwable) -> logIngestionHeartbeat(topicPartition, (Exception) throwable));

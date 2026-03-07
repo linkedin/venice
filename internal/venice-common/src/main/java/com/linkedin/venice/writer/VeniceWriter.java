@@ -2304,13 +2304,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       LeaderMetadataWrapper leaderMetadataWrapper,
       boolean addLeaderCompleteState,
       LeaderCompleteState leaderCompleteState,
-      long originTimeStampMs) {
+      long originTimeStampMs,
+      Map<String, String> processedRtPositions) {
     if (isClosed) {
       logger.warn("VeniceWriter already closed for topic-partition: {}", topicPartition);
       return CompletableFuture.completedFuture(null);
     }
+    ControlMessage heartBeatMessageWithRTPositions = new ControlMessage();
+    heartBeatMessageWithRTPositions.controlMessageType = heartBeatMessage.controlMessageType;
+    heartBeatMessageWithRTPositions.controlMessageUnion = heartBeatMessage.controlMessageUnion;
+    Map<CharSequence, CharSequence> rtPositionsDebugInfo = new HashMap<>(processedRtPositions.size());
+    rtPositionsDebugInfo.putAll(processedRtPositions);
+    heartBeatMessageWithRTPositions.debugInfo = rtPositionsDebugInfo;
     KafkaMessageEnvelope kafkaMessageEnvelope =
-        getHeartbeatKME(originTimeStampMs, leaderMetadataWrapper, heartBeatMessage, writerId);
+        getHeartbeatKME(originTimeStampMs, leaderMetadataWrapper, heartBeatMessageWithRTPositions, writerId);
     return producerAdapter.sendMessage(
         topicPartition.getPubSubTopic().getName(),
         topicPartition.getPartitionNumber(),
