@@ -548,10 +548,6 @@ public class VenicePushJob implements AutoCloseable {
         // Compute relative fallback for old controllers that don't understand the epoch field
         long bufferTime = props.getLong(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, 60);
         pushJobSettingToReturn.rewindTimeInSecondsOverride = (nowInSeconds - rewindTimestamp) + bufferTime;
-
-        // With epoch passthrough, the SOP restriction is no longer needed because the epoch
-        // flows directly and works with any replay policy. The relative fallback is still sent
-        // for backward compatibility with old controllers.
       }
     }
 
