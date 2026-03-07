@@ -29,12 +29,8 @@ public class ThreadPoolStatsTest {
     Mockito.doReturn(queue).when(threadPool).getQueue();
     Mockito.doReturn(queuedTaskNumber).when(queue).size();
 
-    Assert.assertEquals(
-        (int) reporter.query("." + name + "--active_thread_number.LambdaStat").value(),
-        activeThreadNumber);
-    Assert.assertEquals((int) reporter.query("." + name + "--max_thread_number.LambdaStat").value(), maxThreadNumber);
-    Assert.assertEquals(
-        (int) reporter.query("." + name + "--queued_task_count_gauge.LambdaStat").value(),
-        queuedTaskNumber);
+    Assert.assertEquals((int) reporter.query("." + name + "--active_thread_number.Gauge").value(), activeThreadNumber);
+    Assert.assertEquals((int) reporter.query("." + name + "--max_thread_number.Gauge").value(), maxThreadNumber);
+    Assert.assertEquals((int) reporter.query("." + name + "--queued_task_count_gauge.Gauge").value(), queuedTaskNumber);
   }
 }

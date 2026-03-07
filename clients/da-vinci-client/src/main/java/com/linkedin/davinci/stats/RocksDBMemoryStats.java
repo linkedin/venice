@@ -3,6 +3,7 @@ package com.linkedin.davinci.stats;
 import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.SyncGauge;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Arrays;
@@ -105,8 +106,8 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
         return total;
       }, metric));
     }
-    registerSensor(new AsyncGauge((ignored, ignored2) -> memoryLimit, "memory_limit"));
-    registerSensor(new AsyncGauge((ignored, ignored2) -> {
+    registerSensor(new SyncGauge((ignored, ignored2) -> memoryLimit, "memory_limit"));
+    registerSensor(new SyncGauge((ignored, ignored2) -> {
       if (memoryLimit > 0 && sstFileManager != null) {
         return sstFileManager.getTotalSize();
       }
@@ -136,9 +137,9 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
   }
 
   public void setRMDBlockCache(Cache rmdCache, long rmdCacheCapacity) {
-    registerSensor(new AsyncGauge((ignored, ignored2) -> rmdCacheCapacity, "rocksdb.rmd-block-cache-capacity"));
-    registerSensor(new AsyncGauge((ignored, ignored2) -> rmdCache.getUsage(), "rocksdb.rmd-block-cache-usage"));
+    registerSensor(new SyncGauge((ignored, ignored2) -> rmdCacheCapacity, "rocksdb.rmd-block-cache-capacity"));
+    registerSensor(new SyncGauge((ignored, ignored2) -> rmdCache.getUsage(), "rocksdb.rmd-block-cache-usage"));
     registerSensor(
-        new AsyncGauge((ignored, ignored2) -> rmdCache.getPinnedUsage(), "rocksdb.rmd-block-cache-pinned-usage"));
+        new SyncGauge((ignored, ignored2) -> rmdCache.getPinnedUsage(), "rocksdb.rmd-block-cache-pinned-usage"));
   }
 }

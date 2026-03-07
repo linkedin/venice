@@ -928,33 +928,33 @@ public abstract class KafkaStoreIngestionServiceTest {
     try {
       // Verify that AA/WC parallel processing thread pool stats are registered
       assertNotNull(
-          reporter.query(".aa_wc_parallel_processing_thread_pool--active_thread_number.LambdaStat"),
+          reporter.query(".aa_wc_parallel_processing_thread_pool--active_thread_number.Gauge"),
           "AA/WC parallel processing thread pool active_thread_number metric should be registered");
       assertNotNull(
-          reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat"),
+          reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.Gauge"),
           "AA/WC parallel processing thread pool max_thread_number metric should be registered");
       assertNotNull(
-          reporter.query(".aa_wc_parallel_processing_thread_pool--queued_task_count_gauge.LambdaStat"),
+          reporter.query(".aa_wc_parallel_processing_thread_pool--queued_task_count_gauge.Gauge"),
           "AA/WC parallel processing thread pool queued_task_count_gauge metric should be registered");
 
       // Verify that AA/WC ingestion storage lookup thread pool stats are registered
       assertNotNull(
-          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--active_thread_number.LambdaStat"),
+          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--active_thread_number.Gauge"),
           "AA/WC ingestion storage lookup thread pool active_thread_number metric should be registered");
       assertNotNull(
-          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat"),
+          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.Gauge"),
           "AA/WC ingestion storage lookup thread pool max_thread_number metric should be registered");
       assertNotNull(
-          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--queued_task_count_gauge.LambdaStat"),
+          reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--queued_task_count_gauge.Gauge"),
           "AA/WC ingestion storage lookup thread pool queued_task_count_gauge metric should be registered");
 
       // Verify the max thread numbers are set correctly
       assertEquals(
-          (int) reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat").value(),
+          (int) reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.Gauge").value(),
           4,
           "AA/WC parallel processing thread pool should have 4 threads");
       assertEquals(
-          (int) reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat").value(),
+          (int) reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.Gauge").value(),
           2,
           "AA/WC ingestion storage lookup thread pool should have 2 threads");
     } finally {

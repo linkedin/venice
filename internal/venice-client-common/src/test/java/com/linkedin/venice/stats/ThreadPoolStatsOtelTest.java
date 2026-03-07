@@ -60,20 +60,20 @@ public class ThreadPoolStatsOtelTest {
   public void testAsyncGaugeActiveThreadCount() {
     // Async gauges are collected during metric read
     validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_COUNT.getMetricEntity().getMetricName(), 5);
-    // Tehuti LambdaStat should also report the same value
-    validateTehutiMetric("active_thread_number", "LambdaStat", 5.0);
+    // Tehuti SyncGauge should also report the same value
+    validateTehutiMetric("active_thread_number", "Gauge", 5.0);
   }
 
   @Test
   public void testAsyncGaugeMaxThreadCount() {
     validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_MAX_COUNT.getMetricEntity().getMetricName(), 10);
-    validateTehutiMetric("max_thread_number", "LambdaStat", 10.0);
+    validateTehutiMetric("max_thread_number", "Gauge", 10.0);
   }
 
   @Test
   public void testAsyncGaugeQueueTaskCount() {
     validateAsyncGauge(ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_COUNT.getMetricEntity().getMetricName(), 3);
-    validateTehutiMetric("queued_task_count_gauge", "LambdaStat", 3.0);
+    validateTehutiMetric("queued_task_count_gauge", "Gauge", 3.0);
   }
 
   @Test
