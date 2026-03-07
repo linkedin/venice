@@ -43,7 +43,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -201,15 +200,10 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
     VeniceClusterWrapper veniceClusterWrapper = getClusterDC0();
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
-      NewStoreResponse newStoreResponse =
-          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString());
-      // Retry once if the initial creation attempt fails due to system store initialization delays
-      if (newStoreResponse.isError() && !newStoreResponse.getError().contains("already exists")) {
-        Utils.sleep(2000);
-        newStoreResponse =
-            parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString());
-      }
-      assertCommand(newStoreResponse);
+      assertCommand(
+          parentControllerClient.retryableRequest(
+              3,
+              c -> c.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString())));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setWriteComputationEnabled(true)

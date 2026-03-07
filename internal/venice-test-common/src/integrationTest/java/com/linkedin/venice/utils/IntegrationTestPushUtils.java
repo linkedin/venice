@@ -39,7 +39,6 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.d2.D2ClientFactory;
@@ -397,15 +396,9 @@ public class IntegrationTestPushUtils {
       UpdateStoreQueryParams storeParams) {
     ControllerClient controllerClient = getControllerClient(veniceClusterName, props);
     String storeName = props.getProperty(VENICE_STORE_NAME_PROP);
-    NewStoreResponse newStoreResponse = controllerClient.retryableRequest(
-        5,
-        c -> c.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr),
-        r -> r.getError() != null && r.getError().contains("already exists"));
-
-    if (newStoreResponse.isError()
-        && (newStoreResponse.getError() == null || !newStoreResponse.getError().contains("already exists"))) {
-      throw new VeniceException("Could not create store " + storeName + ". Error: " + newStoreResponse.getError());
-    }
+    TestUtils.assertCommand(
+        controllerClient
+            .retryableRequest(5, c -> c.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr)));
 
     updateStore(veniceClusterName, props, storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
     return controllerClient;
