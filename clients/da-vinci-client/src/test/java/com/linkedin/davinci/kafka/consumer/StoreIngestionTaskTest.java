@@ -1621,8 +1621,9 @@ public abstract class StoreIngestionTaskTest {
     doReturn(InMemoryPubSubPosition.of(0)).when(mockTopicManager)
         .getLatestPositionCached(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO));
 
-    // Use a longer timeout for metric verifications — CI thread scheduling can delay async callbacks.
-    long metricTimeoutMs = TEST_TIMEOUT_MS * 6;
+    // Use a longer timeout for metric verifications — CI thread scheduling can delay async callbacks
+    // significantly (SIT run loop + drainer thread coordination under load).
+    long metricTimeoutMs = TEST_TIMEOUT_MS * 12;
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, timeout(metricTimeoutMs))
           .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
@@ -2000,7 +2001,8 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
-    long resetTimeoutMs = TEST_TIMEOUT_MS * 2;
+    // 3-step async sequence (consume → reset → re-consume) needs generous timeout under CI load
+    long resetTimeoutMs = TEST_TIMEOUT_MS * 4;
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, timeout(resetTimeoutMs))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));

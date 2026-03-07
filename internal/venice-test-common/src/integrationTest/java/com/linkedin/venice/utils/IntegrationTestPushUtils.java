@@ -39,6 +39,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.d2.D2ClientFactory;
@@ -395,10 +396,12 @@ public class IntegrationTestPushUtils {
       Properties props,
       UpdateStoreQueryParams storeParams) {
     ControllerClient controllerClient = getControllerClient(veniceClusterName, props);
-    String storeName = props.getProperty(VENICE_STORE_NAME_PROP);
-    TestUtils.assertCommand(
-        controllerClient
-            .retryableRequest(5, c -> c.createNewStore(storeName, "test@linkedin.com", keySchemaStr, valueSchemaStr)));
+    NewStoreResponse newStoreResponse = controllerClient
+        .createNewStore(props.getProperty(VENICE_STORE_NAME_PROP), "test@linkedin.com", keySchemaStr, valueSchemaStr);
+
+    if (newStoreResponse.isError()) {
+      throw new VeniceException("Could not create store " + props.getProperty(VENICE_STORE_NAME_PROP));
+    }
 
     updateStore(veniceClusterName, props, storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
     return controllerClient;
