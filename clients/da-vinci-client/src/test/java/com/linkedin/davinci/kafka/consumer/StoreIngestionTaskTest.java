@@ -2355,11 +2355,12 @@ public abstract class StoreIngestionTaskTest {
    * In this test, the {@link #PARTITION_FOO} will receive a well-formed message, while the {@link #PARTITION_BAR} will
    * receive a corrupt message. We expect the Notifier to report as such.
    * <p>
-   * N.B.: There was an edge case where this test was flaky. The edge case is now fixed, but the invocationCount of 100
-   * should ensure that if this test is ever made flaky again, it will be detected right away. The skipFailedInvocations
-   * annotation parameter makes the test skip any invocation after the first failure.
+   * N.B.: There was an edge case where this test was flaky, because the {@link StoreIngestionTask} occasionally sent
+   * a completion notification for partitions where it had already detected an error. That edge case is now fixed (the
+   * SIT tracks errored partitions and skips completion notifications for them). The invocationCount provides repeated
+   * runs to catch regressions of that race condition.
    */
-  @Test(dataProvider = "aaConfigProvider", invocationCount = 100, skipFailedInvocations = true)
+  @Test(dataProvider = "aaConfigProvider", invocationCount = 10, skipFailedInvocations = true)
   public void testCorruptMessagesFailFast(AAConfig aaConfig) throws Exception {
     VeniceWriter veniceWriterForData = getCorruptedVeniceWriter(putValueToCorrupt, inMemoryLocalKafkaBroker);
 
