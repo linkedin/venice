@@ -95,3 +95,35 @@
             **/TEST-*.xml
           key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
           secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+      - name: Upload Test Timing Data
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-timing-$FlowName
+          path: internal/venice-test-common/build/test-timings/
+          retention-days: 30
+          if-no-files-found: ignore
+      - name: Summarize Test Failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+          find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -lE 'failures="[1-9][0-9]*"|errors="[1-9][0-9]*"' {} \; 2>/dev/null | while read -r f; do
+            python3 - "$f" <<'PY' 2>/dev/null
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse(sys.argv[1])
+          root = tree.getroot()
+          for tc in root.iter('testcase'):
+              if tc.find('failure') is not None or tc.find('error') is not None:
+                  cls = tc.get('classname','')
+                  name = tc.get('name','')
+                  time = tc.get('time','')
+                  print(f'| {cls} | {name} | {time}s |')
+          PY
+          done | sort -u >> $GITHUB_STEP_SUMMARY
+          if ! grep -q '|.*|.*|' $GITHUB_STEP_SUMMARY 2>/dev/null; then
+            echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+          fi
