@@ -13,7 +13,6 @@ import static org.testng.Assert.assertFalse;
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -90,20 +89,12 @@ public class TestAdminToolDataOperations {
         new ControllerClient(clusterName, venice.getLeaderVeniceController().getControllerUrl())) {
       // Create 2 stores. Store 1 has 2 versions
       String testStoreName1 = Utils.getUniqueString("test-store");
-      NewStoreResponse newStoreResponse =
-          controllerClient.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
-      Assert.assertFalse(newStoreResponse.isError(), "Failed to create store: " + newStoreResponse.getError());
-      VersionCreationResponse versionCreationResponse =
-          controllerClient.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-1"), 1L);
-      Assert
-          .assertFalse(versionCreationResponse.isError(), "Empty push 1 failed: " + versionCreationResponse.getError());
-      versionCreationResponse = controllerClient.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-2"), 1L);
-      Assert
-          .assertFalse(versionCreationResponse.isError(), "Empty push 2 failed: " + versionCreationResponse.getError());
+      TestUtils.assertCommand(controllerClient.createNewStore(testStoreName1, "test", "\"string\"", "\"string\""));
+      TestUtils.assertCommand(controllerClient.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-1"), 1L));
+      TestUtils.assertCommand(controllerClient.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-2"), 1L));
 
       String testStoreName2 = Utils.getUniqueString("test-store");
-      newStoreResponse = controllerClient.createNewStore(testStoreName2, "test", "\"string\"", "\"string\"");
-      Assert.assertFalse(newStoreResponse.isError(), "Failed to create store 2: " + newStoreResponse.getError());
+      TestUtils.assertCommand(controllerClient.createNewStore(testStoreName2, "test", "\"string\"", "\"string\""));
 
       // Delete a version
       String[] wipeClusterArgs1 = { "--wipe-cluster", "--url", venice.getLeaderVeniceController().getControllerUrl(),
@@ -143,14 +134,11 @@ public class TestAdminToolDataOperations {
       });
 
       // Redo fabric buildup. Create the store and version again.
-      newStoreResponse = controllerClient.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
-      Assert.assertFalse(newStoreResponse.isError(), "Failed to recreate store: " + newStoreResponse.getError());
+      TestUtils.assertCommand(controllerClient.createNewStore(testStoreName1, "test", "\"string\"", "\"string\""));
       // Retry emptyPush since topic cleanup from the wipe may still be in progress, causing transient failures.
-      versionCreationResponse = controllerClient
-          .retryableRequest(5, c -> c.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-1"), 1L));
-      Assert.assertFalse(
-          versionCreationResponse.isError(),
-          "Empty push after wipe failed: " + versionCreationResponse.getError());
+      VersionCreationResponse versionCreationResponse = TestUtils.assertCommand(
+          controllerClient
+              .retryableRequest(5, c -> c.emptyPush(testStoreName1, Utils.getUniqueString("empty-push-1"), 1L)));
       // Version may be > 1 if retryableRequest retried the emptyPush (each attempt increments the version counter)
       Assert.assertTrue(
           versionCreationResponse.getVersion() >= 1,
