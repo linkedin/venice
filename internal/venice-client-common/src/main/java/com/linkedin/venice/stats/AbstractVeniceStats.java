@@ -171,17 +171,14 @@ public class AbstractVeniceStats {
 
   /**
    * N.B.: {@link LongAdderRateGauge} is just an implementation detail, and we do not wish to alter metric names
-   * due to it, so we call it the same as {@link Rate}. Same for {@link AsyncGauge}, we don't want to alter any existing
-   * metric names, so we call it the same as {@link Gauge}. Same for {@link SyncGauge}, which is a synchronous
-   * replacement for {@link LambdaStat} — we map it to the same suffix for backward compatibility.
+   * due to it, so we call it the same as {@link Rate}. Same for {@link AsyncGauge} and {@link SyncGauge}, we normalize
+   * both to the canonical {@link Gauge} suffix since async vs sync measurement is an implementation detail.
    */
   private String metricNameSuffix(MeasurableStat stat) {
     if (stat instanceof LongAdderRateGauge) {
       return Rate.class.getSimpleName();
-    } else if (stat.getClass() == AsyncGauge.class) {
+    } else if (stat.getClass() == AsyncGauge.class || stat instanceof SyncGauge) {
       return Gauge.class.getSimpleName();
-    } else if (stat instanceof SyncGauge) {
-      return LambdaStat.class.getSimpleName();
     } else {
       return stat.getClass().getSimpleName();
     }
