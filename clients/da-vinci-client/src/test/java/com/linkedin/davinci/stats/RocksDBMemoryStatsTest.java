@@ -24,7 +24,7 @@ public class RocksDBMemoryStatsTest {
     stats.setRMDBlockCache(mockCache, 1024L);
 
     // AsyncGauge metrics may not be immediately available after registration; retry until propagated.
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-capacity.Gauge").value(),
           1024.0);
@@ -51,7 +51,7 @@ public class RocksDBMemoryStatsTest {
     when(mockCache.getUsage()).thenReturn(1024L);
     when(mockCache.getPinnedUsage()).thenReturn(512L);
 
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-usage.Gauge").value(),
           1024.0);

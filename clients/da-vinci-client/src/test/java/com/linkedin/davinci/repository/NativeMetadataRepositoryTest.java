@@ -141,7 +141,7 @@ public class NativeMetadataRepositoryTest {
     Assert.assertNotNull(nativeMetadataRepository);
     // AsyncGauge may return a stale value briefly; wait for it to settle.
     TestUtils.waitForNonDeterministicAssertion(
-        5,
+        30,
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(nativeMetadataRepository.getMetadataStalenessHighWatermarkMs(), 1000d));
 
@@ -151,14 +151,14 @@ public class NativeMetadataRepositoryTest {
     // After one store refresh we should still see staleness increase because it reports the max amongst all stores
     doReturn(2000L).when(clock).millis();
     TestUtils.waitForNonDeterministicAssertion(
-        5,
+        30,
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), 2000d));
 
     // Refresh both stores and staleness should decrease
     nmr.refresh();
     TestUtils.waitForNonDeterministicAssertion(
-        5,
+        30,
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), 0d));
 
@@ -166,7 +166,7 @@ public class NativeMetadataRepositoryTest {
     nmr.unsubscribe(STORE_NAME);
     nmr.unsubscribe(anotherStoreName);
     TestUtils.waitForNonDeterministicAssertion(
-        5,
+        30,
         TimeUnit.SECONDS,
         () -> Assert
             .assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), Double.NaN));

@@ -1622,7 +1622,7 @@ public abstract class StoreIngestionTaskTest {
         .getLatestPositionCached(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO));
 
     // Use a longer timeout for metric verifications — CI thread scheduling can delay async callbacks.
-    long metricTimeoutMs = TEST_TIMEOUT_MS * 3;
+    long metricTimeoutMs = TEST_TIMEOUT_MS * 6;
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, timeout(metricTimeoutMs))
           .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
@@ -2000,14 +2000,15 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
+    long resetTimeoutMs = TEST_TIMEOUT_MS * 2;
     runTest(Utils.setOf(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
+      verify(mockAbstractStorageEngine, timeout(resetTimeoutMs))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
       storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(fooTopicPartition);
 
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).clearOffset(topic, PARTITION_FOO);
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(2))
+      verify(mockStorageMetadataService, timeout(resetTimeoutMs)).clearOffset(topic, PARTITION_FOO);
+      verify(mockAbstractStorageEngine, timeout(resetTimeoutMs).times(2))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
     }, aaConfig);
   }

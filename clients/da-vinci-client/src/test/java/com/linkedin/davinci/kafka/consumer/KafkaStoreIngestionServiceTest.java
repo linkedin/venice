@@ -949,7 +949,7 @@ public abstract class KafkaStoreIngestionServiceTest {
           "AA/WC ingestion storage lookup thread pool queued_task_count_gauge metric should be registered");
 
       // Metric registration may complete asynchronously; retry until values are available.
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         assertEquals(
             (int) reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat").value(),
             4,

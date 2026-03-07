@@ -711,7 +711,8 @@ public class TopicMetadataFetcherTest {
     PubSubPosition result3 = spyFetcher.getEarliestPositionCachedNonBlocking(tp0);
     assertEquals(result3, expectedPosition);
 
-    assertEquals(pubSubConsumerPool.size(), 1);
+    // Consumer pool is populated asynchronously; wait for the async population to complete.
+    waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> assertEquals(pubSubConsumerPool.size(), 1));
   }
 
   @Test

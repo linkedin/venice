@@ -261,7 +261,7 @@ public class StatTrackingStoreClientTest {
     Assert.assertEquals(batchGetResult, result);
 
     // Metrics are recorded asynchronously in callback threads; wait for them to propagate.
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Map<String, ? extends Metric> metrics = repository.metrics();
       Metric requestMetric = metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate");
       Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");

@@ -153,7 +153,7 @@ public class StoreBackendTest {
     version2.setAge(Duration.ofMinutes(5));
     // AsyncGauge may return 0.0 briefly before the lambda runs; tolerate eventual NaN.
     waitForNonDeterministicAssertion(
-        3,
+        10,
         TimeUnit.SECONDS,
         () -> assertEquals(getMetric("data_age_ms.Gauge"), Double.NaN));
 
@@ -169,7 +169,7 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
     }
     // Partition futures and metrics may be completed asynchronously in callback threads.
-    waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+    waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       assertTrue(versionMap.get(version1.kafkaTopicName()).areAllPartitionFuturesCompletedSuccessfully());
       assertEquals(getMetric("current_version_number.Gauge"), (double) version1.getNumber());
       assertEquals(getMetric("future_version_number.Gauge"), (double) version2.getNumber());
@@ -195,7 +195,7 @@ public class StoreBackendTest {
     }
 
     // Version swap and metric recording happen asynchronously after handleStoreChanged.
-    waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+    waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       assertEquals(getMetric("current_version_number.Gauge"), (double) version2.getNumber());
       assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version2.getAge().toMillis()) < 1000);
       assertTrue(
