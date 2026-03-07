@@ -80,10 +80,25 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
                         .setClient(r2Client)
                         .setRoutingRequestDefaultTimeoutMS(10000)
                         .build()));
-    AvroGenericStoreClient<String, GenericRecord> genericFastClient = getGenericFastClient(
-        clientConfigBuilder,
-        new MetricsRepository(),
-        StoreMetadataFetchMode.SERVER_BASED_METADATA);
+    // Retry fast client creation: the @BeforeMethod updateStore() to enable storage node read
+    // quota is async; servers may not have processed the config yet, causing ConfigurationException.
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient = null;
+    for (int attempt = 1; attempt <= 5; attempt++) {
+      try {
+        genericFastClient = getGenericFastClient(
+            clientConfigBuilder,
+            new MetricsRepository(),
+            StoreMetadataFetchMode.SERVER_BASED_METADATA);
+        break;
+      } catch (ConfigurationException e) {
+        if (attempt == 5) {
+          throw e;
+        }
+        LOGGER.info("Fast client creation attempt {}/5 failed (quota not propagated yet), retrying...", attempt);
+        Utils.sleep(2000);
+      }
+    }
+    final AvroGenericStoreClient<String, GenericRecord> fastClient = genericFastClient;
     // Update the read quota to 1000 and make 500 requests, all requests should be allowed.
     veniceCluster.useControllerClient(controllerClient -> {
       TestUtils.assertCommand(
@@ -204,7 +219,7 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     // Wait for quota enforcement to reinitialize on restarted servers before making requests.
     // Use retryOnThrowable=true because get() can throw ExecutionException during restart.
     TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, true, () -> {
-      genericFastClient.get(keyPrefix + 0).get();
+      fastClient.get(keyPrefix + 0).get();
       for (MetricsRepository serverMetric: serverMetrics) {
         assertNotNull(serverMetric.getMetric(readQuotaRequestedQPSString));
         assertTrue(

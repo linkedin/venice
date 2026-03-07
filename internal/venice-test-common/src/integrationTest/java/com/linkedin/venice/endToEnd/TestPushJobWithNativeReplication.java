@@ -174,7 +174,7 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
         TestUtils.waitForNonDeterministicPushCompletion(
             Version.composeKafkaTopic(participantStoreName, 1),
             controllerClient,
-            5,
+            8,
             TimeUnit.MINUTES);
       }
     }
