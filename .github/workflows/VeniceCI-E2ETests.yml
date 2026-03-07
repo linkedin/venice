@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 1
 
@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 2
 
@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 3
 
@@ -85,7 +85,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 4
 
@@ -104,7 +104,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 5
 
@@ -123,7 +123,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 6
 
@@ -142,7 +142,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 7
 
@@ -161,7 +161,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 8
 
@@ -180,7 +180,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 9
 
@@ -199,7 +199,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 10
 
@@ -218,7 +218,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 11
 
@@ -237,7 +237,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 12
 
@@ -256,7 +256,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 13
 
@@ -275,7 +275,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 14
 
@@ -294,7 +294,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 15
 
@@ -313,7 +313,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 16
 
@@ -332,7 +332,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 17
 
@@ -351,7 +351,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 18
 
@@ -370,7 +370,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 19
 
@@ -389,7 +389,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 20
 
@@ -408,7 +408,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 21
 
@@ -427,7 +427,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 22
 
@@ -446,7 +446,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 23
 
@@ -465,7 +465,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/integration-test
+      - uses: ./.github/actions/integration-test-run
         with:
           shard: 99
 

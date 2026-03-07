@@ -9,6 +9,12 @@ runs:
   using: 'composite'
   steps:
     - uses: ./.github/actions/gradle-test-setup
+    - name: Deliberate failure to test E2ETestsFailureAlert (REMOVE ME)
+      if: ${{ inputs.shard == '1' }}
+      shell: bash
+      run: |
+        echo "This step intentionally fails to verify E2ETestsFailureAlert triggers correctly with composite actions."
+        exit 1
     - name: Run Integration Tests
       shell: bash
       run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_${{ inputs.shard }}
