@@ -18,7 +18,11 @@ runs:
     - shell: bash
       run: |
         git remote set-head origin --auto
-        git remote add upstream https://github.com/linkedin/venice
+        if git remote get-url upstream >/dev/null 2>&1; then
+          git remote set-url upstream https://github.com/linkedin/venice
+        else
+          git remote add upstream https://github.com/linkedin/venice
+        fi
         git fetch upstream
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
