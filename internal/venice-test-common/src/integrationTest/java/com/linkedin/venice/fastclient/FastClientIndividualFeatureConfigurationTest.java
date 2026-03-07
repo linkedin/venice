@@ -82,13 +82,12 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
                         .build()));
     // Retry fast client creation: the @BeforeMethod updateStore() to enable storage node read
     // quota is async; servers may not have processed the config yet, causing ConfigurationException.
+    MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = null;
     for (int attempt = 1; attempt <= 5; attempt++) {
       try {
-        genericFastClient = getGenericFastClient(
-            clientConfigBuilder,
-            new MetricsRepository(),
-            StoreMetadataFetchMode.SERVER_BASED_METADATA);
+        genericFastClient =
+            getGenericFastClient(clientConfigBuilder, metricsRepository, StoreMetadataFetchMode.SERVER_BASED_METADATA);
         break;
       } catch (ConfigurationException e) {
         if (attempt == 5) {
