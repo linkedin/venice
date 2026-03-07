@@ -76,16 +76,20 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
     super.setUp();
     clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
 
-    try (ControllerClient controllerClient =
-        new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
-      // Verify the participant store is up and running in dest region.
-      // Participant store is needed for checking kill record existence and dest region readiness for data recovery.
-      String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(participantStoreName, 1),
-          controllerClient,
-          5,
-          TimeUnit.MINUTES);
+    // Verify the participant store is up and running in all regions before tests create user stores.
+    // Participant store is needed for checking kill record existence and dest region readiness for data recovery.
+    // Waiting for all regions avoids resource contention when user-store pushes compete with participant store
+    // initialization.
+    String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
+    for (int i = 0; i < childDatacenters.size(); i++) {
+      try (ControllerClient controllerClient =
+          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString())) {
+        TestUtils.waitForNonDeterministicPushCompletion(
+            Version.composeKafkaTopic(participantStoreName, 1),
+            controllerClient,
+            5,
+            TimeUnit.MINUTES);
+      }
     }
   }
 

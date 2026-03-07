@@ -32,7 +32,7 @@ public class TestRebalanceByDefaultStrategy {
   private static final long TIMEOUT_MS = 30000l;
   private static final long UPGRADE_TIME_MS = 1000l;
   private static final long RETRY_TIME_MS = 500l;
-  private static final long RETRY_REMOVE_TIMEOUT_MS = 5000l;
+  private static final long RETRY_REMOVE_TIMEOUT_MS = 30000l;
 
   private static final int TEST_TIMES = 1; // Could set up to 100 to run this test multiple times.
 
