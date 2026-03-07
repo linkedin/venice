@@ -656,8 +656,9 @@ public abstract class KafkaStoreIngestionServiceTest {
     Set<PubSubTopicPartition> topicPartitionsToUnsubscribe = new HashSet<>();
     topicPartitionsToUnsubscribe.add(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0));
     storeIngestionTask.consumerBatchUnsubscribe(topicPartitionsToUnsubscribe);
-    // Verify that the store ingestion task is marked as idle and eventually closed
-    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+    // Verify that the store ingestion task is marked as idle and eventually closed.
+    // The cleanup executor runs every 5s (configured in setupMockConfig), so 15s is ample.
+    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
       Assert.assertTrue(storeIngestionTask.isIdleOverThreshold());
       Assert.assertNull(kafkaStoreIngestionService.getStoreIngestionTask(topicName));
     });
@@ -694,8 +695,9 @@ public abstract class KafkaStoreIngestionServiceTest {
     Set<PubSubTopicPartition> topicPartitionsToUnsubscribe = new HashSet<>();
     topicPartitionsToUnsubscribe.add(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0));
     storeIngestionTask.consumerBatchUnsubscribe(topicPartitionsToUnsubscribe);
-    // Verify that the store ingestion task is marked as idle and eventually closed
-    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+    // Verify that the store ingestion task is marked as idle and eventually closed.
+    // The cleanup executor runs every 5s, so 15s is ample.
+    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
       Assert.assertTrue(storeIngestionTask.isIdleOverThreshold());
     });
     // verify has active replicas
@@ -952,7 +954,7 @@ public abstract class KafkaStoreIngestionServiceTest {
           "AA/WC ingestion storage lookup thread pool queued_task_count_gauge metric should be registered");
 
       // Metric registration may complete asynchronously; retry until values are available.
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         assertEquals(
             (int) reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat").value(),
             4,
