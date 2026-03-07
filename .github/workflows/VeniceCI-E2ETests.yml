@@ -19,11 +19,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_1
@@ -64,34 +60,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -99,16 +67,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_2:
     name: IntegrationTests_2
@@ -116,11 +75,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_2
@@ -161,34 +116,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -196,16 +123,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_3:
     name: IntegrationTests_3
@@ -213,11 +131,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_3
@@ -258,34 +172,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -293,16 +179,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_4:
     name: IntegrationTests_4
@@ -310,11 +187,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_4
@@ -355,34 +228,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -390,16 +235,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_5:
     name: IntegrationTests_5
@@ -407,11 +243,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_5
@@ -452,34 +284,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -487,16 +291,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_6:
     name: IntegrationTests_6
@@ -504,11 +299,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_6
@@ -549,34 +340,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -584,16 +347,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_7:
     name: IntegrationTests_7
@@ -601,11 +355,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_7
@@ -646,34 +396,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -681,16 +403,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_8:
     name: IntegrationTests_8
@@ -698,11 +411,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_8
@@ -743,34 +452,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -778,16 +459,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_9:
     name: IntegrationTests_9
@@ -795,11 +467,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_9
@@ -840,34 +508,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -875,16 +515,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_10:
     name: IntegrationTests_10
@@ -892,11 +523,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_10
@@ -937,34 +564,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -972,16 +571,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_11:
     name: IntegrationTests_11
@@ -989,11 +579,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_11
@@ -1034,34 +620,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1069,16 +627,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_12:
     name: IntegrationTests_12
@@ -1086,11 +635,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_12
@@ -1131,34 +676,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1166,16 +683,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_13:
     name: IntegrationTests_13
@@ -1183,11 +691,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_13
@@ -1228,34 +732,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1263,16 +739,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_14:
     name: IntegrationTests_14
@@ -1280,11 +747,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_14
@@ -1325,34 +788,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1360,16 +795,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_15:
     name: IntegrationTests_15
@@ -1377,11 +803,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_15
@@ -1422,34 +844,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1457,16 +851,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_16:
     name: IntegrationTests_16
@@ -1474,11 +859,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_16
@@ -1519,34 +900,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1554,16 +907,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_17:
     name: IntegrationTests_17
@@ -1571,11 +915,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_17
@@ -1616,34 +956,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1651,16 +963,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_18:
     name: IntegrationTests_18
@@ -1668,11 +971,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_18
@@ -1713,34 +1012,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1748,16 +1019,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_19:
     name: IntegrationTests_19
@@ -1765,11 +1027,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_19
@@ -1810,34 +1068,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1845,16 +1075,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_20:
     name: IntegrationTests_20
@@ -1862,11 +1083,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_20
@@ -1907,34 +1124,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -1942,16 +1131,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_21:
     name: IntegrationTests_21
@@ -1959,11 +1139,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_21
@@ -2004,34 +1180,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2039,16 +1187,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_22:
     name: IntegrationTests_22
@@ -2056,11 +1195,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_22
@@ -2101,34 +1236,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2136,16 +1243,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   IntegrationTests_23:
     name: IntegrationTests_23
@@ -2153,11 +1251,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_23
@@ -2198,34 +1292,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2233,16 +1299,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   integrationTests_99:
     name: integrationTests_99
@@ -2250,11 +1307,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     permissions:
-     id-token: write
      contents: read
-     checks: write
-     pull-requests: write
-     issues: write
     timeout-minutes: 30
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-integrationTests_99
@@ -2295,34 +1348,6 @@ jobs:
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Generate Fork Repo Test Reports
-        if: ${{ (github.repository_owner != 'linkedin') && (success() || failure()) }}
-        uses: dorny/test-reporter@v1.9.1
-        env:
-         NODE_OPTIONS: --max-old-space-size=9182
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.job }} Test Reports       # Name where it report the test results
-          path: '**/TEST-*.xml'
-          fail-on-error: 'false'
-          max-annotations: '10'
-          list-tests: 'all'
-          list-suites: 'all'
-          reporter: java-junit
-      - name: Publish Test Report
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max_old_space_size=8192"
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          check_name: ${{ github.job }}-jdk17 Report
-          comment: false
-          annotate_only: true
-          flaky_summary: true
-          commit: ${{github.event.workflow_run.head_sha}}
-          detailed_summary: true
-          report_paths: '**/build/test-results/test/TEST-*.xml'
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -2330,16 +1355,7 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-jdk17-logs.tar.gz
           retention-days: 30
-      - name: Upload test results to BuildPulse for flaky test detection
-        if: ${{ !cancelled() }}
-        uses: buildpulse/buildpulse-action@main
-        with:
-          account: 357098
-          repository: 349172057
-          path: |
-            **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+
 
   # This workflow gets skipped if all upstream jobs succeeded, but it runs (and fails) if any upstream failed.
   # This is what we want since GitHub required actions do not block merging when skipped, but can block it when failed.
