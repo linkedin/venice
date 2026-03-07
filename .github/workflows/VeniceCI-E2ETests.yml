@@ -60,7 +60,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -157,7 +157,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -254,7 +254,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -351,7 +351,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -448,7 +448,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -545,7 +545,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -642,7 +642,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -739,7 +739,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -836,7 +836,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -933,7 +933,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -1030,7 +1030,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -1127,7 +1127,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -1224,7 +1224,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -1321,7 +1321,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -1418,7 +1418,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -1515,7 +1515,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -1612,7 +1612,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -1709,7 +1709,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -1806,7 +1806,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -1903,7 +1903,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -2000,7 +2000,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -2097,7 +2097,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -2194,7 +2194,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -2291,7 +2291,7 @@ jobs:
           echo "Repository owner: ${{ github.repository_owner }}"
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" -or -path "**/build/test-watchdog-timeouts/*" > artifacts.list
           find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
@@ -2351,8 +2351,23 @@ jobs:
     timeout-minutes: 20
     if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - name: Download All Shard Artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: all-artifacts
+      - name: Check Test Class Duration Limits
+        shell: bash
+        run: |
+          for tarball in all-artifacts/*/IntegrationTests_*-jdk17-logs.tar.gz; do
+            [ -f "$tarball" ] && tar -xzf "$tarball" -C all-artifacts/ 2>/dev/null || true
+          done
+          python3 scripts/ci/check_test_duration.py all-artifacts || true
       - name: NoGood
         shell: bash
         run: |
           echo "Some workflows have failed!"
           exit 1
+
