@@ -3,16 +3,35 @@ package com.linkedin.davinci.stats;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import org.rocksdb.Cache;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class RocksDBMemoryStatsTest {
+  private AsyncGauge.AsyncGaugeExecutor executor;
+  private MetricsRepository metricsRepository;
+
+  @BeforeMethod
+  public void setUp() {
+    // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
+    executor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    metricsRepository = new MetricsRepository(new MetricConfig(executor));
+  }
+
+  @AfterMethod
+  public void tearDown() throws Exception {
+    metricsRepository.close();
+    executor.close();
+  }
+
   @Test
   public void testSetRMDBlockCacheRegistersGauges() {
-    MetricsRepository metricsRepository = new MetricsRepository();
     RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, "test_store", false);
 
     Cache mockCache = mock(Cache.class);
@@ -32,7 +51,6 @@ public class RocksDBMemoryStatsTest {
 
   @Test
   public void testSetRMDBlockCacheReportsLiveUsageValues() {
-    MetricsRepository metricsRepository = new MetricsRepository();
     RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, "test_store", false);
 
     Cache mockCache = mock(Cache.class);

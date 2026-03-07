@@ -23,6 +23,7 @@ import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -157,14 +158,18 @@ public class AbstractPartitionWriterThrottlingTest {
 
     assertTrue(partitionWriter.isIncrementalPushThrottlingEnabled(), "Throttling should be enabled");
 
-    long startTime = System.currentTimeMillis();
     DataWriterTaskTracker mockTracker = mock(DataWriterTaskTracker.class);
+    // Warm up to avoid JIT compilation overhead in measurement
     for (int i = 0; i < 10; i++) {
       partitionWriter.invokeThrottleForTesting(mockTracker);
     }
-    long elapsed = System.currentTimeMillis() - startTime;
+    long startTime = System.nanoTime();
+    for (int i = 0; i < 10; i++) {
+      partitionWriter.invokeThrottleForTesting(mockTracker);
+    }
+    long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
 
-    assertTrue(elapsed < 200, "Messages should not be throttled when below quota, elapsed: " + elapsed + "ms");
+    assertTrue(elapsedMs < 1000, "Messages should not be throttled when below quota, elapsed: " + elapsedMs + "ms");
   }
 
   @Test

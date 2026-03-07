@@ -212,20 +212,24 @@ public class MetaSystemStoreTest {
     // Update store config
     controllerClient.updateStore(regularVeniceStoreName, new UpdateStoreQueryParams().setBatchGetLimit(100));
     // Query meta system store to verify the change
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
       final StoreMetaValue v = storeClient.get(storePropertiesKey).get();
+      assertNotNull(v, "StoreMetaValue for storePropertiesKey should not be null");
       assertEquals(v.storeProperties.batchGetLimit, 100);
     });
 
     // Add a new value schema
     controllerClient.addValueSchema(regularVeniceStoreName, VALUE_SCHEMA_2);
     // Query meta system store to verify the change
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
       final StoreMetaValue v = storeClient.get(valueSchemasKey).get();
+      assertNotNull(v, "StoreMetaValue for valueSchemasKey should not be null");
       assertEquals(v.storeValueSchemas.valueSchemaMap.size(), 2);
       keyMap.put(KEY_STRING_SCHEMA_ID, Integer.toString(2));
       StoreMetaKey schemaKey = MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(keyMap);
-      String valueSchema1 = storeClient.get(schemaKey).get().storeValueSchema.valueSchema.toString();
+      StoreMetaValue schemaValue = storeClient.get(schemaKey).get();
+      assertNotNull(schemaValue, "StoreMetaValue for individual schema key should not be null");
+      String valueSchema1 = schemaValue.storeValueSchema.valueSchema.toString();
       assertEquals(Schema.parse(valueSchema1), Schema.parse(VALUE_SCHEMA_2));
     });
 

@@ -111,8 +111,11 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush extends AbstractMu
       newStandby.set(candidate);
     });
 
-    // verify ready-to-serve immediately in CV
-    assertCompleted(cluster, storeName, testPartition, newStandby.get());
+    // verify ready-to-serve in CV (may need a moment for the customized view to update)
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> assertCompleted(cluster, storeName, testPartition, newStandby.get()));
 
     // roll forward and verify new version
     parentClient

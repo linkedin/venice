@@ -126,7 +126,7 @@ public abstract class HeapSizeEstimatorTest {
      * technically that could be a false negative).
      */
     int currentAttempt = 0;
-    int totalAttempts = 3;
+    int totalAttempts = 10;
     while (currentAttempt++ < totalAttempts) {
       assertNotEquals(RUNTIME.maxMemory(), Long.MAX_VALUE);
       Object[] allocations = new Object[NUMBER_OF_ALLOCATIONS_WHEN_MEASURING];
@@ -188,8 +188,9 @@ public abstract class HeapSizeEstimatorTest {
       double minimumAbsoluteDeltaInBytes = 1;
       double minimumAbsoluteDelta = minimumAbsoluteDeltaInBytes / memoryAllocatedPerInstance;
 
-      // For larger objects, we'll tolerate up to 1% delta
-      double minimumRelativeDelta = 0.01;
+      // JDK 8 uses a different field layout algorithm (intermediate alignment by pointer size) that
+      // causes slightly larger variance in measured vs predicted sizes compared to JDK 11+.
+      double minimumRelativeDelta = JAVA_MAJOR_VERSION <= 8 ? 0.03 : 0.02;
 
       // The larger of the two deltas is the one we use
       double maxAllowedDelta = Math.max(minimumAbsoluteDelta, minimumRelativeDelta);

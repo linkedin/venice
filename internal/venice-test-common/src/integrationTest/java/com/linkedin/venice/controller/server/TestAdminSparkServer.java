@@ -165,10 +165,13 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
       String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
       int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-      MultiReplicaResponse response = controllerClient.listReplicas(store, version);
-      Assert.assertFalse(response.isError(), response.getError());
       int totalReplicasCount = versionCreationResponse.getPartitions() * versionCreationResponse.getReplicas();
-      Assert.assertEquals(response.getReplicas().length, totalReplicasCount, "Replica count does not match");
+      // The emptyPush call above is asynchronous; the Helix resource may not yet be registered
+      // in the child controller's routing data repository, so we retry until it becomes visible.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        MultiReplicaResponse response = TestUtils.assertCommand(controllerClient.listReplicas(store, version));
+        Assert.assertEquals(response.getReplicas().length, totalReplicasCount, "Replica count does not match");
+      });
     } finally {
       deleteStore(storeName);
     }

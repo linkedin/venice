@@ -13,7 +13,6 @@ import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.Utils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -197,40 +196,48 @@ public class TestVersionSpecificChangelogConsumerReplicationMetadata {
     }
     changeLogConsumer.subscribeAll().get();
     List<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-          changeLogConsumer.poll(1000);
-      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-        if (message.getKey() != null) {
-          pubSubMessages.add(message);
-        }
-      }
-      assertEquals(pubSubMessages.size(), numKeys * 2);
-    });
-    // The change events written from near-line should have valid and deserialized replication metadata
+    // The change events written from near-line should have valid and deserialized replication metadata.
+    // Poll until we have all messages, then verify RMD on near-line messages (identified by having non-null RMD,
+    // as batch messages don't carry replication metadata). We verify inside the assertion loop because
+    // message ordering from polling is non-deterministic — batch and near-line messages can interleave.
     try (StoreSchemaFetcher schemaFetcher = ClientFactory.createStoreSchemaFetcher(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setD2Client(d2Client)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
       ClientRmdSerDe clientRmdSerDe = new ClientRmdSerDe(schemaFetcher);
-      for (int i = numKeys; i < pubSubMessages.size(); i++) {
-        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessages.get(i);
-        assertNotNull(message.getDeserializedReplicationMetadata());
-        long timestamp = (long) message.getDeserializedReplicationMetadata().get("timestamp");
-        assertTrue(timestamp > 0);
-        // Use ClientRmdSerDe to verify the deserialized replication metadata and vice versa
-        assertEquals(
-            message.getDeserializedReplicationMetadata(),
-            clientRmdSerDe.deserializeRmdBytes(
-                message.getWriterSchemaId(),
-                message.getWriterSchemaId(),
-                message.getReplicationMetadataPayload()));
-        assertEquals(
-            message.getReplicationMetadataPayload(),
-            clientRmdSerDe
-                .serializeRmdRecord(message.getWriterSchemaId(), message.getDeserializedReplicationMetadata()));
-      }
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+            changeLogConsumer.poll(1000);
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+          if (message.getKey() != null) {
+            pubSubMessages.add(message);
+          }
+        }
+        assertTrue(
+            pubSubMessages.size() >= numKeys * 2,
+            "Expected at least " + numKeys * 2 + " messages but got " + pubSubMessages.size());
+        int rmdMessageCount = 0;
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> msg: pubSubMessages) {
+          ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+              (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) msg;
+          if (message.getDeserializedReplicationMetadata() != null) {
+            rmdMessageCount++;
+            long timestamp = (long) message.getDeserializedReplicationMetadata().get("timestamp");
+            assertTrue(timestamp > 0);
+            assertEquals(
+                message.getDeserializedReplicationMetadata(),
+                clientRmdSerDe.deserializeRmdBytes(
+                    message.getWriterSchemaId(),
+                    message.getWriterSchemaId(),
+                    message.getReplicationMetadataPayload()));
+            assertEquals(
+                message.getReplicationMetadataPayload(),
+                clientRmdSerDe
+                    .serializeRmdRecord(message.getWriterSchemaId(), message.getDeserializedReplicationMetadata()));
+          }
+        }
+        assertEquals(rmdMessageCount, numKeys, "Expected " + numKeys + " messages with RMD but got " + rmdMessageCount);
+      });
     }
   }
 }

@@ -147,8 +147,9 @@ public class TestTopicRequestOnHybridDelete {
        * Wait for resource cleanup before the store re-creation.
        */
       TestUtils.waitForNonDeterministicAssertion(
-          30,
+          60,
           TimeUnit.SECONDS,
+          true,
           true,
           () -> assertCommand(finalControllerClient.checkResourceCleanupForStoreCreation(storeName)));
 

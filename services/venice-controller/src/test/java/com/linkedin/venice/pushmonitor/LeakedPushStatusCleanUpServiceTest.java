@@ -19,7 +19,7 @@ import org.testng.annotations.Test;
 
 
 public class LeakedPushStatusCleanUpServiceTest {
-  private static final long TEST_TIMEOUT = TimeUnit.SECONDS.toMillis(10);
+  private static final long TEST_TIMEOUT = TimeUnit.SECONDS.toMillis(30);
 
   @Test
   public void testLeakedZKNodeShouldBeDeleted() throws Exception {

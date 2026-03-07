@@ -14,9 +14,11 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -65,10 +67,13 @@ public class TestD2ControllerClient {
         Assert.assertEquals(store.getName(), storeName);
         Assert.assertEquals(store.getCluster(), CLUSTER_NAME);
 
-        // Test cluster discovery
-        D2ServiceDiscoveryResponse discoveryResponse =
-            D2ControllerClient.discoverCluster(d2Client, d2ServiceName, storeName);
-        Assert.assertEquals(discoveryResponse.getD2Service(), clusterD2Service);
+        // Test cluster discovery — D2 announcement may not have propagated yet
+        final D2Client finalD2Client = d2Client;
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          D2ServiceDiscoveryResponse discoveryResponse =
+              D2ControllerClient.discoverCluster(finalD2Client, d2ServiceName, storeName);
+          Assert.assertEquals(discoveryResponse.getD2Service(), clusterD2Service);
+        });
       }
     } finally {
       if (d2Client != null) {

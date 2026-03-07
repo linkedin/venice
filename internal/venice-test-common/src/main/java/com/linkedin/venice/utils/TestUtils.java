@@ -517,7 +517,9 @@ public class TestUtils {
       ControllerClient controllerClient,
       long timeout,
       TimeUnit timeoutUnit) {
-    waitForNonDeterministicAssertion(timeout, timeoutUnit, true, () -> {
+    // Use retryOnThrowable=true so that transient controller errors (e.g., HTTP 500 when
+    // version metadata is still propagating) are retried rather than immediately failing.
+    waitForNonDeterministicAssertion(timeout, timeoutUnit, true, true, () -> {
       JobStatusQueryResponse jobStatusQueryResponse =
           assertCommand(controllerClient.queryJobStatus(topicName, Optional.empty()));
       ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());

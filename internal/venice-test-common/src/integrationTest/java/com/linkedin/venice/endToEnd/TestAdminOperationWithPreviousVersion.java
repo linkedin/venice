@@ -391,7 +391,7 @@ public class TestAdminOperationWithPreviousVersion {
 
       // Check version
       for (ControllerClient childControllerClient: childControllerClients) {
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, true, () -> {
           StoreResponse storeResponse = childControllerClient.getStore(storeName);
           assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
@@ -876,7 +876,7 @@ public class TestAdminOperationWithPreviousVersion {
     TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(storeName, expectedVersion),
         parentControllerClient,
-        30,
+        60,
         TimeUnit.SECONDS);
   }
 

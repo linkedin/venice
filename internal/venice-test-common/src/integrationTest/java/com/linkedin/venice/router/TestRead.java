@@ -306,6 +306,16 @@ public abstract class TestRead {
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setMetricsRepository(clientMetrics)
             .setProjectionFieldValidationEnabled(false))) {
+      // Warm-up read with retry to handle transient 502 errors while the router finishes initializing
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        GenericRecord warmUpValue = storeClient.get(KEY_PREFIX + 0).get();
+        Assert.assertNotNull(warmUpValue, "Warm-up read should return a non-null value");
+      });
+
+      // Initialize metric baselines after warm-up to account for any warm-up reads (including retried attempts)
+      double requestUsageBaseline = getAggregateRouterMetricValue("." + this.storeName + "--request_usage.Total");
+      double readQuotaUsageBaseline =
+          getAggregateRouterMetricValue("." + this.storeName + "--read_quota_usage_kps.Total");
       double expectedLookupCount = 0;
       for (boolean readComputeEnabled: new boolean[] { true, false }) {
         veniceCluster
@@ -415,11 +425,11 @@ public abstract class TestRead {
         expectedLookupCount += rounds * (MAX_KEY_LIMIT * 2 + 2.0);
         Assert.assertEquals(
             getAggregateRouterMetricValue("." + this.storeName + "--request_usage.Total"),
-            expectedLookupCount,
+            requestUsageBaseline + expectedLookupCount,
             0.0001);
         Assert.assertEquals(
             getAggregateRouterMetricValue("." + this.storeName + "--read_quota_usage_kps.Total"),
-            expectedLookupCount,
+            readQuotaUsageBaseline + expectedLookupCount,
             0.0001);
 
         // following 2 asserts fails with HTTP/2 probably due to http2 frames, needs to validate on venice-p

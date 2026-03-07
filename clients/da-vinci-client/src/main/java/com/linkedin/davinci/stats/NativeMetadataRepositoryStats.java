@@ -24,12 +24,13 @@ public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
   }
 
   public final double getMetadataStalenessHighWatermarkMs() {
-    if (this.metadataCacheTimestampMapInMs.isEmpty()) {
-      return Double.NaN;
-    } else {
-      long oldest = metadataCacheTimestampMapInMs.values().stream().min(Long::compareTo).get();
-      return clock.millis() - oldest;
-    }
+    // Use a single atomic operation to avoid TOCTOU race: a concurrent removeCacheTimestamp()
+    // could empty the map between an isEmpty() check and the stream().min().get() call.
+    return metadataCacheTimestampMapInMs.values()
+        .stream()
+        .min(Long::compareTo)
+        .map(oldest -> (double) (clock.millis() - oldest))
+        .orElse(Double.NaN);
   }
 
   public void updateCacheTimestamp(String storeName, long cacheTimeStampInMs) {
