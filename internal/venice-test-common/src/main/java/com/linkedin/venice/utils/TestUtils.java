@@ -517,11 +517,12 @@ public class TestUtils {
       ControllerClient controllerClient,
       long timeout,
       TimeUnit timeoutUnit) {
-    // Transient controller errors (e.g., HTTP 500 while version metadata propagates) are caught
-    // and wrapped in AssertionError so they get retried. Push ERROR status throws VeniceException
-    // which is NOT retried (retryOnThrowable=false), preserving the fast-fail behavior.
-    // Only VeniceException is retried (transient HTTP/controller errors). Other exceptions (NPE,
-    // serialization errors, etc.) propagate immediately to fail fast on genuine bugs.
+    // Retry behavior (retryOnThrowable=false means only AssertionError is retried):
+    // - VeniceException from queryJobStatus (transient HTTP/controller errors): caught and wrapped
+    // in AssertionError → retried
+    // - "Push is yet to complete" assertEquals failure: throws AssertionError → retried
+    // - Push ERROR status: throws VeniceException → NOT retried (fails fast)
+    // - Other exceptions (NPE, serialization, etc.): propagate immediately (fail fast)
     waitForNonDeterministicAssertion(timeout, timeoutUnit, true, false, () -> {
       JobStatusQueryResponse jobStatusQueryResponse;
       try {
