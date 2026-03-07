@@ -127,7 +127,6 @@ import com.linkedin.venice.heartbeat.PushJobHeartbeatSenderFactory;
 import com.linkedin.venice.jobs.ComputeJob;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -510,6 +509,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.inputURI = pushJobSettingToReturn.isSourceKafka ? "" : getInputURI(props);
     pushJobSettingToReturn.storeName = props.getString(VENICE_STORE_NAME_PROP);
     pushJobSettingToReturn.rewindTimeInSecondsOverride = props.getLong(REWIND_TIME_IN_SECONDS_OVERRIDE, NOT_SET);
+    pushJobSettingToReturn.rewindEpochTimeInSecondsOverride = NOT_SET;
 
     // If we didn't specify a rewind time
     if (pushJobSettingToReturn.rewindTimeInSecondsOverride == NOT_SET) {
@@ -526,14 +526,13 @@ public class VenicePushJob implements AutoCloseable {
                   REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE,
                   REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE));
         }
-        // Set the rewindTimeInSecondsOverride to be the time that is now - the provided timestamp so that we rewind
-        // from start of push to the provided timestamp with some extra buffer time since things aren't perfectly
-        // instantaneous
+
+        // Store epoch directly for controllers that understand it
+        pushJobSettingToReturn.rewindEpochTimeInSecondsOverride = rewindTimestamp;
+
+        // Compute relative fallback for old controllers that don't understand the epoch field
         long bufferTime = props.getLong(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, 60);
         pushJobSettingToReturn.rewindTimeInSecondsOverride = (nowInSeconds - rewindTimestamp) + bufferTime;
-        // In order for this config to make sense to the user, the remote rewind policy needs to be validated to be
-        // REWIND_FROM_SOP
-        pushJobSettingToReturn.validateRemoteReplayPolicy = BufferReplayPolicy.REWIND_FROM_SOP;
       }
     }
 
@@ -2448,6 +2447,7 @@ public class VenicePushJob implements AutoCloseable {
             Optional.ofNullable(setting.sourceGridFabric),
             setting.livenessHeartbeatEnabled,
             setting.rewindTimeInSecondsOverride,
+            setting.rewindEpochTimeInSecondsOverride,
             setting.deferVersionSwap,
             setting.targetedRegions,
             pushJobSetting.repushSourceVersion,

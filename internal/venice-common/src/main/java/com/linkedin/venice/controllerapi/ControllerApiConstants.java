@@ -170,6 +170,8 @@ public class ControllerApiConstants {
 
   public static final String REWIND_TIME_IN_SECONDS_OVERRIDE = "rewind_time_in_seconds_override";
 
+  public static final String REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE = "rewind_epoch_time_in_seconds_override";
+
   public static final String DEFER_VERSION_SWAP = "defer_version_swap";
 
   public static final String REPUSH_SOURCE_VERSION = "repush_source_version";

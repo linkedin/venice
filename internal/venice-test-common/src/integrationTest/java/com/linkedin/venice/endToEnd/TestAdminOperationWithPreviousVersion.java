@@ -797,6 +797,7 @@ public class TestAdminOperationWithPreviousVersion {
           Version.PushType.BATCH,
           null,
           -1,
+          -1,
           1,
           false,
           -1,
