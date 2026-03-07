@@ -151,6 +151,7 @@ public class InstanceHealthMonitorTest {
         .setRoutingPendingRequestCounterInstanceBlockThreshold(instanceBlockingThreshold)
         .setHeartBeatIntervalSeconds(1)
         .setHeartBeatRequestTimeoutMS(100l)
+        .setRoutingTimedOutRequestCounterResetDelayMS(2000)
         .setClient(client)
         .build();
 
@@ -158,7 +159,7 @@ public class InstanceHealthMonitorTest {
       CompletableFuture<TransportClientResponse> requestFuture = new CompletableFuture<>();
       ChainedCompletableFuture<Integer, Integer> chainedRequestFuture =
           monitor.trackHealthBasedOnRequestToInstance(instance, requestFuture);
-      Thread.sleep(2000); // 2s to simulate request timeout
+      Thread.sleep(1500); // must exceed routingRequestDefaultTimeoutMS (1000ms) to trigger unhealthy detection
       requestFuture.complete(null);
       chainedRequestFuture.getOriginalFuture().complete(SC_GONE);
       // Pending request counter will be reset with a delay
@@ -166,7 +167,7 @@ public class InstanceHealthMonitorTest {
       // Heartbeat request should be triggered
       // Validate that instance should be put into unhealthy set
       TestUtils.waitForNonDeterministicAssertion(
-          10,
+          5,
           TimeUnit.SECONDS,
           true,
           () -> assertTrue(
@@ -175,7 +176,7 @@ public class InstanceHealthMonitorTest {
       // Remove the delay and the instance should become healthy again
       requestPathToResponseDelayMap.remove(hbPath);
       TestUtils.waitForNonDeterministicAssertion(
-          10,
+          5,
           TimeUnit.SECONDS,
           true,
           () -> assertTrue(
@@ -183,7 +184,7 @@ public class InstanceHealthMonitorTest {
               "instance: " + instance + " should be marked as healthy again"));
       // Pending request count will be reset eventually
       TestUtils.waitForNonDeterministicAssertion(
-          10,
+          5,
           TimeUnit.SECONDS,
           true,
           () -> assertEquals(monitor.getPendingRequestCounter(instance), 0));
