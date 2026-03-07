@@ -188,8 +188,9 @@ public abstract class HeapSizeEstimatorTest {
       double minimumAbsoluteDeltaInBytes = 1;
       double minimumAbsoluteDelta = minimumAbsoluteDeltaInBytes / memoryAllocatedPerInstance;
 
-      // For larger objects, we'll tolerate up to 2% delta (increased from 1% to handle GC noise under CI load)
-      double minimumRelativeDelta = 0.02;
+      // JDK 8 uses a different field layout algorithm (intermediate alignment by pointer size) that
+      // causes slightly larger variance in measured vs predicted sizes compared to JDK 11+.
+      double minimumRelativeDelta = JAVA_MAJOR_VERSION <= 8 ? 0.03 : 0.02;
 
       // The larger of the two deltas is the one we use
       double maxAllowedDelta = Math.max(minimumAbsoluteDelta, minimumRelativeDelta);
