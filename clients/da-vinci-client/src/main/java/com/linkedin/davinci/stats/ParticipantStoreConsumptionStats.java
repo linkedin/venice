@@ -41,8 +41,12 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
   /** Per-store kill latency metric states, keyed by store name. */
   private final Map<String, MetricEntityStateBase> killLatencyPerStore = new VeniceConcurrentHashMap<>();
 
-  /** Per-store kill attempt count metric states (SUCCESS/FAIL dimension), keyed by store name. */
-  private final Map<String, MetricEntityStateOneEnum<VeniceResponseStatusCategory>> killCountPerStore =
+  /** Per-store successful kill count. Tehuti {@code KILLED_PUSH_JOBS} + OTel (SUCCESS). */
+  private final Map<String, MetricEntityStateOneEnum<VeniceResponseStatusCategory>> killedPushJobsPerStore =
+      new VeniceConcurrentHashMap<>();
+
+  /** Per-store failed kill count. OTel-only (FAIL) — no original Tehuti counterpart. */
+  private final Map<String, MetricEntityStateOneEnum<VeniceResponseStatusCategory>> failedKillPushJobPerStore =
       new VeniceConcurrentHashMap<>();
 
   /** Per-store kill failed consumption count metric states, keyed by store name. */
@@ -129,18 +133,9 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
         .record(latencyInMs);
   }
 
-  /** Records a confirmed push job kill on the storage node. */
+  /** Records a successful push job kill on the storage node. Tehuti + OTel (SUCCESS). */
   public void recordKilledPushJobs(String storeName) {
-    getOrCreateKillCountState(storeName).record(1, VeniceResponseStatusCategory.SUCCESS);
-  }
-
-  /** Records a push job kill attempt that failed ({@code killConsumptionTask} returned false). */
-  public void recordFailedKillPushJob(String storeName) {
-    getOrCreateKillCountState(storeName).record(1, VeniceResponseStatusCategory.FAIL);
-  }
-
-  private MetricEntityStateOneEnum<VeniceResponseStatusCategory> getOrCreateKillCountState(String storeName) {
-    return killCountPerStore.computeIfAbsent(
+    killedPushJobsPerStore.computeIfAbsent(
         storeName,
         k -> MetricEntityStateOneEnum.create(
             ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_COUNT.getMetricEntity(),
@@ -149,7 +144,20 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
             TehutiMetricName.KILLED_PUSH_JOBS,
             Collections.singletonList(new Count()),
             buildStoreDimensionsMap(k),
-            VeniceResponseStatusCategory.class));
+            VeniceResponseStatusCategory.class))
+        .record(1, VeniceResponseStatusCategory.SUCCESS);
+  }
+
+  /** Records a push job kill attempt that failed ({@code killConsumptionTask} returned false). OTel-only (FAIL). */
+  public void recordFailedKillPushJob(String storeName) {
+    failedKillPushJobPerStore.computeIfAbsent(
+        storeName,
+        k -> MetricEntityStateOneEnum.create(
+            ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_COUNT.getMetricEntity(),
+            otelRepository,
+            buildStoreDimensionsMap(k),
+            VeniceResponseStatusCategory.class))
+        .record(1, VeniceResponseStatusCategory.FAIL);
   }
 
   public void recordFailedInitialization() {

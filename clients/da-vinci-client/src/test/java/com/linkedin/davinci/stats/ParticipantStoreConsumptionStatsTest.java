@@ -117,7 +117,7 @@ public class ParticipantStoreConsumptionStatsTest {
    * Callers must sanitize to {@link com.linkedin.venice.stats.OpenTelemetryMetricsSetup#UNKNOWN_STORE_NAME}
    * before passing to recording methods.
    */
-  @Test(expectedExceptions = IllegalArgumentException.class)
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Dimension value cannot be null or empty.*")
   public void testRecordWithEmptyStoreNameThrowsWhenOtelEnabled() {
     stats.recordKillPushJobFailedConsumption("");
   }
@@ -175,6 +175,18 @@ public class ParticipantStoreConsumptionStatsTest {
   }
 
   @Test
+  public void testFailedInitializationAccumulation() {
+    stats.recordFailedInitialization();
+    stats.recordFailedInitialization();
+    stats.recordFailedInitialization();
+
+    validateCounter(
+        ParticipantStoreConsumptionOtelMetricEntity.FAILED_INITIALIZATION_COUNT.getMetricEntity().getMetricName(),
+        3,
+        buildClusterOnlyAttributes());
+  }
+
+  @Test
   public void testKillPushJobLatencyHistogramMultipleRecordings() {
     stats.recordKillPushJobLatency(TEST_STORE_NAME, 100.0);
     stats.recordKillPushJobLatency(TEST_STORE_NAME, 200.0);
@@ -190,10 +202,28 @@ public class ParticipantStoreConsumptionStatsTest {
         TEST_METRIC_PREFIX);
   }
 
-  // --- Per-store isolation ---
+  // --- Isolation and negative checks ---
+
+  /** SUCCESS and FAIL share the same OTel metric name but use separate per-store maps; verify no crosstalk. */
+  @Test
+  public void testSuccessAndFailKillCountsAreIndependent() {
+    stats.recordKilledPushJobs(TEST_STORE_NAME);
+    stats.recordKilledPushJobs(TEST_STORE_NAME);
+    stats.recordFailedKillPushJob(TEST_STORE_NAME);
+
+    validateCounter(
+        ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_COUNT.getMetricEntity().getMetricName(),
+        2,
+        buildStoreStatusAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.SUCCESS));
+    validateCounter(
+        ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_COUNT.getMetricEntity().getMetricName(),
+        1,
+        buildStoreStatusAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.FAIL));
+  }
 
   @Test
   public void testMultipleStoresAreIndependent() {
+    // Kill count
     stats.recordKilledPushJobs(TEST_STORE_NAME);
     stats.recordKilledPushJobs(TEST_STORE_NAME);
     stats.recordKilledPushJobs(TEST_STORE_NAME_2);
@@ -202,11 +232,49 @@ public class ParticipantStoreConsumptionStatsTest {
         ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_COUNT.getMetricEntity().getMetricName(),
         2,
         buildStoreStatusAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.SUCCESS));
-
     validateCounter(
         ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_COUNT.getMetricEntity().getMetricName(),
         1,
         buildStoreStatusAttributes(TEST_STORE_NAME_2, VeniceResponseStatusCategory.SUCCESS));
+
+    // Kill latency
+    stats.recordKillPushJobLatency(TEST_STORE_NAME, 100.0);
+    stats.recordKillPushJobLatency(TEST_STORE_NAME_2, 200.0);
+
+    OpenTelemetryDataTestUtils.validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        100.0,
+        100.0,
+        1,
+        100.0,
+        buildStoreOnlyAttributes(TEST_STORE_NAME),
+        ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_LATENCY.getMetricEntity().getMetricName(),
+        TEST_METRIC_PREFIX);
+    OpenTelemetryDataTestUtils.validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        200.0,
+        200.0,
+        1,
+        200.0,
+        buildStoreOnlyAttributes(TEST_STORE_NAME_2),
+        ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_LATENCY.getMetricEntity().getMetricName(),
+        TEST_METRIC_PREFIX);
+
+    // Failed consumption
+    stats.recordKillPushJobFailedConsumption(TEST_STORE_NAME);
+    stats.recordKillPushJobFailedConsumption(TEST_STORE_NAME);
+    stats.recordKillPushJobFailedConsumption(TEST_STORE_NAME_2);
+
+    validateCounter(
+        ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_FAILED_CONSUMPTION_COUNT.getMetricEntity()
+            .getMetricName(),
+        2,
+        buildStoreOnlyAttributes(TEST_STORE_NAME));
+    validateCounter(
+        ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_FAILED_CONSUMPTION_COUNT.getMetricEntity()
+            .getMetricName(),
+        1,
+        buildStoreOnlyAttributes(TEST_STORE_NAME_2));
   }
 
   // --- NPE prevention tests ---
