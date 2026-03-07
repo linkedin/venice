@@ -51,29 +51,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -170,29 +148,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_2 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_2
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -289,29 +245,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_3 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_3
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -408,29 +342,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_4 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_4
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -527,29 +439,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_5 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_5
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -646,29 +536,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_6 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_6
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -765,29 +633,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_7 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_7
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -884,29 +730,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_8 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_8
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1003,29 +827,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_9 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_9
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1122,29 +924,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_10 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_10
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1241,29 +1021,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_11 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_11
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1360,29 +1118,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_12 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_12
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1479,29 +1215,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_13 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_13
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1598,29 +1312,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_14 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_14
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1717,29 +1409,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_15 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_15
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1836,29 +1506,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_16 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_16
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1955,29 +1603,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_17 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_17
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2074,29 +1700,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_18 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_18
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2193,29 +1797,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_19 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_19
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2312,29 +1894,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_20 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_20
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2431,29 +1991,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_21 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_21
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2550,29 +2088,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_22 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_22
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2669,29 +2185,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_23 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_23
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2788,29 +2282,7 @@ jobs:
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_99 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_99
       - name: Package Build Artifacts
         if: always()
         shell: bash

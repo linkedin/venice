@@ -37,29 +37,7 @@
         run: |
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
-        run: |
-          set -o pipefail
-          ./gradlew $GradleArguments 2>&1 | tee test-output.log
-      - name: Report Flaky Tests
-        if: always()
-        shell: bash
-        run: |
-          if [ ! -f test-output.log ]; then exit 0; fi
-          # Find tests that FAILED then PASSED (flaky = retried by test-retry plugin)
-          grep ' FAILED (' test-output.log | sed 's/ FAILED (.*//' | while read -r test; do
-            if grep -qF "$test PASSED" test-output.log; then
-              echo "$test"
-            fi
-          done | sort -u > flaky-tests.txt || true
-          if [ -s flaky-tests.txt ]; then
-            echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat flaky-tests.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo ""
-            echo "Flaky tests detected:"
-            cat flaky-tests.txt
-          fi
+        run: ./gradlew $GradleArguments
       - name: Package Build Artifacts
         if: always()
         shell: bash
