@@ -28,46 +28,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 1
 
   IntegrationTests_2:
     name: IntegrationTests_2
@@ -84,46 +47,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_2
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 2
 
   IntegrationTests_3:
     name: IntegrationTests_3
@@ -140,46 +66,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_3
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 3
 
   IntegrationTests_4:
     name: IntegrationTests_4
@@ -196,46 +85,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_4
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 4
 
   IntegrationTests_5:
     name: IntegrationTests_5
@@ -252,46 +104,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_5
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 5
 
   IntegrationTests_6:
     name: IntegrationTests_6
@@ -308,46 +123,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_6
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 6
 
   IntegrationTests_7:
     name: IntegrationTests_7
@@ -364,46 +142,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_7
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 7
 
   IntegrationTests_8:
     name: IntegrationTests_8
@@ -420,46 +161,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_8
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 8
 
   IntegrationTests_9:
     name: IntegrationTests_9
@@ -476,46 +180,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_9
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 9
 
   IntegrationTests_10:
     name: IntegrationTests_10
@@ -532,46 +199,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_10
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 10
 
   IntegrationTests_11:
     name: IntegrationTests_11
@@ -588,46 +218,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_11
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 11
 
   IntegrationTests_12:
     name: IntegrationTests_12
@@ -644,46 +237,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_12
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 12
 
   IntegrationTests_13:
     name: IntegrationTests_13
@@ -700,46 +256,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_13
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 13
 
   IntegrationTests_14:
     name: IntegrationTests_14
@@ -756,46 +275,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_14
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 14
 
   IntegrationTests_15:
     name: IntegrationTests_15
@@ -812,46 +294,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_15
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 15
 
   IntegrationTests_16:
     name: IntegrationTests_16
@@ -868,46 +313,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_16
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 16
 
   IntegrationTests_17:
     name: IntegrationTests_17
@@ -924,46 +332,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_17
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 17
 
   IntegrationTests_18:
     name: IntegrationTests_18
@@ -980,46 +351,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_18
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 18
 
   IntegrationTests_19:
     name: IntegrationTests_19
@@ -1036,46 +370,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_19
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 19
 
   IntegrationTests_20:
     name: IntegrationTests_20
@@ -1092,46 +389,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_20
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 20
 
   IntegrationTests_21:
     name: IntegrationTests_21
@@ -1148,46 +408,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_21
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 21
 
   IntegrationTests_22:
     name: IntegrationTests_22
@@ -1204,46 +427,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_22
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 22
 
   IntegrationTests_23:
     name: IntegrationTests_23
@@ -1260,46 +446,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_23
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 23
 
   integrationTests_99:
     name: integrationTests_99
@@ -1316,46 +465,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/integration-test
         with:
-          java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
-      - name: Run Integration Tests
-        run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_99
-      - name: Package Build Artifacts
-        if: always()
-        shell: bash
-        run: |
-          mkdir ${{ github.job }}-artifacts
-          echo "Repository owner: ${{ github.repository_owner }}"
-          echo "Repository name: ${{ github.repository }}"
-          echo "event name: ${{ github.event_name }}"
-          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Build Artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ github.job }}
-          path: ${{ github.job }}-jdk17-logs.tar.gz
-          retention-days: 30
-
+          shard: 99
 
   # This workflow gets skipped if all upstream jobs succeeded, but it runs (and fails) if any upstream failed.
   # This is what we want since GitHub required actions do not block merging when skipped, but can block it when failed.
