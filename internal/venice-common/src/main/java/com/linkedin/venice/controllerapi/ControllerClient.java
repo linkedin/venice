@@ -54,6 +54,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REMOTE_KA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_TTL_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
@@ -321,6 +322,7 @@ public class ControllerClient implements Closeable {
         sourceGridFabric,
         batchJobHeartbeatEnabled,
         rewindTimeInSecondsOverride,
+        -1,
         false,
         null,
         -1,
@@ -355,6 +357,7 @@ public class ControllerClient implements Closeable {
         sourceGridFabric,
         batchJobHeartbeatEnabled,
         rewindTimeInSecondsOverride,
+        -1,
         deferVersionSwap,
         null,
         -1,
@@ -401,6 +404,7 @@ public class ControllerClient implements Closeable {
       Optional<String> sourceGridFabric,
       boolean batchJobHeartbeatEnabled,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       boolean deferVersionSwap,
       String targetedRegions,
       int repushSourceVersion,
@@ -419,6 +423,7 @@ public class ControllerClient implements Closeable {
         .add(SOURCE_GRID_FABRIC, sourceGridFabric)
         .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
+        .add(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, rewindEpochTimeInSecondsOverride)
         .add(DEFER_VERSION_SWAP, deferVersionSwap)
         .add(REPUSH_SOURCE_VERSION, repushSourceVersion)
         .add(SEPARATE_REAL_TIME_TOPIC_ENABLED, pushToSeparateRealtimeTopic)

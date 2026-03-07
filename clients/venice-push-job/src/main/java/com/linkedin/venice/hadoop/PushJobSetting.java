@@ -53,6 +53,7 @@ public class PushJobSetting implements Serializable {
   public String kafkaInputTopic;
   public int repushSourceVersion;
   public long rewindTimeInSecondsOverride;
+  public long rewindEpochTimeInSecondsOverride;
   public boolean pushToSeparateRealtimeTopicEnabled;
   public boolean kafkaInputCombinerEnabled;
   public boolean kafkaInputBuildNewDictEnabled;

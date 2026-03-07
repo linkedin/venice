@@ -743,6 +743,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String remoteKafkaBootstrapServers =
         message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString();
     long rewindTimeInSecondsOverride = message.rewindTimeInSecondsOverride;
+    long rewindEpochTimeInSecondsOverride = message.rewindEpochTimeInSecondsOverride;
     int replicationMetadataVersionId = message.timestampMetadataVersionId;
     int repushTtlSeconds = message.repushTtlSeconds;
     // Log the message
@@ -763,6 +764,7 @@ public class AdminExecutionTask implements Callable<Void> {
             pushType,
             remoteKafkaBootstrapServers,
             rewindTimeInSecondsOverride,
+            rewindEpochTimeInSecondsOverride,
             replicationMetadataVersionId);
       }
     } else {
@@ -789,6 +791,7 @@ public class AdminExecutionTask implements Callable<Void> {
             pushType,
             remoteKafkaBootstrapServers,
             rewindTimeInSecondsOverride,
+            rewindEpochTimeInSecondsOverride,
             replicationMetadataVersionId,
             message.versionSwapDeferred,
             targetedRegions,

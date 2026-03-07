@@ -113,6 +113,16 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
   }
 
   @Override
+  public long getRewindEpochTimeInSecondsOverride() {
+    return this.hybridConfig.rewindEpochTimeInSecondsOverride;
+  }
+
+  @Override
+  public void setRewindEpochTimeInSecondsOverride(long rewindEpochTimeInSecondsOverride) {
+    this.hybridConfig.rewindEpochTimeInSecondsOverride = rewindEpochTimeInSecondsOverride;
+  }
+
+  @Override
   public StoreHybridConfig dataModel() {
     return this.hybridConfig;
   }
@@ -136,12 +146,14 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
 
   @JsonIgnore
   public HybridStoreConfig clone() {
-    return new HybridStoreConfigImpl(
+    HybridStoreConfigImpl cloned = new HybridStoreConfigImpl(
         getRewindTimeInSeconds(),
         getOffsetLagThresholdToGoOnline(),
         getProducerTimestampLagThresholdToGoOnlineInSeconds(),
         getDataReplicationPolicy(),
         getBufferReplayPolicy(),
         getRealTimeTopicName());
+    cloned.setRewindEpochTimeInSecondsOverride(getRewindEpochTimeInSecondsOverride());
+    return cloned;
   }
 }
