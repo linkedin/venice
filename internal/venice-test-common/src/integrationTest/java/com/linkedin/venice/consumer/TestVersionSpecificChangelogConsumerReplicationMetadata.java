@@ -53,8 +53,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -195,7 +197,9 @@ public class TestVersionSpecificChangelogConsumerReplicationMetadata {
       }
     }
     changeLogConsumer.subscribeAll().get();
-    List<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
+    // Track unique keys with validated RMD across poll retries. Using a Set avoids double-counting
+    // if poll() returns duplicate messages (at-least-once delivery) across retry iterations.
+    Set<Integer> validatedRmdKeys = new HashSet<>();
     // The change events written from near-line should have valid and deserialized replication metadata.
     // Poll until we have all messages, then verify RMD on near-line messages (identified by having non-null RMD,
     // as batch messages don't carry replication metadata). We verify inside the assertion loop because
@@ -208,20 +212,13 @@ public class TestVersionSpecificChangelogConsumerReplicationMetadata {
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
             changeLogConsumer.poll(1000);
-        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-          if (message.getKey() != null) {
-            pubSubMessages.add(message);
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> msg: pubSubMessagesList) {
+          if (msg.getKey() == null) {
+            continue;
           }
-        }
-        assertTrue(
-            pubSubMessages.size() >= numKeys * 2,
-            "Expected at least " + numKeys * 2 + " messages but got " + pubSubMessages.size());
-        int rmdMessageCount = 0;
-        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> msg: pubSubMessages) {
           ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
               (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) msg;
-          if (message.getDeserializedReplicationMetadata() != null) {
-            rmdMessageCount++;
+          if (message.getDeserializedReplicationMetadata() != null && !validatedRmdKeys.contains(message.getKey())) {
             long timestamp = (long) message.getDeserializedReplicationMetadata().get("timestamp");
             assertTrue(timestamp > 0);
             assertEquals(
@@ -234,9 +231,13 @@ public class TestVersionSpecificChangelogConsumerReplicationMetadata {
                 message.getReplicationMetadataPayload(),
                 clientRmdSerDe
                     .serializeRmdRecord(message.getWriterSchemaId(), message.getDeserializedReplicationMetadata()));
+            validatedRmdKeys.add(message.getKey());
           }
         }
-        assertEquals(rmdMessageCount, numKeys, "Expected " + numKeys + " messages with RMD but got " + rmdMessageCount);
+        assertEquals(
+            validatedRmdKeys.size(),
+            numKeys,
+            "Expected " + numKeys + " unique keys with RMD but got " + validatedRmdKeys.size());
       });
     }
   }
