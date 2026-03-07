@@ -98,6 +98,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -629,8 +630,40 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
           }
           props.put(TARGETED_REGION_PUSH_ENABLED, true);
           TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 20);
-          try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
-            job.run(); // the job should succeed
+
+          // Run push 3 in a background thread so we can observe the staged nature of targeted
+          // region push: data arrives in the target region (dc-0) first, then propagates to
+          // non-target regions via postValidationConsumption/dataRecovery.
+          String versionTopic3 = Version.composeKafkaTopic(storeName, 3);
+          AtomicReference<Throwable> vpjError = new AtomicReference<>();
+          Thread vpjThread = new Thread(() -> {
+            try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
+              job.run();
+            } catch (Throwable t) {
+              vpjError.set(t);
+            }
+          });
+          vpjThread.setDaemon(true);
+          vpjThread.start();
+          try {
+            // Stage 1: Wait for push completion in the target region (dc-0). At this point,
+            // dc-0 should have version 3 but dc-1 is still on version 2 because
+            // postValidationConsumption (data recovery) has not yet completed for dc-1.
+            try (ControllerClient dc0Client =
+                new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString())) {
+              TestUtils.waitForNonDeterministicPushCompletion(versionTopic3, dc0Client, 30, TimeUnit.SECONDS);
+            }
+
+            // Stage 2: Verify the target region (dc-0) swapped to version 3 while the
+            // non-target region (dc-1) may still be on version 2.
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              Map<String, Integer> coloVersions =
+                  parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+              Assert.assertNotNull(coloVersions.get("dc-0"), "dc-0 version should not be null");
+              Assert.assertEquals((int) coloVersions.get("dc-0"), 3, "Target region dc-0 should be on version 3");
+            });
+
+            // Stage 3: Validate store size on disk while data recovery is in progress.
             File directory = new File(serverWrapper.getDataDirectory() + "/rocksdb/");
             File[] storeDBDirs = directory.listFiles(File::isDirectory);
             long totalStoreSize = 0;
@@ -639,7 +672,6 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
                 if (storeDB.getName().startsWith(storeName)) {
                   long size = FileUtils
                       .sizeOfDirectory(new File(serverWrapper.getDataDirectory() + "/rocksdb/" + storeDB.getName()));
-                  ;
                   totalStoreSize += size;
                 }
               }
@@ -647,8 +679,9 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
                   storeSize * 2 >= totalStoreSize,
                   "2x of store size " + storeSize + " is more than total " + totalStoreSize);
             }
-            // Wait for version 3 to propagate to all regions first
-            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+
+            // Stage 4: Wait for data recovery to complete and all regions to converge on v3.
+            TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
               for (int version: parentControllerClient.getStore(storeName)
                   .getStore()
                   .getColoToCurrentVersions()
@@ -656,10 +689,20 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
                 Assert.assertEquals(version, 3);
               }
             });
-            // Validate separately — these are expensive operations (DaVinci client creation +
-            // subscribeAll with 30s timeout) that should not be retried inside the version wait loop
+
+            // Wait for VPJ thread to finish and check for errors.
+            vpjThread.join(30_000);
+            assertFalse(vpjThread.isAlive(), "VPJ thread should have completed");
+            if (vpjError.get() != null) {
+              throw new VeniceException("Push job 3 failed", vpjError.get());
+            }
+
             validateDaVinciClient(storeName, 20);
             validatePushJobDetails(clusterName, storeName);
+          } finally {
+            if (vpjThread.isAlive()) {
+              vpjThread.interrupt();
+            }
           }
         });
   }

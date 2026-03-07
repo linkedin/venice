@@ -37,8 +37,10 @@ public final class SystemStoreInitializationHelper {
   // Visible for testing
   static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
 
-  // How much time to wait between checks of store updates
-  private static Duration delayBetweenStoreUpdateRetries = Duration.ofSeconds(1);
+  // How much time to wait between checks of store updates. The total retry window is
+  // delayBetweenStoreUpdateRetries * maxRetryAttempts (~50s). Tests can reduce this via
+  // setDelayBetweenStoreUpdateRetries() to avoid slow system store initialization.
+  private static Duration delayBetweenStoreUpdateRetries = Duration.ofSeconds(5);
   private static int maxRetryAttempts = 10;
 
   private SystemStoreInitializationHelper() {
