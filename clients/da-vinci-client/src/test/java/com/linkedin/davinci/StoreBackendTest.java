@@ -46,7 +46,9 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.Metric;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.io.File;
 import java.time.Duration;
 import java.util.Collections;
@@ -90,7 +92,9 @@ public class StoreBackendTest {
     doAnswer(answerVoid(Runnable::run)).when(executor).execute(any());
 
     versionMap = new HashMap<>();
-    metricsRepository = new MetricsRepository();
+    // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
+    AsyncGauge.AsyncGaugeExecutor gaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    metricsRepository = new MetricsRepository(new MetricConfig(gaugeExecutor));
     storageService = mock(StorageService.class);
     ingestionBackend = mock(IngestionBackend.class);
     compressorFactory = mock(StorageEngineBackedCompressorFactory.class);
@@ -151,11 +155,7 @@ public class StoreBackendTest {
     long v2SubscribeDurationMs = 200;
     version1.setAge(Duration.ofHours(1));
     version2.setAge(Duration.ofMinutes(5));
-    // AsyncGauge may return 0.0 briefly before the lambda runs; tolerate eventual NaN.
-    waitForNonDeterministicAssertion(
-        10,
-        TimeUnit.SECONDS,
-        () -> assertEquals(getMetric("data_age_ms.Gauge"), Double.NaN));
+    assertEquals(getMetric("data_age_ms.Gauge"), Double.NaN);
 
     // Expecting to subscribe to version1 and that version2 is a future version.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));

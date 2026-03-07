@@ -73,7 +73,9 @@ import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.lang.reflect.Field;
@@ -836,8 +838,9 @@ public abstract class KafkaStoreIngestionServiceTest {
     // Close the existing service first
     kafkaStoreIngestionService.close();
 
-    // Create a new MetricsRepository with a reporter to verify metrics
-    MetricsRepository metricsRepository = new MetricsRepository();
+    // Use a dedicated AsyncGaugeExecutor to avoid contention with the shared default executor in CI
+    AsyncGauge.AsyncGaugeExecutor gaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    MetricsRepository metricsRepository = new MetricsRepository(new MetricConfig(gaugeExecutor));
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
 
@@ -961,6 +964,7 @@ public abstract class KafkaStoreIngestionServiceTest {
       });
     } finally {
       service.close();
+      metricsRepository.close();
     }
   }
 }
