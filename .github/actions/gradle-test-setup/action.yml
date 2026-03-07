@@ -1,0 +1,30 @@
+name: 'Gradle Test Setup'
+description: 'Common setup for Gradle-based CI workflows: JDK, upstream remote, Gradle, and disk cleanup'
+inputs:
+  java-version:
+    description: 'JDK version to use'
+    required: false
+    default: '17'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up JDK
+      uses: actions/setup-java@v5
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: 'temurin'
+        cache: 'gradle'
+    - shell: bash
+      run: |
+        git remote set-head origin --auto
+        git remote add upstream https://github.com/linkedin/venice
+        git fetch upstream
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        add-job-summary: never
+    - name: Free up disk space in the background
+      shell: bash
+      run: |
+        bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &

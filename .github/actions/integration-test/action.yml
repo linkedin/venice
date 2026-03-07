@@ -8,25 +8,7 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Set up JDK
-      uses: actions/setup-java@v5
-      with:
-        java-version: 17
-        distribution: 'temurin'
-        cache: 'gradle'
-    - shell: bash
-      run: |
-        git remote set-head origin --auto
-        git remote add upstream https://github.com/linkedin/venice
-        git fetch upstream
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
-      with:
-        add-job-summary: never
-    - name: Free up disk space in the background
-      shell: bash
-      run: |
-        bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
+    - uses: ./.github/actions/gradle-test-setup
     - name: Run Integration Tests
       shell: bash
       run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_${{ inputs.shard }}
