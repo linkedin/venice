@@ -3454,8 +3454,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     CountDownLatch releaseR1 = new CountDownLatch(1);
 
     doAnswer(invocation -> {
-      // Wait until test releases us
-      releaseR1.await();
+      if (!releaseR1.await(30, TimeUnit.SECONDS)) {
+        throw new VeniceException("Timed out waiting for latch release in test");
+      }
       return new ControllerResponse();
     }).when(r1Client).rollForwardToFutureVersion(any(), any(), anyInt());
 
@@ -3468,11 +3469,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     CompletableFuture<Void> rollForwardFuture =
         CompletableFuture.runAsync(() -> adminSpy.rollForwardToFutureVersion(clusterName, storeName, null));
 
-    // r2 should be invoked even though r1 is blocked
-    assertTrue(r2Invoked.await(10, TimeUnit.SECONDS), "r2 should be invoked while r1 is still blocked");
-
-    // Release r1 so the roll forward completes
-    releaseR1.countDown();
+    try {
+      // r2 should be invoked even though r1 is blocked
+      assertTrue(r2Invoked.await(10, TimeUnit.SECONDS), "r2 should be invoked while r1 is still blocked");
+    } finally {
+      // Always release r1 to avoid leaking blocked threads
+      releaseR1.countDown();
+    }
     rollForwardFuture.get(10, TimeUnit.SECONDS);
 
     verify(r1Client).rollForwardToFutureVersion(any(), any(), anyInt());

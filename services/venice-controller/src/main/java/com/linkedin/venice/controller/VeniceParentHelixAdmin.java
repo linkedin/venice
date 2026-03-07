@@ -2378,8 +2378,7 @@ public class VeniceParentHelixAdmin implements Admin {
         ControllerClient controllerClient = entry.getValue();
         regionFutures.add(CompletableFuture.runAsync(() -> {
           RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-            ControllerResponse response =
-                controllerClient.rollForwardToFutureVersion(storeName, regionFilter, ROLL_FORWARD_REQUEST_TIMEOUT);
+            ControllerResponse response = controllerClient.rollForwardToFutureVersion(storeName, regionFilter);
             if (response.isError()) {
               LOGGER.info("Roll forward in region {} failed with error: {}", region, response.getError());
               throw new VeniceException(
@@ -2391,10 +2390,10 @@ public class VeniceParentHelixAdmin implements Admin {
       try {
         CompletableFuture.allOf(regionFutures.toArray(new CompletableFuture[0]))
             .get(ROLL_FORWARD_REQUEST_TIMEOUT, TimeUnit.MILLISECONDS);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new VeniceException("Roll forward was interrupted. Please try the roll forward action again", e);
       } catch (Exception e) {
+        for (CompletableFuture<Void> future: regionFutures) {
+          future.cancel(true);
+        }
         throw new VeniceException("Roll forward failed. Please try the roll forward action again", e);
       }
 
