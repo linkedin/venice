@@ -1,5 +1,6 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.AdditionalAnswers.answerVoid;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anySet;
@@ -150,7 +151,11 @@ public class StoreBackendTest {
     long v2SubscribeDurationMs = 200;
     version1.setAge(Duration.ofHours(1));
     version2.setAge(Duration.ofMinutes(5));
-    assertEquals(getMetric("data_age_ms.Gauge"), Double.NaN);
+    // AsyncGauge may return 0.0 briefly before the lambda runs; tolerate eventual NaN.
+    waitForNonDeterministicAssertion(
+        3,
+        TimeUnit.SECONDS,
+        () -> assertEquals(getMetric("data_age_ms.Gauge"), Double.NaN));
 
     // Expecting to subscribe to version1 and that version2 is a future version.
     CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
@@ -163,13 +168,14 @@ public class StoreBackendTest {
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
     }
-    // Verify that all partition future for version 1 are completed successfully.
-    assertTrue(versionMap.get(version1.kafkaTopicName()).areAllPartitionFuturesCompletedSuccessfully());
-
-    assertEquals(getMetric("current_version_number.Gauge"), (double) version1.getNumber());
-    assertEquals(getMetric("future_version_number.Gauge"), (double) version2.getNumber());
-    assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version1.getAge().toMillis()) < 1000);
-    assertTrue(Math.abs(getMetric("subscribe_duration_ms.Avg") - v1SubscribeDurationMs) < 50);
+    // Partition futures and metrics may be completed asynchronously in callback threads.
+    waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      assertTrue(versionMap.get(version1.kafkaTopicName()).areAllPartitionFuturesCompletedSuccessfully());
+      assertEquals(getMetric("current_version_number.Gauge"), (double) version1.getNumber());
+      assertEquals(getMetric("future_version_number.Gauge"), (double) version2.getNumber());
+      assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version1.getAge().toMillis()) < 1000);
+      assertTrue(Math.abs(getMetric("subscribe_duration_ms.Avg") - v1SubscribeDurationMs) < 50);
+    });
 
     // Simulate future version ingestion is complete.
     TimeUnit.MILLISECONDS.sleep(v2SubscribeDurationMs - v1SubscribeDurationMs);
@@ -188,11 +194,14 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
     }
 
-    assertEquals(getMetric("current_version_number.Gauge"), (double) version2.getNumber());
-    assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version2.getAge().toMillis()) < 1000);
-    assertTrue(
-        Math.abs(getMetric("subscribe_duration_ms.Avg") - (v1SubscribeDurationMs + v2SubscribeDurationMs) / 2.) < 50);
-    assertTrue(Math.abs(getMetric("subscribe_duration_ms.Max") - v2SubscribeDurationMs) < 50);
+    // Version swap and metric recording happen asynchronously after handleStoreChanged.
+    waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      assertEquals(getMetric("current_version_number.Gauge"), (double) version2.getNumber());
+      assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version2.getAge().toMillis()) < 1000);
+      assertTrue(
+          Math.abs(getMetric("subscribe_duration_ms.Avg") - (v1SubscribeDurationMs + v2SubscribeDurationMs) / 2.) < 50);
+      assertTrue(Math.abs(getMetric("subscribe_duration_ms.Max") - v2SubscribeDurationMs) < 50);
+    });
   }
 
   @Test

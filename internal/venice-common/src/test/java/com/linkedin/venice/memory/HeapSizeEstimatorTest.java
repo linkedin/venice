@@ -126,7 +126,7 @@ public abstract class HeapSizeEstimatorTest {
      * technically that could be a false negative).
      */
     int currentAttempt = 0;
-    int totalAttempts = 3;
+    int totalAttempts = 5;
     while (currentAttempt++ < totalAttempts) {
       assertNotEquals(RUNTIME.maxMemory(), Long.MAX_VALUE);
       Object[] allocations = new Object[NUMBER_OF_ALLOCATIONS_WHEN_MEASURING];

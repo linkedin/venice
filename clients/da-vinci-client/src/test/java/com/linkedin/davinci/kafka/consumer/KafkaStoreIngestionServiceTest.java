@@ -948,15 +948,17 @@ public abstract class KafkaStoreIngestionServiceTest {
           reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--queued_task_count_gauge.LambdaStat"),
           "AA/WC ingestion storage lookup thread pool queued_task_count_gauge metric should be registered");
 
-      // Verify the max thread numbers are set correctly
-      assertEquals(
-          (int) reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat").value(),
-          4,
-          "AA/WC parallel processing thread pool should have 4 threads");
-      assertEquals(
-          (int) reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat").value(),
-          2,
-          "AA/WC ingestion storage lookup thread pool should have 2 threads");
+      // Metric registration may complete asynchronously; retry until values are available.
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        assertEquals(
+            (int) reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat").value(),
+            4,
+            "AA/WC parallel processing thread pool should have 4 threads");
+        assertEquals(
+            (int) reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat").value(),
+            2,
+            "AA/WC ingestion storage lookup thread pool should have 2 threads");
+      });
     } finally {
       service.close();
     }

@@ -139,23 +139,37 @@ public class NativeMetadataRepositoryTest {
 
     NativeMetadataRepositoryStats nativeMetadataRepository = nmr.getNativeMetadataRepositoryStats();
     Assert.assertNotNull(nativeMetadataRepository);
-    Assert.assertEquals(nativeMetadataRepository.getMetadataStalenessHighWatermarkMs(), 1000d);
+    // AsyncGauge may return a stale value briefly; wait for it to settle.
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(nativeMetadataRepository.getMetadataStalenessHighWatermarkMs(), 1000d));
 
     String anotherStoreName = STORE_NAME + "V2";
     nmr.subscribe(anotherStoreName);
     nmr.refreshOneStore(anotherStoreName);
     // After one store refresh we should still see staleness increase because it reports the max amongst all stores
     doReturn(2000L).when(clock).millis();
-    Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), 2000d);
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), 2000d));
 
     // Refresh both stores and staleness should decrease
     nmr.refresh();
-    Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), 0d);
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), 0d));
 
     // Unsubscribing stores should remove their corresponding staleness metric
     nmr.unsubscribe(STORE_NAME);
     nmr.unsubscribe(anotherStoreName);
-    Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), Double.NaN);
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert
+            .assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), Double.NaN));
   }
 
   static class TestNMR extends NativeMetadataRepository {

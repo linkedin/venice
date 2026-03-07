@@ -260,21 +260,25 @@ public class StatTrackingStoreClientTest {
 
     Assert.assertEquals(batchGetResult, result);
 
-    Map<String, ? extends Metric> metrics = repository.metrics();
-    Metric requestMetric = metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate");
-    Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
-    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate");
-    Metric keyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_request_key_count.Avg");
-    Metric successKeyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_success_request_key_count.Avg");
-    Metric successKeyRatioMetric =
-        metrics.get(metricPrefix + "--multiget_streaming_success_request_key_ratio.SimpleRatioStat");
+    // Metrics are recorded asynchronously in callback threads; wait for them to propagate.
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      Map<String, ? extends Metric> metrics = repository.metrics();
+      Metric requestMetric = metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate");
+      Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
+      Metric unhealthyRequestMetric =
+          metrics.get(metricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate");
+      Metric keyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_request_key_count.Avg");
+      Metric successKeyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_success_request_key_count.Avg");
+      Metric successKeyRatioMetric =
+          metrics.get(metricPrefix + "--multiget_streaming_success_request_key_ratio.SimpleRatioStat");
 
-    Assert.assertTrue(requestMetric.value() > 0.0);
-    Assert.assertTrue(healthyRequestMetric.value() > 0.0);
-    Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
-    Assert.assertEquals(keyCountMetric.value(), 10.0);
-    Assert.assertEquals(successKeyCountMetric.value(), 10.0);
-    Assert.assertTrue(successKeyRatioMetric.value() > 0, "Success Key Ratio should be positive");
+      Assert.assertTrue(requestMetric.value() > 0.0);
+      Assert.assertTrue(healthyRequestMetric.value() > 0.0);
+      Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
+      Assert.assertEquals(keyCountMetric.value(), 10.0);
+      Assert.assertEquals(successKeyCountMetric.value(), 10.0);
+      Assert.assertTrue(successKeyRatioMetric.value() > 0, "Success Key Ratio should be positive");
+    });
   }
 
   @Test(expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*Received partial response.*")

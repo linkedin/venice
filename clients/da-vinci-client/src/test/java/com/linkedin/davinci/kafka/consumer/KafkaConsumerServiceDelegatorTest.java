@@ -390,7 +390,7 @@ public class KafkaConsumerServiceDelegatorTest {
               consumedDataReceiver,
               false);
           // Use low wait time to trigger unsubscribe and poll lock handoff.
-          consumerServiceDelegator.assignConsumerFor(versionTopic, pubSubTopicPartition).setTimeoutMsOverride(1L);
+          consumerServiceDelegator.assignConsumerFor(versionTopic, pubSubTopicPartition).setTimeoutMsOverride(10L);
           int versionNum =
               Version.parseVersionFromKafkaTopicName(partitionReplicaIngestionContext.getVersionTopic().getName());
           if (versionNum % 3 == 0) {

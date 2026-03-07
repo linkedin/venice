@@ -3,7 +3,9 @@ package com.linkedin.davinci.stats;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.concurrent.TimeUnit;
 import org.rocksdb.Cache;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -21,13 +23,17 @@ public class RocksDBMemoryStatsTest {
 
     stats.setRMDBlockCache(mockCache, 1024L);
 
-    Assert.assertEquals(
-        metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-capacity.Gauge").value(),
-        1024.0);
-    Assert.assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-usage.Gauge").value(), 512.0);
-    Assert.assertEquals(
-        metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-pinned-usage.Gauge").value(),
-        256.0);
+    // AsyncGauge metrics may not be immediately available after registration; retry until propagated.
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-capacity.Gauge").value(),
+          1024.0);
+      Assert
+          .assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-usage.Gauge").value(), 512.0);
+      Assert.assertEquals(
+          metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-pinned-usage.Gauge").value(),
+          256.0);
+    });
   }
 
   @Test
@@ -45,10 +51,13 @@ public class RocksDBMemoryStatsTest {
     when(mockCache.getUsage()).thenReturn(1024L);
     when(mockCache.getPinnedUsage()).thenReturn(512L);
 
-    Assert
-        .assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-usage.Gauge").value(), 1024.0);
-    Assert.assertEquals(
-        metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-pinned-usage.Gauge").value(),
-        512.0);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-usage.Gauge").value(),
+          1024.0);
+      Assert.assertEquals(
+          metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-pinned-usage.Gauge").value(),
+          512.0);
+    });
   }
 }
