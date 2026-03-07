@@ -26,9 +26,11 @@ import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.Metric;
 import java.nio.ByteBuffer;
@@ -242,7 +244,14 @@ public class StatTrackingStoreClientTest {
       keySet.add(keyPrefix + i);
     }
 
-    VeniceMetricsRepository repository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);
+    // Use a dedicated single-threaded executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
+    VeniceMetricsRepository repository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(THIN_CLIENT.getName())
+            .setMetricPrefix(THIN_CLIENT.getMetricsPrefix())
+            .setMetricEntities(CLIENT_METRIC_ENTITIES)
+            .setEmitOtelMetrics(true)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
+            .build());
 
     InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(
         mock(TransportClient.class),
@@ -260,8 +269,7 @@ public class StatTrackingStoreClientTest {
 
     Assert.assertEquals(batchGetResult, result);
 
-    // Metrics are recorded asynchronously in callback threads; wait for them to propagate.
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       Map<String, ? extends Metric> metrics = repository.metrics();
       Metric requestMetric = metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate");
       Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");

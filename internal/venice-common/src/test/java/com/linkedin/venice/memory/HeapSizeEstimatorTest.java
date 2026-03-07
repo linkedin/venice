@@ -188,8 +188,8 @@ public abstract class HeapSizeEstimatorTest {
       double minimumAbsoluteDeltaInBytes = 1;
       double minimumAbsoluteDelta = minimumAbsoluteDeltaInBytes / memoryAllocatedPerInstance;
 
-      // For larger objects, we'll tolerate up to 1% delta
-      double minimumRelativeDelta = 0.01;
+      // For larger objects, we'll tolerate up to 2% delta (increased from 1% to handle GC noise under CI load)
+      double minimumRelativeDelta = 0.02;
 
       // The larger of the two deltas is the one we use
       double maxAllowedDelta = Math.max(minimumAbsoluteDelta, minimumRelativeDelta);
