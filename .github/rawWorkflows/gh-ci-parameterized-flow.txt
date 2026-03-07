@@ -50,7 +50,7 @@
             if grep -qF "$test PASSED" test-output.log; then
               echo "$test"
             fi
-          done | sort -u > flaky-tests.txt
+          done | sort -u > flaky-tests.txt || true
           if [ -s flaky-tests.txt ]; then
             echo "### Flaky Tests (failed then passed on retry)" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
