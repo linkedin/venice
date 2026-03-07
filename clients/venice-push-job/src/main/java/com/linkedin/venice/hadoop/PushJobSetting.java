@@ -120,6 +120,8 @@ public class PushJobSetting implements Serializable {
   public String kafkaSourceRegion;
   public transient RepushInfoResponse repushInfoResponse;
 
+  public boolean repushUseFallbackValueSchemaId;
+
   // Schema-properties
   public boolean isAvro = true;
   public int valueSchemaId; // Value schema id retrieved from backend for valueSchemaString
