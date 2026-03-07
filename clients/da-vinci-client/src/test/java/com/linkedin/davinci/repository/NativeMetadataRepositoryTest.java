@@ -32,6 +32,7 @@ public class NativeMetadataRepositoryTest {
   private VeniceProperties backendConfigThinClient;
   private VeniceProperties backendConfigRequestBased;
 
+  private AsyncGauge.AsyncGaugeExecutor gaugeExecutor;
   private MetricsRepository metricsRepository;
   private Clock clock;
   private static final String STORE_NAME = "hardware_store";
@@ -51,11 +52,17 @@ public class NativeMetadataRepositoryTest {
         .getBoolean(eq(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY), anyBoolean());
 
     // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
-    AsyncGauge.AsyncGaugeExecutor gaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    gaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     metricsRepository = new MetricsRepository(new MetricConfig(gaugeExecutor));
     doReturn(metricsRepository).when(clientConfig).getMetricsRepository();
     clock = mock(Clock.class);
     doReturn(0L).when(clock).millis();
+  }
+
+  @org.testng.annotations.AfterMethod
+  public void tearDown() throws Exception {
+    metricsRepository.close();
+    gaugeExecutor.close();
   }
 
   @Test

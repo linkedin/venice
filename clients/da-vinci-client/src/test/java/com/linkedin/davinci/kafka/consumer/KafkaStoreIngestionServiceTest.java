@@ -965,6 +965,11 @@ public abstract class KafkaStoreIngestionServiceTest {
     } finally {
       service.close();
       metricsRepository.close();
+      try {
+        gaugeExecutor.close();
+      } catch (Exception e) {
+        // best-effort cleanup
+      }
     }
   }
 }

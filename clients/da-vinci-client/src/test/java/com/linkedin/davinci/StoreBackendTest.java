@@ -72,6 +72,7 @@ public class StoreBackendTest {
   DaVinciBackend backend;
   StoreBackend storeBackend;
   Map<String, VersionBackend> versionMap;
+  AsyncGauge.AsyncGaugeExecutor gaugeExecutor;
   MetricsRepository metricsRepository;
   StorageService storageService;
   IngestionBackend ingestionBackend;
@@ -93,7 +94,7 @@ public class StoreBackendTest {
 
     versionMap = new HashMap<>();
     // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
-    AsyncGauge.AsyncGaugeExecutor gaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    gaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     metricsRepository = new MetricsRepository(new MetricConfig(gaugeExecutor));
     storageService = mock(StorageService.class);
     ingestionBackend = mock(IngestionBackend.class);
@@ -133,6 +134,12 @@ public class StoreBackendTest {
 
     storeBackend = new StoreBackend(backend, store.getName());
     when(backend.getStoreOrThrow(store.getName())).thenReturn(storeBackend);
+  }
+
+  @org.testng.annotations.AfterMethod
+  void tearDown() throws Exception {
+    metricsRepository.close();
+    gaugeExecutor.close();
   }
 
   private double getMetric(String metricName) {

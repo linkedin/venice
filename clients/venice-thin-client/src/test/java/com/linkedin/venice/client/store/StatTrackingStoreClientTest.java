@@ -252,41 +252,44 @@ public class StatTrackingStoreClientTest {
             .setEmitOtelMetrics(true)
             .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
+    try {
+      InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(
+          mock(TransportClient.class),
+          storeName,
+          true,
+          AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+          result,
+          true,
+          false);
 
-    InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(
-        mock(TransportClient.class),
-        storeName,
-        true,
-        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
-        result,
-        true,
-        false);
+      StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(
+          innerClient,
+          ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+      Map<String, Object> batchGetResult = statTrackingStoreClient.batchGet(keySet).get();
 
-    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(
-        innerClient,
-        ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
-    Map<String, Object> batchGetResult = statTrackingStoreClient.batchGet(keySet).get();
+      Assert.assertEquals(batchGetResult, result);
 
-    Assert.assertEquals(batchGetResult, result);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Map<String, ? extends Metric> metrics = repository.metrics();
+        Metric requestMetric = metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate");
+        Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
+        Metric unhealthyRequestMetric =
+            metrics.get(metricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate");
+        Metric keyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_request_key_count.Avg");
+        Metric successKeyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_success_request_key_count.Avg");
+        Metric successKeyRatioMetric =
+            metrics.get(metricPrefix + "--multiget_streaming_success_request_key_ratio.SimpleRatioStat");
 
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      Map<String, ? extends Metric> metrics = repository.metrics();
-      Metric requestMetric = metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate");
-      Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
-      Metric unhealthyRequestMetric =
-          metrics.get(metricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate");
-      Metric keyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_request_key_count.Avg");
-      Metric successKeyCountMetric = metrics.get(metricPrefix + "--multiget_streaming_success_request_key_count.Avg");
-      Metric successKeyRatioMetric =
-          metrics.get(metricPrefix + "--multiget_streaming_success_request_key_ratio.SimpleRatioStat");
-
-      Assert.assertTrue(requestMetric.value() > 0.0);
-      Assert.assertTrue(healthyRequestMetric.value() > 0.0);
-      Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
-      Assert.assertEquals(keyCountMetric.value(), 10.0);
-      Assert.assertEquals(successKeyCountMetric.value(), 10.0);
-      Assert.assertTrue(successKeyRatioMetric.value() > 0, "Success Key Ratio should be positive");
-    });
+        Assert.assertTrue(requestMetric.value() > 0.0);
+        Assert.assertTrue(healthyRequestMetric.value() > 0.0);
+        Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
+        Assert.assertEquals(keyCountMetric.value(), 10.0);
+        Assert.assertEquals(successKeyCountMetric.value(), 10.0);
+        Assert.assertTrue(successKeyRatioMetric.value() > 0, "Success Key Ratio should be positive");
+      });
+    } finally {
+      repository.close();
+    }
   }
 
   @Test(expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*Received partial response.*")

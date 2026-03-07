@@ -63,10 +63,9 @@ public class TestBackupControllerResponse {
           30,
           TimeUnit.SECONDS,
           () -> controller1.isLeaderController(clusterName) || controller2.isLeaderController(clusterName));
-      VeniceControllerWrapper leaderController =
-          controller1.isLeaderController(clusterName) ? controller1 : controller2;
-      VeniceControllerWrapper nonLeaderController =
-          controller1.isLeaderController(clusterName) ? controller2 : controller1;
+      boolean isController1Leader = controller1.isLeaderController(clusterName);
+      VeniceControllerWrapper leaderController = isController1Leader ? controller1 : controller2;
+      VeniceControllerWrapper nonLeaderController = isController1Leader ? controller2 : controller1;
       try {
         transport.request(
             nonLeaderController.getControllerUrl(),
