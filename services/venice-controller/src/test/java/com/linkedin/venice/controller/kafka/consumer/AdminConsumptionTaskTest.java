@@ -1925,6 +1925,7 @@ public class AdminConsumptionTaskTest {
     addVersion.versionNum = versionNum;
     addVersion.numberOfPartitions = numberOfPartitions;
     addVersion.rewindTimeInSecondsOverride = -1;
+    addVersion.rewindEpochTimeInSecondsOverride = -1;
     addVersion.timestampMetadataVersionId = 1;
     addVersion.versionSwapDeferred = deferredSwap;
     if (targetedRegions != null) {
