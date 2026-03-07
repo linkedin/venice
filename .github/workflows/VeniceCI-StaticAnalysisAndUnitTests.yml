@@ -26,31 +26,16 @@ jobs:
         jdk: [17]
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
       checks: write
-      pull-requests: write
-      issues: write
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/gradle-test-setup
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
       - name: Run Static Analysis
         run: ./gradlew --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification -Pspotbugs.reports.all=true
       - name: Annotate PR with SpotBugs results
