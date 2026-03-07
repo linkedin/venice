@@ -119,6 +119,8 @@ jobs:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     needs: [ValidateGradleWrapper, StaticAnalysis, Clients, Integrations, Internal, Controller, Server, Router]
     timeout-minutes: 20
     if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}

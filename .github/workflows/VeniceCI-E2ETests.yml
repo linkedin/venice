@@ -475,6 +475,8 @@ jobs:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     needs: [IntegrationTests_1, IntegrationTests_2, IntegrationTests_3, IntegrationTests_4, IntegrationTests_5, IntegrationTests_6, IntegrationTests_7, IntegrationTests_8, IntegrationTests_9, IntegrationTests_10, IntegrationTests_11, IntegrationTests_12, IntegrationTests_13, IntegrationTests_14, IntegrationTests_15, IntegrationTests_16, IntegrationTests_17, IntegrationTests_18, IntegrationTests_19, IntegrationTests_20, IntegrationTests_21, IntegrationTests_22, IntegrationTests_23, integrationTests_99]
     timeout-minutes: 20
     if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}
