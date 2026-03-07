@@ -520,12 +520,14 @@ public class TestUtils {
     // Transient controller errors (e.g., HTTP 500 while version metadata propagates) are caught
     // and wrapped in AssertionError so they get retried. Push ERROR status throws VeniceException
     // which is NOT retried (retryOnThrowable=false), preserving the fast-fail behavior.
+    // Only VeniceException is retried (transient HTTP/controller errors). Other exceptions (NPE,
+    // serialization errors, etc.) propagate immediately to fail fast on genuine bugs.
     waitForNonDeterministicAssertion(timeout, timeoutUnit, true, false, () -> {
       JobStatusQueryResponse jobStatusQueryResponse;
       try {
         jobStatusQueryResponse = assertCommand(controllerClient.queryJobStatus(topicName, Optional.empty()));
-      } catch (Exception e) {
-        throw new AssertionError("Controller query failed, will retry: " + e.getMessage(), e);
+      } catch (VeniceException e) {
+        throw new AssertionError("Controller query failed (transient), will retry: " + e.getMessage(), e);
       }
       ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
       if (executionStatus.isError()) {

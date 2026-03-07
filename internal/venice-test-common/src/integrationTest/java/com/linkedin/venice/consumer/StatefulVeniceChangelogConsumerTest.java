@@ -297,10 +297,16 @@ public class StatefulVeniceChangelogConsumerTest {
         // Also, Deletes won't show up on restart when scanning RocksDB.
         // Use >= to be resilient to at-least-once delivery: the change capture topic replay
         // after restart may surface a few extra delete or duplicate events as unique keys.
+        // Upper bound guards against gross duplication bugs.
         int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 39;
+        int upperBound = (int) (expectedRecordCount * 1.1);
         assertTrue(
             polledChangeEventsMap.size() >= expectedRecordCount,
             "Expected at least " + expectedRecordCount + " records, but got " + polledChangeEventsMap.size());
+        assertTrue(
+            polledChangeEventsMap.size() <= upperBound,
+            "Too many records (" + polledChangeEventsMap.size() + "), expected at most " + upperBound
+                + ". Possible duplicate event production.");
         verifyPut(polledChangeEventsMap, 100, 110, 3, false);
         verifyPut(polledChangeEventsMap, 120, 130, 3, false);
         verifyPut(polledChangeEventsMap, 140, 150, 3, false);

@@ -169,7 +169,7 @@ public class AbstractPartitionWriterThrottlingTest {
     }
     long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
 
-    assertTrue(elapsedMs < 1000, "Messages should not be throttled when below quota, elapsed: " + elapsedMs + "ms");
+    assertTrue(elapsedMs < 400, "Messages should not be throttled when below quota, elapsed: " + elapsedMs + "ms");
   }
 
   @Test

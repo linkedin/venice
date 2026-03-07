@@ -1621,9 +1621,9 @@ public abstract class StoreIngestionTaskTest {
     doReturn(InMemoryPubSubPosition.of(0)).when(mockTopicManager)
         .getLatestPositionCached(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO));
 
-    // Use a longer timeout for metric verifications — CI thread scheduling can delay async callbacks
-    // significantly (SIT run loop + drainer thread coordination under load).
-    long metricTimeoutMs = TEST_TIMEOUT_MS * 12;
+    // Use a longer timeout for metric verifications — CI thread scheduling can delay the
+    // SIT run loop → drainer → stats recording pipeline.
+    long metricTimeoutMs = TEST_TIMEOUT_MS * 4;
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, timeout(metricTimeoutMs))
           .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
@@ -2360,7 +2360,7 @@ public abstract class StoreIngestionTaskTest {
    * SIT tracks errored partitions and skips completion notifications for them). The invocationCount provides repeated
    * runs to catch regressions of that race condition.
    */
-  @Test(dataProvider = "aaConfigProvider", invocationCount = 10, skipFailedInvocations = true)
+  @Test(dataProvider = "aaConfigProvider", invocationCount = 50, skipFailedInvocations = true)
   public void testCorruptMessagesFailFast(AAConfig aaConfig) throws Exception {
     VeniceWriter veniceWriterForData = getCorruptedVeniceWriter(putValueToCorrupt, inMemoryLocalKafkaBroker);
 
