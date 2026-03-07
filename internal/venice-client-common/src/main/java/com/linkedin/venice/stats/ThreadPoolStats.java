@@ -23,13 +23,14 @@ public class ThreadPoolStats extends AbstractVeniceStats {
     super(metricsRepository, name);
     this.threadPoolExecutor = threadPoolExecutor;
 
-    // Tehuti LambdaStat registrations (async gauges for Tehuti)
+    // Tehuti gauge registrations (synchronous — these are all O(1) field reads that should
+    // never go through AsyncGauge's shared thread pool, which can become saturated under load)
     registerSensor(
-        new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getActiveCount(), "active_thread_number"));
+        new SyncGauge((ignored, ignored2) -> this.threadPoolExecutor.getActiveCount(), "active_thread_number"));
     registerSensor(
-        new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getMaximumPoolSize(), "max_thread_number"));
+        new SyncGauge((ignored, ignored2) -> this.threadPoolExecutor.getMaximumPoolSize(), "max_thread_number"));
     registerSensor(
-        new LambdaStat((ignored, ignored2) -> this.threadPoolExecutor.getQueue().size(), "queued_task_count_gauge"));
+        new SyncGauge((ignored, ignored2) -> this.threadPoolExecutor.getQueue().size(), "queued_task_count_gauge"));
 
     // OTel setup
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
