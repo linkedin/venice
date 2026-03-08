@@ -1981,7 +1981,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     controlMessage.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();
     EndOfSegment endOfSegment = new EndOfSegment();
     endOfSegment.checksumValue = ByteBuffer.wrap(segments[partition].getFinalCheckSum());
-    endOfSegment.computedAggregates = new ArrayList<>(); // TODO Add extra aggregates
+    endOfSegment.computedAggregates = Collections.emptyList(); // TODO Add extra aggregates
     endOfSegment.finalSegment = finalSegment;
     controlMessage.controlMessageUnion = endOfSegment;
     return sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
@@ -2522,7 +2522,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         try {
           return sendEndOfSegment(
               partition,
-              new HashMap<>(), // TODO: Add extra debugging info
+              Collections.emptyMap(), // TODO: Add extra debugging info
               finalSegment
           // TODO: This will not always be true, once we support streaming, or more than one segment per
           // mapper in batch
