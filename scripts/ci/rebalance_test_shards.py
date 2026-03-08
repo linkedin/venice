@@ -190,20 +190,19 @@ def load_current_assignments(repo_root: str) -> dict[str, list[str]]:
 def _tiered_overhead(duration: float, max_overhead: float) -> float:
     """Compute fork overhead based on test duration.
 
-    Heavy integration tests (>60s) spin up full Venice clusters and incur
-    significant JVM startup cost.  Lighter tests need less overhead.
-    Tiers derived from CI wall-clock analysis (shard with 49 sub-second
-    tests timed out at 15min, showing ~12s real per-fork overhead):
-      >=60s  -> full overhead  (cluster-heavy integration tests)
-      10-60s -> 75% overhead   (medium integration tests)
-      <10s   -> 60% overhead   (unit-style / ZK-only tests)
+    With forkEvery=1, each test class spawns a fresh JVM.  Empirical CI
+    data shows JVM startup overhead is nearly constant (~18-20s) regardless
+    of test duration:
+      >=60s  -> full overhead   (cluster-heavy integration tests)
+      10-60s -> 95% overhead    (medium integration tests)
+      <10s   -> 90% overhead    (unit-style / ZK-only tests)
     """
     if duration >= 60:
         return max_overhead
     elif duration >= 10:
-        return max_overhead * 0.75
+        return max_overhead * 0.95
     else:
-        return max_overhead * 0.6
+        return max_overhead * 0.90
 
 
 def bin_pack_ffd(
