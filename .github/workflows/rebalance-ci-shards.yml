@@ -70,7 +70,6 @@ jobs:
         run: |
           python scripts/ci/rebalance_test_shards.py \
             --timing-dir timing-data/ \
-            --timing-overrides scripts/ci/timing-overrides.json \
             --target-time 360
 
       - name: Regenerate CI workflow
