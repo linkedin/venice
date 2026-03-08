@@ -13,13 +13,13 @@ import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -78,19 +78,7 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
 
     // Verify the participant store is up and running in all regions before tests create user stores.
     // Participant store is needed for checking kill record existence and dest region readiness for data recovery.
-    // Waiting for all regions avoids resource contention when user-store pushes compete with participant store
-    // initialization.
-    String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
-    for (int i = 0; i < childDatacenters.size(); i++) {
-      try (ControllerClient controllerClient =
-          new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString())) {
-        TestUtils.waitForNonDeterministicPushCompletion(
-            Version.composeKafkaTopic(participantStoreName, 1),
-            controllerClient,
-            5,
-            TimeUnit.MINUTES);
-      }
-    }
+    IntegrationTestUtils.waitForParticipantStorePushInAllRegions(clusterName, childDatacenters);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -44,6 +44,7 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.ExceptionType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
@@ -129,17 +130,7 @@ public class TestTargetedRegionPushWithNativeReplication extends AbstractMultiRe
     VeniceClusterWrapper clusterWrapper =
         multiRegionMultiClusterWrapper.getChildRegions().get(0).getClusters().get(CLUSTER_NAME);
     serverWrapper = clusterWrapper.getVeniceServers().get(0);
-    String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(CLUSTER_NAME);
-    for (int i = 0; i < childDatacenters.size(); i++) {
-      try (ControllerClient controllerClient =
-          new ControllerClient(CLUSTER_NAME, childDatacenters.get(i).getControllerConnectString())) {
-        TestUtils.waitForNonDeterministicPushCompletion(
-            Version.composeKafkaTopic(participantStoreName, 1),
-            controllerClient,
-            8,
-            TimeUnit.MINUTES);
-      }
-    }
+    IntegrationTestUtils.waitForParticipantStorePushInAllRegions(CLUSTER_NAME, childDatacenters);
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to create new store version.*", timeOut = TEST_TIMEOUT)

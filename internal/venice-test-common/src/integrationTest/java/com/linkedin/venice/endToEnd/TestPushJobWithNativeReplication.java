@@ -34,6 +34,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -125,23 +126,7 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     super.setUp();
-    // Eagerly wait for the participant store push to complete in all regions.
-    // The participant store is initialized lazily when each child controller becomes leader.
-    // If we don't wait here, later tests that need the participant store (e.g.,
-    // testTargetedRegionPushJobFullConsumptionForBatchStore) may find it still at
-    // END_OF_PUSH_RECEIVED because user-store push jobs from earlier tests starve
-    // the participant store's hybrid buffer replay of server resources.
-    String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(CLUSTER_NAME);
-    for (int i = 0; i < childDatacenters.size(); i++) {
-      try (ControllerClient controllerClient =
-          new ControllerClient(CLUSTER_NAME, childDatacenters.get(i).getControllerConnectString())) {
-        TestUtils.waitForNonDeterministicPushCompletion(
-            Version.composeKafkaTopic(participantStoreName, 1),
-            controllerClient,
-            8,
-            TimeUnit.MINUTES);
-      }
-    }
+    IntegrationTestUtils.waitForParticipantStorePushInAllRegions(CLUSTER_NAME, childDatacenters);
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
