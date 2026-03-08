@@ -2,9 +2,11 @@ package com.linkedin.venice.stats.metrics;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -43,6 +45,18 @@ public abstract class AbstractModuleMetricEntityTest<T extends Enum<T> & ModuleM
         expectedDefinitions().size(),
         "Enum value count does not match expected definitions. "
             + "Add or remove entries in expectedDefinitions() when modifying " + enumClass.getSimpleName());
+  }
+
+  @Test
+  public void testNoDuplicateMetricNames() {
+    Set<String> seen = new HashSet<>();
+    for (T enumValue: enumClass.getEnumConstants()) {
+      String name = enumValue.getMetricEntity().getMetricName();
+      assertTrue(
+          seen.add(name),
+          "Duplicate metric name '" + name + "' found in " + enumClass.getSimpleName() + " on constant "
+              + enumValue.toString());
+    }
   }
 
   @Test
