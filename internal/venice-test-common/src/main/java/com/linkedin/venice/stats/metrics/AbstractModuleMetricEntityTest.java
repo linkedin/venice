@@ -22,6 +22,7 @@ import org.testng.annotations.Test;
  *
  * @param <T> the enum class under test
  */
+@Test
 public abstract class AbstractModuleMetricEntityTest<T extends Enum<T> & ModuleMetricEntityInterface> {
   private final Class<T> enumClass;
 
