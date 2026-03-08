@@ -36,7 +36,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -207,7 +206,7 @@ public class PartitionConsumptionState {
    * because of the properties of the above operations the caller is guaranteed to get the latest value for a key either from
    * this map or from the DB.
    */
-  private final ConcurrentMap<ByteArrayKey, TransientRecord> transientRecordMap = new VeniceConcurrentHashMap<>();
+  private final Map<ByteArrayKey, TransientRecord> transientRecordMap = new VeniceConcurrentHashMap<>();
 
   /**
    * This field is used to track whether the last queued record has been fully processed or not.
@@ -239,7 +238,7 @@ public class PartitionConsumptionState {
    * Key: source PubSub broker address
    * Value: latest consumed real-time topic position from that source
    */
-  private final ConcurrentMap<String, PubSubPosition> latestConsumedRtPositions;
+  private final Map<String, PubSubPosition> latestConsumedRtPositions;
 
   /**
    * Tracks the last real-time topic position consumed from each upstream broker
@@ -253,7 +252,7 @@ public class PartitionConsumptionState {
    * Key: source PubSub broker address
    * Value: last consumed real-time topic position with valid DIV
    */
-  private final ConcurrentMap<String, PubSubPosition> divRtCheckpointPositions;
+  private final Map<String, PubSubPosition> divRtCheckpointPositions;
 
   /**
    * Tracks the position of the last local version topic record processed
@@ -307,7 +306,7 @@ public class PartitionConsumptionState {
    * Cached HeartbeatKey references keyed by region, populated during lag monitor setup.
    * Eliminates HeartbeatKey creation and hash computation on the per-record recording path.
    */
-  private final Map<String, HeartbeatKey> cachedHeartbeatKeys = new VeniceConcurrentHashMap<>(3);
+  private final Map<String, HeartbeatKey> cachedHeartbeatKeys;
 
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
@@ -345,14 +344,25 @@ public class PartitionConsumptionState {
     this.consumptionStartTimeInMs = currentTimeInMs;
 
     // Restore in-memory consumption RT positions and latest processed RT
-    // positions from the checkpoint upstream positions map
-    latestConsumedRtPositions = new VeniceConcurrentHashMap<>(3);
-    divRtCheckpointPositions = new VeniceConcurrentHashMap<>(3);
-    latestProcessedRtPositions = new VeniceConcurrentHashMap<>(3);
-    trackingIncrementalPushStatus = new VeniceConcurrentHashMap<>(3);
-    if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
-      offsetRecord.cloneRtPositionCheckpoints(latestConsumedRtPositions);
-      offsetRecord.cloneRtPositionCheckpoints(latestProcessedRtPositions);
+    // positions from the checkpoint upstream positions map.
+    // Batch-only stores never consume from RT topics, so skip allocating
+    // these maps to reduce per-partition heap overhead.
+    if (hybrid) {
+      latestConsumedRtPositions = new VeniceConcurrentHashMap<>(3);
+      divRtCheckpointPositions = new VeniceConcurrentHashMap<>(3);
+      latestProcessedRtPositions = new VeniceConcurrentHashMap<>(3);
+      if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
+        offsetRecord.cloneRtPositionCheckpoints(latestConsumedRtPositions);
+        offsetRecord.cloneRtPositionCheckpoints(latestProcessedRtPositions);
+      }
+      trackingIncrementalPushStatus = new VeniceConcurrentHashMap<>(3);
+      cachedHeartbeatKeys = new VeniceConcurrentHashMap<>(3);
+    } else {
+      latestConsumedRtPositions = Collections.emptyMap();
+      divRtCheckpointPositions = Collections.emptyMap();
+      latestProcessedRtPositions = Collections.emptyMap();
+      trackingIncrementalPushStatus = Collections.emptyMap();
+      cachedHeartbeatKeys = Collections.emptyMap();
     }
     // Restore in-memory latest consumed version topic position and leader info from the checkpoint version topic
     // position
