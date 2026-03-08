@@ -5,6 +5,8 @@ import static com.linkedin.venice.stats.OpenTelemetryMetricsSetup.UNKNOWN_STORE_
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -23,6 +25,8 @@ public class ParticipantStoreConsumptionStatsTest {
   private static final String TEST_CLUSTER_NAME = "test-cluster";
   private static final String TEST_STORE_NAME = "test-store";
   private static final String TEST_STORE_NAME_2 = "test-store-2";
+  private static final String TEHUTI_KILLED_PUSH_JOBS_METRIC =
+      ".test-cluster-participant_store_consumption_task--killed_push_jobs.Count";
 
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
@@ -219,6 +223,30 @@ public class ParticipantStoreConsumptionStatsTest {
         ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_COUNT.getMetricEntity().getMetricName(),
         1,
         buildStoreStatusAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.FAIL));
+  }
+
+  /**
+   * Verifies that {@code recordFailedKillPushJob} (OTel-only) does NOT increment the Tehuti
+   * {@code killed_push_jobs} sensor. This guards the two-map split invariant:
+   * {@code killedPushJobsPerStore} (joint Tehuti+OTel) vs {@code failedKillPushJobPerStore} (OTel-only).
+   */
+  @Test
+  public void testFailedKillPushJobDoesNotIncrementTehutiKilledPushJobs() {
+    // Register the Tehuti sensor by recording a success first
+    stats.recordKilledPushJobs(TEST_STORE_NAME);
+    double valueAfterSuccess = metricsRepository.getMetric(TEHUTI_KILLED_PUSH_JOBS_METRIC).value();
+    assertTrue(valueAfterSuccess > 0, "Tehuti sensor should have a positive value after recording success");
+
+    // Record multiple failures — these must NOT affect the Tehuti sensor
+    stats.recordFailedKillPushJob(TEST_STORE_NAME);
+    stats.recordFailedKillPushJob(TEST_STORE_NAME);
+    stats.recordFailedKillPushJob(TEST_STORE_NAME);
+
+    // Tehuti killed_push_jobs count must remain unchanged
+    assertEquals(
+        metricsRepository.getMetric(TEHUTI_KILLED_PUSH_JOBS_METRIC).value(),
+        valueAfterSuccess,
+        "Tehuti killed_push_jobs sensor must not be incremented by recordFailedKillPushJob");
   }
 
   @Test

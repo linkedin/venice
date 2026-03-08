@@ -16,7 +16,6 @@ import org.testng.annotations.Test;
  *
  * @param <T> the enum class under test
  */
-@Test
 public abstract class AbstractTehutiMetricNameEnumTest<T extends Enum<T> & TehutiMetricNameEnum> {
   private final Class<T> enumClass;
 

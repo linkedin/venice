@@ -38,18 +38,25 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
   /** Counter for the number of times that the participant store consumption task failed to start. */
   private final MetricEntityStateBase failedInitializationMetric;
 
-  /** Per-store kill latency metric states, keyed by store name. */
+  /**
+   * Per-store metric state maps, keyed by store name. Each map grows lazily via {@code computeIfAbsent} and is bounded
+   * by the number of stores the server is actively ingesting. Entries are not evicted — the map is bounded because only
+   * stores returned by {@code getIngestingTopicsWithVersionStatusNotOnline()} generate recordings, and that set is
+   * finite per server.
+   *
+   * <p>All per-store entries within each map share a single cluster-scoped Tehuti sensor (registered once via
+   * {@code registerSensorIfAbsent}). The per-store map structure exists for OTel per-store dimension attribution only.
+   *
+   * <p>{@code killedPushJobsPerStore} and {@code failedKillPushJobPerStore} both map to the same OTel metric but
+   * MUST remain separate maps because each distinct Tehuti binding needs its own {@code MetricEntityState} entry —
+   * {@code killedPushJobsPerStore} has a Tehuti metric, {@code failedKillPushJobPerStore} does not. They can be
+   * merged once Tehuti is removed.
+   */
   private final Map<String, MetricEntityStateBase> killLatencyPerStore = new VeniceConcurrentHashMap<>();
-
-  /** Per-store successful kill count. Tehuti {@code KILLED_PUSH_JOBS} + OTel (SUCCESS). */
   private final Map<String, MetricEntityStateOneEnum<VeniceResponseStatusCategory>> killedPushJobsPerStore =
       new VeniceConcurrentHashMap<>();
-
-  /** Per-store failed kill count. OTel-only (FAIL) — no original Tehuti counterpart. */
   private final Map<String, MetricEntityStateOneEnum<VeniceResponseStatusCategory>> failedKillPushJobPerStore =
       new VeniceConcurrentHashMap<>();
-
-  /** Per-store kill failed consumption count metric states, keyed by store name. */
   private final Map<String, MetricEntityStateBase> killFailedConsumptionPerStore = new VeniceConcurrentHashMap<>();
 
   enum TehutiMetricName implements TehutiMetricNameEnum {
