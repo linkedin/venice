@@ -220,11 +220,13 @@ public class ParticipantStoreConsumptionTaskTest {
     time.advanceTime(1);
 
     verify(stats, timeout(WAIT).times(1)).recordKillPushJobFailedConsumption(UNKNOWN_STORE_NAME);
+
+    // Close the task before the negative assertions so no further loop iterations can fire.
+    task.close();
+
     verify(stats, never()).recordKilledPushJobs(any());
     verify(stats, never()).recordFailedKillPushJob(any());
     verify(stats, never()).recordKillPushJobLatency(any(), anyDouble());
-
-    task.close();
   }
 
   private void iterate() {

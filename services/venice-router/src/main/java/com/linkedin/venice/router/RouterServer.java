@@ -215,6 +215,7 @@ public class RouterServer extends AbstractVeniceService {
 
   public static final Collection<MetricEntity> ROUTER_SERVICE_METRIC_ENTITIES =
       ModuleMetricEntityInterface.getUniqueMetricEntities(getMetricEntityEnumClasses());
+
   /**
    * Thread number used to monitor the listening port;
    */
