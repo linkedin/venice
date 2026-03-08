@@ -22,8 +22,10 @@ import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.testng.annotations.Test;
 
 
@@ -134,6 +136,19 @@ public class RouterMetricEntityTest extends AbstractModuleMetricEntityTest<Route
             "Retry delay time",
             setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
     return map;
+  }
+
+  /**
+   * Verifies that no two enum constants across all router metric entity enums share the same
+   * metric name. Duplicates would cause silent deduplication in {@code getUniqueMetricEntities}.
+   */
+  @Test
+  public void testNoDuplicateMetricNamesAcrossRouterEnums() {
+    Set<String> allNames = new HashSet<>();
+    for (MetricEntity entity: RouterServer.ROUTER_SERVICE_METRIC_ENTITIES) {
+      String name = entity.getMetricName();
+      assertTrue(allNames.add(name), "Duplicate metric name found across router enums: " + name);
+    }
   }
 
   @Test

@@ -370,6 +370,20 @@ public class BasicClientStatsTest {
         otelPrefix);
   }
 
+  /**
+   * Verifies that no two enum constants across BasicClientMetricEntity and ClientMetricEntity
+   * share the same metric name. Duplicates would cause silent deduplication in
+   * {@code getUniqueMetricEntities}.
+   */
+  @Test
+  public void testNoDuplicateMetricNamesAcrossClientEnums() {
+    Set<String> allNames = new HashSet<>();
+    for (MetricEntity entity: CLIENT_METRIC_ENTITIES) {
+      String name = entity.getMetricName();
+      assertTrue(allNames.add(name), "Duplicate metric name found across client enums: " + name);
+    }
+  }
+
   @Test
   public void testClientMetricEntities() {
     Map<ModuleMetricEntityInterface, MetricEntity> expectedMetrics = new HashMap<>();

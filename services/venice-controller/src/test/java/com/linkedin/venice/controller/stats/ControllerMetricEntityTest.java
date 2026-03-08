@@ -15,8 +15,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.testng.annotations.Test;
 
 
@@ -50,6 +52,19 @@ public class ControllerMetricEntityTest {
    */
   private static final List<Class<? extends ModuleMetricEntityInterface>> SHARED_MODULE_ENUMS =
       Arrays.asList(ThreadPoolOtelMetricEntity.class);
+
+  /**
+   * Verifies that no two enum constants across all controller metric entity enums share the same
+   * metric name. Duplicates would cause silent deduplication in {@code getUniqueMetricEntities}.
+   */
+  @Test
+  public void testNoDuplicateMetricNamesAcrossControllerEnums() {
+    Set<String> allNames = new HashSet<>();
+    for (MetricEntity entity: VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES) {
+      String name = entity.getMetricName();
+      assertTrue(allNames.add(name), "Duplicate metric name found across controller enums: " + name);
+    }
+  }
 
   @Test
   @SuppressWarnings("unchecked")
