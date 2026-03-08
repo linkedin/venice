@@ -16,7 +16,6 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashMap;
 import java.util.Map;
 import org.testng.annotations.Test;
 
@@ -395,24 +394,4 @@ public class HelixGroupStatsTest {
         otelMetricPrefix);
   }
 
-  @Test
-  public void testHelixGroupTehutiMetricNameEnum() {
-    Map<HelixGroupStats.HelixGroupTehutiMetricName, String> expectedNames = new HashMap<>();
-    expectedNames.put(HelixGroupStats.HelixGroupTehutiMetricName.GROUP_COUNT, "group_count");
-    expectedNames.put(HelixGroupStats.HelixGroupTehutiMetricName.GROUP_REQUEST, "group_request");
-    expectedNames.put(HelixGroupStats.HelixGroupTehutiMetricName.GROUP_PENDING_REQUEST, "group_pending_request");
-    expectedNames
-        .put(HelixGroupStats.HelixGroupTehutiMetricName.GROUP_RESPONSE_WAITING_TIME, "group_response_waiting_time");
-
-    assertEquals(
-        HelixGroupStats.HelixGroupTehutiMetricName.values().length,
-        expectedNames.size(),
-        "New HelixGroupTehutiMetricName values were added but not included in this test");
-
-    for (HelixGroupStats.HelixGroupTehutiMetricName enumValue: HelixGroupStats.HelixGroupTehutiMetricName.values()) {
-      String expectedName = expectedNames.get(enumValue);
-      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
-      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
-    }
-  }
 }

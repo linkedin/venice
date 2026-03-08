@@ -1,9 +1,9 @@
 package com.linkedin.venice.stats.metrics;
 
 import com.google.common.annotations.VisibleForTesting;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 
@@ -18,8 +18,9 @@ public interface ModuleMetricEntityInterface {
    * This will also check if there are multiple metric entities with the same name across the provided
    * enum classes with different metric types and throw.
    */
-  static Collection<MetricEntity> getUniqueMetricEntities(Class<? extends ModuleMetricEntityInterface>... enumClasses) {
-    if (enumClasses == null || enumClasses.length == 0) {
+  static Collection<MetricEntity> getUniqueMetricEntities(
+      List<Class<? extends ModuleMetricEntityInterface>> enumClasses) {
+    if (enumClasses == null || enumClasses.isEmpty()) {
       throw new IllegalArgumentException("Enum classes passed to getUniqueMetricEntities cannot be null or empty");
     }
 
@@ -36,7 +37,7 @@ public interface ModuleMetricEntityInterface {
           if (!existingMetric.getMetricType().equals(metric.getMetricType())) {
             throw new IllegalArgumentException(
                 "Multiple metric entities with the same name but different types found for metric : " + metricName
-                    + " among the provided enum classes: " + Arrays.toString(enumClasses));
+                    + " among the provided enum classes: " + enumClasses);
           }
         } else {
           uniqueMetricsByName.put(metricName, metric);

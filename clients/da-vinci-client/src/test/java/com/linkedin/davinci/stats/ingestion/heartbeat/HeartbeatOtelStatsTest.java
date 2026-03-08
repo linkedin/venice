@@ -10,7 +10,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
-import static com.linkedin.venice.utils.Utils.setOf;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
@@ -22,14 +21,9 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
-import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricType;
-import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Set;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
@@ -601,22 +595,4 @@ public class HeartbeatOtelStatsTest {
         TEST_PREFIX);
   }
 
-  @Test
-  public void testMetricEntityDefinitions() {
-    MetricEntity entity = INGESTION_HEARTBEAT_DELAY.getMetricEntity();
-    assertEquals(entity.getMetricName(), "ingestion.replication.heartbeat.delay");
-    assertEquals(entity.getMetricType(), MetricType.HISTOGRAM);
-    assertEquals(entity.getUnit(), MetricUnit.MILLISECOND);
-    assertEquals(entity.getDescription(), "Nearline ingestion replication lag measured via heartbeat messages");
-    Set<VeniceMetricsDimensions> expectedDimensions = setOf(
-        VENICE_STORE_NAME,
-        VENICE_CLUSTER_NAME,
-        VENICE_REGION_NAME,
-        VENICE_VERSION_ROLE,
-        VENICE_REPLICA_TYPE,
-        VENICE_REPLICA_STATE);
-    assertEquals(entity.getDimensionsList(), expectedDimensions);
-
-    assertEquals(HeartbeatOtelMetricEntity.values().length, 1, "Expected 1 metric entity");
-  }
 }

@@ -1,6 +1,8 @@
 package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
+import static com.linkedin.davinci.stats.ServerMetricEntity.getMetricEntityEnumClasses;
+import static com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.assertNoDuplicateMetricNamesAcrossEnums;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -23,15 +25,15 @@ public class ServerMetricEntityTest {
     assertEquals(SERVER_METRIC_ENTITIES.size(), 79, "Expected 79 unique metric entities");
   }
 
+  /**
+   * Verifies that no two enum constants across all server metric entity enums share the same
+   * metric name. Uses {@link ServerMetricEntity#getMetricEntityEnumClasses()} as the single
+   * source of truth. Scans raw enum constants to catch silent deduplication by
+   * {@link ModuleMetricEntityInterface#getUniqueMetricEntities}.
+   */
   @Test
-  public void testNoDuplicateMetricNames() {
-    Set<String> allNames = new HashSet<>();
-    for (ModuleMetricEntityInterface[] enumValues: getAllModuleMetricEntityEnums()) {
-      for (ModuleMetricEntityInterface metric: enumValues) {
-        String name = metric.getMetricEntity().getMetricName();
-        assertTrue(allNames.add(name), "Duplicate metric name found: " + name);
-      }
-    }
+  public void testNoDuplicateMetricNamesAcrossServerEnums() {
+    assertNoDuplicateMetricNamesAcrossEnums(getMetricEntityEnumClasses());
   }
 
   @Test

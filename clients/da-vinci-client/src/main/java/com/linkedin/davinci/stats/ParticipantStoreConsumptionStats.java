@@ -64,8 +64,8 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
   }
 
   /**
-   * @param clusterName the cluster that this server belongs to, used as the {@code VENICE_CLUSTER_NAME} base dimension
-   *                    on all OTel metrics emitted by this class.
+   * @param clusterName the cluster that this server belongs to. Used as the {@code VENICE_CLUSTER_NAME} base dimension
+   *                    on all OTel metrics and as the Tehuti sensor name prefix.
    */
   public ParticipantStoreConsumptionStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, clusterName + NAME_SUFFIX);

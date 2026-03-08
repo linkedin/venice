@@ -62,7 +62,7 @@ public class MetricsRepositoryUtilsTest {
         initialTimeout,
         otelEnabled,
         VeniceOpenTelemetryMetricNamingFormat.SNAKE_CASE,
-        getUniqueMetricEntities(ModuleMetricEntityInterfaceTest.SingleEnumForTest.class));
+        getUniqueMetricEntities(Collections.singletonList(ModuleMetricEntityInterfaceTest.SingleEnumForTest.class)));
 
     assertNotNull(repository, "Repository should not be null");
     assertTrue(repository instanceof VeniceMetricsRepository, "Should return a VeniceMetricsRepository instance");

@@ -149,7 +149,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
                 killPushJobMessage.getTimestamp(),
                 lag);
             if (storeIngestionService.killConsumptionTask(topic)) {
-              // emit metrics only when a confirmed kill is made
+              // record success metrics: kill count and latency
               stats.recordKilledPushJobs(storeName);
               stats.recordKillPushJobLatency(storeName, Long.max(0, lag));
             } else {
@@ -169,7 +169,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
             if (!EXCEPTION_FILTER.isRedundantException(msg)) {
               LOGGER.error(msg, e);
             }
-            // storeName is null if the exception was thrown before the assignment on line above completed
+            // storeName is null if the exception was thrown before its assignment
             stats.recordKillPushJobFailedConsumption(sanitizeStoreName(storeName));
           }
         }

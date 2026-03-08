@@ -1,18 +1,20 @@
 package com.linkedin.davinci.stats;
 
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class ParticipantStoreConsumptionTehutiMetricNameTest
-    extends AbstractTehutiMetricNameEnumTest<ParticipantStoreConsumptionStats.TehutiMetricName> {
-  public ParticipantStoreConsumptionTehutiMetricNameTest() {
-    super(ParticipantStoreConsumptionStats.TehutiMetricName.class);
+public class ParticipantStoreConsumptionTehutiMetricNameTest {
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(
+        ParticipantStoreConsumptionStats.TehutiMetricName.class,
+        expectedMetricNames()).assertAll();
   }
 
-  @Override
-  protected Map<ParticipantStoreConsumptionStats.TehutiMetricName, String> expectedMetricNames() {
+  private static Map<ParticipantStoreConsumptionStats.TehutiMetricName, String> expectedMetricNames() {
     Map<ParticipantStoreConsumptionStats.TehutiMetricName, String> map = new HashMap<>();
     map.put(ParticipantStoreConsumptionStats.TehutiMetricName.KILL_PUSH_JOB_LATENCY, "kill_push_job_latency");
     map.put(ParticipantStoreConsumptionStats.TehutiMetricName.KILLED_PUSH_JOBS, "killed_push_jobs");

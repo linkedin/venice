@@ -1,8 +1,10 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.stats.OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -187,6 +189,44 @@ public class ParticipantStoreConsumptionTaskTest {
 
     task.close();
     verify(client, timeout(WAIT).times(1)).close();
+  }
+
+  /**
+   * Verifies that when the outer catch block fires (e.g., {@code getIngestingTopicsWithVersionStatusNotOnline}
+   * throws), {@code recordKillPushJobFailedConsumption} is called with {@code UNKNOWN_STORE_NAME} because
+   * no store context is available at that level.
+   */
+  @Test
+  public void testOuterCatchRecordsFailedConsumptionWithUnknownStore() {
+    StoreIngestionService sis = mock(StoreIngestionService.class);
+    ParticipantStoreConsumptionStats stats = mock(ParticipantStoreConsumptionStats.class);
+    ClusterInfoProvider cip = mock(ClusterInfoProvider.class);
+    ClientConfig<ParticipantMessageValue> clientConfig = mock(ClientConfig.class);
+    Function<ClientConfig<ParticipantMessageValue>, AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue>> clientCtor =
+        mock(Function.class);
+    SleepStallingMockTime time = new SleepStallingMockTime();
+
+    doThrow(new RuntimeException("test: service unavailable")).when(sis).getIngestingTopicsWithVersionStatusNotOnline();
+
+    ParticipantStoreConsumptionTask task =
+        new ParticipantStoreConsumptionTask(sis, cip, stats, clientConfig, 1, null, clientCtor, time);
+    CompletableFuture.runAsync(task);
+
+    // Wait for the task to start and reach the sleep stall (heartbeat fires before sleep)
+    verify(stats, timeout(WAIT).times(1)).recordHeartbeat();
+
+    // Now advance time to unblock the sleep — the task will call getIngestingTopicsWithVersionStatusNotOnline
+    // which throws, hitting the outer catch that records with UNKNOWN_STORE_NAME
+    time.advanceTime(1);
+
+    verify(stats, timeout(WAIT).times(1)).recordKillPushJobFailedConsumption(UNKNOWN_STORE_NAME);
+
+    // Close the task before the negative assertions so no further loop iterations can fire.
+    task.close();
+
+    verify(stats, never()).recordKilledPushJobs(any());
+    verify(stats, never()).recordFailedKillPushJob(any());
+    verify(stats, never()).recordKillPushJobLatency(any(), anyDouble());
   }
 
   private void iterate() {

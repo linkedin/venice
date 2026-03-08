@@ -5,21 +5,23 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
 
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class ParticipantStoreConsumptionOtelMetricEntityTest
-    extends AbstractModuleMetricEntityTest<ParticipantStoreConsumptionOtelMetricEntity> {
-  public ParticipantStoreConsumptionOtelMetricEntityTest() {
-    super(ParticipantStoreConsumptionOtelMetricEntity.class);
+public class ParticipantStoreConsumptionOtelMetricEntityTest {
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(ParticipantStoreConsumptionOtelMetricEntity.class, expectedDefinitions())
+        .assertAll();
   }
 
-  @Override
-  protected Map<ParticipantStoreConsumptionOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+  private static Map<ParticipantStoreConsumptionOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<ParticipantStoreConsumptionOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_LATENCY,
