@@ -59,13 +59,11 @@ import org.testng.annotations.Test;
 public class VeniceParentHelixAdminSchemaTest {
   private static final long DEFAULT_TEST_TIMEOUT_MS = 60000;
   private VeniceParentHelixAdminTestFixture fixture;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private String clusterName;
 
   @BeforeClass
   public void setUp() {
     fixture = new VeniceParentHelixAdminTestFixture();
-    multiRegionMultiClusterWrapper = fixture.getMultiRegionMultiClusterWrapper();
     clusterName = fixture.getClusterName();
   }
 
