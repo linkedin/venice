@@ -5,17 +5,12 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricType;
-import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.mockito.Mockito;
@@ -180,88 +175,6 @@ public class ThreadPoolStatsOtelTest {
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
     verifyNoNpeWithRepository(new MetricsRepository(), "plain-pool");
-  }
-
-  @Test
-  public void testThreadPoolTehutiMetricNameEnum() {
-    Map<ThreadPoolStats.ThreadPoolTehutiMetricNameEnum, String> expectedNames = new HashMap<>();
-    expectedNames.put(ThreadPoolStats.ThreadPoolTehutiMetricNameEnum.QUEUED_TASK_COUNT, "queued_task_count");
-
-    assertEquals(
-        ThreadPoolStats.ThreadPoolTehutiMetricNameEnum.values().length,
-        expectedNames.size(),
-        "New ThreadPoolTehutiMetricNameEnum values were added but not included in this test");
-
-    for (ThreadPoolStats.ThreadPoolTehutiMetricNameEnum enumValue: ThreadPoolStats.ThreadPoolTehutiMetricNameEnum
-        .values()) {
-      String expectedName = expectedNames.get(enumValue);
-      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
-      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
-    }
-  }
-
-  /**
-   * Validates all {@link ThreadPoolOtelMetricEntity} entries match expected definitions.
-   * Registration in SERVICE_METRIC_ENTITIES is verified by RouterMetricEntityTest and ServerMetricEntityTest.
-   */
-  @Test
-  public void testThreadPoolOtelMetricEntity() {
-    Map<ThreadPoolOtelMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
-    expectedMetrics.put(
-        ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_COUNT,
-        new MetricEntity(
-            "thread_pool.thread.active_count",
-            MetricType.ASYNC_GAUGE,
-            MetricUnit.NUMBER,
-            "Active threads in the thread pool",
-            Collections.singleton(VENICE_THREAD_POOL_NAME)));
-    expectedMetrics.put(
-        ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_MAX_COUNT,
-        new MetricEntity(
-            "thread_pool.thread.max_count",
-            MetricType.ASYNC_GAUGE,
-            MetricUnit.NUMBER,
-            "Maximum thread pool size",
-            Collections.singleton(VENICE_THREAD_POOL_NAME)));
-    expectedMetrics.put(
-        ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_COUNT,
-        new MetricEntity(
-            "thread_pool.queue.task_count",
-            MetricType.ASYNC_GAUGE,
-            MetricUnit.NUMBER,
-            "Tasks currently queued in the thread pool",
-            Collections.singleton(VENICE_THREAD_POOL_NAME)));
-    expectedMetrics.put(
-        ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_DISTRIBUTION,
-        new MetricEntity(
-            "thread_pool.queue.task_distribution",
-            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-            MetricUnit.NUMBER,
-            "Distribution of queued task count over time",
-            Collections.singleton(VENICE_THREAD_POOL_NAME)));
-
-    assertEquals(
-        ThreadPoolOtelMetricEntity.values().length,
-        expectedMetrics.size(),
-        "New ThreadPoolOtelMetricEntity values were added but not included in this test");
-
-    for (ThreadPoolOtelMetricEntity metric: ThreadPoolOtelMetricEntity.values()) {
-      MetricEntity actual = metric.getMetricEntity();
-      MetricEntity expected = expectedMetrics.get(metric);
-
-      assertNotNull(expected, "No expected definition for " + metric.name());
-      assertEquals(actual.getMetricName(), expected.getMetricName(), "Unexpected metric name for " + metric.name());
-      assertEquals(actual.getMetricType(), expected.getMetricType(), "Unexpected metric type for " + metric.name());
-      assertEquals(actual.getUnit(), expected.getUnit(), "Unexpected metric unit for " + metric.name());
-      assertEquals(
-          actual.getDescription(),
-          expected.getDescription(),
-          "Unexpected metric description for " + metric.name());
-      assertEquals(
-          actual.getDimensionsList(),
-          expected.getDimensionsList(),
-          "Unexpected metric dimensions for " + metric.name());
-    }
   }
 
   private Attributes threadPoolAttributes() {

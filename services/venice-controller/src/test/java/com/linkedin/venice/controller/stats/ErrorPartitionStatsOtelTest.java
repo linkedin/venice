@@ -5,22 +5,14 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricType;
-import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
-import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -201,133 +193,6 @@ public class ErrorPartitionStatsOtelTest {
     plainStats.recordErrorPartitionRecoveredFromReset(TEST_STORE_NAME);
     plainStats.recordErrorPartitionUnrecoverableFromReset(TEST_STORE_NAME);
     plainStats.recordErrorPartitionProcessingTime(100.0);
-  }
-
-  @Test
-  public void testErrorPartitionTehutiMetricNameEnum() {
-    Map<ErrorPartitionStats.ErrorPartitionTehutiMetricNameEnum, String> expectedNames = new HashMap<>();
-    expectedNames.put(
-        ErrorPartitionStats.ErrorPartitionTehutiMetricNameEnum.CURRENT_VERSION_ERROR_PARTITION_RESET_ATTEMPT,
-        "current_version_error_partition_reset_attempt");
-    expectedNames.put(
-        ErrorPartitionStats.ErrorPartitionTehutiMetricNameEnum.CURRENT_VERSION_ERROR_PARTITION_RESET_ATTEMPT_ERRORED,
-        "current_version_error_partition_reset_attempt_errored");
-    expectedNames.put(
-        ErrorPartitionStats.ErrorPartitionTehutiMetricNameEnum.CURRENT_VERSION_ERROR_PARTITION_RECOVERED_FROM_RESET,
-        "current_version_error_partition_recovered_from_reset");
-    expectedNames.put(
-        ErrorPartitionStats.ErrorPartitionTehutiMetricNameEnum.CURRENT_VERSION_ERROR_PARTITION_UNRECOVERABLE_FROM_RESET,
-        "current_version_error_partition_unrecoverable_from_reset");
-    expectedNames.put(
-        ErrorPartitionStats.ErrorPartitionTehutiMetricNameEnum.ERROR_PARTITION_PROCESSING_ERROR,
-        "error_partition_processing_error");
-    expectedNames.put(
-        ErrorPartitionStats.ErrorPartitionTehutiMetricNameEnum.ERROR_PARTITION_PROCESSING_TIME,
-        "error_partition_processing_time");
-
-    assertEquals(
-        ErrorPartitionStats.ErrorPartitionTehutiMetricNameEnum.values().length,
-        expectedNames.size(),
-        "New ErrorPartitionTehutiMetricNameEnum values were added but not included in this test");
-
-    for (ErrorPartitionStats.ErrorPartitionTehutiMetricNameEnum enumValue: ErrorPartitionStats.ErrorPartitionTehutiMetricNameEnum
-        .values()) {
-      String expectedName = expectedNames.get(enumValue);
-      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
-      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
-    }
-  }
-
-  @Test
-  public void testErrorPartitionOtelMetricEntity() {
-    Map<ErrorPartitionStats.ErrorPartitionOtelMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
-    expectedMetrics.put(
-        ErrorPartitionStats.ErrorPartitionOtelMetricEntity.ERROR_PARTITION_RESET_ATTEMPT_COUNT,
-        new MetricEntity(
-            "partition.error_partition.reset.attempt_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Total partitions reset across all operations",
-            Utils.setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME)));
-    expectedMetrics.put(
-        ErrorPartitionStats.ErrorPartitionOtelMetricEntity.ERROR_PARTITION_RESET_ERROR_COUNT,
-        new MetricEntity(
-            "partition.error_partition.reset.error_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Failed reset operations for a store",
-            Utils.setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME)));
-    expectedMetrics.put(
-        ErrorPartitionStats.ErrorPartitionOtelMetricEntity.ERROR_PARTITION_RESET_RECOVERED_PARTITION_COUNT,
-        new MetricEntity(
-            "partition.error_partition.reset.recovered_partition_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Partitions recovered after reset",
-            Utils.setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME)));
-    expectedMetrics.put(
-        ErrorPartitionStats.ErrorPartitionOtelMetricEntity.ERROR_PARTITION_RESET_UNRECOVERABLE_PARTITION_COUNT,
-        new MetricEntity(
-            "partition.error_partition.reset.unrecoverable_partition_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Partitions declared unrecoverable after hitting reset limit",
-            Utils.setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME)));
-    expectedMetrics.put(
-        ErrorPartitionStats.ErrorPartitionOtelMetricEntity.ERROR_PARTITION_PROCESSING_ERROR_COUNT,
-        new MetricEntity(
-            "partition.error_partition.processing.error_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Unexpected failures in the error partition processing cycle",
-            Utils.setOf(VENICE_CLUSTER_NAME)));
-    expectedMetrics.put(
-        ErrorPartitionStats.ErrorPartitionOtelMetricEntity.ERROR_PARTITION_PROCESSING_TIME,
-        new MetricEntity(
-            "partition.error_partition.processing.time",
-            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-            MetricUnit.MILLISECOND,
-            "Time for each complete error partition processing cycle",
-            Utils.setOf(VENICE_CLUSTER_NAME)));
-
-    assertEquals(
-        ErrorPartitionStats.ErrorPartitionOtelMetricEntity.values().length,
-        expectedMetrics.size(),
-        "New ErrorPartitionOtelMetricEntity values were added but not included in this test");
-
-    for (ErrorPartitionStats.ErrorPartitionOtelMetricEntity metric: ErrorPartitionStats.ErrorPartitionOtelMetricEntity
-        .values()) {
-      MetricEntity actual = metric.getMetricEntity();
-      MetricEntity expected = expectedMetrics.get(metric);
-
-      assertNotNull(expected, "No expected definition for " + metric.name());
-      assertEquals(actual.getMetricName(), expected.getMetricName(), "Unexpected metric name for " + metric.name());
-      assertEquals(actual.getMetricType(), expected.getMetricType(), "Unexpected metric type for " + metric.name());
-      assertEquals(actual.getUnit(), expected.getUnit(), "Unexpected metric unit for " + metric.name());
-      assertEquals(
-          actual.getDescription(),
-          expected.getDescription(),
-          "Unexpected metric description for " + metric.name());
-      assertEquals(
-          actual.getDimensionsList(),
-          expected.getDimensionsList(),
-          "Unexpected metric dimensions for " + metric.name());
-    }
-
-    // Verify all ErrorPartitionOtelMetricEntity entries are present in CONTROLLER_SERVICE_METRIC_ENTITIES
-    for (MetricEntity expected: expectedMetrics.values()) {
-      boolean found = false;
-      for (MetricEntity actual: CONTROLLER_SERVICE_METRIC_ENTITIES) {
-        if (Objects.equals(actual.getMetricName(), expected.getMetricName())
-            && actual.getMetricType() == expected.getMetricType() && actual.getUnit() == expected.getUnit()
-            && Objects.equals(actual.getDescription(), expected.getDescription())
-            && Objects.equals(actual.getDimensionsList(), expected.getDimensionsList())) {
-          found = true;
-          break;
-        }
-      }
-      assertTrue(found, "MetricEntity not found in CONTROLLER_SERVICE_METRIC_ENTITIES: " + expected.getMetricName());
-    }
   }
 
   private Attributes clusterAttributes() {

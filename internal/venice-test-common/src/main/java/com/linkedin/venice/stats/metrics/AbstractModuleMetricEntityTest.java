@@ -4,7 +4,9 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.testng.annotations.Test;
 
@@ -72,11 +74,11 @@ public abstract class AbstractModuleMetricEntityTest<T extends Enum<T> & ModuleM
         MetricUnit unit,
         String description,
         Set<VeniceMetricsDimensions> dimensions) {
-      this.name = name;
-      this.type = type;
-      this.unit = unit;
-      this.description = description;
-      this.dimensions = dimensions;
+      this.name = Objects.requireNonNull(name, "name");
+      this.type = Objects.requireNonNull(type, "type");
+      this.unit = Objects.requireNonNull(unit, "unit");
+      this.description = Objects.requireNonNull(description, "description");
+      this.dimensions = dimensions != null ? dimensions : Collections.emptySet();
     }
   }
 }

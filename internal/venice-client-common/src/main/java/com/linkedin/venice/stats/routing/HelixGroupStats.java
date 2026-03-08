@@ -23,6 +23,11 @@ import java.util.Map;
 
 
 public class HelixGroupStats extends AbstractVeniceStats {
+  /**
+   * Per-Helix-group metric entity states and Tehuti metric references, keyed by group ID. Each map grows lazily
+   * via {@code computeIfAbsent} and is bounded by the number of Helix groups configured for the store (typically
+   * 3–5). Entries are not evicted — the maps persist for the lifetime of this stats instance.
+   */
   private final VeniceConcurrentHashMap<Integer, Metric> groupResponseWaitingTimeAvgMap =
       new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<Integer, MetricEntityStateBase> groupRequestCountMap =

@@ -4,22 +4,14 @@ import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricType;
-import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
-import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -149,91 +141,6 @@ public class ProtocolVersionAutoDetectionStatsOtelTest {
     // Should execute without NPE
     plainStats.recordProtocolVersionAutoDetectionErrorSensor(3);
     plainStats.recordProtocolVersionAutoDetectionLatencySensor(100.0);
-  }
-
-  @Test
-  public void testProtocolVersionAutoDetectionTehutiMetricNameEnum() {
-    Map<ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionTehutiMetricNameEnum, String> expectedNames =
-        new HashMap<>();
-    expectedNames.put(
-        ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionTehutiMetricNameEnum.PROTOCOL_VERSION_AUTO_DETECTION_ERROR,
-        "protocol_version_auto_detection_error");
-    expectedNames.put(
-        ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionTehutiMetricNameEnum.PROTOCOL_VERSION_AUTO_DETECTION_LATENCY,
-        "protocol_version_auto_detection_latency");
-
-    assertEquals(
-        ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionTehutiMetricNameEnum.values().length,
-        expectedNames.size(),
-        "New ProtocolVersionAutoDetectionTehutiMetricNameEnum values were added but not included in this test");
-
-    for (ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionTehutiMetricNameEnum enumValue: ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionTehutiMetricNameEnum
-        .values()) {
-      String expectedName = expectedNames.get(enumValue);
-      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
-      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
-    }
-  }
-
-  @Test
-  public void testProtocolVersionAutoDetectionOtelMetricEntity() {
-    Map<ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity, MetricEntity> expectedMetrics =
-        new HashMap<>();
-    expectedMetrics.put(
-        ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity.PROTOCOL_VERSION_AUTO_DETECTION_FAILURE_COUNT,
-        new MetricEntity(
-            "protocol_version_auto_detection.consecutive_failure_count",
-            MetricType.GAUGE,
-            MetricUnit.NUMBER,
-            "Consecutive failures in protocol version auto-detection",
-            Utils.setOf(VENICE_CLUSTER_NAME)));
-    expectedMetrics.put(
-        ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity.PROTOCOL_VERSION_AUTO_DETECTION_TIME,
-        new MetricEntity(
-            "protocol_version_auto_detection.time",
-            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-            MetricUnit.MILLISECOND,
-            "Latency of protocol version auto-detection",
-            Utils.setOf(VENICE_CLUSTER_NAME)));
-
-    assertEquals(
-        ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity.values().length,
-        expectedMetrics.size(),
-        "New ProtocolVersionAutoDetectionOtelMetricEntity values were added but not included in this test");
-
-    for (ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity metric: ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity
-        .values()) {
-      MetricEntity actual = metric.getMetricEntity();
-      MetricEntity expected = expectedMetrics.get(metric);
-
-      assertNotNull(expected, "No expected definition for " + metric.name());
-      assertEquals(actual.getMetricName(), expected.getMetricName(), "Unexpected metric name for " + metric.name());
-      assertEquals(actual.getMetricType(), expected.getMetricType(), "Unexpected metric type for " + metric.name());
-      assertEquals(actual.getUnit(), expected.getUnit(), "Unexpected metric unit for " + metric.name());
-      assertEquals(
-          actual.getDescription(),
-          expected.getDescription(),
-          "Unexpected metric description for " + metric.name());
-      assertEquals(
-          actual.getDimensionsList(),
-          expected.getDimensionsList(),
-          "Unexpected metric dimensions for " + metric.name());
-    }
-
-    // Verify all entries are present in CONTROLLER_SERVICE_METRIC_ENTITIES
-    for (MetricEntity expected: expectedMetrics.values()) {
-      boolean found = false;
-      for (MetricEntity actual: CONTROLLER_SERVICE_METRIC_ENTITIES) {
-        if (Objects.equals(actual.getMetricName(), expected.getMetricName())
-            && actual.getMetricType() == expected.getMetricType() && actual.getUnit() == expected.getUnit()
-            && Objects.equals(actual.getDescription(), expected.getDescription())
-            && Objects.equals(actual.getDimensionsList(), expected.getDimensionsList())) {
-          found = true;
-          break;
-        }
-      }
-      assertTrue(found, "MetricEntity not found in CONTROLLER_SERVICE_METRIC_ENTITIES: " + expected.getMetricName());
-    }
   }
 
   private static Attributes clusterAttributes() {

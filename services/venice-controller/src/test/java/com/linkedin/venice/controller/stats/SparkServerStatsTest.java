@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.stats;
 
-import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
@@ -8,30 +7,20 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.AbstractTestVeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
-import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricType;
-import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
-import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 import spark.Request;
@@ -275,111 +264,6 @@ public class SparkServerStatsTest extends AbstractTestVeniceParentHelixAdmin {
                 VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
                 VeniceResponseStatusCategory.FAIL.getDimensionValue())
             .build());
-  }
-
-  @Test
-  public void testControllerTehutiMetricNameEnum() {
-    Map<SparkServerStats.ControllerTehutiMetricNameEnum, String> expectedNames = new HashMap<>();
-    expectedNames.put(SparkServerStats.ControllerTehutiMetricNameEnum.REQUEST, "request");
-    expectedNames.put(SparkServerStats.ControllerTehutiMetricNameEnum.FINISHED_REQUEST, "finished_request");
-    expectedNames
-        .put(SparkServerStats.ControllerTehutiMetricNameEnum.CURRENT_IN_FLIGHT_REQUEST, "current_in_flight_request");
-    expectedNames.put(SparkServerStats.ControllerTehutiMetricNameEnum.SUCCESSFUL_REQUEST, "successful_request");
-    expectedNames.put(SparkServerStats.ControllerTehutiMetricNameEnum.FAILED_REQUEST, "failed_request");
-    expectedNames
-        .put(SparkServerStats.ControllerTehutiMetricNameEnum.SUCCESSFUL_REQUEST_LATENCY, "successful_request_latency");
-    expectedNames.put(SparkServerStats.ControllerTehutiMetricNameEnum.FAILED_REQUEST_LATENCY, "failed_request_latency");
-
-    assertEquals(
-        SparkServerStats.ControllerTehutiMetricNameEnum.values().length,
-        expectedNames.size(),
-        "New ControllerTehutiMetricNameEnum values were added but not included in this test");
-
-    for (SparkServerStats.ControllerTehutiMetricNameEnum enumValue: SparkServerStats.ControllerTehutiMetricNameEnum
-        .values()) {
-      String expectedName = expectedNames.get(enumValue);
-      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
-      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
-    }
-  }
-
-  @Test
-  public void testSparkServerOtelMetricEntity() {
-    Map<SparkServerStats.SparkServerOtelMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
-    expectedMetrics.put(
-        SparkServerStats.SparkServerOtelMetricEntity.INFLIGHT_CALL_COUNT,
-        new MetricEntity(
-            "inflight_call_count",
-            MetricType.UP_DOWN_COUNTER,
-            MetricUnit.NUMBER,
-            "Count of all current inflight calls to controller spark server",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT)));
-    expectedMetrics.put(
-        SparkServerStats.SparkServerOtelMetricEntity.CALL_COUNT,
-        new MetricEntity(
-            "call_count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Count of all calls to controller spark server",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
-    expectedMetrics.put(
-        SparkServerStats.SparkServerOtelMetricEntity.CALL_TIME,
-        new MetricEntity(
-            "call_time",
-            MetricType.HISTOGRAM,
-            MetricUnit.MILLISECOND,
-            "Latency histogram of all successful calls to controller spark server",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_CONTROLLER_ENDPOINT,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
-
-    assertEquals(
-        SparkServerStats.SparkServerOtelMetricEntity.values().length,
-        expectedMetrics.size(),
-        "New SparkServerOtelMetricEntity values were added but not included in this test");
-
-    for (SparkServerStats.SparkServerOtelMetricEntity metric: SparkServerStats.SparkServerOtelMetricEntity.values()) {
-      MetricEntity actual = metric.getMetricEntity();
-      MetricEntity expected = expectedMetrics.get(metric);
-
-      assertNotNull(expected, "No expected definition for " + metric.name());
-      assertEquals(actual.getMetricName(), expected.getMetricName(), "Unexpected metric name for " + metric.name());
-      assertEquals(actual.getMetricType(), expected.getMetricType(), "Unexpected metric type for " + metric.name());
-      assertEquals(actual.getUnit(), expected.getUnit(), "Unexpected metric unit for " + metric.name());
-      assertEquals(
-          actual.getDescription(),
-          expected.getDescription(),
-          "Unexpected metric description for " + metric.name());
-      assertEquals(
-          actual.getDimensionsList(),
-          expected.getDimensionsList(),
-          "Unexpected metric dimensions for " + metric.name());
-    }
-
-    // Verify all SparkServerOtelMetricEntity entries are present in CONTROLLER_SERVICE_METRIC_ENTITIES
-    for (MetricEntity expected: expectedMetrics.values()) {
-      boolean found = false;
-      for (MetricEntity actual: CONTROLLER_SERVICE_METRIC_ENTITIES) {
-        if (Objects.equals(actual.getMetricName(), expected.getMetricName())
-            && actual.getMetricType() == expected.getMetricType() && actual.getUnit() == expected.getUnit()
-            && Objects.equals(actual.getDescription(), expected.getDescription())
-            && Objects.equals(actual.getDimensionsList(), expected.getDimensionsList())) {
-          found = true;
-          break;
-        }
-      }
-      assertTrue(found, "MetricEntity not found in CONTROLLER_SERVICE_METRIC_ENTITIES: " + expected.getMetricName());
-    }
   }
 
   private void validateLongPointFromDataFromCounter(

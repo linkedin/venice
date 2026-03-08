@@ -14,19 +14,12 @@ import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricType;
-import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
-import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
 import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -200,72 +193,6 @@ public class PartitionHealthStatsOtelTest {
         metricsRepository.getMetric(tehutiMetricName).value(),
         5.0,
         "Tehuti metric value mismatch for total stats");
-  }
-
-  @Test
-  public void testPartitionHealthTehutiMetricNameEnum() {
-    // Verify the Tehuti metric name matches the original camelCase sensor name for backward compatibility
-    assertEquals(
-        PartitionHealthStats.PartitionHealthTehutiMetricNameEnum.UNDER_REPLICATED_PARTITION.getMetricName(),
-        "underReplicatedPartition",
-        "Tehuti metric name must match the original sensor name to preserve dashboard compatibility");
-
-    assertEquals(
-        PartitionHealthStats.PartitionHealthTehutiMetricNameEnum.values().length,
-        1,
-        "New PartitionHealthTehutiMetricNameEnum values were added but not included in this test");
-  }
-
-  @Test
-  public void testPartitionHealthOtelMetricEntity() {
-    Map<PartitionHealthStats.PartitionHealthOtelMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
-    expectedMetrics.put(
-        PartitionHealthStats.PartitionHealthOtelMetricEntity.PARTITION_UNDER_REPLICATED_COUNT,
-        new MetricEntity(
-            "partition.under_replicated_count",
-            MetricType.GAUGE,
-            MetricUnit.NUMBER,
-            "Partitions with fewer ready-to-serve replicas than the replication factor",
-            Utils.setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME)));
-
-    assertEquals(
-        PartitionHealthStats.PartitionHealthOtelMetricEntity.values().length,
-        expectedMetrics.size(),
-        "New PartitionHealthOtelMetricEntity values were added but not included in this test");
-
-    for (PartitionHealthStats.PartitionHealthOtelMetricEntity metric: PartitionHealthStats.PartitionHealthOtelMetricEntity
-        .values()) {
-      MetricEntity actual = metric.getMetricEntity();
-      MetricEntity expected = expectedMetrics.get(metric);
-
-      assertNotNull(expected, "No expected definition for " + metric.name());
-      assertEquals(actual.getMetricName(), expected.getMetricName(), "Unexpected metric name for " + metric.name());
-      assertEquals(actual.getMetricType(), expected.getMetricType(), "Unexpected metric type for " + metric.name());
-      assertEquals(actual.getUnit(), expected.getUnit(), "Unexpected metric unit for " + metric.name());
-      assertEquals(
-          actual.getDescription(),
-          expected.getDescription(),
-          "Unexpected metric description for " + metric.name());
-      assertEquals(
-          actual.getDimensionsList(),
-          expected.getDimensionsList(),
-          "Unexpected metric dimensions for " + metric.name());
-    }
-
-    // Verify all PartitionHealthOtelMetricEntity entries are present in CONTROLLER_SERVICE_METRIC_ENTITIES
-    for (MetricEntity expected: expectedMetrics.values()) {
-      boolean found = false;
-      for (MetricEntity actual: CONTROLLER_SERVICE_METRIC_ENTITIES) {
-        if (Objects.equals(actual.getMetricName(), expected.getMetricName())
-            && actual.getMetricType() == expected.getMetricType() && actual.getUnit() == expected.getUnit()
-            && Objects.equals(actual.getDescription(), expected.getDescription())
-            && Objects.equals(actual.getDimensionsList(), expected.getDimensionsList())) {
-          found = true;
-          break;
-        }
-      }
-      assertTrue(found, "MetricEntity not found in CONTROLLER_SERVICE_METRIC_ENTITIES: " + expected.getMetricName());
-    }
   }
 
   private AggPartitionHealthStats createAggStats(MetricsRepository repo) {

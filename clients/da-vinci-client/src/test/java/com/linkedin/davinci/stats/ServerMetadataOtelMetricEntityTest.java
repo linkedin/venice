@@ -4,32 +4,30 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 
-import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
-import org.testng.annotations.Test;
+import java.util.HashMap;
+import java.util.Map;
 
 
-public class ServerMetadataOtelMetricEntityTest {
-  @Test
-  public void testMetricEntityCount() {
-    assertEquals(ServerMetadataOtelMetricEntity.values().length, 1, "Expected 1 metric entity");
+public class ServerMetadataOtelMetricEntityTest extends AbstractModuleMetricEntityTest<ServerMetadataOtelMetricEntity> {
+  public ServerMetadataOtelMetricEntityTest() {
+    super(ServerMetadataOtelMetricEntity.class);
   }
 
-  @Test
-  public void testMetricEntityDefinitions() {
-    MetricEntity entity = ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricEntity();
-
-    assertNotNull(entity);
-    assertEquals(entity.getMetricName(), "metadata.request_count");
-    assertEquals(entity.getMetricType(), MetricType.COUNTER);
-    assertEquals(entity.getUnit(), MetricUnit.NUMBER);
-    assertEquals(entity.getDescription(), "Request-based metadata invocation count by outcome");
-    assertEquals(
-        entity.getDimensionsList(),
-        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY));
+  @Override
+  protected Map<ServerMetadataOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+    Map<ServerMetadataOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
+    map.put(
+        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT,
+        new MetricEntityExpectation(
+            "metadata.request_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Request-based metadata invocation count by outcome",
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    return map;
   }
 }
