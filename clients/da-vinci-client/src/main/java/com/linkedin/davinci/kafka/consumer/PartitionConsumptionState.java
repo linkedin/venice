@@ -356,14 +356,13 @@ public class PartitionConsumptionState {
         offsetRecord.cloneRtPositionCheckpoints(latestProcessedRtPositions);
       }
       trackingIncrementalPushStatus = new VeniceConcurrentHashMap<>(3);
-      cachedHeartbeatKeys = new VeniceConcurrentHashMap<>(3);
     } else {
       latestConsumedRtPositions = Collections.emptyMap();
       divRtCheckpointPositions = Collections.emptyMap();
       latestProcessedRtPositions = Collections.emptyMap();
       trackingIncrementalPushStatus = Collections.emptyMap();
-      cachedHeartbeatKeys = Collections.emptyMap();
     }
+    cachedHeartbeatKeys = new VeniceConcurrentHashMap<>(3);
     // Restore in-memory latest consumed version topic position and leader info from the checkpoint version topic
     // position
     this.latestProcessedVtPosition = offsetRecord.getCheckpointedLocalVtPosition();
