@@ -75,9 +75,10 @@ public class ParticipantStoreConsumptionTaskTest {
     verify(client, never()).get(any());
     verify(stats, timeout(WAIT).times(iterations + 1)).recordHeartbeat();
     verify(stats, never()).recordFailedInitialization();
-    verify(stats, never()).recordKillPushJobFailedConsumption();
-    verify(stats, never()).recordKilledPushJobs();
-    verify(stats, never()).recordKillPushJobLatency(anyDouble());
+    verify(stats, never()).recordKillPushJobFailedConsumption(any());
+    verify(stats, never()).recordKilledPushJobs(any());
+    verify(stats, never()).recordFailedKillPushJob(any());
+    verify(stats, never()).recordKillPushJobLatency(any(), anyDouble());
     verify(storeIngestionService, never()).killConsumptionTask(any());
 
     // 1st sleep
@@ -89,9 +90,10 @@ public class ParticipantStoreConsumptionTaskTest {
     verify(client, never()).get(any());
     verify(stats, timeout(WAIT).times(iterations + 1)).recordHeartbeat();
     verify(stats, never()).recordFailedInitialization();
-    verify(stats, never()).recordKillPushJobFailedConsumption();
-    verify(stats, never()).recordKilledPushJobs();
-    verify(stats, never()).recordKillPushJobLatency(anyDouble());
+    verify(stats, never()).recordKillPushJobFailedConsumption(any());
+    verify(stats, never()).recordKilledPushJobs(any());
+    verify(stats, never()).recordFailedKillPushJob(any());
+    verify(stats, never()).recordKillPushJobLatency(any(), anyDouble());
     verify(storeIngestionService, never()).killConsumptionTask(any());
 
     // 2nd sleep, after setting up the return of the clusterInfoProvider
@@ -103,9 +105,10 @@ public class ParticipantStoreConsumptionTaskTest {
     verify(client, never()).get(any());
     verify(stats, timeout(WAIT).times(iterations + 1)).recordHeartbeat();
     verify(stats, timeout(WAIT).times(2)).recordFailedInitialization();
-    verify(stats, timeout(WAIT).times(2)).recordKillPushJobFailedConsumption();
-    verify(stats, never()).recordKilledPushJobs();
-    verify(stats, never()).recordKillPushJobLatency(anyDouble());
+    verify(stats, timeout(WAIT).times(2)).recordKillPushJobFailedConsumption(storeName);
+    verify(stats, never()).recordKilledPushJobs(any());
+    verify(stats, never()).recordFailedKillPushJob(any());
+    verify(stats, never()).recordKillPushJobLatency(any(), anyDouble());
     verify(storeIngestionService, never()).killConsumptionTask(any());
 
     // 3rd sleep, after setting up the return of the clientConstructor
@@ -118,9 +121,10 @@ public class ParticipantStoreConsumptionTaskTest {
     verify(client, timeout(WAIT).times((iterations - 2) * 2)).get(any());
     verify(stats, timeout(WAIT).times(iterations + 1)).recordHeartbeat();
     verify(stats, timeout(WAIT).times(2)).recordFailedInitialization();
-    verify(stats, timeout(WAIT).times(2)).recordKillPushJobFailedConsumption();
-    verify(stats, never()).recordKilledPushJobs();
-    verify(stats, never()).recordKillPushJobLatency(anyDouble());
+    verify(stats, timeout(WAIT).times(2)).recordKillPushJobFailedConsumption(storeName);
+    verify(stats, never()).recordKilledPushJobs(any());
+    verify(stats, never()).recordFailedKillPushJob(any());
+    verify(stats, never()).recordKillPushJobLatency(any(), anyDouble());
     verify(storeIngestionService, never()).killConsumptionTask(any());
 
     // 4th sleep, after making the client return something invalid
@@ -137,9 +141,10 @@ public class ParticipantStoreConsumptionTaskTest {
     verify(client, timeout(WAIT).times((iterations - 2) * 2)).get(any());
     verify(stats, timeout(WAIT).times(iterations + 1)).recordHeartbeat();
     verify(stats, timeout(WAIT).times(2)).recordFailedInitialization();
-    verify(stats, timeout(WAIT).times(2)).recordKillPushJobFailedConsumption();
-    verify(stats, never()).recordKilledPushJobs();
-    verify(stats, never()).recordKillPushJobLatency(anyDouble());
+    verify(stats, timeout(WAIT).times(2)).recordKillPushJobFailedConsumption(storeName);
+    verify(stats, never()).recordKilledPushJobs(any());
+    verify(stats, never()).recordFailedKillPushJob(any());
+    verify(stats, never()).recordKillPushJobLatency(any(), anyDouble());
     verify(storeIngestionService, never()).killConsumptionTask(any());
 
     // 5th sleep, after making the client return something valid
@@ -156,9 +161,10 @@ public class ParticipantStoreConsumptionTaskTest {
     verify(client, timeout(WAIT).times((iterations - 2) * 2)).get(any());
     verify(stats, timeout(WAIT).times(iterations + 1)).recordHeartbeat();
     verify(stats, timeout(WAIT).times(2)).recordFailedInitialization();
-    verify(stats, timeout(WAIT).times(2)).recordKillPushJobFailedConsumption();
-    verify(stats, never()).recordKilledPushJobs();
-    verify(stats, never()).recordKillPushJobLatency(anyDouble());
+    verify(stats, timeout(WAIT).times(2)).recordKillPushJobFailedConsumption(storeName);
+    verify(stats, never()).recordKilledPushJobs(any());
+    verify(stats, timeout(WAIT).times(1)).recordFailedKillPushJob(storeName);
+    verify(stats, never()).recordKillPushJobLatency(any(), anyDouble());
     verify(storeIngestionService, timeout(WAIT).times(1)).killConsumptionTask(v1);
     verify(storeIngestionService, never()).killConsumptionTask(v2);
 
@@ -171,10 +177,11 @@ public class ParticipantStoreConsumptionTaskTest {
     verify(client, timeout(WAIT).times((iterations - 2) * 2)).get(any());
     verify(stats, timeout(WAIT).times(iterations + 1)).recordHeartbeat();
     verify(stats, timeout(WAIT).times(2)).recordFailedInitialization();
-    verify(stats, timeout(WAIT).times(2)).recordKillPushJobFailedConsumption();
-    verify(stats, timeout(WAIT).times(1)).recordKilledPushJobs();
+    verify(stats, timeout(WAIT).times(2)).recordKillPushJobFailedConsumption(storeName);
+    verify(stats, timeout(WAIT).times(1)).recordKilledPushJobs(storeName);
+    verify(stats, timeout(WAIT).times(1)).recordFailedKillPushJob(storeName);
     // +2 because we created the message two iterations ago...
-    verify(stats, timeout(WAIT).times(1)).recordKillPushJobLatency(EXPECTED_LAG + 2);
+    verify(stats, timeout(WAIT).times(1)).recordKillPushJobLatency(storeName, EXPECTED_LAG + 2);
     verify(storeIngestionService, timeout(WAIT).times(2)).killConsumptionTask(v1);
     verify(storeIngestionService, never()).killConsumptionTask(v2);
 

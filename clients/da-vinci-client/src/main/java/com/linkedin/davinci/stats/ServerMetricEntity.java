@@ -20,7 +20,8 @@ public final class ServerMetricEntity {
       RecordLevelDelayOtelMetricEntity.class,
       ServerReadOtelMetricEntity.class,
       ThreadPoolOtelMetricEntity.class,
-      ServerMetadataOtelMetricEntity.class);
+      ServerMetadataOtelMetricEntity.class,
+      ParticipantStoreConsumptionOtelMetricEntity.class);
 
   private ServerMetricEntity() {
   }
