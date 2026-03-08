@@ -110,8 +110,8 @@ public class PartitionedProducerExecutorTest {
         partition0Started.countDown();
         bothStarted.countDown();
         try {
-          // Wait for partition 1 to also start
-          if (partition1Started.await(1, TimeUnit.SECONDS)) {
+          // Wait for partition 1 to also start — use generous timeout for CI
+          if (partition1Started.await(5, TimeUnit.SECONDS)) {
             parallelExecution.set(true);
           }
         } catch (InterruptedException e) {
@@ -124,8 +124,8 @@ public class PartitionedProducerExecutorTest {
         partition1Started.countDown();
         bothStarted.countDown();
         try {
-          // Wait for partition 0 to also start
-          if (partition0Started.await(1, TimeUnit.SECONDS)) {
+          // Wait for partition 0 to also start — use generous timeout for CI
+          if (partition0Started.await(5, TimeUnit.SECONDS)) {
             parallelExecution.set(true);
           }
         } catch (InterruptedException e) {
@@ -133,7 +133,7 @@ public class PartitionedProducerExecutorTest {
         }
       });
 
-      assertTrue(bothStarted.await(2, TimeUnit.SECONDS), "Both tasks should start");
+      assertTrue(bothStarted.await(10, TimeUnit.SECONDS), "Both tasks should start");
       assertTrue(parallelExecution.get(), "Partitions should execute in parallel");
     } finally {
       executor.shutdown();

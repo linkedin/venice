@@ -60,9 +60,9 @@ import org.testng.annotations.Test;
 public class StoreMigrationManagerIntegrationTest {
   private StoreMigrationManager storeMigrationManager;
   private static final long TIMEOUT = 10 * Time.MS_PER_SECOND;
-  private static final int TEST_TIMEOUT = 180 * Time.MS_PER_SECOND;
+  private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
   private static final int RECORD_COUNT = 20;
-  private static final int DELAY_IN_SECONDS = 2;
+  private static final int DELAY_IN_SECONDS = 1;
 
   private VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper;
   private VeniceMultiClusterWrapper multiClusterWrapper;

@@ -1,5 +1,6 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.AdditionalAnswers.answerVoid;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anySet;
@@ -45,7 +46,9 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.Metric;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.io.File;
 import java.time.Duration;
 import java.util.Collections;
@@ -69,6 +72,7 @@ public class StoreBackendTest {
   DaVinciBackend backend;
   StoreBackend storeBackend;
   Map<String, VersionBackend> versionMap;
+  AsyncGauge.AsyncGaugeExecutor gaugeExecutor;
   MetricsRepository metricsRepository;
   StorageService storageService;
   IngestionBackend ingestionBackend;
@@ -89,7 +93,9 @@ public class StoreBackendTest {
     doAnswer(answerVoid(Runnable::run)).when(executor).execute(any());
 
     versionMap = new HashMap<>();
-    metricsRepository = new MetricsRepository();
+    // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
+    gaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    metricsRepository = new MetricsRepository(new MetricConfig(gaugeExecutor));
     storageService = mock(StorageService.class);
     ingestionBackend = mock(IngestionBackend.class);
     compressorFactory = mock(StorageEngineBackedCompressorFactory.class);
@@ -130,6 +136,12 @@ public class StoreBackendTest {
     when(backend.getStoreOrThrow(store.getName())).thenReturn(storeBackend);
   }
 
+  @org.testng.annotations.AfterMethod
+  void tearDown() throws Exception {
+    metricsRepository.close();
+    gaugeExecutor.close();
+  }
+
   private double getMetric(String metricName) {
     Metric metric = metricsRepository.getMetric("." + store.getName() + "--" + metricName);
     assertNotNull(metric, "Expected metric " + metricName + " not found.");
@@ -163,13 +175,14 @@ public class StoreBackendTest {
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       assertEquals(versionRef.get().getVersion().getNumber(), version1.getNumber());
     }
-    // Verify that all partition future for version 1 are completed successfully.
-    assertTrue(versionMap.get(version1.kafkaTopicName()).areAllPartitionFuturesCompletedSuccessfully());
-
-    assertEquals(getMetric("current_version_number.Gauge"), (double) version1.getNumber());
-    assertEquals(getMetric("future_version_number.Gauge"), (double) version2.getNumber());
-    assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version1.getAge().toMillis()) < 1000);
-    assertTrue(Math.abs(getMetric("subscribe_duration_ms.Avg") - v1SubscribeDurationMs) < 50);
+    // Partition futures and metrics may be completed asynchronously in callback threads.
+    waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertTrue(versionMap.get(version1.kafkaTopicName()).areAllPartitionFuturesCompletedSuccessfully());
+      assertEquals(getMetric("current_version_number.Gauge"), (double) version1.getNumber());
+      assertEquals(getMetric("future_version_number.Gauge"), (double) version2.getNumber());
+      assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version1.getAge().toMillis()) < 1000);
+      assertTrue(Math.abs(getMetric("subscribe_duration_ms.Avg") - v1SubscribeDurationMs) < 50);
+    });
 
     // Simulate future version ingestion is complete.
     TimeUnit.MILLISECONDS.sleep(v2SubscribeDurationMs - v1SubscribeDurationMs);
@@ -188,11 +201,14 @@ public class StoreBackendTest {
       assertEquals(versionRef.get().getVersion().getNumber(), version2.getNumber());
     }
 
-    assertEquals(getMetric("current_version_number.Gauge"), (double) version2.getNumber());
-    assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version2.getAge().toMillis()) < 1000);
-    assertTrue(
-        Math.abs(getMetric("subscribe_duration_ms.Avg") - (v1SubscribeDurationMs + v2SubscribeDurationMs) / 2.) < 50);
-    assertTrue(Math.abs(getMetric("subscribe_duration_ms.Max") - v2SubscribeDurationMs) < 50);
+    // Version swap and metric recording happen asynchronously after handleStoreChanged.
+    waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertEquals(getMetric("current_version_number.Gauge"), (double) version2.getNumber());
+      assertTrue(Math.abs(getMetric("data_age_ms.Gauge") - version2.getAge().toMillis()) < 1000);
+      assertTrue(
+          Math.abs(getMetric("subscribe_duration_ms.Avg") - (v1SubscribeDurationMs + v2SubscribeDurationMs) / 2.) < 50);
+      assertTrue(Math.abs(getMetric("subscribe_duration_ms.Max") - v2SubscribeDurationMs) < 50);
+    });
   }
 
   @Test

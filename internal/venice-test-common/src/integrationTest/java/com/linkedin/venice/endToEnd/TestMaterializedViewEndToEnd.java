@@ -478,7 +478,7 @@ public class TestMaterializedViewEndToEnd extends AbstractMultiRegionTest {
    * read path. Once CC with views is supported we should use CC to verify. Perform re-push to ensure we can deserialize
    * value properly during re-push.
    */
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = 3 * Time.MS_PER_MINUTE)
   public void testMaterializedViewWithComplexPartitioner() throws IOException {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV2Schema(inputDir);

@@ -517,9 +517,19 @@ public class TestUtils {
       ControllerClient controllerClient,
       long timeout,
       TimeUnit timeoutUnit) {
-    waitForNonDeterministicAssertion(timeout, timeoutUnit, true, () -> {
-      JobStatusQueryResponse jobStatusQueryResponse =
-          assertCommand(controllerClient.queryJobStatus(topicName, Optional.empty()));
+    // Retry behavior (retryOnThrowable=false means only AssertionError is retried):
+    // - VeniceException from queryJobStatus (transient HTTP/controller errors): caught and wrapped
+    // in AssertionError → retried
+    // - "Push is yet to complete" assertEquals failure: throws AssertionError → retried
+    // - Push ERROR status: throws VeniceException → NOT retried (fails fast)
+    // - Other exceptions (NPE, serialization, etc.): propagate immediately (fail fast)
+    waitForNonDeterministicAssertion(timeout, timeoutUnit, true, false, () -> {
+      JobStatusQueryResponse jobStatusQueryResponse;
+      try {
+        jobStatusQueryResponse = assertCommand(controllerClient.queryJobStatus(topicName, Optional.empty()));
+      } catch (VeniceException e) {
+        throw new AssertionError("Controller query failed (transient), will retry: " + e.getMessage(), e);
+      }
       ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
       if (executionStatus.isError()) {
         throw new VeniceException("Unexpected push failure for topic: " + topicName + ": " + jobStatusQueryResponse);

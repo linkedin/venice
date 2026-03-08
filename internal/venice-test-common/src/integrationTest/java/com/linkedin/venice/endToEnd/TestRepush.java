@@ -646,15 +646,18 @@ public class TestRepush extends AbstractMultiRegionTest {
         .getVeniceServers()) {
       StorageEngine storageEngine = serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
       assertNotNull(storageEngine);
-      ValueRecord result = SingleGetChunkingAdapter
-          .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null);
-      // Avoid assertion failure logging massive RMD record.
-      boolean nullRmd = (result == null);
-      assertFalse(nullRmd);
-      byte[] value = result.serialize();
-      RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
-      rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(value, rmdWithValueSchemaId);
-      rmdDataValidationFlow.accept(rmdWithValueSchemaId);
+      // RMD may not be immediately available after repush (e.g., with ZSTD_WITH_DICT compression where
+      // dictionary-based decompression/recompression can delay RMD persistence). Retry until available.
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
+        ValueRecord result = SingleGetChunkingAdapter
+            .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null);
+        // Avoid assertion failure logging massive RMD record.
+        assertNotNull(result, "RMD should exist for key: " + key);
+        byte[] rmdBytes = result.serialize();
+        RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
+        rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(rmdBytes, rmdWithValueSchemaId);
+        rmdDataValidationFlow.accept(rmdWithValueSchemaId);
+      });
     }
   }
 

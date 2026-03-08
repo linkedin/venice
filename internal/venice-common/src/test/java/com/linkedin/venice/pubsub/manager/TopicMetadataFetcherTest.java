@@ -691,13 +691,18 @@ public class TopicMetadataFetcherTest {
     PubSubPosition result1 = spyFetcher.getEarliestPositionCachedNonBlocking(tp0);
     assertEquals(result1, PubSubSymbolicPosition.EARLIEST);
 
-    // Case 2: After async population completes, should return cached value
+    // Case 2: After async population completes, should return cached value.
+    // Set up mock first so that the async population from Case 1 (if still in-flight) resolves correctly.
     Map<PubSubTopicPartition, PubSubPosition> tp0Map = new HashMap<>();
     tp0Map.put(tp0, expectedPosition);
     when(consumerMock.beginningPositions(eq(Collections.singleton(tp0)), any(Duration.class))).thenReturn(tp0Map);
+    // Manually populate cache (overrides any in-flight async result).
     spyFetcher.getEarliestPositionCache().put(tp0, spyFetcher.new ValueAndExpiryTime<>(expectedPosition));
-    PubSubPosition result2 = spyFetcher.getEarliestPositionCachedNonBlocking(tp0);
-    assertEquals(result2, expectedPosition);
+    // Wait briefly for any async population from Case 1 to settle before verifying.
+    waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      PubSubPosition result2 = spyFetcher.getEarliestPositionCachedNonBlocking(tp0);
+      assertEquals(result2, expectedPosition);
+    });
 
     // Case 3: Expired cache entry - should return cached value but trigger async update
     ValueAndExpiryTime<PubSubPosition> expiredEntry = spyFetcher.new ValueAndExpiryTime<>(expectedPosition);
@@ -706,7 +711,8 @@ public class TopicMetadataFetcherTest {
     PubSubPosition result3 = spyFetcher.getEarliestPositionCachedNonBlocking(tp0);
     assertEquals(result3, expectedPosition);
 
-    assertEquals(pubSubConsumerPool.size(), 1);
+    // Consumer pool is populated asynchronously; wait for the async population to complete.
+    waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> assertEquals(pubSubConsumerPool.size(), 1));
   }
 
   @Test

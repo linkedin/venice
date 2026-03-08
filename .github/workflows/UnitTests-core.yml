@@ -28,7 +28,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
       - name: Run Unit Tests with Code Coverage
-        run: ./gradlew  -x :internal:venice-avro-compatibility-test:test  ${{ inputs.arg }}
+        run: ./gradlew --parallel -x :internal:venice-avro-compatibility-test:test  ${{ inputs.arg }}
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash

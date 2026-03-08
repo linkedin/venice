@@ -13,7 +13,6 @@ import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.Utils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -54,8 +53,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -196,41 +197,48 @@ public class TestVersionSpecificChangelogConsumerReplicationMetadata {
       }
     }
     changeLogConsumer.subscribeAll().get();
-    List<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-          changeLogConsumer.poll(1000);
-      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-        if (message.getKey() != null) {
-          pubSubMessages.add(message);
-        }
-      }
-      assertEquals(pubSubMessages.size(), numKeys * 2);
-    });
-    // The change events written from near-line should have valid and deserialized replication metadata
+    // Track unique keys with validated RMD across poll retries. Using a Set avoids double-counting
+    // if poll() returns duplicate messages (at-least-once delivery) across retry iterations.
+    Set<Integer> validatedRmdKeys = new HashSet<>();
+    // The change events written from near-line should have valid and deserialized replication metadata.
+    // Poll until we have all messages, then verify RMD on near-line messages (identified by having non-null RMD,
+    // as batch messages don't carry replication metadata). We verify inside the assertion loop because
+    // message ordering from polling is non-deterministic — batch and near-line messages can interleave.
     try (StoreSchemaFetcher schemaFetcher = ClientFactory.createStoreSchemaFetcher(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setD2Client(d2Client)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
       ClientRmdSerDe clientRmdSerDe = new ClientRmdSerDe(schemaFetcher);
-      for (int i = numKeys; i < pubSubMessages.size(); i++) {
-        ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-            (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) pubSubMessages.get(i);
-        assertNotNull(message.getDeserializedReplicationMetadata());
-        long timestamp = (long) message.getDeserializedReplicationMetadata().get("timestamp");
-        assertTrue(timestamp > 0);
-        // Use ClientRmdSerDe to verify the deserialized replication metadata and vice versa
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+            changeLogConsumer.poll(1000);
+        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> msg: pubSubMessagesList) {
+          if (msg.getKey() == null) {
+            continue;
+          }
+          ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
+              (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) msg;
+          if (message.getDeserializedReplicationMetadata() != null && !validatedRmdKeys.contains(message.getKey())) {
+            long timestamp = (long) message.getDeserializedReplicationMetadata().get("timestamp");
+            assertTrue(timestamp > 0);
+            assertEquals(
+                message.getDeserializedReplicationMetadata(),
+                clientRmdSerDe.deserializeRmdBytes(
+                    message.getWriterSchemaId(),
+                    message.getWriterSchemaId(),
+                    message.getReplicationMetadataPayload()));
+            assertEquals(
+                message.getReplicationMetadataPayload(),
+                clientRmdSerDe
+                    .serializeRmdRecord(message.getWriterSchemaId(), message.getDeserializedReplicationMetadata()));
+            validatedRmdKeys.add(message.getKey());
+          }
+        }
         assertEquals(
-            message.getDeserializedReplicationMetadata(),
-            clientRmdSerDe.deserializeRmdBytes(
-                message.getWriterSchemaId(),
-                message.getWriterSchemaId(),
-                message.getReplicationMetadataPayload()));
-        assertEquals(
-            message.getReplicationMetadataPayload(),
-            clientRmdSerDe
-                .serializeRmdRecord(message.getWriterSchemaId(), message.getDeserializedReplicationMetadata()));
-      }
+            validatedRmdKeys.size(),
+            numKeys,
+            "Expected " + numKeys + " unique keys with RMD but got " + validatedRmdKeys.size());
+      });
     }
   }
 }

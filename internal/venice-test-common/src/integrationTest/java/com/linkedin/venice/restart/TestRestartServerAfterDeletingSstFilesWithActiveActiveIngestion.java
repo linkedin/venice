@@ -104,7 +104,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   private final String KEY_PREFIX = "key";
   private final String VALUE_PREFIX = "value";
   private final String VALUE_PREFIX_INC_PUSH = "value-inc";
-  private final String STORE_NAME = Utils.getUniqueString("store");
+  private String storeName;
   private final int numServers = 3;
   List<Integer> allIncPushKeys = new ArrayList<>(); // all keys ingested via incremental push
   List<Integer> allNonIncPushKeysUntilLastVersion = new ArrayList<>(); // all keys ingested only via batch push
@@ -144,12 +144,14 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    // Generate a fresh store name per test class to avoid 409 "already exists" conflicts across runs
+    storeName = Utils.getUniqueString("store");
     // create an active-active enabled store
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     Properties props =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, STORE_NAME);
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
@@ -165,8 +167,8 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    if (parentControllerClient != null) {
-      parentControllerClient.disableAndDeleteStore(STORE_NAME);
+    if (parentControllerClient != null && storeName != null && !storeName.isEmpty()) {
+      parentControllerClient.disableAndDeleteStore(storeName);
     }
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
@@ -261,7 +263,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     VersionCreationResponse versionCreationResponse;
     versionCreationResponse = TestUtils.assertCommand(
         parentControllerClient.requestTopicForWrites(
-            STORE_NAME,
+            storeName,
             1024 * 1024,
             Version.PushType.BATCH,
             System.currentTimeMillis() + "_test_server_restart_push",
@@ -386,7 +388,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         int currentVersion = clusterWrappers.get(colo)
             .getLeaderVeniceController()
             .getVeniceAdmin()
-            .getStore(clusterWrappers.get(colo).getClusterName(), STORE_NAME)
+            .getStore(clusterWrappers.get(colo).getClusterName(), storeName)
             .getCurrentVersion();
         LOGGER.info("colo {} currentVersion {}, pushVersion {}", colo, currentVersion, newVersion);
         assertTrue(
@@ -403,7 +405,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       d2Client = D2TestUtils.getD2Client(clusterWrappers.get(NON_SOURCE_COLO).getZk().getAddress(), false);
       D2ClientUtils.startClient(d2Client);
       storeClient = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(STORE_NAME)
+          ClientConfig.defaultGenericClientConfig(storeName)
               .setForceClusterDiscoveryAtStartTime(true)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setD2Client(d2Client)
@@ -441,7 +443,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
 
     String incPushVersion = System.currentTimeMillis() + "_test_inc_push";
     versionCreationResponse = parentControllerClient.requestTopicForWrites(
-        STORE_NAME,
+        storeName,
         1024 * 1024,
         Version.PushType.INCREMENTAL,
         incPushVersion,
@@ -487,7 +489,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       d2Client = D2TestUtils.getD2Client(clusterWrappers.get(NON_SOURCE_COLO).getZk().getAddress(), false);
       D2ClientUtils.startClient(d2Client);
       storeClient = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(STORE_NAME)
+          ClientConfig.defaultGenericClientConfig(storeName)
               .setForceClusterDiscoveryAtStartTime(true)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setD2Client(d2Client)
