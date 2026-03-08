@@ -469,6 +469,69 @@ public class TestStoreBackupVersionCleanupService {
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, repushedStore.getName(), maxRepushedVersion);
   }
 
+  /**
+   * Reproduces a production bug where repush versions leak indefinitely.
+   *
+   * Scenario: A store gets frequent scheduled repushes. Each repush creates version N from source N-1.
+   * The cleanup service deletes the immediate source (N-1) via the canDelete path (ERROR/KILLED status)
+   * each cycle. But this breaks the repush chain for older versions — their repushSourceVersion points
+   * to versions no longer in the store metadata.
+   *
+   * Example from production (NearlineBytesTest2 on venice-1 ei4):
+   *   v6 (repushed from v5, but v5 deleted), v10 (from v9, deleted), v22 (from v21, deleted), ...
+   *   v55 is current, repushed from v54 (deleted).
+   *
+   * The chain-building logic processes in descending order and adds each version's repushSourceVersion
+   * to the set. But since source versions don't exist in the store, no version number matches the set,
+   * so readyToBeRemovedVersions is empty and nothing gets cleaned up.
+   *
+   * Meanwhile pastDefaultRetention never becomes true because each repush resets
+   * latestVersionPromoteToCurrentTimestamp.
+   *
+   * Result: 15 leaked versions, consumer pool exhaustion, ingestion failure, blocked deployment.
+   */
+  @Test
+  public void testCleanupBackupVersionRepush_BrokenChainVersionsLeak() {
+    // Simulate production scenario: versions 6, 10, 22, 55, 187 exist.
+    // Each was repushed from a source that has already been deleted.
+    // Current version is 187 (repushed from 186, which was already cleaned up).
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    int[] versionNumbers = { 6, 10, 22, 55, 58, 82, 106, 108, 132, 138, 166, 172, 176, 183, 187 };
+    int[] repushSources = { 5, 9, 21, 54, 57, 81, 105, 105, 131, 137, 165, 171, 175, 182, 186 };
+    int currentVersion = 187;
+
+    for (int v: versionNumbers) {
+      versions.put(v, VersionStatus.ONLINE);
+    }
+
+    // Promotion just happened — not past default retention.
+    // But more than 2 backup versions exist, so whetherStoreReadyToBeCleanup returns true.
+    long recentPromotionTimestamp = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(2);
+    Store store = mockStore(-1, recentPromotionTimestamp, versions, currentVersion);
+
+    // Set repushSourceVersion for each version — sources point to versions NOT in the store
+    for (int i = 0; i < versionNumbers.length; i++) {
+      Version v = store.getVersion(versionNumbers[i]);
+      doReturn(repushSources[i]).when(v).getRepushSourceVersion();
+    }
+
+    // The cleanup should delete the old leaked versions (all except current and one backup).
+    // With 14 backup versions, at minimum 13 should be deletable.
+    String storeName = store.getName();
+    boolean cleaned = service.cleanupBackupVersion(store, CLUSTER_NAME);
+    Assert.assertTrue(cleaned, "Cleanup should delete leaked versions even when repush chain is broken");
+
+    // For repush stores, the cleanup keeps the oldest version as backup (removes it from deletion list).
+    // The oldest version (v6) is kept; versions 10 through 183 should be deleted.
+    verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeName, 10);
+    verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeName, 22);
+    verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeName, 55);
+    verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeName, 183);
+
+    // Current version should never be deleted
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, storeName, currentVersion);
+  }
+
   @Test
   public void testCleanBackupVersion_BadFutureVersions() {
     Map<Integer, VersionStatus> versions = new HashMap<>();
