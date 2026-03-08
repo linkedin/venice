@@ -28,7 +28,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
-import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -53,14 +52,12 @@ public class DaVinciClientPartialSubscribeTest {
   private DaVinciClusterFixture fixture;
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
-  private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
 
   @BeforeClass
   public void setUp() {
     fixture = new DaVinciClusterFixture(true);
     cluster = fixture.getCluster();
     d2Client = fixture.getD2Client();
-    pubSubProducerAdapterFactory = fixture.getPubSubProducerAdapterFactory();
   }
 
   @AfterClass
@@ -70,7 +67,7 @@ public class DaVinciClientPartialSubscribeTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testBootstrapSubscription(DaVinciConfig daVinciConfig) throws Exception {
-    String storeName1 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
+    String storeName1 = fixture.createStoreWithSystemStores(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
@@ -141,7 +138,7 @@ public class DaVinciClientPartialSubscribeTest {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "dv-client-config-provider", dataProviderClass = DataProviderUtils.class)
   public void testPartialSubscription(DaVinciConfig daVinciConfig) throws Exception {
-    String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
+    String storeName = fixture.createStoreWithSystemStores(KEY_COUNT);
     VeniceProperties backendConfig =
         new PropertyBuilder().put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L).build();
 
@@ -174,10 +171,4 @@ public class DaVinciClientPartialSubscribeTest {
     }
   }
 
-  private String createStoreWithMetaSystemStoreAndPushStatusSystemStore(int keyCount) throws Exception {
-    String storeName = cluster.createStore(keyCount);
-    cluster.createMetaSystemStore(storeName);
-    cluster.createPushStatusSystemStore(storeName);
-    return storeName;
-  }
 }

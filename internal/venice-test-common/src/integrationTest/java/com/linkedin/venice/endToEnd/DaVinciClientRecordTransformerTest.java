@@ -756,7 +756,7 @@ public class DaVinciClientRecordTransformerTest {
     LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
   }
 
-  public VeniceProperties buildRecordTransformerBackendConfig(boolean pushStatusStoreEnabled) {
+  public static VeniceProperties buildRecordTransformerBackendConfig(boolean pushStatusStoreEnabled) {
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     PropertyBuilder backendPropertyBuilder = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)

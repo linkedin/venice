@@ -20,12 +20,9 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -613,21 +610,8 @@ public class DaVinciClientRecordTransformerFilterTest {
     }
   }
 
-  private VeniceProperties buildRecordTransformerBackendConfig(boolean pushStatusStoreEnabled) {
-    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-    PropertyBuilder backendPropertyBuilder = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, baseDataPath)
-        .put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
-        .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
-        .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
-
-    if (pushStatusStoreEnabled) {
-      backendPropertyBuilder.put(PUSH_STATUS_STORE_ENABLED, true).put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000);
-    }
-
-    return backendPropertyBuilder.build();
+  private static VeniceProperties buildRecordTransformerBackendConfig(boolean pushStatusStoreEnabled) {
+    return DaVinciClientRecordTransformerTest.buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
   }
 
   private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {

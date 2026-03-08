@@ -4,15 +4,14 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.Utils;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -38,11 +37,7 @@ public class DaVinciClusterFixture implements AutoCloseable {
       builder.partitionSize(100).sslToStorageNodes(false).sslToKafka(false);
     }
     cluster = ServiceFactory.getVeniceCluster(builder.build());
-    d2Client = new D2ClientBuilder().setZkHosts(cluster.getZk().getAddress())
-        .setZkSessionTimeout(3, TimeUnit.SECONDS)
-        .setZkStartupTimeout(3, TimeUnit.SECONDS)
-        .build();
-    D2ClientUtils.startClient(d2Client);
+    d2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
     pubSubProducerAdapterFactory = withPubSubProducer
         ? cluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory()
         : null;
@@ -62,6 +57,16 @@ public class DaVinciClusterFixture implements AutoCloseable {
 
   public PubSubProducerAdapterFactory getPubSubProducerAdapterFactory() {
     return pubSubProducerAdapterFactory;
+  }
+
+  /**
+   * Creates a store along with its meta system store and push status system store.
+   */
+  public String createStoreWithSystemStores(int keyCount) throws Exception {
+    String storeName = cluster.createStore(keyCount);
+    cluster.createMetaSystemStore(storeName);
+    cluster.createPushStatusSystemStore(storeName);
+    return storeName;
   }
 
   @Override

@@ -4,9 +4,9 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -20,7 +20,6 @@ import com.linkedin.venice.view.TestView;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
@@ -80,12 +79,8 @@ public class ChangelogConsumerTestFixture implements AutoCloseable {
     parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
     childControllerClientRegion0 =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    d2Client = new D2ClientBuilder()
-        .setZkHosts(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress())
-        .setZkSessionTimeout(3, TimeUnit.SECONDS)
-        .setZkStartupTimeout(3, TimeUnit.SECONDS)
-        .build();
-    D2ClientUtils.startClient(d2Client);
+    d2Client = D2TestUtils
+        .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress());
   }
 
   public VeniceTwoLayerMultiRegionMultiClusterWrapper getMultiRegionMultiClusterWrapper() {
@@ -150,6 +145,7 @@ public class ChangelogConsumerTestFixture implements AutoCloseable {
 
   @Override
   public void close() {
+    cleanupAfterTest(); // drain any remaining test resources from last test
     D2ClientUtils.shutdownClient(d2Client);
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
     Utils.closeQuietlyWithErrorLogged(childControllerClientRegion0);

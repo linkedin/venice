@@ -4,7 +4,6 @@ import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_ME
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
@@ -28,7 +27,6 @@ import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -56,7 +54,7 @@ import org.testng.annotations.Test;
 @Test(singleThreaded = true)
 public class TestChangelogConsumerSeek {
   private static final Logger LOGGER = LogManager.getLogger(TestChangelogConsumerSeek.class);
-  static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
+  static final int TEST_TIMEOUT = 180_000; // 3 minutes
 
   private ChangelogConsumerTestFixture fixture;
 
@@ -442,29 +440,4 @@ public class TestChangelogConsumerSeek {
     }
   }
 
-  void runSamzaStreamJob(
-      VeniceSystemProducer veniceProducer,
-      String storeName,
-      Time mockedTime,
-      int numPuts,
-      int numDels,
-      int startIdx) {
-    // Send PUT requests.
-    for (int i = startIdx; i < startIdx + numPuts; i++) {
-      sendStreamingRecord(
-          veniceProducer,
-          storeName,
-          Integer.toString(i),
-          "stream_" + i,
-          mockedTime == null ? null : mockedTime.getMilliseconds());
-    }
-    // Send DELETE requests.
-    for (int i = startIdx + numPuts; i < startIdx + numPuts + numDels; i++) {
-      sendStreamingDeleteRecord(
-          veniceProducer,
-          storeName,
-          Integer.toString(i),
-          mockedTime == null ? null : mockedTime.getMilliseconds());
-    }
-  }
 }
