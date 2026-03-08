@@ -278,6 +278,8 @@ public class DaVinciClientRecordTransformerFilterTest {
     props.setProperty("record.transformer.enabled", "true");
     props.setProperty("blob.transfer.manager.enabled", "true");
     props.setProperty("batch.push.report.enabled", "false");
+    File readyMarker = new File(configDir, "ready.marker");
+    props.setProperty("ready.marker.path", readyMarker.getAbsolutePath());
 
     // Write properties to file
     try (FileWriter writer = new FileWriter(configFile)) {
@@ -286,8 +288,11 @@ public class DaVinciClientRecordTransformerFilterTest {
 
     ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
-    // Wait for the first DaVinci Client to complete ingestion
-    Thread.sleep(60000);
+    // Poll until the forked DaVinci Client signals it is fully initialized
+    // (ingestion complete + blob transfer server ready).
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
+      Assert.assertTrue(readyMarker.exists(), "DaVinciUserApp not yet ready");
+    });
 
     // Start the second DaVinci Client using settings for blob transfer
     String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();

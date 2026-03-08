@@ -28,7 +28,6 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
@@ -69,14 +68,12 @@ public class VeniceParentHelixAdminSchemaTest {
   private static final long DEFAULT_TEST_TIMEOUT_MS = 60000;
   private VeniceParentHelixAdminTestFixture fixture;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-  private VeniceClusterWrapper venice;
   private String clusterName;
 
   @BeforeClass
   public void setUp() {
     fixture = new VeniceParentHelixAdminTestFixture();
     multiRegionMultiClusterWrapper = fixture.getMultiRegionMultiClusterWrapper();
-    venice = fixture.getVenice();
     clusterName = fixture.getClusterName();
   }
 

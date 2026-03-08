@@ -133,6 +133,8 @@ public class DaVinciClientP2PBlobTransferTest {
     props.setProperty("record.transformer.enabled", "false");
     props.setProperty("blob.transfer.manager.enabled", "true");
     props.setProperty("batch.push.report.enabled", String.valueOf(batchPushReportEnable));
+    File readyMarker = new File(configDir, "ready.marker");
+    props.setProperty("ready.marker.path", readyMarker.getAbsolutePath());
 
     // Write properties to file
     try (FileWriter writer = new FileWriter(configFile)) {
@@ -141,12 +143,10 @@ public class DaVinciClientP2PBlobTransferTest {
 
     ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
-    // Poll until the forked DaVinci Client finishes ingesting all partitions
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-      for (int i = 0; i < 3; i++) {
-        String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(partitionPath)), "Partition " + i + " not yet ingested");
-      }
+    // Poll until the forked DaVinci Client signals it is fully initialized
+    // (ingestion complete + blob transfer server ready).
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
+      Assert.assertTrue(readyMarker.exists(), "DaVinciUserApp not yet ready");
     });
 
     // Start the second DaVinci Client using settings for blob transfer
@@ -274,6 +274,8 @@ public class DaVinciClientP2PBlobTransferTest {
     props.setProperty("record.transformer.enabled", "false");
     props.setProperty("blob.transfer.manager.enabled", "true");
     props.setProperty("batch.push.report.enabled", "false");
+    File readyMarker = new File(configDir, "ready.marker");
+    props.setProperty("ready.marker.path", readyMarker.getAbsolutePath());
 
     // Write properties to file
     try (FileWriter writer = new FileWriter(configFile)) {
@@ -282,12 +284,10 @@ public class DaVinciClientP2PBlobTransferTest {
 
     ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
-    // Poll until the forked DaVinci Client finishes ingesting all partitions
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-      for (int i = 0; i < 3; i++) {
-        String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(partitionPath)), "Partition " + i + " not yet ingested");
-      }
+    // Poll until the forked DaVinci Client signals it is fully initialized
+    // (ingestion complete + blob transfer server ready).
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
+      Assert.assertTrue(readyMarker.exists(), "DaVinciUserApp not yet ready");
     });
 
     // Start the second DaVinci Client using settings for blob transfer
