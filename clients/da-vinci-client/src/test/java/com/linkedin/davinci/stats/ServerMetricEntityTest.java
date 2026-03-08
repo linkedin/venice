@@ -34,6 +34,21 @@ public class ServerMetricEntityTest {
     }
   }
 
+  /**
+   * Verifies that no two enum constants across all server metric entity enums share the same
+   * metric name. Unlike {@link #testNoDuplicateMetricNames()} which only scans
+   * {@code com.linkedin.davinci.stats}, this checks the actual aggregated collection which
+   * includes cross-package enums like {@link com.linkedin.venice.stats.ThreadPoolOtelMetricEntity}.
+   */
+  @Test
+  public void testNoDuplicateMetricNamesAcrossServerEnums() {
+    Set<String> allNames = new HashSet<>();
+    for (MetricEntity entity: SERVER_METRIC_ENTITIES) {
+      String name = entity.getMetricName();
+      assertTrue(allNames.add(name), "Duplicate metric name found across server enums: " + name);
+    }
+  }
+
   @Test
   public void testNoNullMetricEntities() {
     for (ModuleMetricEntityInterface[] enumValues: getAllModuleMetricEntityEnums()) {
