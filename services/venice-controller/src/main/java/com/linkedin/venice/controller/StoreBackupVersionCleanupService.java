@@ -339,14 +339,13 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
       // If the repush chain filter found nothing but there are old versions below current, the chain
       // is broken (source versions were already deleted in prior cleanup cycles). Fall back to treating
       // all versions below current as deletable to prevent unbounded version accumulation.
-      if (readyToBeRemovedVersions.isEmpty()) {
-        long backupCount = versions.stream().filter(v -> v.getNumber() < currentVersion).count();
-        if (isCurrentVersionRepushed && backupCount > 0) {
-          readyToBeRemovedVersions = versions.stream()
-              .sorted((v1, v2) -> Integer.compare(v2.getNumber(), v1.getNumber()))
-              .filter(v -> v.getNumber() < currentVersion)
-              .collect(Collectors.toList());
+      if (isCurrentVersionRepushed && readyToBeRemovedVersions.isEmpty()) {
+        for (Version v: versions) {
+          if (v.getNumber() < currentVersion) {
+            readyToBeRemovedVersions.add(v);
+          }
         }
+        readyToBeRemovedVersions.sort((v1, v2) -> Integer.compare(v2.getNumber(), v1.getNumber()));
       }
 
       if (readyToBeRemovedVersions.isEmpty()) {

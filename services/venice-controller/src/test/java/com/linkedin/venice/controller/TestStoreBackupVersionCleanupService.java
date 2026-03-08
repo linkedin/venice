@@ -492,8 +492,8 @@ public class TestStoreBackupVersionCleanupService {
    */
   @Test
   public void testCleanupBackupVersionRepush_BrokenChainVersionsLeak() {
-    // Simulate production scenario: versions 6, 10, 22, 55, 187 exist.
-    // Each was repushed from a source that has already been deleted.
+    // Simulate production scenario: 15 orphaned repush versions exist (from NearlineBytesTest2).
+    // Each version's repushSourceVersion points to a version already deleted in a prior cleanup cycle.
     // Current version is 187 (repushed from 186, which was already cleaned up).
     Map<Integer, VersionStatus> versions = new HashMap<>();
     int[] versionNumbers = { 6, 10, 22, 55, 58, 82, 106, 108, 132, 138, 166, 172, 176, 183, 187 };
@@ -514,6 +514,8 @@ public class TestStoreBackupVersionCleanupService {
       Version v = store.getVersion(versionNumbers[i]);
       doReturn(repushSources[i]).when(v).getRepushSourceVersion();
     }
+    // Ensure getVersionOrThrow returns the current version's mock
+    doReturn(store.getVersion(currentVersion)).when(store).getVersionOrThrow(currentVersion);
 
     // The cleanup should delete the old leaked versions (all except current and one backup).
     // With 14 backup versions, at minimum 13 should be deletable.
@@ -528,7 +530,8 @@ public class TestStoreBackupVersionCleanupService {
     verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeName, 55);
     verify(admin, atLeast(1)).deleteOldVersionInStore(CLUSTER_NAME, storeName, 183);
 
-    // Current version should never be deleted
+    // Oldest backup (v6) is kept for rollback; current version should never be deleted
+    verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, storeName, 6);
     verify(admin, never()).deleteOldVersionInStore(CLUSTER_NAME, storeName, currentVersion);
   }
 
