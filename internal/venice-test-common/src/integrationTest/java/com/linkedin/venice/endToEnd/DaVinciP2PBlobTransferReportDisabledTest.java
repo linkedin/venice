@@ -108,6 +108,8 @@ public class DaVinciP2PBlobTransferReportDisabledTest {
     String storeName = Utils.getUniqueString("test-store");
     setUpStore(storeName, paramsConsumer, properties -> {}, true);
 
+    String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
+
     // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
     File configDir = Utils.getTempDataDirectory();
     File configFile = new File(configDir, "dvc-config.properties");
@@ -123,6 +125,7 @@ public class DaVinciP2PBlobTransferReportDisabledTest {
     props.setProperty("record.transformer.enabled", "false");
     props.setProperty("blob.transfer.manager.enabled", "true");
     props.setProperty("batch.push.report.enabled", String.valueOf(batchPushReportEnable));
+    props.setProperty("ssl.keystore.path", keyStorePath);
     File readyMarker = new File(configDir, "ready.marker");
     props.setProperty("ready.marker.path", readyMarker.getAbsolutePath());
 
@@ -138,6 +141,8 @@ public class DaVinciP2PBlobTransferReportDisabledTest {
     TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
       Assert.assertTrue(readyMarker.exists(), "DaVinciUserApp not yet ready");
     });
+
+    DaVinciClusterFixture.waitForBlobPeerDiscovery(fixture.getD2Client(), storeName, 1, 0);
 
     // Start the second DaVinci Client using settings for blob transfer
     String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -159,10 +164,10 @@ public class DaVinciP2PBlobTransferReportDisabledTest {
         .put(BLOB_TRANSFER_ACL_ENABLED, true)
         .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, -1000000) // force the usage of blob transfer.
         .put(SSL_KEYSTORE_TYPE, "JKS")
-        .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_KEYSTORE_LOCATION, keyStorePath)
         .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_TRUSTSTORE_TYPE, "JKS")
-        .put(SSL_TRUSTSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_TRUSTSTORE_LOCATION, keyStorePath)
         .put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")

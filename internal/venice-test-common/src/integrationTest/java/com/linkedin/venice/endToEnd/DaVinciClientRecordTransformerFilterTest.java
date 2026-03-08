@@ -263,6 +263,8 @@ public class DaVinciClientRecordTransformerFilterTest {
     LOGGER.info("Port1 is {}, Port2 is {}", port1, port2);
     LOGGER.info("zkHosts is {}", zkHosts);
 
+    String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
+
     // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
     File configDir = Utils.getTempDataDirectory();
     File configFile = new File(configDir, "dvc-config.properties");
@@ -278,6 +280,7 @@ public class DaVinciClientRecordTransformerFilterTest {
     props.setProperty("record.transformer.enabled", "true");
     props.setProperty("blob.transfer.manager.enabled", "true");
     props.setProperty("batch.push.report.enabled", "false");
+    props.setProperty("ssl.keystore.path", keyStorePath);
     File readyMarker = new File(configDir, "ready.marker");
     props.setProperty("ready.marker.path", readyMarker.getAbsolutePath());
 
@@ -293,6 +296,8 @@ public class DaVinciClientRecordTransformerFilterTest {
     TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
       Assert.assertTrue(readyMarker.exists(), "DaVinciUserApp not yet ready");
     });
+
+    DaVinciClusterFixture.waitForBlobPeerDiscovery(d2Client, storeName, 1, 0);
 
     // Start the second DaVinci Client using settings for blob transfer
     String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -312,10 +317,10 @@ public class DaVinciClientRecordTransformerFilterTest {
         .put(BLOB_TRANSFER_SSL_ENABLED, true)
         .put(BLOB_TRANSFER_ACL_ENABLED, true)
         .put(SSL_KEYSTORE_TYPE, "JKS")
-        .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_KEYSTORE_LOCATION, keyStorePath)
         .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_TRUSTSTORE_TYPE, "JKS")
-        .put(SSL_TRUSTSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_TRUSTSTORE_LOCATION, keyStorePath)
         .put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")

@@ -18,7 +18,6 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PO
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_PASSWORD;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -31,7 +30,6 @@ import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.endToEnd.TestStringRecordTransformer;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
-import com.linkedin.venice.utils.SslUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -113,7 +111,10 @@ public class DaVinciUserApp {
       extraBackendConfig.put(BLOB_TRANSFER_SSL_ENABLED, true);
       extraBackendConfig.put(BLOB_TRANSFER_ACL_ENABLED, true);
 
-      String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
+      // Use the keystore path passed by the parent test JVM to avoid classpath
+      // mismatch: stale fat JARs may contain a different localhost.jks than the
+      // one the test JVM loaded, causing SSL handshake failures.
+      String keyStorePath = props.getProperty("ssl.keystore.path");
       extraBackendConfig.put(SSL_KEYSTORE_TYPE, "JKS");
       extraBackendConfig.put(SSL_KEYSTORE_LOCATION, keyStorePath);
       extraBackendConfig.put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD);
