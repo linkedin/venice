@@ -630,44 +630,6 @@ public class DaVinciClientRecordTransformerTest {
         numKeys == 0);
   }
 
-  /*
-   * Batch data schema:
-   * Key: Integer
-   * Value: String
-   */
-  private void setUpStore(
-      String storeName,
-      Consumer<UpdateStoreQueryParams> paramsConsumer,
-      Consumer<Properties> propertiesConsumer,
-      boolean useDVCPushStatusStore,
-      int numPartitions) {
-    boolean chunkingEnabled = false;
-    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
-
-    File inputDir = getTempDataDirectory();
-
-    Runnable writeAvroFileRunnable = () -> {
-      try {
-        writeSimpleAvroFileWithIntToStringSchema(inputDir);
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
-    };
-    String valueSchema = "\"string\"";
-    setUpStore(
-        storeName,
-        paramsConsumer,
-        propertiesConsumer,
-        useDVCPushStatusStore,
-        chunkingEnabled,
-        compressionStrategy,
-        writeAvroFileRunnable,
-        valueSchema,
-        inputDir,
-        numPartitions,
-        false);
-  }
-
   protected void setUpStore(
       String storeName,
       Consumer<UpdateStoreQueryParams> paramsConsumer,

@@ -39,17 +39,22 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIn
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.DaVinciUserApp;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -72,32 +77,44 @@ import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class DaVinciClientP2PBlobTransferTest {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientP2PBlobTransferTest.class);
   private static final int TEST_TIMEOUT = 120_000;
-  private DaVinciClusterFixture fixture;
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
 
   @BeforeClass
   public void setUp() {
-    fixture = new DaVinciClusterFixture(true);
-    cluster = fixture.getCluster();
-    d2Client = fixture.getD2Client();
+    Utils.thisIsLocalhost();
+    Properties clusterConfig = new Properties();
+    clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
+    clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(2)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToStorageNodes(false)
+        .sslToKafka(false)
+        .extraProperties(clusterConfig)
+        .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
+    d2Client = new D2ClientBuilder().setZkHosts(cluster.getZk().getAddress())
+        .setZkSessionTimeout(3, TimeUnit.SECONDS)
+        .setZkStartupTimeout(3, TimeUnit.SECONDS)
+        .build();
+    D2ClientUtils.startClient(d2Client);
   }
 
   @AfterClass
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(fixture);
-  }
-
-  @DataProvider(name = "blobTransferReportEnabled")
-  public static Object[][] blobTransferReportEnabled() {
-    return new Object[][] { { true, true }, { true, false } };
+    if (d2Client != null) {
+      D2ClientUtils.shutdownClient(d2Client);
+    }
+    Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
   /**
@@ -105,7 +122,7 @@ public class DaVinciClientP2PBlobTransferTest {
    * Case 1: Start a fresh client, and see if it can bootstrap from the first one
    * Case 2: Restart the second Da Vinci client to see if it can re-bootstrap from the first one with retained old
    */
-  @Test(timeOut = 2 * TEST_TIMEOUT, dataProvider = "blobTransferReportEnabled")
+  @Test(timeOut = 2 * TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
   public void testBlobP2PTransferAmongDVC(boolean batchPushReportEnable, Boolean isD2ClientEnabled) throws Exception {
     String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
     String zkHosts = cluster.getZk().getAddress();
@@ -133,8 +150,6 @@ public class DaVinciClientP2PBlobTransferTest {
     props.setProperty("record.transformer.enabled", "false");
     props.setProperty("blob.transfer.manager.enabled", "true");
     props.setProperty("batch.push.report.enabled", String.valueOf(batchPushReportEnable));
-    File readyMarker = new File(configDir, "ready.marker");
-    props.setProperty("ready.marker.path", readyMarker.getAbsolutePath());
 
     // Write properties to file
     try (FileWriter writer = new FileWriter(configFile)) {
@@ -143,11 +158,8 @@ public class DaVinciClientP2PBlobTransferTest {
 
     ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
-    // Poll until the forked DaVinci Client signals it is fully initialized
-    // (ingestion complete + blob transfer server ready).
-    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
-      Assert.assertTrue(readyMarker.exists(), "DaVinciUserApp not yet ready");
-    });
+    // Wait for the first DaVinci Client to complete ingestion
+    Thread.sleep(60000);
 
     // Start the second DaVinci Client using settings for blob transfer
     String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -274,8 +286,6 @@ public class DaVinciClientP2PBlobTransferTest {
     props.setProperty("record.transformer.enabled", "false");
     props.setProperty("blob.transfer.manager.enabled", "true");
     props.setProperty("batch.push.report.enabled", "false");
-    File readyMarker = new File(configDir, "ready.marker");
-    props.setProperty("ready.marker.path", readyMarker.getAbsolutePath());
 
     // Write properties to file
     try (FileWriter writer = new FileWriter(configFile)) {
@@ -284,11 +294,8 @@ public class DaVinciClientP2PBlobTransferTest {
 
     ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
-    // Poll until the forked DaVinci Client signals it is fully initialized
-    // (ingestion complete + blob transfer server ready).
-    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
-      Assert.assertTrue(readyMarker.exists(), "DaVinciUserApp not yet ready");
-    });
+    // Wait for the first DaVinci Client to complete ingestion
+    Thread.sleep(60000);
 
     // Start the second DaVinci Client using settings for blob transfer
     String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
