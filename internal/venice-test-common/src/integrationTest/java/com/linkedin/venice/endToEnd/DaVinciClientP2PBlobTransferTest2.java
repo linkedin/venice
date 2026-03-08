@@ -138,8 +138,13 @@ public class DaVinciClientP2PBlobTransferTest2 {
 
     ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
-    // Wait for the first DaVinci Client to complete ingestion
-    Thread.sleep(60000);
+    // Poll until the forked DaVinci Client finishes ingesting all partitions
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+      for (int i = 0; i < 3; i++) {
+        String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(partitionPath)), "Partition " + i + " not yet ingested");
+      }
+    });
 
     // Prepare client 2 configs
     String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -265,8 +270,13 @@ public class DaVinciClientP2PBlobTransferTest2 {
 
     ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
-    // Wait for the first DaVinci Client to complete ingestion
-    Thread.sleep(60000);
+    // Poll until the forked DaVinci Client finishes ingesting all partitions
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+      for (int i = 0; i < 3; i++) {
+        String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(partitionPath)), "Partition " + i + " not yet ingested");
+      }
+    });
 
     // Start the second DaVinci Client using settings for blob transfer
     String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
