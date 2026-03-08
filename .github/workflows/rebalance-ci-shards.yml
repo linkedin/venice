@@ -2,7 +2,7 @@
 #
 # Downloads test timing data from the latest successful E2E test run and
 # re-packs shards using First-Fit Decreasing bin-packing to keep each
-# shard under the target time (~6 min).  If the assignments change, a
+# shard under the target wall-clock time (~10 min).  If the assignments change, a
 # PR is opened automatically.
 #
 # Schedule: Monday 6 AM UTC (~10 PM-1 AM Sunday US time zones)
@@ -106,20 +106,20 @@ jobs:
           gh pr create \
             --title "[CI] Rebalance integration test shards" \
             --body "$(cat <<'BODY'
-          ## Summary
-          - Automated weekly rebalance of CI integration test shards
-          - Uses timing data from the latest successful E2E workflow run
-          - Target: ~6 min per shard (360s + fork overhead)
+## Summary
+- Automated weekly rebalance of CI integration test shards
+- Uses timing data from the latest successful E2E workflow run
+- Target: ~6 min test time per shard (360s + fork overhead), ~10 min wall-clock
 
-          ## How this works
-          The `rebalance-ci-shards` workflow downloads test timing artifacts
-          uploaded by each E2E shard, then runs `scripts/ci/rebalance_test_shards.py`
-          to re-pack shards using First-Fit Decreasing bin-packing.
+## How this works
+The `rebalance-ci-shards` workflow downloads test timing artifacts
+uploaded by each E2E shard, then runs `scripts/ci/rebalance_test_shards.py`
+to re-pack shards using First-Fit Decreasing bin-packing.
 
-          ## Test plan
-          - [ ] CI E2E shards pass — all tests discovered and run
-          - [ ] No test class appears in shard 99 (catch-all) that should be in a named shard
-          BODY
+## Test plan
+- [ ] CI E2E shards pass — all tests discovered and run
+- [ ] No test class appears in shard 99 (catch-all) that should be in a named shard
+BODY
           )" \
             --base main \
             --head "$BRANCH"

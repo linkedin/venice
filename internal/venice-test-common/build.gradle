@@ -243,7 +243,7 @@ task generateGHCI() {
   targetFile.createNewFile()
 
   append(targetFilePath, "# Auto-generated file. Do not edit manually!\n#\n")
-  append(targetFilePath, "# To alter these flows, edit:\n#\n#     internal/venice-test-common/build.gradle\n#\n")
+  append(targetFilePath, "# To alter these flows, edit:\n#\n#     internal/venice-test-common/build.gradle\n#     internal/venice-test-common/test-shard-assignments.json\n#\n")
   append(targetFilePath, "# To regenerate, run:\n#\n#     ./gradlew generateGHCI\n\n")
 
   append(targetFilePath, "name: E2ETests\n\n")

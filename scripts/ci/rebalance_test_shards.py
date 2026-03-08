@@ -333,7 +333,7 @@ def print_shard_summary(
         shard_durations.append(shard_time)
         total_time += shard_time
         max_time = max(max_time, shard_time)
-        over = " [OVER TARGET]" if shard_time > target_time else ""
+        over = " [OVER TARGET]" if eff_time > target_time else ""
         print(
             f"  Shard {shard_id:>3}: {len(tests):>3} tests, "
             f"{shard_time:>7.1f}s ({shard_time/60:.1f}min) "

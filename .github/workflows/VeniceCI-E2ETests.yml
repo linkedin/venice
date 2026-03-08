@@ -3,6 +3,7 @@
 # To alter these flows, edit:
 #
 #     internal/venice-test-common/build.gradle
+#     internal/venice-test-common/test-shard-assignments.json
 #
 # To regenerate, run:
 #

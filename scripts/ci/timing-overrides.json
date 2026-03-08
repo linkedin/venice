@@ -13,7 +13,6 @@
   "com.linkedin.venice.endToEnd.TestDeferredVersionSwap": 118,
   "com.linkedin.venice.endToEnd.TestDeferredVersionSwapDvc": 188,
   "com.linkedin.venice.endToEnd.TestDeferredVersionSwapWithFailingRegions": 71,
-  "com.linkedin.venice.endToEnd.TestDeferredVersionSwapWithFailingRegionsDvcIngestion": 87,
   "com.linkedin.venice.endToEnd.TestDeferredVersionSwapWithSequentialRolloutWithDvc": 287,
   "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest": 44,
   "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest": 44,
