@@ -79,8 +79,8 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class DaVinciClientP2PBlobTransferTest2 {
-  private static final Logger LOGGER = LogManager.getLogger(DaVinciClientP2PBlobTransferTest2.class);
+public class DaVinciP2PBlobTransferRecoveryTest {
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciP2PBlobTransferRecoveryTest.class);
   private static final int TEST_TIMEOUT = 120_000;
   private DaVinciClusterFixture fixture;
   private VeniceClusterWrapper cluster;

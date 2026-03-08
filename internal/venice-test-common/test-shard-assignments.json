@@ -25,7 +25,7 @@
       "com.linkedin.venice.endToEnd.PushStatusStoreTest"
     ],
     "8": [
-      "com.linkedin.venice.endToEnd.DaVinciClientP2PBlobTransferTest2"
+      "com.linkedin.venice.endToEnd.DaVinciP2PBlobTransferRecoveryTest"
     ],
     "9": [
       "com.linkedin.venice.endToEnd.ActiveActiveReplicationForHybridTest"
