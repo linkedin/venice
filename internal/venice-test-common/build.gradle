@@ -177,12 +177,12 @@ integrationTestBuckets.each { name, patterns ->
         println "Test Suite ${descriptor.name} completed (${result.getResultType()}) in ${durationSeconds} s"
         timingResults << [name: descriptor.name, durationSeconds: durationSeconds, result: result.getResultType().toString()]
       }
-    }
-    doLast {
-      def timingDir = new File(buildDir, "test-timings")
-      timingDir.mkdirs()
-      def timingFile = new File(timingDir, "integrationTests_${name}.json")
-      timingFile.text = JsonOutput.prettyPrint(JsonOutput.toJson([shard: name, suites: timingResults]))
+      if (descriptor.parent == null) {
+        def timingDir = new File(buildDir, "test-timings")
+        timingDir.mkdirs()
+        def timingFile = new File(timingDir, "integrationTests_${name}.json")
+        timingFile.text = JsonOutput.prettyPrint(JsonOutput.toJson([shard: name, suites: timingResults]))
+      }
     }
   }
 }
@@ -216,12 +216,12 @@ task integrationTests_99(type: Test) {
       println "Test Suite ${descriptor.name} completed (${result.getResultType()}) in ${durationSeconds} s"
       timingResults << [name: descriptor.name, durationSeconds: durationSeconds, result: result.getResultType().toString()]
     }
-  }
-  doLast {
-    def timingDir = new File(buildDir, "test-timings")
-    timingDir.mkdirs()
-    def timingFile = new File(timingDir, "integrationTests_99.json")
-    timingFile.text = JsonOutput.prettyPrint(JsonOutput.toJson([shard: "99", suites: timingResults]))
+    if (descriptor.parent == null) {
+      def timingDir = new File(buildDir, "test-timings")
+      timingDir.mkdirs()
+      def timingFile = new File(timingDir, "integrationTests_99.json")
+      timingFile.text = JsonOutput.prettyPrint(JsonOutput.toJson([shard: "99", suites: timingResults]))
+    }
   }
 }
 
