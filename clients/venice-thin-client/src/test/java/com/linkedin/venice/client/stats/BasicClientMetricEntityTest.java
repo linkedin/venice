@@ -13,11 +13,21 @@ import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 
 public class BasicClientMetricEntityTest extends AbstractModuleMetricEntityTest<BasicClientMetricEntity> {
   public BasicClientMetricEntityTest() {
     super(BasicClientMetricEntity.class);
+  }
+
+  /**
+   * CALL_COUNT/CALL_COUNT_DVC and CALL_TIME/CALL_TIME_DVC intentionally share the same metric name
+   * ("call_count" and "call_time") for consistency across TC/FC and DaVinci client types.
+   */
+  @Override
+  protected Set<String> allowedDuplicateMetricNames() {
+    return setOf("call_count", "call_time");
   }
 
   @Override

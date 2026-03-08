@@ -47,11 +47,24 @@ public abstract class AbstractModuleMetricEntityTest<T extends Enum<T> & ModuleM
             + "Add or remove entries in expectedDefinitions() when modifying " + enumClass.getSimpleName());
   }
 
+  /**
+   * Returns metric names that are intentionally shared by multiple enum constants within this enum.
+   * Override in subclasses where name sharing is by design (e.g., thin-client and DaVinci variants
+   * sharing the same OTel metric name). Default: empty set (no duplicates allowed).
+   */
+  protected Set<String> allowedDuplicateMetricNames() {
+    return Collections.emptySet();
+  }
+
   @Test
   public void testNoDuplicateMetricNames() {
+    Set<String> allowed = allowedDuplicateMetricNames();
     Set<String> seen = new HashSet<>();
     for (T enumValue: enumClass.getEnumConstants()) {
       String name = enumValue.getMetricEntity().getMetricName();
+      if (allowed.contains(name)) {
+        continue;
+      }
       assertTrue(
           seen.add(name),
           "Duplicate metric name '" + name + "' found in " + enumClass.getSimpleName() + " on constant "
