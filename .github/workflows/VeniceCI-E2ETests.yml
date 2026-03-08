@@ -1210,6 +1210,25 @@ jobs:
         with:
           shard: 63
 
+  IntegrationTests_64:
+    name: IntegrationTests_64
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_64
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 64
+
   IntegrationTests_99:
     name: IntegrationTests_99
     strategy:
@@ -1237,7 +1256,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [IntegrationTests_1, IntegrationTests_2, IntegrationTests_3, IntegrationTests_4, IntegrationTests_5, IntegrationTests_6, IntegrationTests_7, IntegrationTests_8, IntegrationTests_9, IntegrationTests_10, IntegrationTests_11, IntegrationTests_12, IntegrationTests_13, IntegrationTests_14, IntegrationTests_15, IntegrationTests_16, IntegrationTests_17, IntegrationTests_18, IntegrationTests_19, IntegrationTests_20, IntegrationTests_21, IntegrationTests_22, IntegrationTests_23, IntegrationTests_24, IntegrationTests_25, IntegrationTests_26, IntegrationTests_27, IntegrationTests_28, IntegrationTests_29, IntegrationTests_30, IntegrationTests_31, IntegrationTests_32, IntegrationTests_33, IntegrationTests_34, IntegrationTests_35, IntegrationTests_36, IntegrationTests_37, IntegrationTests_38, IntegrationTests_39, IntegrationTests_40, IntegrationTests_41, IntegrationTests_42, IntegrationTests_43, IntegrationTests_44, IntegrationTests_45, IntegrationTests_46, IntegrationTests_47, IntegrationTests_48, IntegrationTests_49, IntegrationTests_50, IntegrationTests_51, IntegrationTests_52, IntegrationTests_53, IntegrationTests_54, IntegrationTests_55, IntegrationTests_56, IntegrationTests_57, IntegrationTests_58, IntegrationTests_59, IntegrationTests_60, IntegrationTests_61, IntegrationTests_62, IntegrationTests_63, IntegrationTests_99]
+    needs: [IntegrationTests_1, IntegrationTests_2, IntegrationTests_3, IntegrationTests_4, IntegrationTests_5, IntegrationTests_6, IntegrationTests_7, IntegrationTests_8, IntegrationTests_9, IntegrationTests_10, IntegrationTests_11, IntegrationTests_12, IntegrationTests_13, IntegrationTests_14, IntegrationTests_15, IntegrationTests_16, IntegrationTests_17, IntegrationTests_18, IntegrationTests_19, IntegrationTests_20, IntegrationTests_21, IntegrationTests_22, IntegrationTests_23, IntegrationTests_24, IntegrationTests_25, IntegrationTests_26, IntegrationTests_27, IntegrationTests_28, IntegrationTests_29, IntegrationTests_30, IntegrationTests_31, IntegrationTests_32, IntegrationTests_33, IntegrationTests_34, IntegrationTests_35, IntegrationTests_36, IntegrationTests_37, IntegrationTests_38, IntegrationTests_39, IntegrationTests_40, IntegrationTests_41, IntegrationTests_42, IntegrationTests_43, IntegrationTests_44, IntegrationTests_45, IntegrationTests_46, IntegrationTests_47, IntegrationTests_48, IntegrationTests_49, IntegrationTests_50, IntegrationTests_51, IntegrationTests_52, IntegrationTests_53, IntegrationTests_54, IntegrationTests_55, IntegrationTests_56, IntegrationTests_57, IntegrationTests_58, IntegrationTests_59, IntegrationTests_60, IntegrationTests_61, IntegrationTests_62, IntegrationTests_63, IntegrationTests_64, IntegrationTests_99]
     timeout-minutes: 20
     if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}
     steps:

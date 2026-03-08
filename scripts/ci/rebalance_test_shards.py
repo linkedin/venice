@@ -447,15 +447,21 @@ def main():
     else:
         print("No timing data source specified. Will use current assignments with estimated durations.")
 
-    # 1b. Apply timing overrides (for split classes or manual corrections)
+    # 1b. Apply timing overrides only for tests without measured timing data.
+    # Overrides exist for inherited-test subclasses and split classes that may
+    # not produce their own XML timing output.  When real timing data exists,
+    # it is more accurate and should take precedence.
     if args.timing_overrides:
         with open(args.timing_overrides) as f:
             overrides = json.load(f)
         # Filter out metadata keys (e.g. _comment) that aren't test class names
         overrides = {k: v for k, v in overrides.items() if not k.startswith("_")}
-        print(f"Applying {len(overrides)} timing overrides from {args.timing_overrides}")
+        applied = 0
         for name, duration in overrides.items():
-            timings[name] = duration
+            if name not in timings:
+                timings[name] = duration
+                applied += 1
+        print(f"Applied {applied}/{len(overrides)} timing overrides (skipped {len(overrides) - applied} with measured data)")
 
     # 2. Discover all integration test classes
     discovered = discover_test_classes(repo_root)
