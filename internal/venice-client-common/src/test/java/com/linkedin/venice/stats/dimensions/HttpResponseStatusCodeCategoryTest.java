@@ -15,29 +15,25 @@ import java.util.Map;
 import org.testng.annotations.Test;
 
 
-public class HttpResponseStatusCodeCategoryTest extends VeniceDimensionInterfaceTest<HttpResponseStatusCodeCategory> {
-  protected HttpResponseStatusCodeCategoryTest() {
-    super(HttpResponseStatusCodeCategory.class);
+public class HttpResponseStatusCodeCategoryTest {
+  @Test
+  public void testDimensionInterface() {
+    Map<HttpResponseStatusCodeCategory, String> expectedValues =
+        CollectionUtils.<HttpResponseStatusCodeCategory, String>mapBuilder()
+            .put(INFORMATIONAL, "1xx")
+            .put(SUCCESS, "2xx")
+            .put(REDIRECTION, "3xx")
+            .put(CLIENT_ERROR, "4xx")
+            .put(SERVER_ERROR, "5xx")
+            .put(UNKNOWN, "unknown")
+            .build();
+    new VeniceDimensionTestFixture<>(
+        HttpResponseStatusCodeCategory.class,
+        VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+        expectedValues).assertAll();
   }
 
-  @Override
-  protected VeniceMetricsDimensions expectedDimensionName() {
-    return VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
-  }
-
-  @Override
-  protected Map<HttpResponseStatusCodeCategory, String> expectedDimensionValueMapping() {
-    return CollectionUtils.<HttpResponseStatusCodeCategory, String>mapBuilder()
-        .put(INFORMATIONAL, "1xx")
-        .put(SUCCESS, "2xx")
-        .put(REDIRECTION, "3xx")
-        .put(CLIENT_ERROR, "4xx")
-        .put(SERVER_ERROR, "5xx")
-        .put(UNKNOWN, "unknown")
-        .build();
-  }
-
-  @Test()
+  @Test
   public void testValues() {
     assertEquals(getVeniceHttpResponseStatusCodeCategory(HttpResponseStatus.PROCESSING), INFORMATIONAL);
     assertEquals(getVeniceHttpResponseStatusCodeCategory(HttpResponseStatus.OK), SUCCESS);

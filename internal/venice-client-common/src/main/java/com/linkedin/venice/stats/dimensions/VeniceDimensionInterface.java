@@ -4,9 +4,10 @@ package com.linkedin.venice.stats.dimensions;
  * Every enum that should be used as a dimension for otel should implement this interface
  * as this mandates the enum to have a dimension name and a dimension value.
  *
- * All such enums should add a test class that extends {@link VeniceDimensionInterfaceTest} to
- * test whether all the enum instances of an enum Class have the same dimension name and also
- * validates the dimension values.
+ * All such enums should add a test class that uses {@code VeniceDimensionTestFixture} to
+ * validate that the enum value count matches expected mappings, that all instances share
+ * the same dimension name, and that each instance's dimension value matches the expected
+ * value.
  */
 public interface VeniceDimensionInterface {
   /**
@@ -22,6 +23,10 @@ public interface VeniceDimensionInterface {
    * Default implementation returns {@code name().toLowerCase()}, which is the convention
    * for most dimension enums. Override only when the dimension value differs from the
    * lowercase enum constant name (e.g., HTTP status codes, custom string mappings).
+   *
+   * <p>This default relies on all implementors being enums. If this interface is ever
+   * implemented by a non-enum class, this method MUST be overridden — the default will
+   * throw {@link ClassCastException}.
    */
   default String getDimensionValue() {
     return ((Enum<?>) this).name().toLowerCase();

@@ -2,23 +2,17 @@ package com.linkedin.venice.stats.dimensions;
 
 import com.linkedin.venice.utils.CollectionUtils;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class MessageTypeTest extends VeniceDimensionInterfaceTest<MessageType> {
-  protected MessageTypeTest() {
-    super(MessageType.class);
-  }
-
-  @Override
-  protected VeniceMetricsDimensions expectedDimensionName() {
-    return VeniceMetricsDimensions.VENICE_MESSAGE_TYPE;
-  }
-
-  @Override
-  protected Map<MessageType, String> expectedDimensionValueMapping() {
-    return CollectionUtils.<MessageType, String>mapBuilder()
+public class MessageTypeTest {
+  @Test
+  public void testDimensionInterface() {
+    Map<MessageType, String> expectedValues = CollectionUtils.<MessageType, String>mapBuilder()
         .put(MessageType.REQUEST, "request")
         .put(MessageType.RESPONSE, "response")
         .build();
+    new VeniceDimensionTestFixture<>(MessageType.class, VeniceMetricsDimensions.VENICE_MESSAGE_TYPE, expectedValues)
+        .assertAll();
   }
 }
