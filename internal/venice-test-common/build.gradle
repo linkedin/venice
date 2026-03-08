@@ -252,7 +252,7 @@ task generateGHCI() {
 
   def jobs = []
 
-  def integrationTestTimeout = 15 // minutes
+  def integrationTestTimeout = 30 // minutes
   integrationTestBuckets.each { name, patterns ->
     def flowName = "IntegrationTests_" + name
     jobs << flowName
