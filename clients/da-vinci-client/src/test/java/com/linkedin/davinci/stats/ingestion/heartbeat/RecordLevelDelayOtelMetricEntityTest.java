@@ -8,21 +8,22 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.Utils.setOf;
 
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class RecordLevelDelayOtelMetricEntityTest
-    extends AbstractModuleMetricEntityTest<RecordLevelDelayOtelMetricEntity> {
-  public RecordLevelDelayOtelMetricEntityTest() {
-    super(RecordLevelDelayOtelMetricEntity.class);
+public class RecordLevelDelayOtelMetricEntityTest {
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(RecordLevelDelayOtelMetricEntity.class, expectedDefinitions()).assertAll();
   }
 
-  @Override
-  protected Map<RecordLevelDelayOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+  private static Map<RecordLevelDelayOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<RecordLevelDelayOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         RecordLevelDelayOtelMetricEntity.INGESTION_RECORD_DELAY,

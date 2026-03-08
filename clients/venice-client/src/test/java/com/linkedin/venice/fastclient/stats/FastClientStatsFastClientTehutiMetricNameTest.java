@@ -1,19 +1,19 @@
 package com.linkedin.venice.fastclient.stats;
 
 import com.linkedin.venice.fastclient.stats.FastClientStats.FastClientTehutiMetricName;
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class FastClientStatsFastClientTehutiMetricNameTest
-    extends AbstractTehutiMetricNameEnumTest<FastClientTehutiMetricName> {
-  public FastClientStatsFastClientTehutiMetricNameTest() {
-    super(FastClientTehutiMetricName.class);
+public class FastClientStatsFastClientTehutiMetricNameTest {
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(FastClientTehutiMetricName.class, expectedMetricNames()).assertAll();
   }
 
-  @Override
-  protected Map<FastClientTehutiMetricName, String> expectedMetricNames() {
+  private static Map<FastClientTehutiMetricName, String> expectedMetricNames() {
     Map<FastClientTehutiMetricName, String> map = new HashMap<>();
     map.put(FastClientTehutiMetricName.LONG_TAIL_RETRY_REQUEST, "long_tail_retry_request");
     map.put(FastClientTehutiMetricName.ERROR_RETRY_REQUEST, "error_retry_request");

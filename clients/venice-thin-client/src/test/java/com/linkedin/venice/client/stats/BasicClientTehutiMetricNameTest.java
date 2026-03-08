@@ -1,18 +1,19 @@
 package com.linkedin.venice.client.stats;
 
 import com.linkedin.venice.client.stats.BasicClientStats.BasicClientTehutiMetricName;
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class BasicClientTehutiMetricNameTest extends AbstractTehutiMetricNameEnumTest<BasicClientTehutiMetricName> {
-  public BasicClientTehutiMetricNameTest() {
-    super(BasicClientTehutiMetricName.class);
+public class BasicClientTehutiMetricNameTest {
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(BasicClientTehutiMetricName.class, expectedMetricNames()).assertAll();
   }
 
-  @Override
-  protected Map<BasicClientTehutiMetricName, String> expectedMetricNames() {
+  private static Map<BasicClientTehutiMetricName, String> expectedMetricNames() {
     Map<BasicClientTehutiMetricName, String> map = new HashMap<>();
     map.put(BasicClientTehutiMetricName.HEALTHY_REQUEST, "healthy_request");
     map.put(BasicClientTehutiMetricName.UNHEALTHY_REQUEST, "unhealthy_request");

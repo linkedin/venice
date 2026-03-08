@@ -4,21 +4,17 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity;
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class ProtocolVersionAutoDetectionOtelMetricEntityTest
-    extends AbstractModuleMetricEntityTest<ProtocolVersionAutoDetectionOtelMetricEntity> {
-  public ProtocolVersionAutoDetectionOtelMetricEntityTest() {
-    super(ProtocolVersionAutoDetectionOtelMetricEntity.class);
-  }
-
-  @Override
-  protected Map<ProtocolVersionAutoDetectionOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+public class ProtocolVersionAutoDetectionOtelMetricEntityTest {
+  private static Map<ProtocolVersionAutoDetectionOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<ProtocolVersionAutoDetectionOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         ProtocolVersionAutoDetectionOtelMetricEntity.PROTOCOL_VERSION_AUTO_DETECTION_FAILURE_COUNT,
@@ -37,5 +33,11 @@ public class ProtocolVersionAutoDetectionOtelMetricEntityTest
             "Latency of protocol version auto-detection",
             setOf(VENICE_CLUSTER_NAME)));
     return map;
+  }
+
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(ProtocolVersionAutoDetectionOtelMetricEntity.class, expectedDefinitions())
+        .assertAll();
   }
 }

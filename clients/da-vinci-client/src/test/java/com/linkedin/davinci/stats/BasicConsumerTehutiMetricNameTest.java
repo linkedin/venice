@@ -1,19 +1,20 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class BasicConsumerTehutiMetricNameTest
-    extends AbstractTehutiMetricNameEnumTest<BasicConsumerStats.BasicConsumerTehutiMetricName> {
-  public BasicConsumerTehutiMetricNameTest() {
-    super(BasicConsumerStats.BasicConsumerTehutiMetricName.class);
+public class BasicConsumerTehutiMetricNameTest {
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(BasicConsumerStats.BasicConsumerTehutiMetricName.class, expectedMetricNames())
+        .assertAll();
   }
 
-  @Override
-  protected Map<BasicConsumerStats.BasicConsumerTehutiMetricName, String> expectedMetricNames() {
+  private static Map<BasicConsumerStats.BasicConsumerTehutiMetricName, String> expectedMetricNames() {
     Map<BasicConsumerStats.BasicConsumerTehutiMetricName, String> map = new HashMap<>();
     map.put(BasicConsumerStats.BasicConsumerTehutiMetricName.MAX_PARTITION_LAG, "max_partition_lag");
     map.put(BasicConsumerStats.BasicConsumerTehutiMetricName.RECORDS_CONSUMED, "records_consumed");

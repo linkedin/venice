@@ -5,22 +5,18 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity;
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class DeferredVersionSwapOtelMetricEntityTest
-    extends AbstractModuleMetricEntityTest<DeferredVersionSwapOtelMetricEntity> {
-  public DeferredVersionSwapOtelMetricEntityTest() {
-    super(DeferredVersionSwapOtelMetricEntity.class);
-  }
-
-  @Override
-  protected Map<DeferredVersionSwapOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+public class DeferredVersionSwapOtelMetricEntityTest {
+  private static Map<DeferredVersionSwapOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<DeferredVersionSwapOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         DeferredVersionSwapOtelMetricEntity.DEFERRED_VERSION_SWAP_PROCESSING_ERROR_COUNT,
@@ -63,5 +59,10 @@ public class DeferredVersionSwapOtelMetricEntityTest
             "Count of deferred version swap child status mismatches",
             setOf(VENICE_CLUSTER_NAME, VENICE_STORE_NAME)));
     return map;
+  }
+
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(DeferredVersionSwapOtelMetricEntity.class, expectedDefinitions()).assertAll();
   }
 }

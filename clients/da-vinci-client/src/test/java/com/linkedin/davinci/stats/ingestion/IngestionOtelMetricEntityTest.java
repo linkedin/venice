@@ -17,21 +17,23 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import org.testng.annotations.Test;
 
 
-public class IngestionOtelMetricEntityTest extends AbstractModuleMetricEntityTest<IngestionOtelMetricEntity> {
-  public IngestionOtelMetricEntityTest() {
-    super(IngestionOtelMetricEntity.class);
+public class IngestionOtelMetricEntityTest {
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(IngestionOtelMetricEntity.class, expectedDefinitions()).assertAll();
   }
 
-  @Override
-  protected Map<IngestionOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+  private static Map<IngestionOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<IngestionOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
 
     Set<VeniceMetricsDimensions> storeClusterVersion =

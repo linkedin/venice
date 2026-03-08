@@ -1,18 +1,13 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class ServerHttpRequestStatsServerTehutiMetricNameTest
-    extends AbstractTehutiMetricNameEnumTest<ServerHttpRequestStats.ServerTehutiMetricName> {
-  public ServerHttpRequestStatsServerTehutiMetricNameTest() {
-    super(ServerHttpRequestStats.ServerTehutiMetricName.class);
-  }
-
-  @Override
-  protected Map<ServerHttpRequestStats.ServerTehutiMetricName, String> expectedMetricNames() {
+public class ServerHttpRequestStatsServerTehutiMetricNameTest {
+  private static Map<ServerHttpRequestStats.ServerTehutiMetricName, String> expectedMetricNames() {
     Map<ServerHttpRequestStats.ServerTehutiMetricName, String> map = new HashMap<>();
     map.put(ServerHttpRequestStats.ServerTehutiMetricName.SUCCESS_REQUEST, "success_request");
     map.put(ServerHttpRequestStats.ServerTehutiMetricName.ERROR_REQUEST, "error_request");
@@ -47,5 +42,11 @@ public class ServerHttpRequestStatsServerTehutiMetricNameTest
     map.put(ServerHttpRequestStats.ServerTehutiMetricName.FLUSH_LATENCY, "flush_latency");
     map.put(ServerHttpRequestStats.ServerTehutiMetricName.RESPONSE_SIZE, "response_size");
     return map;
+  }
+
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(ServerHttpRequestStats.ServerTehutiMetricName.class, expectedMetricNames())
+        .assertAll();
   }
 }

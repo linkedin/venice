@@ -1,19 +1,14 @@
 package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.controller.stats.AdminConsumptionStats.AdminConsumptionTehutiMetricNameEnum;
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class AdminConsumptionTehutiMetricNameEnumTest
-    extends AbstractTehutiMetricNameEnumTest<AdminConsumptionTehutiMetricNameEnum> {
-  public AdminConsumptionTehutiMetricNameEnumTest() {
-    super(AdminConsumptionTehutiMetricNameEnum.class);
-  }
-
-  @Override
-  protected Map<AdminConsumptionTehutiMetricNameEnum, String> expectedMetricNames() {
+public class AdminConsumptionTehutiMetricNameEnumTest {
+  private static Map<AdminConsumptionTehutiMetricNameEnum, String> expectedMetricNames() {
     Map<AdminConsumptionTehutiMetricNameEnum, String> map = new HashMap<>();
     map.put(AdminConsumptionTehutiMetricNameEnum.FAILED_ADMIN_MESSAGES, "failed_admin_messages");
     map.put(AdminConsumptionTehutiMetricNameEnum.FAILED_RETRIABLE_ADMIN_MESSAGES, "failed_retriable_admin_messages");
@@ -44,5 +39,11 @@ public class AdminConsumptionTehutiMetricNameEnumTest
     map.put(AdminConsumptionTehutiMetricNameEnum.ADMIN_CONSUMPTION_OFFSET_LAG, "admin_consumption_offset_lag");
     map.put(AdminConsumptionTehutiMetricNameEnum.MAX_ADMIN_CONSUMPTION_OFFSET_LAG, "max_admin_consumption_offset_lag");
     return map;
+  }
+
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(AdminConsumptionTehutiMetricNameEnum.class, expectedMetricNames())
+        .assertAll();
   }
 }

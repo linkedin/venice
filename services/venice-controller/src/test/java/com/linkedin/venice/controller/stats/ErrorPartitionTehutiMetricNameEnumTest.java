@@ -1,19 +1,14 @@
 package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.controller.stats.ErrorPartitionStats.ErrorPartitionTehutiMetricNameEnum;
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class ErrorPartitionTehutiMetricNameEnumTest
-    extends AbstractTehutiMetricNameEnumTest<ErrorPartitionTehutiMetricNameEnum> {
-  public ErrorPartitionTehutiMetricNameEnumTest() {
-    super(ErrorPartitionTehutiMetricNameEnum.class);
-  }
-
-  @Override
-  protected Map<ErrorPartitionTehutiMetricNameEnum, String> expectedMetricNames() {
+public class ErrorPartitionTehutiMetricNameEnumTest {
+  private static Map<ErrorPartitionTehutiMetricNameEnum, String> expectedMetricNames() {
     Map<ErrorPartitionTehutiMetricNameEnum, String> map = new HashMap<>();
     map.put(
         ErrorPartitionTehutiMetricNameEnum.CURRENT_VERSION_ERROR_PARTITION_RESET_ATTEMPT,
@@ -30,5 +25,10 @@ public class ErrorPartitionTehutiMetricNameEnumTest
     map.put(ErrorPartitionTehutiMetricNameEnum.ERROR_PARTITION_PROCESSING_ERROR, "error_partition_processing_error");
     map.put(ErrorPartitionTehutiMetricNameEnum.ERROR_PARTITION_PROCESSING_TIME, "error_partition_processing_time");
     return map;
+  }
+
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(ErrorPartitionTehutiMetricNameEnum.class, expectedMetricNames()).assertAll();
   }
 }

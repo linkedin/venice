@@ -9,33 +9,27 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.assertNoDuplicateMetricNamesAcrossEnums;
+import static com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.metricEntitiesEqual;
 import static com.linkedin.venice.utils.Utils.setOf;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.router.RouterServer;
-import com.linkedin.venice.stats.ThreadPoolOtelMetricEntity;
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
 import org.testng.annotations.Test;
 
 
-public class RouterMetricEntityTest extends AbstractModuleMetricEntityTest<RouterMetricEntity> {
-  public RouterMetricEntityTest() {
-    super(RouterMetricEntity.class);
-  }
-
-  @Override
-  protected Map<RouterMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+public class RouterMetricEntityTest {
+  private static Map<RouterMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<RouterMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         RouterMetricEntity.CALL_COUNT,
@@ -138,24 +132,27 @@ public class RouterMetricEntityTest extends AbstractModuleMetricEntityTest<Route
     return map;
   }
 
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(RouterMetricEntity.class, expectedDefinitions()).assertAll();
+  }
+
   /**
    * Verifies that no two enum constants across all router metric entity enums share the same
-   * metric name. Duplicates would cause silent deduplication in {@code getUniqueMetricEntities}.
+   * metric name. Uses {@link RouterServer#getMetricEntityEnumClasses()} as the single source of
+   * truth. Scans raw enum constants to catch silent deduplication by
+   * {@link ModuleMetricEntityInterface#getUniqueMetricEntities}.
    */
   @Test
   public void testNoDuplicateMetricNamesAcrossRouterEnums() {
-    Set<String> allNames = new HashSet<>();
-    for (MetricEntity entity: RouterServer.ROUTER_SERVICE_METRIC_ENTITIES) {
-      String name = entity.getMetricName();
-      assertTrue(allNames.add(name), "Duplicate metric name found across router enums: " + name);
-    }
+    assertNoDuplicateMetricNamesAcrossEnums(RouterServer.getMetricEntityEnumClasses());
   }
 
   @Test
   public void testRouterServiceMetricEntitiesRegistration() {
-    // Build the full expected set: RouterMetricEntity + shared module entities (ThreadPoolOtelMetricEntity)
+    // Build the full expected set from the same source of truth as production
     Collection<MetricEntity> expectedMetricEntities =
-        ModuleMetricEntityInterface.getUniqueMetricEntities(RouterMetricEntity.class, ThreadPoolOtelMetricEntity.class);
+        ModuleMetricEntityInterface.getUniqueMetricEntities(RouterServer.getMetricEntityEnumClasses());
 
     // Assert size
     assertEquals(
@@ -176,10 +173,4 @@ public class RouterMetricEntityTest extends AbstractModuleMetricEntityTest<Route
     }
   }
 
-  private boolean metricEntitiesEqual(MetricEntity actual, MetricEntity expected) {
-    return Objects.equals(actual.getMetricName(), expected.getMetricName())
-        && actual.getMetricType() == expected.getMetricType() && actual.getUnit() == expected.getUnit()
-        && Objects.equals(actual.getDescription(), expected.getDescription())
-        && Objects.equals(actual.getDimensionsList(), expected.getDimensionsList());
-  }
 }

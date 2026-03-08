@@ -1,18 +1,13 @@
 package com.linkedin.venice.router.stats;
 
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class RouterHttpRequestStatsRouterTehutiMetricNameEnumTest
-    extends AbstractTehutiMetricNameEnumTest<RouterHttpRequestStats.RouterTehutiMetricNameEnum> {
-  public RouterHttpRequestStatsRouterTehutiMetricNameEnumTest() {
-    super(RouterHttpRequestStats.RouterTehutiMetricNameEnum.class);
-  }
-
-  @Override
-  protected Map<RouterHttpRequestStats.RouterTehutiMetricNameEnum, String> expectedMetricNames() {
+public class RouterHttpRequestStatsRouterTehutiMetricNameEnumTest {
+  private static Map<RouterHttpRequestStats.RouterTehutiMetricNameEnum, String> expectedMetricNames() {
     Map<RouterHttpRequestStats.RouterTehutiMetricNameEnum, String> map = new HashMap<>();
     map.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.HEALTHY_REQUEST, "healthy_request");
     map.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.UNHEALTHY_REQUEST, "unhealthy_request");
@@ -47,5 +42,12 @@ public class RouterHttpRequestStatsRouterTehutiMetricNameEnumTest
         RouterHttpRequestStats.RouterTehutiMetricNameEnum.NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST,
         "no_available_replica_aborted_retry_request");
     return map;
+  }
+
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(
+        RouterHttpRequestStats.RouterTehutiMetricNameEnum.class,
+        expectedMetricNames()).assertAll();
   }
 }

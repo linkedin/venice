@@ -5,20 +5,22 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
 
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class ServerMetadataOtelMetricEntityTest extends AbstractModuleMetricEntityTest<ServerMetadataOtelMetricEntity> {
-  public ServerMetadataOtelMetricEntityTest() {
-    super(ServerMetadataOtelMetricEntity.class);
+public class ServerMetadataOtelMetricEntityTest {
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(ServerMetadataOtelMetricEntity.class, expectedDefinitions()).assertAll();
   }
 
-  @Override
-  protected Map<ServerMetadataOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+  private static Map<ServerMetadataOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<ServerMetadataOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT,

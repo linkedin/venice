@@ -7,6 +7,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.testng.annotations.Test;
 
@@ -16,23 +17,24 @@ public class ModuleMetricEntityInterfaceTest {
   private static final String TEST_DESC = "test Description";
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Enum classes passed to getUniqueMetricEntities cannot be null or empty")
-  public void testNullVarargs() {
-    ModuleMetricEntityInterface.getUniqueMetricEntities((Class<? extends ModuleMetricEntityInterface>[]) null);
+  public void testNullList() {
+    ModuleMetricEntityInterface.getUniqueMetricEntities((List<Class<? extends ModuleMetricEntityInterface>>) null);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Enum classes passed to getUniqueMetricEntities cannot be null or empty")
-  public void testEmptyVarargs() {
-    ModuleMetricEntityInterface.getUniqueMetricEntities();
+  public void testEmptyList() {
+    ModuleMetricEntityInterface.getUniqueMetricEntities(Collections.emptyList());
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "No metric entities found in the provided enum classes")
   public void testNoMetricsFound() {
-    ModuleMetricEntityInterface.getUniqueMetricEntities(EmptyEnum.class);
+    ModuleMetricEntityInterface.getUniqueMetricEntities(Collections.singletonList(EmptyEnum.class));
   }
 
   @Test
   public void testSingleEnum() {
-    Collection<MetricEntity> metrics = ModuleMetricEntityInterface.getUniqueMetricEntities(SingleEnumForTest.class);
+    Collection<MetricEntity> metrics =
+        ModuleMetricEntityInterface.getUniqueMetricEntities(Collections.singletonList(SingleEnumForTest.class));
 
     assertEquals(metrics.size(), 1);
     MetricEntity m = metrics.iterator().next();
@@ -43,7 +45,8 @@ public class ModuleMetricEntityInterfaceTest {
 
   @Test
   public void testDistinctEnums() {
-    Collection<MetricEntity> metrics = ModuleMetricEntityInterface.getUniqueMetricEntities(TwoDistinctEnum.class);
+    Collection<MetricEntity> metrics =
+        ModuleMetricEntityInterface.getUniqueMetricEntities(Collections.singletonList(TwoDistinctEnum.class));
 
     assertEquals(metrics.size(), 2);
     Set<String> names = new HashSet<>();
@@ -57,7 +60,8 @@ public class ModuleMetricEntityInterfaceTest {
   /** Duplicate name and same type: should be deduped */
   @Test
   public void testDuplicateMetricsSameTypeAndUnit() {
-    Collection<MetricEntity> metrics = ModuleMetricEntityInterface.getUniqueMetricEntities(DuplicateEnum.class);
+    Collection<MetricEntity> metrics =
+        ModuleMetricEntityInterface.getUniqueMetricEntities(Collections.singletonList(DuplicateEnum.class));
 
     // only one unique name “enum_dup”
     assertEquals(metrics.size(), 1);
@@ -70,7 +74,7 @@ public class ModuleMetricEntityInterfaceTest {
   /** Duplicate name, different type: should throw */
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Multiple metric entities with the same name but different types.*")
   public void testConflictMetricsDifferentUnit() {
-    ModuleMetricEntityInterface.getUniqueMetricEntities(ConflictEnum.class);
+    ModuleMetricEntityInterface.getUniqueMetricEntities(Collections.singletonList(ConflictEnum.class));
   }
 
   private enum EmptyEnum implements ModuleMetricEntityInterface {

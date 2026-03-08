@@ -1,19 +1,14 @@
 package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.controller.stats.AddVersionLatencyStats.AddVersionLatencyTehutiMetricNameEnum;
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class AddVersionLatencyTehutiMetricNameEnumTest
-    extends AbstractTehutiMetricNameEnumTest<AddVersionLatencyTehutiMetricNameEnum> {
-  public AddVersionLatencyTehutiMetricNameEnumTest() {
-    super(AddVersionLatencyTehutiMetricNameEnum.class);
-  }
-
-  @Override
-  protected Map<AddVersionLatencyTehutiMetricNameEnum, String> expectedMetricNames() {
+public class AddVersionLatencyTehutiMetricNameEnumTest {
+  private static Map<AddVersionLatencyTehutiMetricNameEnum, String> expectedMetricNames() {
     Map<AddVersionLatencyTehutiMetricNameEnum, String> map = new HashMap<>();
     map.put(
         AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_RETIRE_OLD_VERSIONS_LATENCY,
@@ -37,5 +32,11 @@ public class AddVersionLatencyTehutiMetricNameEnumTest
         AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_HELIX_RESOURCE_CREATION_LATENCY,
         "add_version_helix_resource_creation_latency");
     return map;
+  }
+
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(AddVersionLatencyTehutiMetricNameEnum.class, expectedMetricNames())
+        .assertAll();
   }
 }

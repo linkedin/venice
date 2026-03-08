@@ -11,21 +11,23 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import org.testng.annotations.Test;
 
 
-public class ServerReadOtelMetricEntityTest extends AbstractModuleMetricEntityTest<ServerReadOtelMetricEntity> {
-  public ServerReadOtelMetricEntityTest() {
-    super(ServerReadOtelMetricEntity.class);
+public class ServerReadOtelMetricEntityTest {
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(ServerReadOtelMetricEntity.class, expectedDefinitions()).assertAll();
   }
 
-  @Override
-  protected Map<ServerReadOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+  private static Map<ServerReadOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<ServerReadOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
 
     Set<VeniceMetricsDimensions> storeClusterRequestType =

@@ -2,21 +2,18 @@ package com.linkedin.venice.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME;
 
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class ThreadPoolOtelMetricEntityTest extends AbstractModuleMetricEntityTest<ThreadPoolOtelMetricEntity> {
-  public ThreadPoolOtelMetricEntityTest() {
-    super(ThreadPoolOtelMetricEntity.class);
-  }
-
-  @Override
-  protected Map<ThreadPoolOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+public class ThreadPoolOtelMetricEntityTest {
+  private static Map<ThreadPoolOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<ThreadPoolOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_COUNT,
@@ -51,5 +48,10 @@ public class ThreadPoolOtelMetricEntityTest extends AbstractModuleMetricEntityTe
             "Distribution of queued task count over time",
             Collections.singleton(VENICE_THREAD_POOL_NAME)));
     return map;
+  }
+
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(ThreadPoolOtelMetricEntity.class, expectedDefinitions()).assertAll();
   }
 }

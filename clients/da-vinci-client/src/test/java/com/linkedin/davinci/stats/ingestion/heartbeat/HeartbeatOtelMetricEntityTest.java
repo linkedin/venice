@@ -8,20 +8,22 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.Utils.setOf;
 
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class HeartbeatOtelMetricEntityTest extends AbstractModuleMetricEntityTest<HeartbeatOtelMetricEntity> {
-  public HeartbeatOtelMetricEntityTest() {
-    super(HeartbeatOtelMetricEntity.class);
+public class HeartbeatOtelMetricEntityTest {
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(HeartbeatOtelMetricEntity.class, expectedDefinitions()).assertAll();
   }
 
-  @Override
-  protected Map<HeartbeatOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+  private static Map<HeartbeatOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<HeartbeatOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         HeartbeatOtelMetricEntity.INGESTION_HEARTBEAT_DELAY,

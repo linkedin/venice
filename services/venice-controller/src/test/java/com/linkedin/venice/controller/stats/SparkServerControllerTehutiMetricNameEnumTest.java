@@ -1,19 +1,14 @@
 package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.controller.stats.SparkServerStats.ControllerTehutiMetricNameEnum;
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class SparkServerControllerTehutiMetricNameEnumTest
-    extends AbstractTehutiMetricNameEnumTest<ControllerTehutiMetricNameEnum> {
-  public SparkServerControllerTehutiMetricNameEnumTest() {
-    super(ControllerTehutiMetricNameEnum.class);
-  }
-
-  @Override
-  protected Map<ControllerTehutiMetricNameEnum, String> expectedMetricNames() {
+public class SparkServerControllerTehutiMetricNameEnumTest {
+  private static Map<ControllerTehutiMetricNameEnum, String> expectedMetricNames() {
     Map<ControllerTehutiMetricNameEnum, String> map = new HashMap<>();
     map.put(ControllerTehutiMetricNameEnum.REQUEST, "request");
     map.put(ControllerTehutiMetricNameEnum.FINISHED_REQUEST, "finished_request");
@@ -23,5 +18,10 @@ public class SparkServerControllerTehutiMetricNameEnumTest
     map.put(ControllerTehutiMetricNameEnum.SUCCESSFUL_REQUEST_LATENCY, "successful_request_latency");
     map.put(ControllerTehutiMetricNameEnum.FAILED_REQUEST_LATENCY, "failed_request_latency");
     return map;
+  }
+
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(ControllerTehutiMetricNameEnum.class, expectedMetricNames()).assertAll();
   }
 }

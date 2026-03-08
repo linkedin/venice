@@ -5,21 +5,17 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.controller.stats.AdminConsumptionStats.AdminConsumptionOtelMetricEntity;
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class AdminConsumptionOtelMetricEntityTest
-    extends AbstractModuleMetricEntityTest<AdminConsumptionOtelMetricEntity> {
-  public AdminConsumptionOtelMetricEntityTest() {
-    super(AdminConsumptionOtelMetricEntity.class);
-  }
-
-  @Override
-  protected Map<AdminConsumptionOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+public class AdminConsumptionOtelMetricEntityTest {
+  private static Map<AdminConsumptionOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<AdminConsumptionOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_FAILURE_COUNT,
@@ -126,5 +122,10 @@ public class AdminConsumptionOtelMetricEntityTest
             "Difference between end offset and latest persisted offset",
             setOf(VENICE_CLUSTER_NAME)));
     return map;
+  }
+
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(AdminConsumptionOtelMetricEntity.class, expectedDefinitions()).assertAll();
   }
 }

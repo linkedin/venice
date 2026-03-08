@@ -4,20 +4,17 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
 
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class RoutingMetricEntityTest extends AbstractModuleMetricEntityTest<RoutingMetricEntity> {
-  public RoutingMetricEntityTest() {
-    super(RoutingMetricEntity.class);
-  }
-
-  @Override
-  protected Map<RoutingMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+public class RoutingMetricEntityTest {
+  private static Map<RoutingMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<RoutingMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         RoutingMetricEntity.HELIX_GROUP_COUNT,
@@ -52,5 +49,10 @@ public class RoutingMetricEntityTest extends AbstractModuleMetricEntityTest<Rout
             "Waiting time for responses from each Helix group",
             setOf(VENICE_STORE_NAME, VENICE_HELIX_GROUP_ID)));
     return map;
+  }
+
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(RoutingMetricEntity.class, expectedDefinitions()).assertAll();
   }
 }

@@ -5,21 +5,23 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class BasicConsumerMetricEntityTest
-    extends AbstractModuleMetricEntityTest<BasicConsumerStats.BasicConsumerMetricEntity> {
-  public BasicConsumerMetricEntityTest() {
-    super(BasicConsumerStats.BasicConsumerMetricEntity.class);
+public class BasicConsumerMetricEntityTest {
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(BasicConsumerStats.BasicConsumerMetricEntity.class, expectedDefinitions())
+        .assertAll();
   }
 
-  @Override
-  protected Map<BasicConsumerStats.BasicConsumerMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+  private static Map<BasicConsumerStats.BasicConsumerMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<BasicConsumerStats.BasicConsumerMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         BasicConsumerStats.BasicConsumerMetricEntity.HEART_BEAT_DELAY,

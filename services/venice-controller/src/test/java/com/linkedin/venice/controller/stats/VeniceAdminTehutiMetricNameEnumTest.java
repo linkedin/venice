@@ -1,19 +1,14 @@
 package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.controller.stats.VeniceAdminStats.VeniceAdminTehutiMetricNameEnum;
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class VeniceAdminTehutiMetricNameEnumTest
-    extends AbstractTehutiMetricNameEnumTest<VeniceAdminTehutiMetricNameEnum> {
-  public VeniceAdminTehutiMetricNameEnumTest() {
-    super(VeniceAdminTehutiMetricNameEnum.class);
-  }
-
-  @Override
-  protected Map<VeniceAdminTehutiMetricNameEnum, String> expectedMetricNames() {
+public class VeniceAdminTehutiMetricNameEnumTest {
+  private static Map<VeniceAdminTehutiMetricNameEnum, String> expectedMetricNames() {
     Map<VeniceAdminTehutiMetricNameEnum, String> map = new HashMap<>();
     map.put(
         VeniceAdminTehutiMetricNameEnum.UNEXPECTED_TOPIC_ABSENCE_DURING_INCREMENTAL_PUSH_COUNT,
@@ -28,5 +23,10 @@ public class VeniceAdminTehutiMetricNameEnumTest
         VeniceAdminTehutiMetricNameEnum.FAILED_SERIALIZING_ADMIN_OPERATION_MESSAGE_COUNT,
         "failed_serializing_admin_operation_message_count");
     return map;
+  }
+
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(VeniceAdminTehutiMetricNameEnum.class, expectedMetricNames()).assertAll();
   }
 }

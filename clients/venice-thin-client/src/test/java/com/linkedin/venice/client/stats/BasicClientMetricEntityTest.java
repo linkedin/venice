@@ -8,30 +8,32 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
 
 import com.linkedin.venice.client.stats.BasicClientStats.BasicClientMetricEntity;
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import org.testng.annotations.Test;
 
 
-public class BasicClientMetricEntityTest extends AbstractModuleMetricEntityTest<BasicClientMetricEntity> {
-  public BasicClientMetricEntityTest() {
-    super(BasicClientMetricEntity.class);
-  }
-
+public class BasicClientMetricEntityTest {
   /**
    * CALL_COUNT/CALL_COUNT_DVC and CALL_TIME/CALL_TIME_DVC intentionally share the same metric name
    * ("call_count" and "call_time") for consistency across TC/FC and DaVinci client types.
    */
-  @Override
-  protected Set<String> allowedDuplicateMetricNames() {
-    return setOf("call_count", "call_time");
+  @Test
+  public void testMetricEntities() {
+    Map<String, Set<BasicClientMetricEntity>> allowedDuplicates = new HashMap<>();
+    allowedDuplicates
+        .put("call_count", setOf(BasicClientMetricEntity.CALL_COUNT, BasicClientMetricEntity.CALL_COUNT_DVC));
+    allowedDuplicates.put("call_time", setOf(BasicClientMetricEntity.CALL_TIME, BasicClientMetricEntity.CALL_TIME_DVC));
+    new ModuleMetricEntityTestFixture<>(BasicClientMetricEntity.class, expectedDefinitions(), allowedDuplicates)
+        .assertAll();
   }
 
-  @Override
-  protected Map<BasicClientMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+  private static Map<BasicClientMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<BasicClientMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         BasicClientMetricEntity.CALL_COUNT,

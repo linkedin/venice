@@ -262,7 +262,7 @@ public class ParticipantStoreConsumptionStatsTest {
     stats.recordKillPushJobFailedConsumption(TEST_STORE_NAME);
 
     double count = metricsRepository.getMetric(TEHUTI_FAILED_CONSUMPTION_METRIC).value();
-    assertTrue(count > 0, "Tehuti kill_push_job_failed_consumption Count should be positive after recording");
+    assertEquals(count, 2.0, "Tehuti kill_push_job_failed_consumption Count should be 2 after two recordings");
   }
 
   /** Verifies OTel counter accumulation for the OTel-only FAIL path. */

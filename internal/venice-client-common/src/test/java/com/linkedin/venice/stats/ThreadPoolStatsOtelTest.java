@@ -11,6 +11,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.mockito.Mockito;
@@ -31,8 +32,8 @@ public class ThreadPoolStatsOtelTest {
   public void setUp() {
     this.inMemoryMetricReader = InMemoryMetricReader.create();
 
-    Collection<MetricEntity> metricEntities =
-        ModuleMetricEntityInterface.getUniqueMetricEntities(ThreadPoolOtelMetricEntity.class);
+    Collection<MetricEntity> metricEntities = ModuleMetricEntityInterface
+        .getUniqueMetricEntities(Collections.singletonList(ThreadPoolOtelMetricEntity.class));
 
     metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
@@ -137,8 +138,8 @@ public class ThreadPoolStatsOtelTest {
 
   private void verifyThreadPoolNameDimension(String inputName, String expectedDimensionValue) {
     InMemoryMetricReader reader = InMemoryMetricReader.create();
-    Collection<MetricEntity> metricEntities =
-        ModuleMetricEntityInterface.getUniqueMetricEntities(ThreadPoolOtelMetricEntity.class);
+    Collection<MetricEntity> metricEntities = ModuleMetricEntityInterface
+        .getUniqueMetricEntities(Collections.singletonList(ThreadPoolOtelMetricEntity.class));
     VeniceMetricsRepository repo = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
             .setMetricEntities(metricEntities)

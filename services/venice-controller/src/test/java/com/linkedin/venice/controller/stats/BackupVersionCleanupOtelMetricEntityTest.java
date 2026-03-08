@@ -4,21 +4,17 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.controller.stats.StoreBackupVersionCleanupServiceStats.BackupVersionCleanupOtelMetricEntity;
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class BackupVersionCleanupOtelMetricEntityTest
-    extends AbstractModuleMetricEntityTest<BackupVersionCleanupOtelMetricEntity> {
-  public BackupVersionCleanupOtelMetricEntityTest() {
-    super(BackupVersionCleanupOtelMetricEntity.class);
-  }
-
-  @Override
-  protected Map<BackupVersionCleanupOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+public class BackupVersionCleanupOtelMetricEntityTest {
+  private static Map<BackupVersionCleanupOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<BackupVersionCleanupOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         BackupVersionCleanupOtelMetricEntity.BACKUP_VERSION_CLEANUP_MISMATCH_COUNT,
@@ -29,5 +25,10 @@ public class BackupVersionCleanupOtelMetricEntityTest
             "Count of backup version cleanup version mismatches",
             setOf(VENICE_CLUSTER_NAME)));
     return map;
+  }
+
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(BackupVersionCleanupOtelMetricEntity.class, expectedDefinitions()).assertAll();
   }
 }

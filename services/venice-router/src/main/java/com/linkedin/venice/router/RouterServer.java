@@ -117,6 +117,7 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -203,8 +204,17 @@ public class RouterServer extends AbstractVeniceService {
 
   public static final String ROUTER_SERVICE_NAME = "venice-router";
   public static final String ROUTER_SERVICE_METRIC_PREFIX = "router";
+
+  /**
+   * Returns the enum classes that compose {@link #ROUTER_SERVICE_METRIC_ENTITIES}. This is the
+   * single source of truth used by both production aggregation and tests.
+   */
+  public static List<Class<? extends ModuleMetricEntityInterface>> getMetricEntityEnumClasses() {
+    return Arrays.asList(RouterMetricEntity.class, ThreadPoolOtelMetricEntity.class);
+  }
+
   public static final Collection<MetricEntity> ROUTER_SERVICE_METRIC_ENTITIES =
-      ModuleMetricEntityInterface.getUniqueMetricEntities(RouterMetricEntity.class, ThreadPoolOtelMetricEntity.class);
+      ModuleMetricEntityInterface.getUniqueMetricEntities(getMetricEntityEnumClasses());
   /**
    * Thread number used to monitor the listening port;
    */

@@ -1,18 +1,19 @@
 package com.linkedin.venice.fastclient.stats;
 
 import com.linkedin.venice.fastclient.stats.ClusterStats.ClusterTehutiMetricName;
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class ClusterStatsClusterTehutiMetricNameTest extends AbstractTehutiMetricNameEnumTest<ClusterTehutiMetricName> {
-  public ClusterStatsClusterTehutiMetricNameTest() {
-    super(ClusterTehutiMetricName.class);
+public class ClusterStatsClusterTehutiMetricNameTest {
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(ClusterTehutiMetricName.class, expectedMetricNames()).assertAll();
   }
 
-  @Override
-  protected Map<ClusterTehutiMetricName, String> expectedMetricNames() {
+  private static Map<ClusterTehutiMetricName, String> expectedMetricNames() {
     Map<ClusterTehutiMetricName, String> map = new HashMap<>();
     map.put(ClusterTehutiMetricName.VERSION_UPDATE_FAILURE, "version_update_failure");
     map.put(ClusterTehutiMetricName.CURRENT_VERSION, "current_version");

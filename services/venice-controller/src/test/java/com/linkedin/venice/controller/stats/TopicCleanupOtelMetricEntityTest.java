@@ -4,21 +4,18 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats.TopicCleanupOtelMetricEntity;
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class TopicCleanupOtelMetricEntityTest extends AbstractModuleMetricEntityTest<TopicCleanupOtelMetricEntity> {
-  public TopicCleanupOtelMetricEntityTest() {
-    super(TopicCleanupOtelMetricEntity.class);
-  }
-
-  @Override
-  protected Map<TopicCleanupOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+public class TopicCleanupOtelMetricEntityTest {
+  private static Map<TopicCleanupOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<TopicCleanupOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         TopicCleanupOtelMetricEntity.TOPIC_CLEANUP_DELETABLE_COUNT,
@@ -37,5 +34,10 @@ public class TopicCleanupOtelMetricEntityTest extends AbstractModuleMetricEntity
             "Count of topic deletion operations",
             setOf(VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     return map;
+  }
+
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(TopicCleanupOtelMetricEntity.class, expectedDefinitions()).assertAll();
   }
 }

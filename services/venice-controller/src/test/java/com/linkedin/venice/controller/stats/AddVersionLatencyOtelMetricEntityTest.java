@@ -6,21 +6,17 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.controller.stats.AddVersionLatencyStats.AddVersionLatencyOtelMetricEntity;
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class AddVersionLatencyOtelMetricEntityTest
-    extends AbstractModuleMetricEntityTest<AddVersionLatencyOtelMetricEntity> {
-  public AddVersionLatencyOtelMetricEntityTest() {
-    super(AddVersionLatencyOtelMetricEntity.class);
-  }
-
-  @Override
-  protected Map<AddVersionLatencyOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+public class AddVersionLatencyOtelMetricEntityTest {
+  private static Map<AddVersionLatencyOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<AddVersionLatencyOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         AddVersionLatencyOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PHASE_START_TO_END_PROCESSING_TIME_PER_COMPONENT,
@@ -31,5 +27,10 @@ public class AddVersionLatencyOtelMetricEntityTest
             "Per-component breakdown of start-to-end processing time",
             setOf(VENICE_CLUSTER_NAME, VENICE_ADMIN_MESSAGE_TYPE, VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT)));
     return map;
+  }
+
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(AddVersionLatencyOtelMetricEntity.class, expectedDefinitions()).assertAll();
   }
 }

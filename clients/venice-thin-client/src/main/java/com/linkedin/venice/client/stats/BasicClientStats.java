@@ -44,6 +44,7 @@ import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.http.HttpStatus;
@@ -54,8 +55,16 @@ import org.apache.http.HttpStatus;
  * by thin, fast and DaVinci clients.
  */
 public class BasicClientStats extends AbstractVeniceHttpStats {
+  /**
+   * Returns the enum classes that compose {@link #CLIENT_METRIC_ENTITIES}. This is the single
+   * source of truth used by both production aggregation and tests.
+   */
+  public static List<Class<? extends ModuleMetricEntityInterface>> getMetricEntityEnumClasses() {
+    return Arrays.asList(BasicClientMetricEntity.class, ClientMetricEntity.class);
+  }
+
   public static final Collection<MetricEntity> CLIENT_METRIC_ENTITIES =
-      getUniqueMetricEntities(BasicClientMetricEntity.class, ClientMetricEntity.class);
+      getUniqueMetricEntities(getMetricEntityEnumClasses());
 
   private static final String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
 

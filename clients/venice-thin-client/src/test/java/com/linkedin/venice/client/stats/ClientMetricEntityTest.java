@@ -12,20 +12,22 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STREAM_PROGRESS;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
 
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class ClientMetricEntityTest extends AbstractModuleMetricEntityTest<ClientMetricEntity> {
-  public ClientMetricEntityTest() {
-    super(ClientMetricEntity.class);
+public class ClientMetricEntityTest {
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(ClientMetricEntity.class, expectedDefinitions()).assertAll();
   }
 
-  @Override
-  protected Map<ClientMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+  private static Map<ClientMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<ClientMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         ClientMetricEntity.RETRY_CALL_COUNT,

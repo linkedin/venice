@@ -1,19 +1,19 @@
 package com.linkedin.venice.fastclient.stats;
 
 import com.linkedin.venice.fastclient.stats.ClusterRouteStats.RouteTehutiMetricName;
-import com.linkedin.venice.stats.metrics.AbstractTehutiMetricNameEnumTest;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnumTestFixture;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class ClusterRouteStatsRouteTehutiMetricNameTest
-    extends AbstractTehutiMetricNameEnumTest<RouteTehutiMetricName> {
-  public ClusterRouteStatsRouteTehutiMetricNameTest() {
-    super(RouteTehutiMetricName.class);
+public class ClusterRouteStatsRouteTehutiMetricNameTest {
+  @Test
+  public void testTehutiMetricNames() {
+    new TehutiMetricNameEnumTestFixture<>(RouteTehutiMetricName.class, expectedMetricNames()).assertAll();
   }
 
-  @Override
-  protected Map<RouteTehutiMetricName, String> expectedMetricNames() {
+  private static Map<RouteTehutiMetricName, String> expectedMetricNames() {
     Map<RouteTehutiMetricName, String> map = new HashMap<>();
     map.put(RouteTehutiMetricName.HEALTHY_REQUEST_COUNT, "healthy_request_count");
     map.put(RouteTehutiMetricName.QUOTA_EXCEEDED_REQUEST_COUNT, "quota_exceeded_request_count");

@@ -1,21 +1,17 @@
 package com.linkedin.venice.controller.lingeringjob;
 
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class HeartbeatCheckerOtelMetricEntityTest
-    extends AbstractModuleMetricEntityTest<HeartbeatCheckerOtelMetricEntity> {
-  public HeartbeatCheckerOtelMetricEntityTest() {
-    super(HeartbeatCheckerOtelMetricEntity.class);
-  }
-
-  @Override
-  protected Map<HeartbeatCheckerOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+public class HeartbeatCheckerOtelMetricEntityTest {
+  private static Map<HeartbeatCheckerOtelMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<HeartbeatCheckerOtelMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         HeartbeatCheckerOtelMetricEntity.BATCH_JOB_HEARTBEAT_CHECK_FAILURE_COUNT,
@@ -42,5 +38,10 @@ public class HeartbeatCheckerOtelMetricEntityTest
             "Batch jobs with valid heartbeat",
             Collections.emptySet()));
     return map;
+  }
+
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(HeartbeatCheckerOtelMetricEntity.class, expectedDefinitions()).assertAll();
   }
 }

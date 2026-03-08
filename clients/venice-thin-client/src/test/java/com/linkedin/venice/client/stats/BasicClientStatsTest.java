@@ -20,6 +20,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
+import static com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.assertNoDuplicateMetricNamesAcrossEnums;
+import static com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.metricEntitiesEqual;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
@@ -49,7 +51,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import org.apache.commons.httpclient.HttpStatus;
 import org.testng.Assert;
@@ -372,16 +373,17 @@ public class BasicClientStatsTest {
 
   /**
    * Verifies that no two enum constants across BasicClientMetricEntity and ClientMetricEntity
-   * share the same metric name. Duplicates would cause silent deduplication in
-   * {@code getUniqueMetricEntities}.
+   * share the same metric name. Uses {@link BasicClientStats#getMetricEntityEnumClasses()} as the
+   * single source of truth. Scans raw enum constants to catch silent deduplication by
+   * {@link ModuleMetricEntityInterface#getUniqueMetricEntities}.
+   *
+   * <p>"call_count" and "call_time" are intentionally shared between TC/FC and DVC variants.
    */
   @Test
   public void testNoDuplicateMetricNamesAcrossClientEnums() {
-    Set<String> allNames = new HashSet<>();
-    for (MetricEntity entity: CLIENT_METRIC_ENTITIES) {
-      String name = entity.getMetricName();
-      assertTrue(allNames.add(name), "Duplicate metric name found across client enums: " + name);
-    }
+    assertNoDuplicateMetricNamesAcrossEnums(
+        Utils.setOf("call_count", "call_time"),
+        BasicClientStats.getMetricEntityEnumClasses());
   }
 
   @Test
@@ -647,13 +649,6 @@ public class BasicClientStatsTest {
     assertEquals(actual.getDescription(), expected.getDescription(), "Unexpected metric description for " + name);
     assertNotNull(actual.getDimensionsList(), "Metric dimensions should not be null for " + name);
     assertEquals(actual.getDimensionsList(), expected.getDimensionsList(), "Unexpected metric dimensions for " + name);
-  }
-
-  private boolean metricEntitiesEqual(MetricEntity actual, MetricEntity expected) {
-    return Objects.equals(actual.getMetricName(), expected.getMetricName())
-        && actual.getMetricType() == expected.getMetricType() && actual.getUnit() == expected.getUnit()
-        && Objects.equals(actual.getDescription(), expected.getDescription())
-        && Objects.equals(actual.getDimensionsList(), expected.getDimensionsList());
   }
 
 }

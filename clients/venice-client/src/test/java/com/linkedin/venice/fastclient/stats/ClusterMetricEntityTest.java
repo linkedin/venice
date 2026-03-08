@@ -4,21 +4,23 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
 
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class ClusterMetricEntityTest extends AbstractModuleMetricEntityTest<ClusterMetricEntity> {
-  public ClusterMetricEntityTest() {
-    super(ClusterMetricEntity.class);
+public class ClusterMetricEntityTest {
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(ClusterMetricEntity.class, expectedDefinitions()).assertAll();
   }
 
-  @Override
-  protected Map<ClusterMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+  private static Map<ClusterMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<ClusterMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         ClusterMetricEntity.STORE_VERSION_UPDATE_FAILURE_COUNT,

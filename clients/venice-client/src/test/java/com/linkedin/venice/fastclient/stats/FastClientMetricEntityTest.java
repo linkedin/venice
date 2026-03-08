@@ -6,20 +6,22 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
 
-import com.linkedin.venice.stats.metrics.AbstractModuleMetricEntityTest;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class FastClientMetricEntityTest extends AbstractModuleMetricEntityTest<FastClientMetricEntity> {
-  public FastClientMetricEntityTest() {
-    super(FastClientMetricEntity.class);
+public class FastClientMetricEntityTest {
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(FastClientMetricEntity.class, expectedDefinitions()).assertAll();
   }
 
-  @Override
-  protected Map<FastClientMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+  private static Map<FastClientMetricEntity, MetricEntityExpectation> expectedDefinitions() {
     Map<FastClientMetricEntity, MetricEntityExpectation> map = new HashMap<>();
     map.put(
         FastClientMetricEntity.RETRY_REQUEST_WIN_COUNT,
