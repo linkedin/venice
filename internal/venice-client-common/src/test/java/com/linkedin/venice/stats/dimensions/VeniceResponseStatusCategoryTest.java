@@ -13,22 +13,18 @@ import java.util.Set;
 import org.testng.annotations.Test;
 
 
-public class VeniceResponseStatusCategoryTest extends VeniceDimensionInterfaceTest<VeniceResponseStatusCategory> {
-  protected VeniceResponseStatusCategoryTest() {
-    super(VeniceResponseStatusCategory.class);
-  }
-
-  @Override
-  protected VeniceMetricsDimensions expectedDimensionName() {
-    return VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
-  }
-
-  @Override
-  protected Map<VeniceResponseStatusCategory, String> expectedDimensionValueMapping() {
-    return CollectionUtils.<VeniceResponseStatusCategory, String>mapBuilder()
-        .put(VeniceResponseStatusCategory.SUCCESS, "success")
-        .put(VeniceResponseStatusCategory.FAIL, "fail")
-        .build();
+public class VeniceResponseStatusCategoryTest {
+  @Test
+  public void testDimensionInterface() {
+    Map<VeniceResponseStatusCategory, String> expectedValues =
+        CollectionUtils.<VeniceResponseStatusCategory, String>mapBuilder()
+            .put(VeniceResponseStatusCategory.SUCCESS, "success")
+            .put(VeniceResponseStatusCategory.FAIL, "fail")
+            .build();
+    new VeniceDimensionTestFixture<>(
+        VeniceResponseStatusCategory.class,
+        VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+        expectedValues).assertAll();
   }
 
   @Test
