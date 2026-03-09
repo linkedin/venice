@@ -1437,13 +1437,13 @@ public class LeaderFollowerStoreIngestionTaskTest {
     IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
     setField(storeIngestionTask, "ingestionNotificationDispatcher", mockDispatcher);
 
-    // First call: versionRole transitions CURRENT -> BACKUP, reportCompleted should be called once
+    // First call: versionRole transitions CURRENT -> BACKUP, reportStopped should be called once
     storeIngestionTask.refreshIngestionContextIfChanged(store);
-    verify(mockDispatcher, times(1)).reportCompleted(eq(pcs));
+    verify(mockDispatcher, times(1)).reportStopped(eq(pcs));
 
     // Second call: versionRole is already BACKUP, no further latch release
     storeIngestionTask.refreshIngestionContextIfChanged(store);
-    verify(mockDispatcher, times(1)).reportCompleted(eq(pcs));
+    verify(mockDispatcher, times(1)).reportStopped(eq(pcs));
   }
 
   private static void addStandbyPcs(Map<Integer, PartitionConsumptionState> pcsMap, int partition, long ageMs) {
