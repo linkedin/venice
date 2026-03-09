@@ -622,6 +622,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
       final int partition = partitionConsumptionState.getPartition();
 
+      // Check if blob transfer has completed for this partition.
+      // If so, perform post-transfer work and Kafka subscribe on this SIT thread.
+      if (partitionConsumptionState.isBlobTransferInProgress()) {
+        CompletableFuture<Void> blobFuture = partitionConsumptionState.getPendingBlobTransfer();
+        if (blobFuture.isDone()) {
+          completeBlobTransferAndSubscribe(partitionConsumptionState);
+        }
+        // Skip all other checks while blob transfer is in progress (timeout, leader transition, etc.)
+        // since Kafka subscribe hasn't happened yet.
+        continue;
+      }
+
       /**
        * Check whether the ingestion timeout for bootstrapping replicas.
        * For future version, it should fail the push job.
