@@ -659,12 +659,20 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     MergeConflictResult mergeConflictResult = mergeConflictResultWrapper.getMergeConflictResult();
     if (!mergeConflictResult.isUpdateIgnored()) {
-      // Skip VT produce for coalesced intermediate records. DCR merge was already applied individually;
-      // only the final state per key needs to be produced to VT. View writers may need intermediate states,
-      // so coalescing is disabled when view writers are present.
-      if (consumerRecordWrapper.isVtProduceCoalesced() && !hasViewWriters()) {
-        hostLevelIngestionStats.recordVtProduceCoalesced();
-        return;
+      // Time-window-based VT produce coalescing: skip VT produce if this key was already produced
+      // within the configured window. DCR merge was already applied individually so the transient
+      // cache has the correct latest value for subsequent DCR lookups. View writers may need
+      // intermediate states, so coalescing is disabled when view writers are present.
+      long coalescingWindowMs = serverConfig.getAAWCVtCoalescingWindowMs();
+      if (coalescingWindowMs >= 0 && !hasViewWriters()) {
+        long now = System.currentTimeMillis();
+        long lastProduceTime = partitionConsumptionState.getVtCoalescingLastProduceTimeMs(keyBytes);
+        if (lastProduceTime >= 0 && (now - lastProduceTime) <= coalescingWindowMs) {
+          hostLevelIngestionStats.recordVtProduceCoalesced();
+          return;
+        }
+        // Window expired or first produce — record the timestamp and proceed with VT produce
+        partitionConsumptionState.setVtCoalescingLastProduceTimeMs(keyBytes, now);
       }
 
       // Apply this update to any views for this store

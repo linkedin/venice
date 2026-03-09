@@ -6,7 +6,6 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 public class PubSubMessageProcessedResultWrapper {
   private final DefaultPubSubMessage message;
   private PubSubMessageProcessedResult processedResult;
-  private boolean vtProduceCoalesced;
 
   public PubSubMessageProcessedResultWrapper(DefaultPubSubMessage message) {
     this.message = message;
@@ -22,13 +21,5 @@ public class PubSubMessageProcessedResultWrapper {
 
   public void setProcessedResult(PubSubMessageProcessedResult processedResult) {
     this.processedResult = processedResult;
-  }
-
-  public boolean isVtProduceCoalesced() {
-    return vtProduceCoalesced;
-  }
-
-  public void setVtProduceCoalesced(boolean vtProduceCoalesced) {
-    this.vtProduceCoalesced = vtProduceCoalesced;
   }
 }

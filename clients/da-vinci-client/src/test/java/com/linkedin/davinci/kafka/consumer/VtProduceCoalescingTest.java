@@ -1,222 +1,178 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.utils.ByteArrayKey;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
-import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.testng.annotations.Test;
 
 
 /**
- * Tests for VT produce coalescing logic that marks intermediate same-key records
- * within a batch so their version topic produce can be skipped.
+ * Tests for time-window-based VT produce coalescing logic. The coalescing decision is:
+ * skip VT produce if the key was produced within the configured window (coalescingWindowMs).
+ *
+ * This tests the algorithm in isolation using the same data structures as
+ * {@link PartitionConsumptionState#getVtCoalescingLastProduceTimeMs(byte[])} /
+ * {@link PartitionConsumptionState#setVtCoalescingLastProduceTimeMs(byte[], long)}.
  */
 public class VtProduceCoalescingTest {
-  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
-
   /**
-   * Verifies that the coalescing index computation correctly identifies the last occurrence
-   * of each key in a batch, and only intermediate (non-last) records get the coalesced flag.
+   * When the window is 0 ms, every record after the first should be coalesced (window never expires
+   * within the same millisecond wall-clock tick, but the first produce is always allowed).
    */
   @Test
-  public void testCoalescingFlagSetOnIntermediateRecords() {
-    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("store_rt");
-    PubSubTopicPartition rtTp = new PubSubTopicPartitionImpl(rtTopic, 0);
+  public void testZeroWindowCoalescesAllButFirst() {
+    long coalescingWindowMs = 0;
+    ConcurrentMap<ByteArrayKey, Long> lastProduceTimeMs = new ConcurrentHashMap<>();
+    byte[] key = "keyA".getBytes();
+
+    // First record: no prior produce → should produce
+    CoalescingResult r1 = shouldCoalesce(lastProduceTimeMs, key, coalescingWindowMs, 1000);
+    assertEquals(r1, CoalescingResult.PRODUCE, "First record for a key should always produce");
+
+    // Second record at same time: within window → coalesced
+    CoalescingResult r2 = shouldCoalesce(lastProduceTimeMs, key, coalescingWindowMs, 1000);
+    assertEquals(r2, CoalescingResult.COALESCED, "Same-ms record should be coalesced with window=0");
+
+    // Third record 1ms later: window=0 means 0ms window, so (1001-1000)=1 >= 0 → produce
+    CoalescingResult r3 = shouldCoalesce(lastProduceTimeMs, key, coalescingWindowMs, 1001);
+    assertEquals(r3, CoalescingResult.PRODUCE, "Record 1ms later should produce with window=0");
+  }
+
+  /**
+   * With a 60-second window, records within the window are coalesced.
+   */
+  @Test
+  public void testTimeWindowCoalescing() {
+    long coalescingWindowMs = 60_000;
+    ConcurrentMap<ByteArrayKey, Long> lastProduceTimeMs = new ConcurrentHashMap<>();
+    byte[] key = "hotKey".getBytes();
+
+    // t=0: first produce
+    CoalescingResult r1 = shouldCoalesce(lastProduceTimeMs, key, coalescingWindowMs, 0);
+    assertEquals(r1, CoalescingResult.PRODUCE, "First record should produce");
+
+    // t=30s: within window → coalesced
+    CoalescingResult r2 = shouldCoalesce(lastProduceTimeMs, key, coalescingWindowMs, 30_000);
+    assertEquals(r2, CoalescingResult.COALESCED, "Record within window should be coalesced");
+
+    // t=59.999s: still within window → coalesced
+    CoalescingResult r3 = shouldCoalesce(lastProduceTimeMs, key, coalescingWindowMs, 59_999);
+    assertEquals(r3, CoalescingResult.COALESCED, "Record just before window expiry should be coalesced");
+
+    // t=60s: at window boundary (60000-0 = 60000 <= 60000) → still coalesced
+    CoalescingResult r4 = shouldCoalesce(lastProduceTimeMs, key, coalescingWindowMs, 60_000);
+    assertEquals(r4, CoalescingResult.COALESCED, "Record at window boundary should be coalesced");
+
+    // t=60.001s: window expired (60001-0 = 60001 > 60000) → produce
+    CoalescingResult r5 = shouldCoalesce(lastProduceTimeMs, key, coalescingWindowMs, 60_001);
+    assertEquals(r5, CoalescingResult.PRODUCE, "Record just after window expiry should produce");
+
+    // t=90s: within new window (started at t=60.001s) → coalesced
+    CoalescingResult r6 = shouldCoalesce(lastProduceTimeMs, key, coalescingWindowMs, 90_000);
+    assertEquals(r6, CoalescingResult.COALESCED, "Record within new window should be coalesced");
+  }
+
+  /**
+   * Different keys are tracked independently.
+   */
+  @Test
+  public void testIndependentKeyTracking() {
+    long coalescingWindowMs = 60_000;
+    ConcurrentMap<ByteArrayKey, Long> lastProduceTimeMs = new ConcurrentHashMap<>();
     byte[] keyA = "keyA".getBytes();
     byte[] keyB = "keyB".getBytes();
 
-    // Batch: A, A, B, A, B — last A is index 3, last B is index 4
-    List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
-    results.add(wrapWithResult(rtTp, keyA)); // 0: A (intermediate)
-    results.add(wrapWithResult(rtTp, keyA)); // 1: A (intermediate)
-    results.add(wrapWithResult(rtTp, keyB)); // 2: B (intermediate)
-    results.add(wrapWithResult(rtTp, keyA)); // 3: A (last)
-    results.add(wrapWithResult(rtTp, keyB)); // 4: B (last)
+    // Both keys produce on first occurrence
+    assertEquals(shouldCoalesce(lastProduceTimeMs, keyA, coalescingWindowMs, 0), CoalescingResult.PRODUCE);
+    assertEquals(shouldCoalesce(lastProduceTimeMs, keyB, coalescingWindowMs, 0), CoalescingResult.PRODUCE);
 
-    applyCoalescingFlags(results);
+    // Both within window
+    assertEquals(shouldCoalesce(lastProduceTimeMs, keyA, coalescingWindowMs, 30_000), CoalescingResult.COALESCED);
+    assertEquals(shouldCoalesce(lastProduceTimeMs, keyB, coalescingWindowMs, 30_000), CoalescingResult.COALESCED);
 
-    assertTrue(results.get(0).isVtProduceCoalesced(), "First A should be coalesced");
-    assertTrue(results.get(1).isVtProduceCoalesced(), "Second A should be coalesced");
-    assertTrue(results.get(2).isVtProduceCoalesced(), "First B should be coalesced");
-    assertFalse(results.get(3).isVtProduceCoalesced(), "Last A should NOT be coalesced");
-    assertFalse(results.get(4).isVtProduceCoalesced(), "Last B should NOT be coalesced");
+    // keyA window expires (60001 - 0 = 60001 > 60000), keyB still in window
+    assertEquals(shouldCoalesce(lastProduceTimeMs, keyA, coalescingWindowMs, 60_001), CoalescingResult.PRODUCE);
+    assertEquals(shouldCoalesce(lastProduceTimeMs, keyB, coalescingWindowMs, 50_000), CoalescingResult.COALESCED);
   }
 
   /**
-   * When all records have distinct keys, no coalescing should occur.
+   * Simulates a hot key with many rapid updates — all but the first should be coalesced
+   * within the window, then the first record after expiry should produce.
    */
   @Test
-  public void testNoCoalescingForDistinctKeys() {
-    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("store_rt");
-    PubSubTopicPartition rtTp = new PubSubTopicPartitionImpl(rtTopic, 0);
-
-    List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
-    results.add(wrapWithResult(rtTp, "key1".getBytes()));
-    results.add(wrapWithResult(rtTp, "key2".getBytes()));
-    results.add(wrapWithResult(rtTp, "key3".getBytes()));
-
-    applyCoalescingFlags(results);
-
-    for (PubSubMessageProcessedResultWrapper r: results) {
-      assertFalse(r.isVtProduceCoalesced(), "Distinct keys should not be coalesced");
-    }
-  }
-
-  /**
-   * A single record for a key should never be coalesced.
-   */
-  @Test
-  public void testSingleRecordNotCoalesced() {
-    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("store_rt");
-    PubSubTopicPartition rtTp = new PubSubTopicPartitionImpl(rtTopic, 0);
-
-    List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
-    results.add(wrapWithResult(rtTp, "onlyKey".getBytes()));
-
-    applyCoalescingFlags(results);
-
-    assertFalse(results.get(0).isVtProduceCoalesced());
-  }
-
-  /**
-   * Control messages should never be coalesced, even if they share the same key bytes.
-   */
-  @Test
-  public void testControlMessagesNeverCoalesced() {
-    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("store_rt");
-    PubSubTopicPartition rtTp = new PubSubTopicPartitionImpl(rtTopic, 0);
-    byte[] keyBytes = "someKey".getBytes();
-
-    List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
-    // Control message
-    KafkaKey controlKey = new KafkaKey(MessageType.CONTROL_MESSAGE, keyBytes);
-    DefaultPubSubMessage controlMsg = new ImmutablePubSubMessage(
-        controlKey,
-        mock(KafkaMessageEnvelope.class),
-        rtTp,
-        mock(PubSubPosition.class),
-        100,
-        50);
-    PubSubMessageProcessedResultWrapper controlWrapper = new PubSubMessageProcessedResultWrapper(controlMsg);
-    controlWrapper.setProcessedResult(mock(PubSubMessageProcessedResult.class));
-    results.add(controlWrapper);
-
-    // Data message with same key bytes
-    results.add(wrapWithResult(rtTp, keyBytes));
-
-    applyCoalescingFlags(results);
-
-    assertFalse(results.get(0).isVtProduceCoalesced(), "Control message should never be coalesced");
-    assertFalse(results.get(1).isVtProduceCoalesced(), "Only data record for this key, not coalesced");
-  }
-
-  /**
-   * Records without a processed result (not pre-processed by Phase 1) should not be coalesced.
-   */
-  @Test
-  public void testRecordWithoutProcessedResultNotCoalesced() {
-    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("store_rt");
-    PubSubTopicPartition rtTp = new PubSubTopicPartitionImpl(rtTopic, 0);
-    byte[] keyBytes = "hotKey".getBytes();
-
-    List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
-    // First record has no processed result
-    KafkaKey dataKey = new KafkaKey(MessageType.PUT, keyBytes);
-    DefaultPubSubMessage msg = new ImmutablePubSubMessage(
-        dataKey,
-        mock(KafkaMessageEnvelope.class),
-        rtTp,
-        mock(PubSubPosition.class),
-        100,
-        50);
-    PubSubMessageProcessedResultWrapper noResultWrapper = new PubSubMessageProcessedResultWrapper(msg);
-    // Intentionally NOT setting processedResult
-    results.add(noResultWrapper);
-
-    // Second record has processed result
-    results.add(wrapWithResult(rtTp, keyBytes));
-
-    applyCoalescingFlags(results);
-
-    assertFalse(results.get(0).isVtProduceCoalesced(), "Record without processed result should not be coalesced");
-    assertFalse(results.get(1).isVtProduceCoalesced(), "Last record for key should not be coalesced");
-  }
-
-  /**
-   * All records for a hot key should be coalesced except the last one.
-   */
-  @Test
-  public void testHotKeyCoalescing() {
-    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("store_rt");
-    PubSubTopicPartition rtTp = new PubSubTopicPartitionImpl(rtTopic, 0);
+  public void testHotKeyBurstCoalescing() {
+    long coalescingWindowMs = 60_000;
+    ConcurrentMap<ByteArrayKey, Long> lastProduceTimeMs = new ConcurrentHashMap<>();
     byte[] hotKey = "hotKey".getBytes();
-    int count = 50;
+    int burstCount = 100;
 
-    List<PubSubMessageProcessedResultWrapper> results = new ArrayList<>();
-    for (int i = 0; i < count; i++) {
-      results.add(wrapWithResult(rtTp, hotKey));
-    }
+    // First record produces
+    assertEquals(shouldCoalesce(lastProduceTimeMs, hotKey, coalescingWindowMs, 0), CoalescingResult.PRODUCE);
 
-    applyCoalescingFlags(results);
-
-    int coalescedCount = 0;
-    for (int i = 0; i < count; i++) {
-      if (i < count - 1) {
-        assertTrue(results.get(i).isVtProduceCoalesced(), "Record " + i + " should be coalesced");
-        coalescedCount++;
-      } else {
-        assertFalse(results.get(i).isVtProduceCoalesced(), "Last record should NOT be coalesced");
+    // Next 99 records within window — all coalesced
+    int coalesced = 0;
+    for (int i = 1; i < burstCount; i++) {
+      if (shouldCoalesce(lastProduceTimeMs, hotKey, coalescingWindowMs, i * 100) == CoalescingResult.COALESCED) {
+        coalesced++;
       }
     }
-    assertEquals(coalescedCount, count - 1);
+    assertEquals(coalesced, burstCount - 1, "All burst records except first should be coalesced");
+
+    // After window expires, next record produces
+    assertEquals(
+        shouldCoalesce(lastProduceTimeMs, hotKey, coalescingWindowMs, 60_001),
+        CoalescingResult.PRODUCE,
+        "First record after window expiry should produce");
   }
 
   /**
-   * Applies the same coalescing flag logic as StoreIngestionTask.produceToStoreBufferServiceOrKafkaInBatch().
-   * Extracted here to test the algorithm independently of the full ingestion pipeline.
+   * With a negative window (feature disabled), nothing is coalesced.
    */
-  private void applyCoalescingFlags(List<PubSubMessageProcessedResultWrapper> results) {
-    Map<ByteArrayKey, Integer> lastIndexForKey = new HashMap<>();
-    for (int i = 0; i < results.size(); i++) {
-      DefaultPubSubMessage msg = results.get(i).getMessage();
-      if (!msg.getKey().isControlMessage()) {
-        lastIndexForKey.put(ByteArrayKey.wrap(msg.getKey().getKey()), i);
-      }
-    }
+  @Test
+  public void testNegativeWindowDisablesCoalescing() {
+    long coalescingWindowMs = -1;
+    ConcurrentMap<ByteArrayKey, Long> lastProduceTimeMs = new ConcurrentHashMap<>();
+    byte[] key = "key".getBytes();
 
-    for (int i = 0; i < results.size(); i++) {
-      PubSubMessageProcessedResultWrapper record = results.get(i);
-      if (!record.getMessage().getKey().isControlMessage()) {
-        Integer lastIdx = lastIndexForKey.get(ByteArrayKey.wrap(record.getMessage().getKey().getKey()));
-        if (lastIdx != null && i < lastIdx && record.getProcessedResult() != null) {
-          record.setVtProduceCoalesced(true);
-        }
-      }
+    // All records should produce when feature is disabled
+    for (int i = 0; i < 10; i++) {
+      assertEquals(
+          shouldCoalesce(lastProduceTimeMs, key, coalescingWindowMs, i * 1000),
+          CoalescingResult.PRODUCE,
+          "Record " + i + " should produce when feature disabled");
     }
+    // Map should remain empty when disabled
+    assertEquals(lastProduceTimeMs.size(), 0, "No tracking should occur when disabled");
   }
 
-  private PubSubMessageProcessedResultWrapper wrapWithResult(PubSubTopicPartition tp, byte[] keyBytes) {
-    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
-    DefaultPubSubMessage msg =
-        new ImmutablePubSubMessage(kafkaKey, mock(KafkaMessageEnvelope.class), tp, mock(PubSubPosition.class), 100, 50);
-    PubSubMessageProcessedResultWrapper wrapper = new PubSubMessageProcessedResultWrapper(msg);
-    wrapper.setProcessedResult(mock(PubSubMessageProcessedResult.class));
-    return wrapper;
+  // ---- Helpers ----
+
+  private enum CoalescingResult {
+    PRODUCE, COALESCED
+  }
+
+  /**
+   * Mirrors the coalescing logic in ActiveActiveStoreIngestionTask.processMessageAndMaybeProduceToKafka().
+   * Uses an explicit currentTimeMs parameter instead of System.currentTimeMillis() for deterministic testing.
+   */
+  private CoalescingResult shouldCoalesce(
+      ConcurrentMap<ByteArrayKey, Long> lastProduceTimeMs,
+      byte[] keyBytes,
+      long coalescingWindowMs,
+      long currentTimeMs) {
+    if (coalescingWindowMs < 0) {
+      return CoalescingResult.PRODUCE;
+    }
+
+    ByteArrayKey key = ByteArrayKey.wrap(keyBytes);
+    Long lastProduce = lastProduceTimeMs.get(key);
+    if (lastProduce != null && (currentTimeMs - lastProduce) <= coalescingWindowMs) {
+      return CoalescingResult.COALESCED;
+    }
+    // Window expired or first produce — record and proceed
+    lastProduceTimeMs.put(key, currentTimeMs);
+    return CoalescingResult.PRODUCE;
   }
 }
