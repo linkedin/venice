@@ -20,6 +20,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,12 +46,14 @@ import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionController
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -81,8 +84,10 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
@@ -102,7 +107,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.TestException;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -181,6 +188,81 @@ public class TestVeniceHelixAdmin {
     // comments for the reasons.
     inorder.verify(veniceHelixAdmin).ensureRealTimeTopicExistsForUserSystemStores(anyString(), anyString());
     inorder.verify(veniceHelixAdmin).storeMetadataUpdate(anyString(), anyString(), any());
+  }
+
+  @DataProvider(name = "readQuotaTestCases")
+  public Object[][] readQuotaTestCases() {
+    return new Object[][] {
+        // { maxCapacity, requestedQuota, routerCount, isParent, shouldSucceed }
+        { 100L, 10L, 1, false, true }, // Child controller: quota within capacity
+        { 0L, 10L, 1, false, false }, // Child controller: quota exceeds capacity
+        { 100L, 200L, 1, false, false }, // Child controller: quota exceeds single router capacity
+        { 100L, 200L, 2, false, true }, // Child controller: quota within multi-router capacity
+        { 0L, 10L, 0, true, true } // Parent controller: skip validation
+    };
+  }
+
+  @Test(dataProvider = "readQuotaTestCases")
+  public void testUpdateReadQuota(
+      long maxCapacity,
+      long requestedQuota,
+      int routerCount,
+      boolean isParent,
+      boolean shouldSucceed) throws Exception {
+    String storeName = Utils.getUniqueString("test_store");
+    Store store = spy(TestUtils.createTestStore(storeName, "test", System.currentTimeMillis()));
+
+    // Setup mocks
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+
+    // Setup router and config mocks
+    ZkRoutersClusterManager routersClusterManager = mock(ZkRoutersClusterManager.class);
+    when(routersClusterManager.getLiveRoutersCount()).thenReturn(routerCount);
+
+    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
+    when(config.getMaxRouterReadCapacityCu()).thenReturn(maxCapacity);
+
+    // Setup cluster resources
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    when(resources.getRoutersClusterManager()).thenReturn(routersClusterManager);
+    when(resources.getConfig()).thenReturn(config);
+    when(veniceHelixAdmin.getHelixVeniceClusterResources(clusterName)).thenReturn(resources);
+    when(veniceHelixAdmin.getControllerConfig(clusterName)).thenReturn(config);
+    when(veniceHelixAdmin.isParent()).thenReturn(isParent);
+    ClusterLockManager clusterLockManager = mock(ClusterLockManager.class);
+    when(resources.getClusterLockManager()).thenReturn(clusterLockManager);
+    when(clusterLockManager.createStoreWriteLock(storeName)).thenReturn(mock(AutoCloseableLock.class));
+
+    // Setup repository mock
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    when(resources.getStoreMetadataRepository()).thenReturn(repository);
+    when(repository.getStore(storeName)).thenReturn(store);
+
+    doReturn(store).when(veniceHelixAdmin).getStore(clusterName, storeName);
+
+    UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams().setReadQuotaInCU(requestedQuota);
+
+    doNothing().when(veniceHelixAdmin).checkControllerLeadershipFor(clusterName);
+    doCallRealMethod().when(veniceHelixAdmin)
+        .updateStore(eq(clusterName), eq(storeName), any(UpdateStoreQueryParams.class));
+
+    // Set pubSubTopicRepository via reflection since internalUpdateStore's catch block accesses it
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    java.lang.reflect.Field pubSubField = VeniceHelixAdmin.class.getDeclaredField("pubSubTopicRepository");
+    pubSubField.setAccessible(true);
+    pubSubField.set(veniceHelixAdmin, pubSubTopicRepository);
+
+    if (shouldSucceed) {
+      veniceHelixAdmin.updateStore(clusterName, storeName, updateParams);
+      // Verify the quota update propagated through to storeMetadataUpdate
+      verify(veniceHelixAdmin)
+          .storeMetadataUpdate(eq(clusterName), eq(storeName), any(VeniceHelixAdmin.StoreMetadataOperation.class));
+    } else {
+      VeniceException exception = Assert.expectThrows(
+          VeniceException.class,
+          () -> veniceHelixAdmin.updateStore(clusterName, storeName, updateParams));
+      assertTrue(exception.getMessage().contains("Cannot update read quota"));
+    }
   }
 
   @Test
