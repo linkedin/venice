@@ -113,10 +113,16 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     stopAllParticipants();
     HelixExternalViewRepository routing =
         newLeader.getHelixVeniceClusterResources(clusterName).getRoutingDataRepository();
-    Assert.assertEquals(
-        routing.getLeaderController().getPort(),
-        Utils.parsePortFromHelixNodeIdentifier(newLeader.getControllerName()),
-        "leader controller is changed.");
+    // The routing repository's cached leader controller is updated asynchronously via Helix
+    // callbacks, so it may lag behind the actual leader election result. Retry until it converges.
+    int expectedPort = Utils.parsePortFromHelixNodeIdentifier(newLeader.getControllerName());
+    TestUtils.waitForNonDeterministicAssertion(
+        TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
+        TimeUnit.MILLISECONDS,
+        true,
+        true,
+        () -> Assert
+            .assertEquals(routing.getLeaderController().getPort(), expectedPort, "leader controller is changed."));
     TestUtils.waitForNonDeterministicCompletion(
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
         TimeUnit.MILLISECONDS,

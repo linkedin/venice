@@ -30,6 +30,7 @@ import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
@@ -454,6 +455,93 @@ public class DataWriterSparkJobRepushTest {
     assertEquals(new String(capturedRecords.get(0).value), originalValue);
   }
 
+  /**
+   * Test that VALUE_SCHEMA_ID_PROP is set to the actual value schema ID (not -1) for KIF repush.
+   */
+  @Test
+  public void testKifRepushSetsValueSchemaIdFromPushJobSetting() {
+    String testName = "testKifRepushSetsValueSchemaIdFromPushJobSetting";
+
+    TestDataWriterSparkJob job = new TestDataWriterSparkJob(testName);
+    currentTestJob = job;
+
+    Properties props = createDefaultTestProperties();
+
+    PushJobSetting setting = new PushJobSetting();
+    setting.isSourceKafka = true;
+    setting.kafkaInputTopic = "test_store_v1";
+    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.repushTTLEnabled = false;
+    setting.topic = "test_store_v1";
+    setting.kafkaUrl = "localhost:9092";
+    setting.partitionerClass = DefaultVenicePartitioner.class.getName();
+    setting.partitionCount = 1;
+    setting.valueSchemaId = 3; // Simulates schema ID retrieved from controller
+    setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
+
+    job.configure(new VeniceProperties(props), setting);
+
+    // Verify VALUE_SCHEMA_ID_PROP is set to the actual schema ID, not -1
+    String valueSchemaIdStr = job.getSparkSession().conf().get("value.schema.id");
+    assertEquals(
+        valueSchemaIdStr,
+        "3",
+        "VALUE_SCHEMA_ID_PROP should be set to pushJobSetting.valueSchemaId for KIF repush");
+  }
+
+  /**
+   * Verify that all job properties (including xc.*, pubsub.*, etc.) are forwarded to the
+   * DataFrameReader, matching MR behavior where KafkaInputUtils.getConsumerProperties() copies
+   * ALL JobConf properties to the PubSub consumer.
+   */
+  @Test
+  public void testJobPropertiesForwardedToDataFrameReader() {
+    String testName = "testJobPropertiesForwardedToDataFrameReader";
+
+    // Uses ConfigTestSparkJob pattern: calls super.getKafkaInputDataFrame() which runs
+    // the real production code (including the bulk forwarding loop), catches the expected
+    // Kafka connection failure, and returns mock data. This ensures the test exercises
+    // the actual DataWriterSparkJob.getKafkaInputDataFrame() method.
+    ConfigTestSparkJob job = new ConfigTestSparkJob();
+    currentTestJob = job;
+
+    Properties props = createDefaultTestProperties();
+    // Simulate xc.* cross-colo TLS properties that come from the DAG config
+    props.setProperty("xc.tls.key.store.type", "PKCS12");
+    props.setProperty("xc.pubsub.broker.url.to.region.name.map", "broker1@region1,broker2@region2");
+    // Simulate pubsub.* properties
+    props.setProperty("pubsub.some.client.config", "test-value");
+    // Dynamic pass-through prefix list (same as production voldemort-build-and-push config)
+    props.setProperty("pass.through.config.prefixes.list", "pubsub.,xc.");
+
+    PushJobSetting setting = new PushJobSetting();
+    setting.isSourceKafka = true;
+    setting.kafkaInputTopic = "test_store_v1";
+    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.repushTTLEnabled = false;
+    setting.topic = "test_store_v1";
+    setting.kafkaUrl = "localhost:9092";
+    setting.partitionerClass = DefaultVenicePartitioner.class.getName();
+    setting.partitionCount = 1;
+    setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
+
+    job.configure(new VeniceProperties(props), setting);
+    job.getKafkaInputDataFrame();
+
+    SparkSession spark = job.getSparkSession();
+    assertEquals(spark.conf().get("xc.tls.key.store.type"), "PKCS12", "xc.tls.* should be forwarded");
+    assertEquals(
+        spark.conf().get("xc.pubsub.broker.url.to.region.name.map"),
+        "broker1@region1,broker2@region2",
+        "xc.pubsub.* should be forwarded");
+    assertEquals(spark.conf().get("pubsub.some.client.config"), "test-value", "pubsub.* should be forwarded");
+    assertEquals(spark.conf().get("kafka.input.topic"), "test_store_v1", "kafka.input.topic should be forwarded");
+    assertEquals(
+        spark.conf().get("kafka.input.broker.url"),
+        "localhost:9092",
+        "kafka.input.broker.url should be forwarded");
+  }
+
   private Properties createDefaultTestProperties() {
     Properties props = new Properties();
     props.setProperty(KAFKA_INPUT_TOPIC, "test_store_v1");
@@ -636,6 +724,21 @@ public class DataWriterSparkJobRepushTest {
           createPutRow("key3", "value3", 400L));
 
       return getSparkSession().createDataFrame(testData, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+    }
+  }
+
+  private static class ConfigTestSparkJob extends DataWriterSparkJob {
+    @Override
+    public Dataset<Row> getKafkaInputDataFrame() {
+      try {
+        return super.getKafkaInputDataFrame();
+      } catch (Exception e) {
+        List<Row> emptyRows = Arrays.asList(
+            new GenericRowWithSchema(
+                new Object[] { "region1", 0, 0L, 0, 1, new byte[0], new byte[0], 0, new byte[0], null },
+                RAW_PUBSUB_INPUT_TABLE_SCHEMA));
+        return getSparkSession().createDataFrame(emptyRows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+      }
     }
   }
 

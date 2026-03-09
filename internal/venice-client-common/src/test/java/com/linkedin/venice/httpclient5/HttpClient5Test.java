@@ -7,6 +7,8 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Optional;
@@ -107,6 +109,13 @@ public class HttpClient5Test {
         // Check temp file to see whether the server is fully started or not.
         File file = new File(tempFilePathToNotifyServerStartedFully);
         Assert.assertTrue(file.length() > 0, "Server is not fully started");
+      }
+      // Verify the server is actually accepting TCP connections, not just that it wrote the
+      // temp file. There can be a gap between the file write and the socket being ready.
+      try (Socket socket = new Socket()) {
+        socket.connect(new InetSocketAddress("localhost", port), 500);
+      } catch (IOException e) {
+        Assert.fail("Server port " + port + " is not accepting connections yet: " + e.getMessage());
       }
     });
 

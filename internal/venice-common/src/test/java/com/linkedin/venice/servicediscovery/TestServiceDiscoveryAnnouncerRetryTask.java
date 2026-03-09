@@ -31,7 +31,7 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     doNothing().when(announcer1).unregister();
     doNothing().when(announcer2).unregister();
     doNothing().when(announcer3).unregister();
-    doReturn(30L * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
+    doReturn(3L * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
     long serviceDiscoveryRegistrationRetryMS = config.getServiceDiscoveryRegistrationRetryMS();
     List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
     AsyncRetryingServiceDiscoveryAnnouncer asyncRetryingServiceDiscoveryAnnouncer =
@@ -69,7 +69,7 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     doThrow(new RuntimeException()).doThrow(new RuntimeException()).doNothing().when(announcer1).register();
     doThrow(new RuntimeException()).doNothing().when(announcer2).register();
     doNothing().when(announcer3).register();
-    doReturn(30L * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
+    doReturn(3L * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
     long serviceDiscoveryRegistrationRetryMS = config.getServiceDiscoveryRegistrationRetryMS();
     List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
     AsyncRetryingServiceDiscoveryAnnouncer asyncRetryingServiceDiscoveryAnnouncer =
@@ -129,7 +129,7 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
         .when(announcer2)
         .register();
     doThrow(new RuntimeException()).doThrow(new RuntimeException()).doNothing().when(announcer3).register();
-    doReturn(30L * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
+    doReturn(3L * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
     long serviceDiscoveryRegistrationRetryMS = config.getServiceDiscoveryRegistrationRetryMS();
     List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
     AsyncRetryingServiceDiscoveryAnnouncer asyncRetryingServiceDiscoveryAnnouncer =
@@ -179,7 +179,7 @@ public class TestServiceDiscoveryAnnouncerRetryTask {
     doThrow(new RuntimeException()).when(announcer1).unregister();
     doNothing().when(announcer2).unregister();
     doNothing().when(announcer3).unregister();
-    doReturn(30L * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
+    doReturn(3L * Time.MS_PER_SECOND).when(config).getServiceDiscoveryRegistrationRetryMS();
     long serviceDiscoveryRegistrationRetryMS = config.getServiceDiscoveryRegistrationRetryMS();
     List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers = Arrays.asList(announcer1, announcer2, announcer3);
     AsyncRetryingServiceDiscoveryAnnouncer asyncRetryingServiceDiscoveryAnnouncer =

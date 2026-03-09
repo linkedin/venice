@@ -137,8 +137,12 @@ public class IngestionOtelStats {
   // Metrics with VersionRole + SourceComponent + DestinationComponent dimensions
   private final MetricEntityStateThreeEnums<VersionRole, VeniceIngestionSourceComponent, VeniceIngestionDestinationComponent> timeBetweenComponentsMetric;
 
-  // RT region metrics: keyed by sourceRegion string, following HeartbeatOtelStats.metricsByRegion pattern.
-  // destRegion is always the local server's region (constant per process), stored in localRegionName.
+  /**
+   * Per-region RT metric entity states, keyed by source region name. Each map grows lazily via
+   * {@code computeIfAbsent} and is bounded by the number of distinct source regions in the deployment.
+   * {@code destRegion} is always the local server's region (constant per process), stored in
+   * {@link #localRegionName}. Entries are not evicted individually.
+   */
   private final Map<String, MetricEntityStateTwoEnums<VersionRole, VeniceRegionLocality>> rtRecordsConsumedByRegion;
   private final Map<String, MetricEntityStateTwoEnums<VersionRole, VeniceRegionLocality>> rtBytesConsumedByRegion;
   private final String localRegionName;

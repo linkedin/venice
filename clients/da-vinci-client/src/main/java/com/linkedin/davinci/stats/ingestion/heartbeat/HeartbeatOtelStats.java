@@ -28,7 +28,10 @@ public class HeartbeatOtelStats {
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
-  // Per-region metric entity states
+  /**
+   * Per-region metric entity states, keyed by region name. Grows lazily via {@code computeIfAbsent} and is bounded
+   * by the number of distinct regions in the deployment. Entries are not evicted individually.
+   */
   private final Map<String, MetricEntityStateThreeEnums<VersionRole, ReplicaType, ReplicaState>> metricsByRegion;
 
   // Version info cache for classifying versions as CURRENT/FUTURE/BACKUP

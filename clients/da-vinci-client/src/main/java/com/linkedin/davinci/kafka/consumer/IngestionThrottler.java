@@ -1,5 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.stats.dimensions.VeniceAdaptiveThrottlerType.CURRENT_VERSION_AA_WC_LEADER_RECORDS_COUNT;
+import static com.linkedin.venice.stats.dimensions.VeniceAdaptiveThrottlerType.CURRENT_VERSION_NON_AA_WC_LEADER_RECORDS_COUNT;
+import static com.linkedin.venice.stats.dimensions.VeniceAdaptiveThrottlerType.NON_CURRENT_VERSION_AA_WC_LEADER_RECORDS_COUNT;
+import static com.linkedin.venice.stats.dimensions.VeniceAdaptiveThrottlerType.NON_CURRENT_VERSION_NON_AA_WC_LEADER_RECORDS_COUNT;
+import static com.linkedin.venice.stats.dimensions.VeniceAdaptiveThrottlerType.PUBSUB_CONSUMPTION_BANDWIDTH;
+import static com.linkedin.venice.stats.dimensions.VeniceAdaptiveThrottlerType.PUBSUB_CONSUMPTION_RECORDS_COUNT;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.alpini.base.concurrency.Executors;
@@ -74,7 +80,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getKafkaFetchQuotaRecordPerSecond(),
           serverConfig.getKafkaFetchThrottlerFactorsPerSecond(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "kafka_consumption_records_count",
+          PUBSUB_CONSUMPTION_RECORDS_COUNT,
           adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
       globalRecordAdaptiveIngestionThrottler
           .registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
@@ -85,7 +91,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getKafkaFetchQuotaBytesPerSecond(),
           serverConfig.getKafkaFetchThrottlerFactorsPerSecond(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "kafka_consumption_bandwidth",
+          PUBSUB_CONSUMPTION_BANDWIDTH,
           adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
       globalBandwidthAdaptiveIngestionThrottler
           .registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
@@ -95,19 +101,20 @@ public class IngestionThrottler implements Closeable {
       globalRecordThrottler = new EventThrottler(
           serverConfig.getKafkaFetchQuotaRecordPerSecond(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "kafka_consumption_records_count",
+          PUBSUB_CONSUMPTION_RECORDS_COUNT.getDimensionValue(),
           false,
           EventThrottler.BLOCK_STRATEGY);
       globalBandwidthAdaptiveIngestionThrottler = null;
       globalBandwidthThrottler = new EventThrottler(
           serverConfig.getKafkaFetchQuotaBytesPerSecond(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "kafka_consumption_bandwidth",
+          PUBSUB_CONSUMPTION_BANDWIDTH.getDimensionValue(),
           false,
           EventThrottler.BLOCK_STRATEGY);
     }
     this.poolTypeRecordThrottlerMap = new EnumMap<>(ConsumerPoolType.class);
     VeniceAdaptiveIngestionThrottler adaptiveIngestionThrottler = null;
+    // SEP_RT throttlers are plain (non-adaptive) EventThrottlers, not part of VeniceAdaptiveThrottlerType.
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.SEP_RT_LEADER_POOL,
         new EventThrottler(
@@ -122,7 +129,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
           serverConfig.getThrottlerFactorsForCurrentVersionAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "current_version_aa_wc_leader_records_count",
+          CURRENT_VERSION_AA_WC_LEADER_RECORDS_COUNT,
           adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
       adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
@@ -134,9 +141,10 @@ public class IngestionThrottler implements Closeable {
             : new EventThrottler(
                 serverConfig.getCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
                 serverConfig.getKafkaFetchQuotaTimeWindow(),
-                "current_version_aa_wc_leader_records_count",
+                CURRENT_VERSION_AA_WC_LEADER_RECORDS_COUNT.getDimensionValue(),
                 false,
                 EventThrottler.BLOCK_STRATEGY));
+    // Current-version SEP_RT throttler: plain (non-adaptive), not part of VeniceAdaptiveThrottlerType.
     this.poolTypeRecordThrottlerMap.put(
         ConsumerPoolType.CURRENT_VERSION_SEP_RT_LEADER_POOL,
         new EventThrottler(
@@ -151,7 +159,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
           serverConfig.getThrottlerFactorsForCurrentVersionNonAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "current_version_non_aa_wc_leader_records_count",
+          CURRENT_VERSION_NON_AA_WC_LEADER_RECORDS_COUNT,
           adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
       adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
@@ -163,7 +171,7 @@ public class IngestionThrottler implements Closeable {
             : new EventThrottler(
                 serverConfig.getCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
                 serverConfig.getKafkaFetchQuotaTimeWindow(),
-                "current_version_non_aa_wc_leader_records_count",
+                CURRENT_VERSION_NON_AA_WC_LEADER_RECORDS_COUNT.getDimensionValue(),
                 false,
                 EventThrottler.BLOCK_STRATEGY));
     if (isAdaptiveThrottlerEnabled) {
@@ -172,7 +180,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
           serverConfig.getThrottlerFactorsForNonCurrentVersionAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "non_current_version_aa_wc_leader_records_count",
+          NON_CURRENT_VERSION_AA_WC_LEADER_RECORDS_COUNT,
           adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
       adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveIngestionThrottler
@@ -188,7 +196,7 @@ public class IngestionThrottler implements Closeable {
             : new EventThrottler(
                 serverConfig.getNonCurrentVersionAAWCLeaderQuotaRecordsPerSecond(),
                 serverConfig.getKafkaFetchQuotaTimeWindow(),
-                "non_current_version_aa_wc_leader_records_count",
+                NON_CURRENT_VERSION_AA_WC_LEADER_RECORDS_COUNT.getDimensionValue(),
                 false,
                 EventThrottler.BLOCK_STRATEGY));
     if (isAdaptiveThrottlerEnabled) {
@@ -197,7 +205,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
           serverConfig.getThrottlerFactorsForNonCurrentVersionAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
-          "non_current_version_non_aa_wc_leader_records_count",
+          NON_CURRENT_VERSION_NON_AA_WC_LEADER_RECORDS_COUNT,
           adaptiveThrottlerSignalService.getAdaptiveThrottlingServiceStats());
       adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveIngestionThrottler
@@ -213,11 +221,12 @@ public class IngestionThrottler implements Closeable {
             : new EventThrottler(
                 serverConfig.getNonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond(),
                 serverConfig.getKafkaFetchQuotaTimeWindow(),
-                "non_current_version_non_aa_wc_leader_records_count",
+                NON_CURRENT_VERSION_NON_AA_WC_LEADER_RECORDS_COUNT.getDimensionValue(),
                 false,
                 EventThrottler.BLOCK_STRATEGY));
 
     if (isDaVinciClient && serverConfig.isDaVinciCurrentVersionBootstrappingSpeedupEnabled()) {
+      // Speedup throttlers are DaVinci-only plain (non-adaptive) EventThrottlers for bootstrapping.
       EventThrottler speedupRecordThrottler = new EventThrottler(
           serverConfig.getDaVinciCurrentVersionBootstrappingQuotaRecordsPerSecond(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),

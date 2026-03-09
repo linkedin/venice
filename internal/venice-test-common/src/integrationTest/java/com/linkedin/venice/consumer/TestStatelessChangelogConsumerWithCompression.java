@@ -25,6 +25,7 @@ import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -214,10 +215,11 @@ public class TestStatelessChangelogConsumerWithCompression {
         .setPartitionCount(3)
         .setCompressionStrategy(compressionStrategy);
 
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
-
-    // Push data to the store
-    IntegrationTestPushUtils.runVPJ(props);
+    try (ControllerClient controllerClient =
+        createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms)) {
+      // Push data to the store and wait for the version to become current
+      IntegrationTestPushUtils.runVPJ(props, 1, controllerClient);
+    }
 
     MetricsRepository metricsRepository =
         getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);

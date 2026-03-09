@@ -490,17 +490,14 @@ task generateGHCI() {
 
   def jobs = []
 
-  def common = "--continue --no-daemon "
-
-  def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTests_"
   def integrationTestTimeout = 30 // minutes
   integrationTestBuckets.each { name, patterns ->
     def flowName = "IntegrationTests_" + name
     jobs << flowName
-    appendToGHCI(paramFileContent, targetFilePath, flowName, integrationTestTimeout, integTestGradleArgs + name)
+    appendToGHCI(paramFileContent, targetFilePath, flowName, integrationTestTimeout, name)
   }
   def otherTest = "integrationTests_99"
-  appendToGHCI(paramFileContent, targetFilePath, otherTest, integrationTestTimeout, integTestGradleArgs + "99")
+  appendToGHCI(paramFileContent, targetFilePath, otherTest, integrationTestTimeout, "99")
   jobs << otherTest
 
   // define a job that depends others to manage the status check
@@ -510,11 +507,11 @@ task generateGHCI() {
   Files.move(targetFilePath, finalDestinationPath, StandardCopyOption.REPLACE_EXISTING)
 }
 
-def appendToGHCI(String paramFileContent, Path targetFilePath, String flowName, int timeOut, String gradleArguments, ArrayList dependency=null) {
+def appendToGHCI(String paramFileContent, Path targetFilePath, String flowName, int timeOut, String shardNumber, ArrayList dependency=null) {
   String postProcessing = paramFileContent
       .replace("\$FlowName", flowName)
       .replace("\$TimeOut", Integer.toString(timeOut))
-      .replace("\$GradleArguments", gradleArguments)
+      .replace("\$ShardNumber", shardNumber)
 
   if (dependency == null) {
     postProcessing = postProcessing.replace("    needs: \$Dependency\n", "")

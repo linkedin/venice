@@ -1,6 +1,9 @@
 package com.linkedin.venice.controller.stats;
 
+import static com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.assertNoDuplicateMetricNamesAcrossEnums;
+import static com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.metricEntitiesEqual;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.VeniceController;
@@ -16,7 +19,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Enumeration;
 import java.util.List;
-import java.util.Objects;
 import org.testng.annotations.Test;
 
 
@@ -51,6 +53,17 @@ public class ControllerMetricEntityTest {
   private static final List<Class<? extends ModuleMetricEntityInterface>> SHARED_MODULE_ENUMS =
       Arrays.asList(ThreadPoolOtelMetricEntity.class);
 
+  /**
+   * Verifies that no two enum constants across all controller metric entity enums share the same
+   * metric name. Uses {@link VeniceController#getMetricEntityEnumClasses()} as the single source
+   * of truth. Scans raw enum constants to catch silent deduplication by
+   * {@link ModuleMetricEntityInterface#getUniqueMetricEntities}.
+   */
+  @Test
+  public void testNoDuplicateMetricNamesAcrossControllerEnums() {
+    assertNoDuplicateMetricNamesAcrossEnums(VeniceController.getMetricEntityEnumClasses());
+  }
+
   @Test
   @SuppressWarnings("unchecked")
   public void testControllerServiceMetricEntitiesIsComplete() throws Exception {
@@ -64,13 +77,12 @@ public class ControllerMetricEntityTest {
     // Add shared module enums
     discoveredEnumClasses.addAll(SHARED_MODULE_ENUMS);
 
-    assertTrue(
-        !discoveredEnumClasses.isEmpty(),
+    assertFalse(
+        discoveredEnumClasses.isEmpty(),
         "No ModuleMetricEntityInterface enums found. Classpath scanning may be broken.");
 
     // Build the expected set from all discovered enums
-    Collection<MetricEntity> allExpected =
-        ModuleMetricEntityInterface.getUniqueMetricEntities(discoveredEnumClasses.toArray(new Class[0]));
+    Collection<MetricEntity> allExpected = ModuleMetricEntityInterface.getUniqueMetricEntities(discoveredEnumClasses);
 
     Collection<MetricEntity> actual = VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES;
 
@@ -142,9 +154,4 @@ public class ControllerMetricEntityTest {
     }
   }
 
-  private boolean metricEntitiesEqual(MetricEntity a, MetricEntity b) {
-    return Objects.equals(a.getMetricName(), b.getMetricName()) && a.getMetricType() == b.getMetricType()
-        && a.getUnit() == b.getUnit() && Objects.equals(a.getDescription(), b.getDescription())
-        && Objects.equals(a.getDimensionsList(), b.getDimensionsList());
-  }
 }

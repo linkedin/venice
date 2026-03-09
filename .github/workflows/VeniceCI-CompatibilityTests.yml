@@ -12,29 +12,16 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/gradle-test-setup
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Avro Compatibility Tests
         run: ./gradlew -DmaxParallelForks=2 --parallel --build-cache :internal:venice-avro-compatibility-test:test --continue
       - name: Package Build Artifacts
@@ -59,29 +46,16 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/gradle-test-setup
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run DuckDB Integration Tests
         run: ./gradlew -DforkEvery=1 -DmaxParallelForks=1 --parallel --build-cache :integrations:venice-duckdb:integrationTest --continue
       - name: Package Build Artifacts
@@ -106,29 +80,16 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: ./.github/actions/gradle-test-setup
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'temurin'
-          cache: 'gradle'
-      - shell: bash
-        run: |
-          git remote set-head origin --auto
-          git remote add upstream https://github.com/linkedin/venice
-          git fetch upstream
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          add-job-summary: never
-      - name: Free up disk space in the background
-        run: |
-          bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Build NAR, shadow jars, and Docker images
         shell: bash
         run: |
@@ -180,6 +141,8 @@ jobs:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     needs: [AvroCompatibilityTests, DuckVinciIntegrationTests, PulsarVeniceIntegrationTests]
     timeout-minutes: 30
     if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}

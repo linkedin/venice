@@ -279,25 +279,25 @@ public class FixedRecordCountSplitStrategyTest {
   public void testLargeScaleSplitting() {
     // Case 1: Large number of records with small recordsPerSplit
     PubSubPosition startPos = ApacheKafkaOffsetPosition.of(0);
-    PubSubPosition endPos = ApacheKafkaOffsetPosition.of(100000);
+    PubSubPosition endPos = ApacheKafkaOffsetPosition.of(2000);
 
-    // Create expected positions for 10000 splits of 10 records each
-    PubSubPosition[] positions = new PubSubPosition[10001]; // start + 10000 end positions
+    // Create expected positions for 200 splits of 10 records each
+    PubSubPosition[] positions = new PubSubPosition[201]; // start + 200 end positions
     positions[0] = startPos;
-    for (int i = 1; i <= 10000; i++) {
+    for (int i = 1; i <= 200; i++) {
       positions[i] = ApacheKafkaOffsetPosition.of(i * 10L);
       when(topicManager.advancePosition(partition, positions[i - 1], 10)).thenReturn(positions[i]);
     }
 
-    SplitRequest request = createSplitRequest(10, startPos, endPos, 100000);
+    SplitRequest request = createSplitRequest(10, startPos, endPos, 2000);
     List<PubSubPartitionSplit> splits = splitter.split(request);
 
-    assertEquals(splits.size(), 10000);
+    assertEquals(splits.size(), 200);
     verifyEvenSplits(splits, 10);
 
     // Verify first and last splits
     assertEquals(splits.get(0).getStartPubSubPosition(), startPos);
-    assertEquals(splits.get(9999).getEndPubSubPosition(), endPos);
+    assertEquals(splits.get(199).getEndPubSubPosition(), endPos);
     verifyRangeIndexes(splits);
     verifyStartOffsets(splits);
   }

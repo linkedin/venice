@@ -315,7 +315,8 @@ public class TestSeparateRealtimeTopicIngestion extends AbstractMultiRegionTest 
           heartbeatMonitoringService.getHeartbeatInfo(topicName, partition, false);
       leaderSepRTTopicCount += heartbeatInfoMap.keySet().stream().filter(x -> x.endsWith("_sep")).count();
     }
-    Assert.assertEquals(leaderSepRTTopicCount, (long) getNumberOfRegions() * getReplicationFactor());
+    // Only leaders get heartbeat entries for all regions (including _sep); followers only get local region
+    Assert.assertEquals(leaderSepRTTopicCount, (long) getNumberOfRegions());
   }
 
   private byte[] serializeStringKeyToByteArray(String key) {

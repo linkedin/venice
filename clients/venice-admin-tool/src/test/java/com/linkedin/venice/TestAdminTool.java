@@ -2,6 +2,7 @@ package com.linkedin.venice;
 
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.Arg.STORES_TO_REPLICATE;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
@@ -23,8 +24,11 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
+import com.linkedin.venice.controllerapi.MultiStoreResponse;
+import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -32,6 +36,7 @@ import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.datarecovery.DataRecoveryClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.QueryAction;
@@ -62,6 +67,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.ParseException;
+import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -368,19 +374,29 @@ public class TestAdminTool {
   @Test
   public void testAdminTopicIsAllowedByTopicConfigsRelatedApi() {
     String topicName = "venice_admin_testCluster";
-    String[] args = { "--update-kafka-topic-retention", "--url", "http://localhost:7036", "--kafka-topic-name",
-        topicName, "--kafka-topic-retention-in-ms", "1000" };
-    try {
-      AdminTool.main(args);
-    } catch (Exception e) {
-      Assert.fail("AdminTool should allow admin topic to be updated by config update API", e);
-    }
+    // Mock ControllerClient construction to avoid real HTTP calls to a nonexistent server.
+    // The test validates that admin topic names pass the topic name validation and reach the
+    // ControllerClient calls (unlike non-admin topics which are rejected by the validation).
+    try (MockedConstruction<ControllerClient> ignored =
+        Mockito.mockConstruction(ControllerClient.class, (mockClient, context) -> {
+          doReturn(new ControllerResponse()).when(mockClient).updateKafkaTopicRetention(anyString(), Mockito.anyLong());
+          doReturn(new PubSubTopicConfigResponse()).when(mockClient).getKafkaTopicConfigs(anyString());
+        })) {
+      String[] args = { "--update-kafka-topic-retention", "--url", "http://localhost:7036", "--kafka-topic-name",
+          topicName, "--kafka-topic-retention-in-ms", "1000" };
+      try {
+        AdminTool.main(args);
+      } catch (Exception e) {
+        Assert.fail("AdminTool should allow admin topic to be updated by config update API", e);
+      }
 
-    String[] args2 = { "--get-kafka-topic-configs", "--url", "http://localhost:7036", "--kafka-topic-name", topicName };
-    try {
-      AdminTool.main(args2);
-    } catch (Exception e) {
-      Assert.fail("AdminTool should allow admin topic to be queried by config query API", e);
+      String[] args2 =
+          { "--get-kafka-topic-configs", "--url", "http://localhost:7036", "--kafka-topic-name", topicName };
+      try {
+        AdminTool.main(args2);
+      } catch (Exception e) {
+        Assert.fail("AdminTool should allow admin topic to be queried by config query API", e);
+      }
     }
   }
 
@@ -402,14 +418,27 @@ public class TestAdminTool {
         "venice-1", "--dest-fabric", "ei-ltx1" };
 
     String[][] commands = { estimateArgs, estimateArgs2, executeArgs, monitorArgs };
-    try {
-      for (String[] command: commands) {
-        AdminTool.main(command);
+    // Mock DataRecoveryClient to avoid spawning worker threads that make real HTTP calls.
+    // Mock ControllerClient for the --cluster path in calculateRecoveryStoreNames.
+    try (MockedConstruction<DataRecoveryClient> ignoredDrc =
+        Mockito.mockConstruction(DataRecoveryClient.class, (mockClient, context) -> {
+          doReturn(0L).when(mockClient).estimateRecoveryTime(any(), any());
+        });
+        MockedConstruction<ControllerClient> ignoredCc =
+            Mockito.mockConstruction(ControllerClient.class, (mockClient, context) -> {
+              MultiStoreResponse storeResponse = new MultiStoreResponse();
+              storeResponse.setStores(new String[] { "test1", "test2", "test3" });
+              doReturn(storeResponse).when(mockClient).queryStoreList(anyBoolean());
+            })) {
+      try {
+        for (String[] command: commands) {
+          AdminTool.main(command);
+        }
+      } catch (VeniceClientException e) {
+        // Expected exception.
+      } catch (Exception err) {
+        Assert.fail("Unexpected exception happens in data recovery APIs: ", err);
       }
-    } catch (VeniceClientException e) {
-      // Expected exception.
-    } catch (Exception err) {
-      Assert.fail("Unexpected exception happens in data recovery APIs: ", err);
     }
   }
 

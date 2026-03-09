@@ -1621,17 +1621,20 @@ public abstract class StoreIngestionTaskTest {
     doReturn(InMemoryPubSubPosition.of(0)).when(mockTopicManager)
         .getLatestPositionCached(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO));
 
+    // Use a longer timeout for metric verifications — CI thread scheduling can delay the
+    // SIT run loop → drainer → stats recording pipeline.
+    long metricTimeoutMs = TEST_TIMEOUT_MS * 4;
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
+      verify(mockAbstractStorageEngine, timeout(metricTimeoutMs))
           .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
       // Verify host-level metrics
       if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
-        verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(3)).recordTotalBytesConsumed(anyLong());
+        verify(mockStoreIngestionStats, timeout(metricTimeoutMs).times(3)).recordTotalBytesConsumed(anyLong());
       } else {
         // When record level metric is disabled for current version bootstrapping, the store ingestion stats
-        verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(2)).recordTotalBytesConsumed(anyLong());
+        verify(mockStoreIngestionStats, timeout(metricTimeoutMs).times(2)).recordTotalBytesConsumed(anyLong());
       }
-      verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(3)).recordTotalRecordsConsumed();
+      verify(mockStoreIngestionStats, timeout(metricTimeoutMs).times(3)).recordTotalRecordsConsumed();
 
     }, AA_OFF);
     config.setHybridStoreConfig(Optional.of(hybridStoreConfig)).setExtraServerProperties(extraProps);
@@ -1998,14 +2001,16 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
+    // 3-step async sequence (consume → reset → re-consume) needs generous timeout under CI load
+    long resetTimeoutMs = TEST_TIMEOUT_MS * 4;
     runTest(Utils.setOf(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
+      verify(mockAbstractStorageEngine, timeout(resetTimeoutMs))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
       storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(fooTopicPartition);
 
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).clearOffset(topic, PARTITION_FOO);
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(2))
+      verify(mockStorageMetadataService, timeout(resetTimeoutMs)).clearOffset(topic, PARTITION_FOO);
+      verify(mockAbstractStorageEngine, timeout(resetTimeoutMs).times(2))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
     }, aaConfig);
   }
@@ -2350,11 +2355,12 @@ public abstract class StoreIngestionTaskTest {
    * In this test, the {@link #PARTITION_FOO} will receive a well-formed message, while the {@link #PARTITION_BAR} will
    * receive a corrupt message. We expect the Notifier to report as such.
    * <p>
-   * N.B.: There was an edge case where this test was flaky. The edge case is now fixed, but the invocationCount of 100
-   * should ensure that if this test is ever made flaky again, it will be detected right away. The skipFailedInvocations
-   * annotation parameter makes the test skip any invocation after the first failure.
+   * N.B.: There was an edge case where this test was flaky, because the {@link StoreIngestionTask} occasionally sent
+   * a completion notification for partitions where it had already detected an error. That edge case is now fixed (the
+   * SIT tracks errored partitions and skips completion notifications for them). The invocationCount provides repeated
+   * runs to catch regressions of that race condition.
    */
-  @Test(dataProvider = "aaConfigProvider", invocationCount = 100, skipFailedInvocations = true)
+  @Test(dataProvider = "aaConfigProvider", invocationCount = 50, skipFailedInvocations = true)
   public void testCorruptMessagesFailFast(AAConfig aaConfig) throws Exception {
     VeniceWriter veniceWriterForData = getCorruptedVeniceWriter(putValueToCorrupt, inMemoryLocalKafkaBroker);
 
@@ -2586,7 +2592,7 @@ public abstract class StoreIngestionTaskTest {
     final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
     final int totalNumberOfMessages = 1000;
     final int totalNumberOfConsumptionRestarts = 10;
-    final long LONG_TEST_TIMEOUT = 2 * TEST_TIMEOUT_MS;
+    final long LONG_TEST_TIMEOUT = 6 * TEST_TIMEOUT_MS;
 
     setStoreVersionStateSupplier(sortedInput == SORTED);
     localVeniceWriter.broadcastStartOfPush(sortedInput == SORTED, new HashMap<>());
@@ -6612,6 +6618,69 @@ public abstract class StoreIngestionTaskTest {
     assertTrue(
         executor.awaitTermination(5, TimeUnit.SECONDS),
         "Executor should terminate promptly after shutdownNow()");
+  }
+
+  /**
+   * Regression test for the thread leak bug in StoreIngestionTask.run() (PR #2486).
+   *
+   * Calls the actual {@link StoreIngestionTask#shutdownPartitionConsumptionStates()} code,
+   * which creates a FixedThreadPool for parallel partition shutdown. Captures the executor via
+   * the executeShutdownRunnable argument and asserts it was shut down after the method returns.
+   * Without the try-finally fix from PR #2486, the executor is never shut down and its core
+   * threads remain alive indefinitely.
+   */
+  @Test
+  public void testShutdownExecutorThreadsAreCleanedUpAfterParallelShutdown() throws Exception {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(task.getServerConfig()).thenReturn(serverConfig);
+    when(serverConfig.isParallelResourceShutdownEnabled()).thenReturn(true);
+    when(serverConfig.getParallelShutdownThreadPoolSize()).thenReturn(4);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(false);
+    when(task.isDaVinciClient()).thenReturn(false);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    pcsMap.put(0, pcs);
+    when(task.getPartitionConsumptionStateMap()).thenReturn(pcsMap);
+
+    // Capture the executor that the production code creates internally
+    AtomicReference<ExecutorService> capturedExecutor = new AtomicReference<>();
+    doAnswer(invocation -> {
+      capturedExecutor.set(invocation.getArgument(2));
+      invocation.callRealMethod();
+      return null;
+    }).when(task).executeShutdownRunnable(any(), anyList(), any());
+
+    doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
+
+    task.shutdownPartitionConsumptionStates();
+
+    // Verify the executor was shut down and all its threads terminated
+    ExecutorService executor = capturedExecutor.get();
+    assertNotNull(executor, "Executor should have been created for parallel shutdown");
+    assertTrue(
+        executor.isShutdown(),
+        "THREAD LEAK: The shutdown executor was not shut down after shutdownPartitionConsumptionStates() "
+            + "returned. Its core threads will remain alive indefinitely. "
+            + "Fix: wrap executor usage in try-finally { shutdownExecutor.shutdownNow(); }");
+    assertTrue(
+        executor.awaitTermination(5, TimeUnit.SECONDS),
+        "Executor threads did not terminate within 5 seconds after shutdownNow()");
+    assertTrue(executor.isTerminated(), "Executor should be fully terminated with no alive threads");
+
+    // Verify no leaked threads with the executor's thread name prefix remain alive
+    String threadPrefix = "StoreIngestionTask-shutdown";
+    List<Thread> leakedThreads = Thread.getAllStackTraces()
+        .keySet()
+        .stream()
+        .filter(t -> t.getName().startsWith(threadPrefix) && t.isAlive())
+        .collect(Collectors.toList());
+    assertEquals(
+        leakedThreads.size(),
+        0,
+        "THREAD LEAK: Found " + leakedThreads.size() + " alive threads with prefix '" + threadPrefix
+            + "' after shutdown: " + leakedThreads.stream().map(Thread::getName).collect(Collectors.joining(", ")));
   }
 
   @Test

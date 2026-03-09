@@ -235,8 +235,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     jobConf.set(STORAGE_QUOTA_PROP, pushJobSetting.storeStorageQuota);
 
     if (pushJobSetting.isSourceKafka) {
-      // Use some fake value schema id here since it won't be used
-      jobConf.set(VALUE_SCHEMA_ID_PROP, -1);
+      // Set the global value schema ID as a fallback for when schema IDs are not embedded in the version topic
+      jobConf.set(VALUE_SCHEMA_ID_PROP, pushJobSetting.valueSchemaId);
       /**
        * Kafka input topic could be inferred from the store name, but absent from the original properties.
        * So here will set it up from {@link #pushJobSetting}.

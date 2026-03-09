@@ -39,7 +39,7 @@ import java.util.Set;
  */
 public class BasicConsumerStats extends AbstractVeniceStats {
   public static final Collection<MetricEntity> CONSUMER_METRIC_ENTITIES =
-      getUniqueMetricEntities(BasicConsumerMetricEntity.class);
+      getUniqueMetricEntities(Collections.singletonList(BasicConsumerMetricEntity.class));
 
   private final Attributes baseAttributes;
 

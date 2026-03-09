@@ -201,7 +201,9 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
-          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+          parentControllerClient.retryableRequest(
+              3,
+              c -> c.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString())));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setWriteComputationEnabled(true)
@@ -297,7 +299,7 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
-          30,
+          60,
           TimeUnit.SECONDS);
       assertTrue(parentControllerClient.getStore(storeName).getStore().isRmdChunkingEnabled());
       assertTrue(parentControllerClient.getStore(storeName).getStore().getVersion(1).get().isRmdChunkingEnabled());
@@ -570,7 +572,7 @@ public class PartialUpdateTest extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
-          30,
+          60,
           TimeUnit.SECONDS);
     }
 

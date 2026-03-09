@@ -20,6 +20,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_ROUTE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
+import static com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.assertNoDuplicateMetricNamesAcrossEnums;
+import static com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.metricEntitiesEqual;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
@@ -49,7 +51,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import org.apache.commons.httpclient.HttpStatus;
 import org.testng.Assert;
@@ -370,6 +371,21 @@ public class BasicClientStatsTest {
         otelPrefix);
   }
 
+  /**
+   * Verifies that no two enum constants across BasicClientMetricEntity and ClientMetricEntity
+   * share the same metric name. Uses {@link BasicClientStats#getMetricEntityEnumClasses()} as the
+   * single source of truth. Scans raw enum constants to catch silent deduplication by
+   * {@link ModuleMetricEntityInterface#getUniqueMetricEntities}.
+   *
+   * <p>"call_count" and "call_time" are intentionally shared between TC/FC and DVC variants.
+   */
+  @Test
+  public void testNoDuplicateMetricNamesAcrossClientEnums() {
+    assertNoDuplicateMetricNamesAcrossEnums(
+        Utils.setOf("call_count", "call_time"),
+        BasicClientStats.getMetricEntityEnumClasses());
+  }
+
   @Test
   public void testClientMetricEntities() {
     Map<ModuleMetricEntityInterface, MetricEntity> expectedMetrics = new HashMap<>();
@@ -635,35 +651,4 @@ public class BasicClientStatsTest {
     assertEquals(actual.getDimensionsList(), expected.getDimensionsList(), "Unexpected metric dimensions for " + name);
   }
 
-  private boolean metricEntitiesEqual(MetricEntity actual, MetricEntity expected) {
-    return Objects.equals(actual.getMetricName(), expected.getMetricName())
-        && actual.getMetricType() == expected.getMetricType() && actual.getUnit() == expected.getUnit()
-        && Objects.equals(actual.getDescription(), expected.getDescription())
-        && Objects.equals(actual.getDimensionsList(), expected.getDimensionsList());
-  }
-
-  @Test
-  public void testBasicClientTehutiMetricNameEnum() {
-    Map<BasicClientStats.BasicClientTehutiMetricName, String> expectedNames = new HashMap<>();
-    expectedNames.put(BasicClientStats.BasicClientTehutiMetricName.HEALTHY_REQUEST, "healthy_request");
-    expectedNames.put(BasicClientStats.BasicClientTehutiMetricName.UNHEALTHY_REQUEST, "unhealthy_request");
-    expectedNames.put(BasicClientStats.BasicClientTehutiMetricName.HEALTHY_REQUEST_LATENCY, "healthy_request_latency");
-    expectedNames
-        .put(BasicClientStats.BasicClientTehutiMetricName.UNHEALTHY_REQUEST_LATENCY, "unhealthy_request_latency");
-    expectedNames.put(BasicClientStats.BasicClientTehutiMetricName.REQUEST_KEY_COUNT, "request_key_count");
-    expectedNames
-        .put(BasicClientStats.BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT, "success_request_key_count");
-
-    assertEquals(
-        BasicClientStats.BasicClientTehutiMetricName.values().length,
-        expectedNames.size(),
-        "New BasicClientTehutiMetricName values were added but not included in this test");
-
-    for (BasicClientStats.BasicClientTehutiMetricName enumValue: BasicClientStats.BasicClientTehutiMetricName
-        .values()) {
-      String expectedName = expectedNames.get(enumValue);
-      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
-      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
-    }
-  }
 }

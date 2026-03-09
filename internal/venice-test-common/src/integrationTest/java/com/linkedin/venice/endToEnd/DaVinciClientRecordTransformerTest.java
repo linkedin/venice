@@ -875,13 +875,18 @@ public class DaVinciClientRecordTransformerTest {
       // All the records should have already been transformed due to blob transfer
       assertEquals(recordTransformer.getTransformInvocationCount(), 0);
 
-      // Test single-get access
-      for (int k = 1; k <= DEFAULT_USER_DATA_RECORD_COUNT; ++k) {
-        Object valueObj = client2.get(k).get();
-        String expectedValue = "name " + k + "Transformed";
-        assertEquals(valueObj.toString(), expectedValue);
-        assertEquals(recordTransformer.get(k), expectedValue);
-      }
+      // Test single-get access. The processPut() callbacks that populate the transformer's
+      // in-memory map may still be in-flight after subscribeAll() returns, so retry until
+      // all keys are available.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        for (int k = 1; k <= DEFAULT_USER_DATA_RECORD_COUNT; ++k) {
+          Object valueObj = client2.get(k).get();
+          String expectedValue = "name " + k + "Transformed";
+          assertEquals(valueObj.toString(), expectedValue);
+          assertNotNull(recordTransformer.get(k), "processPut callback not yet fired for key " + k);
+          assertEquals(recordTransformer.get(k), expectedValue);
+        }
+      });
     }
   }
 

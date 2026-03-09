@@ -470,13 +470,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertFalse(vtWriteFutureCaptor.getValue().isDone());
     assertFalse(vtWriteFutureCaptor.getValue().isCompletedExceptionally());
     viewWriterFuture.complete(null);
-    TestUtils.waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> assertTrue(vtWriteFutureCaptor.getValue().isDone()));
+    // The whenCompleteAsync callback runs on the ForkJoinPool: it completes the VT future, sets writeToVersionTopic,
+    // and THEN records ack latency. Use timeout() on the verify because isDone() becomes true before the metric call.
+    verify(hostLevelIngestionStats, timeout(5000).times(1)).recordViewProducerAckLatency(anyDouble());
+    assertTrue(vtWriteFutureCaptor.getValue().isDone());
     assertFalse(vtWriteFutureCaptor.getValue().isCompletedExceptionally());
     assertTrue(writeToVersionTopic.get());
-    verify(hostLevelIngestionStats, times(1)).recordViewProducerAckLatency(anyDouble());
   }
 
   @Test(timeOut = 30000)

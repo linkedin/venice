@@ -16,8 +16,6 @@ import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.HashMap;
-import java.util.Map;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -231,44 +229,6 @@ public class AddVersionLatencyStatsOtelTest {
     plainStats.recordStartOfPushLatency(10);
     plainStats.recordBatchTopicCreationLatency(10);
     plainStats.recordHelixResourceCreationLatency(10);
-  }
-
-  @Test
-  public void testAddVersionLatencyTehutiMetricNameEnum() {
-    Map<AddVersionLatencyStats.AddVersionLatencyTehutiMetricNameEnum, String> expectedNames = new HashMap<>();
-    expectedNames.put(
-        AddVersionLatencyStats.AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_RETIRE_OLD_VERSIONS_LATENCY,
-        "add_version_retire_old_versions_latency");
-    expectedNames.put(
-        AddVersionLatencyStats.AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_RESOURCE_ASSIGNMENT_WAIT_LATENCY,
-        "add_version_resource_assignment_wait_latency");
-    expectedNames.put(
-        AddVersionLatencyStats.AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_CREATION_FAILURE_LATENCY,
-        "add_version_creation_failure_latency");
-    expectedNames.put(
-        AddVersionLatencyStats.AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_EXISTING_SOURCE_HANDLING_LATENCY,
-        "add_version_existing_source_handling_latency");
-    expectedNames.put(
-        AddVersionLatencyStats.AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_START_OF_PUSH_LATENCY,
-        "add_version_start_of_push_latency");
-    expectedNames.put(
-        AddVersionLatencyStats.AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_BATCH_TOPIC_CREATION_LATENCY,
-        "add_version_batch_topic_creation_latency");
-    expectedNames.put(
-        AddVersionLatencyStats.AddVersionLatencyTehutiMetricNameEnum.ADD_VERSION_HELIX_RESOURCE_CREATION_LATENCY,
-        "add_version_helix_resource_creation_latency");
-
-    assertEquals(
-        AddVersionLatencyStats.AddVersionLatencyTehutiMetricNameEnum.values().length,
-        expectedNames.size(),
-        "New AddVersionLatencyTehutiMetricNameEnum values were added but not included in this test");
-
-    for (AddVersionLatencyStats.AddVersionLatencyTehutiMetricNameEnum enumValue: AddVersionLatencyStats.AddVersionLatencyTehutiMetricNameEnum
-        .values()) {
-      String expectedName = expectedNames.get(enumValue);
-      assertNotNull(expectedName, "No expected metric name for " + enumValue.name());
-      assertEquals(enumValue.getMetricName(), expectedName, "Unexpected metric name for " + enumValue.name());
-    }
   }
 
   private Attributes componentAttributes(AdminMessageProcessingComponent component) {

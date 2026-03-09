@@ -73,7 +73,9 @@ import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.lang.reflect.Field;
@@ -654,8 +656,9 @@ public abstract class KafkaStoreIngestionServiceTest {
     Set<PubSubTopicPartition> topicPartitionsToUnsubscribe = new HashSet<>();
     topicPartitionsToUnsubscribe.add(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0));
     storeIngestionTask.consumerBatchUnsubscribe(topicPartitionsToUnsubscribe);
-    // Verify that the store ingestion task is marked as idle and eventually closed
-    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+    // Verify that the store ingestion task is marked as idle and eventually closed.
+    // The cleanup executor runs every 5s (configured in setupMockConfig), so 15s is ample.
+    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
       Assert.assertTrue(storeIngestionTask.isIdleOverThreshold());
       Assert.assertNull(kafkaStoreIngestionService.getStoreIngestionTask(topicName));
     });
@@ -692,8 +695,9 @@ public abstract class KafkaStoreIngestionServiceTest {
     Set<PubSubTopicPartition> topicPartitionsToUnsubscribe = new HashSet<>();
     topicPartitionsToUnsubscribe.add(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0));
     storeIngestionTask.consumerBatchUnsubscribe(topicPartitionsToUnsubscribe);
-    // Verify that the store ingestion task is marked as idle and eventually closed
-    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+    // Verify that the store ingestion task is marked as idle and eventually closed.
+    // The cleanup executor runs every 5s, so 15s is ample.
+    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
       Assert.assertTrue(storeIngestionTask.isIdleOverThreshold());
     });
     // verify has active replicas
@@ -836,8 +840,9 @@ public abstract class KafkaStoreIngestionServiceTest {
     // Close the existing service first
     kafkaStoreIngestionService.close();
 
-    // Create a new MetricsRepository with a reporter to verify metrics
-    MetricsRepository metricsRepository = new MetricsRepository();
+    // Use a dedicated AsyncGaugeExecutor to avoid contention with the shared default executor in CI
+    AsyncGauge.AsyncGaugeExecutor gaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    MetricsRepository metricsRepository = new MetricsRepository(new MetricConfig(gaugeExecutor));
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
 
@@ -948,17 +953,25 @@ public abstract class KafkaStoreIngestionServiceTest {
           reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--queued_task_count_gauge.LambdaStat"),
           "AA/WC ingestion storage lookup thread pool queued_task_count_gauge metric should be registered");
 
-      // Verify the max thread numbers are set correctly
-      assertEquals(
-          (int) reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat").value(),
-          4,
-          "AA/WC parallel processing thread pool should have 4 threads");
-      assertEquals(
-          (int) reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat").value(),
-          2,
-          "AA/WC ingestion storage lookup thread pool should have 2 threads");
+      // Metric registration may complete asynchronously; retry until values are available.
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        assertEquals(
+            (int) reporter.query(".aa_wc_parallel_processing_thread_pool--max_thread_number.LambdaStat").value(),
+            4,
+            "AA/WC parallel processing thread pool should have 4 threads");
+        assertEquals(
+            (int) reporter.query(".aa_wc_ingestion_storage_lookup_thread_pool--max_thread_number.LambdaStat").value(),
+            2,
+            "AA/WC ingestion storage lookup thread pool should have 2 threads");
+      });
     } finally {
       service.close();
+      metricsRepository.close();
+      try {
+        gaugeExecutor.close();
+      } catch (Exception e) {
+        // best-effort cleanup
+      }
     }
   }
 

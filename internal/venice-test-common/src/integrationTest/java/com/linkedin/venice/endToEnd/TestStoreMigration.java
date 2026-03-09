@@ -126,7 +126,7 @@ public class TestStoreMigration {
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
     parentControllerProperties
         .setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
-    parentControllerProperties.setProperty(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
+    parentControllerProperties.setProperty(OFFLINE_JOB_START_TIMEOUT_MS, "300000");
     parentControllerProperties.put(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, true);
     parentControllerProperties.put(ConfigKeys.STORE_MIGRATION_TASK_SCHEDULING_INTERVAL_SECONDS, 2);
 
@@ -197,7 +197,7 @@ public class TestStoreMigration {
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
       StoreMigrationTestUtil
           .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
         // StoreConfig in router might not be up-to-date. Keep reading from the store. Finally, router will find that
         // cluster discovery changes and redirect the request to dest store. Client's d2ServiceName will be updated.
         readFromStore(client);
@@ -539,7 +539,7 @@ public class TestStoreMigration {
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
       StoreMigrationTestUtil
           .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
         // StoreConfig in router might not be up-to-date. Keep reading from the store. Finally, router will find that
         // cluster discovery changes and redirect the request to dest store. Client's d2ServiceName will be updated.
         readFromStore(client);

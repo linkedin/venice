@@ -107,18 +107,23 @@ public class TestZstdLibrary {
 
   @Test
   public void testZstdWith11toNSamples() throws Exception {
-    for (int i = 11; i < 100; i++) {
+    // Test representative sample counts instead of every integer from 11 to 99.
+    // Covers boundary (11), small (25), medium (50), large (75), and near-boundary (99).
+    for (int i: new int[] { 11, 25, 50, 75, 99 }) {
       LOGGER.info("Running test with {} samples in 1 File", i);
       runTest(1, i, 1, 200);
     }
 
+    // Test with a meaningful number of records — enough to exercise the dictionary training
+    // pipeline end-to-end (file I/O, sample collection, dictionary building) without spending
+    // 40+ seconds writing millions of Avro records to temp files.
     int numOfFiles = 1;
-    int numOfRecordsPerFile = 1000000;
+    int numOfRecordsPerFile = 10000;
     LOGGER.info("Running test with {} samples in {} File", numOfRecordsPerFile, numOfFiles);
     runTest(numOfFiles, numOfRecordsPerFile, 1, 200);
 
-    numOfFiles = 200;
-    numOfRecordsPerFile = 100000;
+    numOfFiles = 20;
+    numOfRecordsPerFile = 10000;
     LOGGER.info("Running test with {} samples in {} Files", numOfRecordsPerFile, numOfFiles);
     runTest(numOfFiles, numOfRecordsPerFile, 1, 200);
   }
@@ -135,11 +140,13 @@ public class TestZstdLibrary {
         throw new Exception("SAMPLE FULL");
       }
     }
-    for (int i = 11; i < 100000000; i++) {
+    // Use 100K samples instead of 100M — sufficient to validate repeated addSample() and
+    // periodic trainSamples() without spending ~60s on pure iteration overhead.
+    for (int i = 11; i < 100000; i++) {
       if (!zstdDictTrainer.addSample(new byte[] { (byte) i })) {
         throw new Exception("SAMPLE FULL");
       }
-      if (i % 25000000 == 0) {
+      if (i % 25000 == 0) {
         LOGGER.info("Starting to train: number of samples {}", i);
         zstdDictTrainer.trainSamples();
         ByteBuffer dict = ByteBuffer.wrap(zstdDictTrainer.trainSamples());

@@ -1739,9 +1739,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   void reportIngestionNotifier(PartitionConsumptionState partitionConsumptionState, Exception partitionException) {
-    List<PartitionConsumptionState> pcsList = new ArrayList<>();
-    pcsList.add(partitionConsumptionState);
-    ingestionNotificationDispatcher.reportError(pcsList, partitionException.getMessage(), partitionException);
+    ingestionNotificationDispatcher.reportError(
+        Collections.singletonList(partitionConsumptionState),
+        partitionException.getMessage(),
+        partitionException);
   }
 
   protected void checkIngestionProgress(Store store) throws InterruptedException {
@@ -4929,10 +4930,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public void reportError(String message, int userPartition, Exception e) {
-    List<PartitionConsumptionState> pcsList = new ArrayList<>();
-    if (partitionConsumptionStateMap.containsKey(userPartition)) {
-      pcsList.add(partitionConsumptionStateMap.get(userPartition));
-    }
+    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(userPartition);
+    List<PartitionConsumptionState> pcsList = pcs != null ? Collections.singletonList(pcs) : Collections.emptyList();
     reportError(pcsList, userPartition, message, e);
   }
 

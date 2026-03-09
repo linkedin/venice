@@ -62,6 +62,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
@@ -920,7 +921,33 @@ public abstract class TestBatch {
       IntegrationTestPushUtils.runVPJ(props);
     }
 
-    veniceCluster.refreshAllRouterMetaData();
+    // Wait for the current version to be set AND the router's routing data to be ready.
+    // There is a race where VPJ returns (version is COMPLETED) but: (a) the version has not
+    // yet transitioned to ONLINE / been set as current, or (b) the Helix external view hasn't
+    // propagated to the router's routing data repository, or (c) the router's
+    // DictionaryRetrievalService hasn't finished downloading the ZSTD dictionary (for stores
+    // with ZSTD_WITH_DICT compression). All of these cause "no version for store" from
+    // VeniceVersionFinder.
+    veniceCluster.useControllerClient(controllerClient -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          STORE_VERSION_AVAILABILITY_TIMEOUT_SEC,
+          TimeUnit.SECONDS,
+          true,
+          true,
+          () -> {
+            int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+            Assert.assertTrue(currentVersion > 0, "Store " + storeName + " does not have a current version yet");
+            veniceCluster.refreshAllRouterMetaData();
+            String kafkaTopic = Version.composeKafkaTopic(storeName, currentVersion);
+            for (VeniceRouterWrapper router: veniceCluster.getVeniceRouters()) {
+              if (router.isRunning()) {
+                Assert.assertTrue(
+                    router.getRoutingDataRepository().containsKafkaTopic(kafkaTopic),
+                    "Router routing data not ready for " + kafkaTopic);
+              }
+            }
+          });
+    });
 
     VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);
     try (
@@ -930,7 +957,23 @@ public abstract class TestBatch {
                 .setMetricsRepository(metricsRepository)); // metrics only available for Avro client...
         AvroGenericStoreClient vsonClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultVsonGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
-      dataValidator.validate(avroClient, vsonClient, metricsRepository);
+      // Wrap the validator in a retry loop because even after the routing data check above,
+      // the router may not be fully ready to serve reads. The VeniceVersionFinder checks
+      // additional state beyond containsKafkaTopic: it verifies all partitions have
+      // ready-to-serve instances (isPartitionResourcesReady) AND that the ZSTD dictionary
+      // has been downloaded (isDecompressorReady). The dictionary download is triggered
+      // asynchronously by DictionaryRetrievalService when the store metadata changes, so
+      // there is a window where routing data is present but the decompressor is not yet ready.
+      // Additionally, the thin client connects to a random router which may have a slightly
+      // different view than the routers checked above. Retrying handles all these edge cases.
+      TestUtils.waitForNonDeterministicAssertion(
+          STORE_VERSION_AVAILABILITY_TIMEOUT_SEC,
+          TimeUnit.SECONDS,
+          true,
+          true,
+          () -> {
+            dataValidator.validate(avroClient, vsonClient, metricsRepository);
+          });
     }
 
     return storeName;

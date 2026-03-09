@@ -8,24 +8,20 @@ import java.util.Map;
 import org.testng.annotations.Test;
 
 
-public class VeniceComputeOperationTypeTest extends VeniceDimensionInterfaceTest<VeniceComputeOperationType> {
-  protected VeniceComputeOperationTypeTest() {
-    super(VeniceComputeOperationType.class);
-  }
-
-  @Override
-  protected VeniceMetricsDimensions expectedDimensionName() {
-    return VeniceMetricsDimensions.VENICE_READ_COMPUTE_OPERATION_TYPE;
-  }
-
-  @Override
-  protected Map<VeniceComputeOperationType, String> expectedDimensionValueMapping() {
-    return CollectionUtils.<VeniceComputeOperationType, String>mapBuilder()
-        .put(VeniceComputeOperationType.DOT_PRODUCT, "dot_product")
-        .put(VeniceComputeOperationType.COSINE_SIMILARITY, "cosine_similarity")
-        .put(VeniceComputeOperationType.HADAMARD_PRODUCT, "hadamard_product")
-        .put(VeniceComputeOperationType.COUNT, "count")
-        .build();
+public class VeniceComputeOperationTypeTest {
+  @Test
+  public void testDimensionInterface() {
+    Map<VeniceComputeOperationType, String> expectedValues =
+        CollectionUtils.<VeniceComputeOperationType, String>mapBuilder()
+            .put(VeniceComputeOperationType.DOT_PRODUCT, "dot_product")
+            .put(VeniceComputeOperationType.COSINE_SIMILARITY, "cosine_similarity")
+            .put(VeniceComputeOperationType.HADAMARD_PRODUCT, "hadamard_product")
+            .put(VeniceComputeOperationType.COUNT, "count")
+            .build();
+    new VeniceDimensionTestFixture<>(
+        VeniceComputeOperationType.class,
+        VeniceMetricsDimensions.VENICE_READ_COMPUTE_OPERATION_TYPE,
+        expectedValues).assertAll();
   }
 
   @Test
