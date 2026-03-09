@@ -337,11 +337,14 @@ public class DaVinciClientRecordTransformerFilterTest {
       DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, clientConfig);
       client2.subscribeAll().get();
 
-      // Verify snapshots exists
-      for (int i = 0; i < 3; i++) {
-        String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
-      }
+      // Snapshots are created on-demand when the peer requests partition data, so they
+      // may not all exist immediately after subscribeAll() returns.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        for (int i = 0; i < 3; i++) {
+          String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+          Assert.assertTrue(Files.exists(Paths.get(snapshotPath)), "Snapshot missing for partition " + i);
+        }
+      });
 
       // All the records should have already been transformed due to blob transfer
       assertEquals(recordTransformer.getTransformInvocationCount(), 0);
