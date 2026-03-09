@@ -2508,7 +2508,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Check if blob transfer should be used instead of direct Kafka subscribe.
         // If so, start async blob transfer and defer Kafka subscribe to checkLongRunningTaskState().
-        if (shouldStartBlobTransfer(partition, newPartitionConsumptionState)) {
+        if (shouldStartBlobTransfer(partition, newPartitionConsumptionState, consumerAction)) {
           startBlobTransferAsyncForPartition(partition, newPartitionConsumptionState);
           storageUtilizationManager.initPartition(partition);
           break;
@@ -2612,8 +2612,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Determines whether blob transfer should be used for the given partition.
    * Returns true if blob transfer is configured and the replica is lagged enough to benefit from it.
    */
-  protected boolean shouldStartBlobTransfer(int partition, PartitionConsumptionState pcs) {
+  protected boolean shouldStartBlobTransfer(
+      int partition,
+      PartitionConsumptionState pcs,
+      ConsumerAction consumerAction) {
     if (blobTransferManager == null) {
+      return false;
+    }
+    // Skip blob transfer for user-driven seek/subscribe (non-null PubSubPosition)
+    if (consumerAction != null && consumerAction.getPubSubPosition() != null) {
       return false;
     }
     Store store = storeRepository.getStoreOrThrow(storeName);
@@ -2869,7 +2876,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
     OffsetRecord newOffsetRecord =
         storageMetadataService.getLastOffset(topicPartition.getPubSubTopic().getName(), partition, pubSubContext);
-    pcs.setLatestProcessedVtPosition(newOffsetRecord.getCheckpointedLocalVtPosition());
+    if (newOffsetRecord != null) {
+      pcs.setLatestProcessedVtPosition(newOffsetRecord.getCheckpointedLocalVtPosition());
+    } else {
+      LOGGER
+          .warn("No offset record found after blob transfer for replica: {}. Will subscribe from earliest.", replicaId);
+    }
 
     PubSubPosition subscribePosition = getLocalVtSubscribePosition(pcs);
     LOGGER.info("Post-blob-transfer Kafka subscribe for replica: {} at position: {}", replicaId, subscribePosition);

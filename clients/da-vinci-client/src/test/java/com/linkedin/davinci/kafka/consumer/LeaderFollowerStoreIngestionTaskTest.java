@@ -1775,4 +1775,82 @@ public class LeaderFollowerStoreIngestionTaskTest {
     String empty = RegionUtils.normalizeRegionName(clusterIdToAlias.get(2));
     assertEquals(empty, RegionUtils.UNKNOWN_REGION, "Empty alias should normalize to 'unknown' region");
   }
+
+  @Test
+  public void testShouldStartBlobTransferReturnsFalseWhenManagerIsNull() throws InterruptedException {
+    setUp();
+    // blobTransferManager is null by default in test setup
+    assertFalse(
+        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferReturnsFalseForSeekSubscribe() throws InterruptedException {
+    setUp();
+    // When consumerAction has a non-null PubSubPosition, blob transfer should be skipped
+    when(mockConsumerAction.getPubSubPosition()).thenReturn(mock(PubSubPosition.class));
+    assertFalse(
+        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+  }
+
+  @Test
+  public void testCancelPendingBlobTransfer() throws InterruptedException {
+    setUp();
+    CompletableFuture<Void> pendingFuture = new CompletableFuture<>();
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(pendingFuture);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+
+    leaderFollowerStoreIngestionTask.cancelPendingBlobTransfer(mockPartitionConsumptionState);
+
+    // Verify the pending transfer is cleared
+    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+  }
+
+  @Test
+  public void testCancelPendingBlobTransferNoOpsWhenNoPendingTransfer() throws InterruptedException {
+    setUp();
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(null);
+
+    leaderFollowerStoreIngestionTask.cancelPendingBlobTransfer(mockPartitionConsumptionState);
+
+    // Should not try to clear since there's nothing to cancel
+    verify(mockPartitionConsumptionState, never()).setPendingBlobTransfer(any());
+  }
+
+  @Test
+  public void testStopBlobTransferAndWaitCompletedFuture() throws InterruptedException {
+    setUp();
+    CompletableFuture<Void> completedFuture = CompletableFuture.completedFuture(null);
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(completedFuture);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+
+    leaderFollowerStoreIngestionTask.stopBlobTransferAndWait(mockPartitionConsumptionState);
+
+    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+  }
+
+  @Test
+  public void testStopBlobTransferAndWaitFailedFuture() throws InterruptedException {
+    setUp();
+    CompletableFuture<Void> failedFuture = new CompletableFuture<>();
+    failedFuture.completeExceptionally(new RuntimeException("transfer failed"));
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(failedFuture);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+
+    // Should not throw — exception is caught
+    leaderFollowerStoreIngestionTask.stopBlobTransferAndWait(mockPartitionConsumptionState);
+
+    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+  }
+
+  @Test
+  public void testStopBlobTransferAndWaitNoOpsWhenNoPendingTransfer() throws InterruptedException {
+    setUp();
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(null);
+
+    leaderFollowerStoreIngestionTask.stopBlobTransferAndWait(mockPartitionConsumptionState);
+
+    // Should not try to clear since there's nothing to stop
+    verify(mockPartitionConsumptionState, never()).setPendingBlobTransfer(any());
+  }
 }
