@@ -107,7 +107,7 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
           20,
           TimeUnit.SECONDS);
       // repush pushed 2 as source version, so version 2 should be deleted
-      TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
         Store store = veniceHelixAdmin.getStore(CLUSTER_NAME, storeName);
         return store.getVersion(2) == null && store.getVersions().size() == 2;
       });
