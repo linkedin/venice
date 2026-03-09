@@ -1834,6 +1834,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
+    if (versionRole.equals(VersionRole.CURRENT) && !newVersionRole.equals(VersionRole.CURRENT)) {
+      stopTrackingCurrentVersionIngestion();
+    }
+
     LOGGER.info(
         "Trigger for version topic: {} due to Previous: version role: {}, workload type: {} "
             + "changed to New: version role: {}, workload type: {}",
@@ -1851,6 +1855,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       hostLevelIngestionStats.recordResubscriptionFailure();
       versionedIngestionStats.recordResubscriptionFailureCount(storeName, versionNumber);
       throw e;
+    }
+  }
+
+  /**
+   * {@link AbstractPartitionStateModel#onBecomeStandbyFromOffline} only needs to synchronously wait for ingestion
+   * to be completed for current versions. If a current version becomes no longer the current version, it no longer
+   * needs to {@link AbstractPartitionStateModel#waitConsumptionCompleted}.
+   */
+  private void stopTrackingCurrentVersionIngestion() {
+    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
+      if (pcs.isLatchCreated() && !pcs.isLatchReleased()) {
+        ingestionNotificationDispatcher.reportCompleted(pcs); // releases the latch and fixes ingestion state tracking
+      }
     }
   }
 

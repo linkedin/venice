@@ -637,12 +637,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
         timeoutPartitions.add(partition);
       }
-      if (shouldReleaseLatchForDemotedVersion(partitionConsumptionState)) {
-        LOGGER.info(
-            "Releasing state model latch for demoted backup replica: {}",
-            partitionConsumptionState.getReplicaId());
-        ingestionNotificationDispatcher.reportStoppedConsumptionForDemotedVersion(partitionConsumptionState);
-      }
       switch (partitionConsumptionState.getLeaderFollowerState()) {
         case PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER:
           Store store = storeRepository.getStoreOrThrow(storeName);
@@ -868,11 +862,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         versionTopicName);
     reInitializeVeniceWriterLazyRunnable.run();
     return true;
-  }
-
-  private boolean shouldReleaseLatchForDemotedVersion(PartitionConsumptionState pcs) {
-    return pcs.isLatchCreated() && !pcs.isLatchReleased() && !isCurrentVersion.getAsBoolean()
-        && !Utils.isFutureVersionReady(getVersionTopic().getName(), storeRepository);
   }
 
   /**

@@ -131,13 +131,6 @@ class IngestionNotificationDispatcher {
     });
   }
 
-  void reportStoppedConsumptionForDemotedVersion(PartitionConsumptionState pcs) {
-    report(pcs, "DEMOTED_TO_BACKUP_VERSION", notifier -> {
-      notifier.stopped(topic, pcs.getPartition(), pcs.getLatestProcessedVtPosition());
-      pcs.releaseLatch();
-    }, () -> !pcs.isLatchReleased());
-  }
-
   void reportCompleted(PartitionConsumptionState pcs) {
     reportCompleted(pcs, false);
   }
