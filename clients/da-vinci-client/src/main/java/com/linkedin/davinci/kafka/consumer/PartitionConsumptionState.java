@@ -214,7 +214,7 @@ public class PartitionConsumptionState {
    * to skip redundant VT produces for hot keys within the configured window.
    * Accessed from the consumer thread only (same thread that calls processMessageAndMaybeProduceToKafka).
    */
-  private final ConcurrentMap<ByteArrayKey, Long> vtCoalescingLastProduceTimeMs = new VeniceConcurrentHashMap<>();
+  private final Map<ByteArrayKey, Long> vtCoalescingLastProduceTimeMs = new VeniceConcurrentHashMap<>();
 
   /**
    * This field is used to track whether the last queued record has been fully processed or not.
