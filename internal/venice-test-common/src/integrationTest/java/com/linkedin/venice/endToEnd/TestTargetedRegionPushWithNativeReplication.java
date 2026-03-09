@@ -541,18 +541,22 @@ public class TestTargetedRegionPushWithNativeReplication extends AbstractMultiRe
       PushJobStatusRecordKey key = new PushJobStatusRecordKey();
       key.setStoreName(storeName);
       key.setVersionNumber(1);
-      GenericRecord value = (GenericRecord) client.get(key).get();
-      HashMap<Utf8, List<PushJobDetailsStatusTuple>> map =
-          (HashMap<Utf8, List<PushJobDetailsStatusTuple>>) value.get("coloStatus");
-      Assert.assertEquals(map.size(), 2);
-      List<PushJobDetailsStatusTuple> status = map.get(new Utf8("dc-0"));
-      Assert.assertEquals(
-          ((GenericRecord) status.get(status.size() - 1)).get("status"),
-          PushJobDetailsStatus.COMPLETED.getValue());
-      status = map.get(new Utf8("dc-1"));
-      Assert.assertEquals(
-          ((GenericRecord) status.get(status.size() - 1)).get("status"),
-          PushJobDetailsStatus.COMPLETED.getValue());
+      // Push job details may not have replicated to dc-1 yet, so retry.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        GenericRecord value = (GenericRecord) client.get(key).get();
+        Assert.assertNotNull(value, "Push job details not yet available");
+        HashMap<Utf8, List<PushJobDetailsStatusTuple>> map =
+            (HashMap<Utf8, List<PushJobDetailsStatusTuple>>) value.get("coloStatus");
+        Assert.assertEquals(map.size(), 2);
+        List<PushJobDetailsStatusTuple> status = map.get(new Utf8("dc-0"));
+        Assert.assertEquals(
+            ((GenericRecord) status.get(status.size() - 1)).get("status"),
+            PushJobDetailsStatus.COMPLETED.getValue());
+        status = map.get(new Utf8("dc-1"));
+        Assert.assertEquals(
+            ((GenericRecord) status.get(status.size() - 1)).get("status"),
+            PushJobDetailsStatus.COMPLETED.getValue());
+      });
     }
   }
 
