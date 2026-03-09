@@ -6620,6 +6620,69 @@ public abstract class StoreIngestionTaskTest {
         "Executor should terminate promptly after shutdownNow()");
   }
 
+  /**
+   * Regression test for the thread leak bug in StoreIngestionTask.run() (PR #2486).
+   *
+   * Calls the actual {@link StoreIngestionTask#shutdownPartitionConsumptionStates()} code,
+   * which creates a FixedThreadPool for parallel partition shutdown. Captures the executor via
+   * the executeShutdownRunnable argument and asserts it was shut down after the method returns.
+   * Without the try-finally fix from PR #2486, the executor is never shut down and its core
+   * threads remain alive indefinitely.
+   */
+  @Test
+  public void testShutdownExecutorThreadsAreCleanedUpAfterParallelShutdown() throws Exception {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(task.getServerConfig()).thenReturn(serverConfig);
+    when(serverConfig.isParallelResourceShutdownEnabled()).thenReturn(true);
+    when(serverConfig.getParallelShutdownThreadPoolSize()).thenReturn(4);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(false);
+    when(task.isDaVinciClient()).thenReturn(false);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    pcsMap.put(0, pcs);
+    when(task.getPartitionConsumptionStateMap()).thenReturn(pcsMap);
+
+    // Capture the executor that the production code creates internally
+    AtomicReference<ExecutorService> capturedExecutor = new AtomicReference<>();
+    doAnswer(invocation -> {
+      capturedExecutor.set(invocation.getArgument(2));
+      invocation.callRealMethod();
+      return null;
+    }).when(task).executeShutdownRunnable(any(), anyList(), any());
+
+    doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
+
+    task.shutdownPartitionConsumptionStates();
+
+    // Verify the executor was shut down and all its threads terminated
+    ExecutorService executor = capturedExecutor.get();
+    assertNotNull(executor, "Executor should have been created for parallel shutdown");
+    assertTrue(
+        executor.isShutdown(),
+        "THREAD LEAK: The shutdown executor was not shut down after shutdownPartitionConsumptionStates() "
+            + "returned. Its core threads will remain alive indefinitely. "
+            + "Fix: wrap executor usage in try-finally { shutdownExecutor.shutdownNow(); }");
+    assertTrue(
+        executor.awaitTermination(5, TimeUnit.SECONDS),
+        "Executor threads did not terminate within 5 seconds after shutdownNow()");
+    assertTrue(executor.isTerminated(), "Executor should be fully terminated with no alive threads");
+
+    // Verify no leaked threads with the executor's thread name prefix remain alive
+    String threadPrefix = "StoreIngestionTask-shutdown";
+    List<Thread> leakedThreads = Thread.getAllStackTraces()
+        .keySet()
+        .stream()
+        .filter(t -> t.getName().startsWith(threadPrefix) && t.isAlive())
+        .collect(Collectors.toList());
+    assertEquals(
+        leakedThreads.size(),
+        0,
+        "THREAD LEAK: Found " + leakedThreads.size() + " alive threads with prefix '" + threadPrefix
+            + "' after shutdown: " + leakedThreads.stream().map(Thread::getName).collect(Collectors.joining(", ")));
+  }
+
   @Test
   public void testSkipValidationForSeekableClientEnabled() throws Exception {
     // Test 1: Non-CDC client with non-view topic should NOT skip validation
