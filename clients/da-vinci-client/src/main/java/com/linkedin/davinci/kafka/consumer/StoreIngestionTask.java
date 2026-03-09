@@ -157,6 +157,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -1576,8 +1577,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // manifest container so chunk deletion works correctly.
         Set<ByteArrayKey> seenKeys = new HashSet<>();
 
-        for (PubSubMessageProcessedResultWrapper processedRecord: processedResults) {
+        // When VT coalescing is enabled, find the last occurrence of each key in the batch.
+        // Only the last record per key needs to be produced to VT; intermediate records have their
+        // VT produce suppressed since the final state subsumes all prior states.
+        Map<ByteArrayKey, Integer> lastIndexForKey = null;
+        if (serverConfig.isAAWCVtCoalescingEnabled()) {
+          lastIndexForKey = new HashMap<>();
+          for (int i = 0; i < processedResults.size(); i++) {
+            DefaultPubSubMessage msg = processedResults.get(i).getMessage();
+            if (!msg.getKey().isControlMessage()) {
+              lastIndexForKey.put(ByteArrayKey.wrap(msg.getKey().getKey()), i);
+            }
+          }
+        }
+
+        for (int i = 0; i < processedResults.size(); i++) {
+          PubSubMessageProcessedResultWrapper processedRecord = processedResults.get(i);
           ByteArrayKey key = ByteArrayKey.wrap(processedRecord.getMessage().getKey().getKey());
+
+          // Mark intermediate same-key records for VT produce coalescing
+          if (lastIndexForKey != null && !processedRecord.getMessage().getKey().isControlMessage()) {
+            Integer lastIdx = lastIndexForKey.get(key);
+            if (lastIdx != null && i < lastIdx && processedRecord.getProcessedResult() != null) {
+              processedRecord.setVtProduceCoalesced(true);
+            }
+          }
 
           if (seenKeys.contains(key)) {
             linkBackManifestFromTransientRecord(processedRecord, partitionConsumptionState);
