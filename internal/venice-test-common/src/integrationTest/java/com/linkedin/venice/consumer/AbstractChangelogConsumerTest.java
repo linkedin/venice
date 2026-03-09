@@ -38,7 +38,7 @@ import org.testng.annotations.BeforeClass;
 public abstract class AbstractChangelogConsumerTest {
   private static final Logger LOGGER = LogManager.getLogger(AbstractChangelogConsumerTest.class);
   protected static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
-  protected static final String[] CLUSTER_NAMES =
+  private static final String[] CLUSTER_NAMES =
       IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   protected final List<AutoCloseable> testCloseables = new ArrayList<>();
   protected final List<String> testStoresToDelete = new ArrayList<>();

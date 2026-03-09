@@ -234,37 +234,37 @@ public class TestChangelogConsumerSeek extends AbstractChangelogConsumerTest {
 
       // All data should be from version 1
       validateVersionSpecificMessages(pubSubMessagesMap, version - 1, numKeys);
-
-      // Push version 3 with deferred version swap and subscribe to the future version
-      pubSubMessagesMap.clear();
-      version++;
-      TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
-      props.put(DEFER_VERSION_SWAP, true);
-      IntegrationTestPushUtils.runVPJ(props);
-      // Wait for version 3 push to complete (but current version stays at 2 due to deferred swap)
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 3),
-          childControllerClientRegion0,
-          90,
-          TimeUnit.SECONDS);
-
-      VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer3 =
-          veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, version);
-      testCloseables.add(changeLogConsumer3);
-      changeLogConsumer3.subscribeAll().get();
-
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
-            changeLogConsumer3.poll(1000);
-        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
-          pubSubMessagesMap.put(message.getKey(), message);
-        }
-        assertEquals(pubSubMessagesMap.size(), numKeys);
-      });
-
-      // All data should be from future version 3
-      validateVersionSpecificMessages(pubSubMessagesMap, version, numKeys);
     }
+
+    // Push version 3 with deferred version swap and subscribe to the future version
+    pubSubMessagesMap.clear();
+    version++;
+    TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
+    props.put(DEFER_VERSION_SWAP, true);
+    IntegrationTestPushUtils.runVPJ(props);
+    // Wait for version 3 push to complete (but current version stays at 2 due to deferred swap)
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(storeName, 3),
+        childControllerClientRegion0,
+        90,
+        TimeUnit.SECONDS);
+
+    VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer3 =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, version);
+    testCloseables.add(changeLogConsumer3);
+    changeLogConsumer3.subscribeAll().get();
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+          changeLogConsumer3.poll(1000);
+      for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: pubSubMessagesList) {
+        pubSubMessagesMap.put(message.getKey(), message);
+      }
+      assertEquals(pubSubMessagesMap.size(), numKeys);
+    });
+
+    // All data should be from future version 3
+    validateVersionSpecificMessages(pubSubMessagesMap, version, numKeys);
   }
 
   /**
