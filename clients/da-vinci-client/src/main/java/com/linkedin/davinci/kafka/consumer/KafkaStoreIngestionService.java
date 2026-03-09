@@ -1500,7 +1500,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * Determines whether blob transfer should be enabled based on the combined logic of
    * store-level and server-level configurations.
    */
-  boolean shouldEnableBlobTransfer(Store store) {
+  public boolean shouldEnableBlobTransfer(Store store) {
     if (isDaVinciClient) {
       if (isBlobTransferDisabledForStore(store.getName())) {
         return false;

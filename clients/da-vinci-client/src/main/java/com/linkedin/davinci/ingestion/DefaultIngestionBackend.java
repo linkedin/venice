@@ -104,13 +104,30 @@ public class DefaultIngestionBackend implements IngestionBackend {
     replicaContext.state = ReplicaIntendedState.RUNNING;
     LOGGER.info("Replica {} state set to RUNNING.", replicaId);
 
-    StorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
-    topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
-      if (storageEngineAtomicReference != null) {
-        storageEngineAtomicReference.set(storageEngine);
-      }
-      return storageEngineAtomicReference;
-    });
+    boolean blobTransferActiveInReceiver =
+        blobTransferManager != null && getStoreIngestionService().shouldEnableBlobTransfer(storeAndVersion.getStore());
+
+    if (blobTransferActiveInReceiver) {
+      // When blob transfer is active, only open the store (not the partition).
+      // The partition lifecycle (drop, create with blob transfer flags, adjust after transfer)
+      // is managed by BlobTransferIngestionHelper.bootstrapFromBlobs() inside SIT.
+      StorageEngine storageEngine = storageService.openStore(storeConfig, svsSupplier);
+      topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
+        if (storageEngineAtomicReference != null) {
+          storageEngineAtomicReference.set(storageEngine);
+        }
+        return storageEngineAtomicReference;
+      });
+    } else {
+      StorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
+      topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
+        if (storageEngineAtomicReference != null) {
+          storageEngineAtomicReference.set(storageEngine);
+        }
+        return storageEngineAtomicReference;
+      });
+    }
+
     LOGGER.info("Retrieved storage engine for replica {}. Starting consumption in ingestion service", replicaId);
     getStoreIngestionService().startConsumption(storeConfig, partition, pubSubPosition);
     LOGGER.info("Completed starting consumption in ingestion service for replica {}", replicaId);
