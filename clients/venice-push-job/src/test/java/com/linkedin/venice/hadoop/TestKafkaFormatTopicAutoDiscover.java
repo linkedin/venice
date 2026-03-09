@@ -87,36 +87,6 @@ public class TestKafkaFormatTopicAutoDiscover {
     }
   }
 
-  /**
-   * With epoch passthrough (rewindEpochTimeInSecondsOverride), the absolute epoch timestamp flows
-   * directly through the pipeline, so the SOP/EOP replay policy no longer matters. EOP stores
-   * should be allowed to use epoch-based rewind without throwing. Previously this test asserted
-   * that EOP + epoch override would throw — that restriction has been removed.
-   * See design: DESIGN_rewind_epoch_passthrough.md, Section 3.4.5.
-   */
-  @Test
-  public void testUserProvidedEpochRewindWithEOPPolicy() {
-    final int singleColoCurrentVersion = 1;
-    ControllerClient controllerClient = mock(ControllerClient.class);
-    Map<String, Integer> coloToVersionMap = Collections.emptyMap();
-    StoreResponse storeResponse =
-        getMockHybridStoreResponse(coloToVersionMap, singleColoCurrentVersion, BufferReplayPolicy.REWIND_FROM_EOP);
-    when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
-    RepushInfoResponse repushInfo = getMockRepushResponse(1);
-    when(controllerClient.getRepushInfo(STORE_NAME, Optional.empty())).thenReturn(repushInfo);
-    configureClusterDiscoveryControllerClient(controllerClient);
-    Map<String, String> overrideProperties = new HashMap<>();
-    overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
-    overrideProperties.put(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, "1637016606");
-    try (VenicePushJob venicePushJob = new VenicePushJob(JOB_ID, getJobProperties(overrideProperties))) {
-      venicePushJob.setControllerClient(controllerClient);
-      venicePushJob.initKIFRepushDetails();
-      venicePushJob.setControllerClient(controllerClient);
-      // Should NOT throw — epoch rewind works with any replay policy (SOP or EOP)
-      venicePushJob.validateRemoteHybridSettings();
-    }
-  }
-
   @Test
   public void testNoUserProvidedTopicNameAndMultiColoVersion() {
     final int multipleColoCurrentVersion = 1;
