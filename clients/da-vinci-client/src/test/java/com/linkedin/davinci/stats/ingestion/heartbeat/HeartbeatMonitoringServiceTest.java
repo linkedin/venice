@@ -413,10 +413,8 @@ public class HeartbeatMonitoringServiceTest {
 
     // Version 3 (futureVersion) is non-A/A, so followers only have the local region
     Assert.assertEquals(countRegions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 3, 0), 1);
-    // Version 2 (currentVersion) is A/A, so followers have all regions initialized
-    Assert.assertEquals(
-        countRegions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 2, 0),
-        2 + (enableSepRT ? 1 : 0));
+    // Version 2 (currentVersion) is A/A, but followers should only have local region
+    Assert.assertEquals(countRegions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 2, 0), 1);
 
     // make sure we didn't get any leader heartbeats yet recorded
     Assert.assertFalse(hasStore(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE));
@@ -525,9 +523,8 @@ public class HeartbeatMonitoringServiceTest {
             futureVersion.getNumber(),
             1,
             REMOTE_FABRIC));
-    // currentVersion (A/A): REMOTE_FABRIC entry should exist for followers since entries are initialized for all
-    // regions
-    Assert.assertNotNull(
+    // currentVersion (A/A): REMOTE_FABRIC entry should NOT exist for followers since only local region is initialized
+    Assert.assertNull(
         getEntry(
             heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(),
             TEST_STORE,
