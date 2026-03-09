@@ -624,7 +624,7 @@ public class DaVinciClientRecordTransformerFilterTest {
   }
 
   private static VeniceProperties buildRecordTransformerBackendConfig(boolean pushStatusStoreEnabled) {
-    return DaVinciClientRecordTransformerTest.buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
+    return DaVinciClusterFixture.buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
   }
 
   private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {

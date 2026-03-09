@@ -49,6 +49,9 @@ public class PerClusterInternalRTStoreInitializationRoutine implements ClusterLe
      * its local-VT subscription starts past the controller's TopicSwitch, the leader never
      * sees any TopicSwitch at all. Without a TopicSwitch the leader never transitions to the
      * real-time topic, and the push remains stuck at END_OF_PUSH_RECEIVED indefinitely.
+     *
+     * Setting the source to {@code multiClusterConfigs.getRegionName()} (which always returns
+     * the local region name) ensures the leader consumes the local VT directly.
      */
     UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setHybridOffsetLagThreshold(100L)
         .setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7))

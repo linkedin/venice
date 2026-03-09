@@ -9,7 +9,7 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
  * Shared test fixture for ZkRouters tests. Encapsulates per-test ZkServer, ZkClient,
  * and HelixAdapterSerializer creation/teardown.
  */
-public class ZkRoutersTestFixture {
+public class ZkRoutersTestFixture implements AutoCloseable {
   private ZkClient zkClient;
   private ZkServerWrapper zkServerWrapper;
   private String clusterName;
@@ -22,7 +22,8 @@ public class ZkRoutersTestFixture {
     zkClient = new ZkClient(zkServerWrapper.getAddress());
   }
 
-  public void tearDown() {
+  @Override
+  public void close() {
     zkClient.close();
     zkServerWrapper.close();
   }

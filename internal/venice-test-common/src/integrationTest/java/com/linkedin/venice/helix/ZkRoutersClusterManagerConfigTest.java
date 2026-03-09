@@ -19,7 +19,7 @@ public class ZkRoutersClusterManagerConfigTest {
 
   @AfterMethod
   public void cleanUp() {
-    fixture.tearDown();
+    fixture.close();
   }
 
   @Test

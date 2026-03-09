@@ -70,7 +70,8 @@ jobs:
         run: |
           python scripts/ci/rebalance_test_shards.py \
             --timing-dir timing-data/ \
-            --target-time 360
+            --target-time 360 \
+            --fork-overhead 20
 
       - name: Regenerate CI workflow
         run: ./gradlew generateGHCI
@@ -78,7 +79,7 @@ jobs:
       - name: Check for changes
         id: check-changes
         run: |
-          if git diff --quiet internal/venice-test-common/test-shard-assignments.json .github/workflows/VeniceCI-E2ETests.yml; then
+          if git diff --ignore-matching-lines='_generated_at' --quiet internal/venice-test-common/test-shard-assignments.json .github/workflows/VeniceCI-E2ETests.yml; then
             echo "No shard assignment changes detected."
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else

@@ -192,7 +192,7 @@ public class TestMaterializedViewConsumerEndToEnd extends AbstractMultiRegionTes
     }
   }
 
-  public void testBatchOnlyNoViewWithCDCConsumer(boolean isStatefulClient) throws Exception {
+  private void testBatchOnlyNoViewWithCDCConsumer(boolean isStatefulClient) throws Exception {
     // Create a batch only store with no view and run batch push job with 100 records
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);

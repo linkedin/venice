@@ -100,12 +100,13 @@ public class VeniceParentHelixAdminSchemaRollbackTest {
 
       // Check that child version status is marked as ERROR after rollback
       for (VeniceMultiClusterWrapper childDatacenter: multiRegionMultiClusterWrapper.getChildRegions()) {
-        ControllerClient childControllerClient =
-            new ControllerClient(clusterName, childDatacenter.getControllerConnectString());
-        StoreResponse store = childControllerClient.getStore(storeName);
-        Optional<Version> version = store.getStore().getVersion(2);
-        assertNotNull(version);
-        assertEquals(version.get().getStatus(), VersionStatus.ERROR);
+        try (ControllerClient childControllerClient =
+            new ControllerClient(clusterName, childDatacenter.getControllerConnectString())) {
+          StoreResponse store = childControllerClient.getStore(storeName);
+          Optional<Version> version = store.getStore().getVersion(2);
+          assertNotNull(version);
+          assertEquals(version.get().getStatus(), VersionStatus.ERROR);
+        }
       }
 
       // Create version 3

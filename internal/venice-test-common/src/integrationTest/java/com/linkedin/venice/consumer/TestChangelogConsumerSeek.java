@@ -148,8 +148,8 @@ public class TestChangelogConsumerSeek {
 
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
-    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap();
-    Map<Integer, VeniceChangeCoordinate> partitionToChangeCoordinateMap = new HashMap();
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap<>();
+    Map<Integer, VeniceChangeCoordinate> partitionToChangeCoordinateMap = new HashMap<>();
 
     try (VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {

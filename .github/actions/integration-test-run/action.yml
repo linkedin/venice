@@ -51,8 +51,8 @@ runs:
         root = tree.getroot()
         for tc in root.iter('testcase'):
             if tc.find('failure') is not None or tc.find('error') is not None:
-                cls = tc.get('classname','')
-                name = tc.get('name','')
+                cls = tc.get('classname','').replace('|', '\\|')
+                name = tc.get('name','').replace('|', '\\|')
                 time = tc.get('time','')
                 print(f'| {cls} | {name} | {time}s |')
         PY

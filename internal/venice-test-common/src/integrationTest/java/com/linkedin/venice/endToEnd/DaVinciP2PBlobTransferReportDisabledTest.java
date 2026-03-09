@@ -69,7 +69,6 @@ import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -90,13 +89,9 @@ public class DaVinciP2PBlobTransferReportDisabledTest {
     Utils.closeQuietlyWithErrorLogged(fixture);
   }
 
-  @DataProvider(name = "blobTransferReportDisabled")
-  public static Object[][] blobTransferReportDisabled() {
-    return new Object[][] { { false, true }, { false, false } };
-  }
-
-  @Test(timeOut = 2 * TEST_TIMEOUT, dataProvider = "blobTransferReportDisabled")
-  public void testBlobP2PTransferAmongDVC(boolean batchPushReportEnable, Boolean isD2ClientEnabled) throws Exception {
+  @Test(timeOut = 2 * TEST_TIMEOUT)
+  public void testBlobP2PTransferAmongDVC() throws Exception {
+    boolean batchPushReportEnable = false;
     String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
     String zkHosts = cluster.getZk().getAddress();
     int port1 = TestUtils.getFreePort();
@@ -205,7 +200,10 @@ public class DaVinciP2PBlobTransferReportDisabledTest {
       // Case 2: Restart the second Da Vinci client to see if it can re-bootstrap from the first one with retained old
       // data.
       client2.close();
-      // wait and restart, and verify old data is retained before subscribing
+      // Brief pause after close to ensure any async cleanup has time to execute (or not).
+      // We then verify the partition folder was NOT cleaned up — this tests retention behavior.
+      // A longer deterministic wait isn't useful here since we're asserting a negative condition
+      // (nothing should be deleted), and 3s is enough for any async deletion to have fired.
       Thread.sleep(3000);
       for (int i = 0; i < 3; i++) {
         // Verify that the folder is not clean up.

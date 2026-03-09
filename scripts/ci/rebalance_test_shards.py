@@ -11,13 +11,13 @@ Output:
 
 Usage:
   # From extracted CI artifacts (tar.gz already unpacked):
-  python scripts/ci/rebalance_test_shards.py --artifacts-dir ci-artifacts/ --target-time 600
+  python scripts/ci/rebalance_test_shards.py --artifacts-dir ci-artifacts/ --target-time 360
 
   # From structured timing JSON:
-  python scripts/ci/rebalance_test_shards.py --timing-dir build/test-timings/ --target-time 600
+  python scripts/ci/rebalance_test_shards.py --timing-dir build/test-timings/ --target-time 360
 
   # Dry run (print proposed shards without writing):
-  python scripts/ci/rebalance_test_shards.py --artifacts-dir ci-artifacts/ --target-time 600 --dry-run
+  python scripts/ci/rebalance_test_shards.py --artifacts-dir ci-artifacts/ --target-time 360 --dry-run
 """
 
 import argparse
@@ -393,8 +393,8 @@ def main():
     parser.add_argument(
         "--target-time",
         type=float,
-        default=600,
-        help="Target max time per shard in seconds (default: 600 = 10min)",
+        default=360,
+        help="Target max time per shard in seconds (default: 360 = 6min)",
     )
     parser.add_argument(
         "--repo-root",
@@ -408,8 +408,8 @@ def main():
     parser.add_argument(
         "--fork-overhead",
         type=float,
-        default=10,
-        help="Per-test-class JVM fork overhead in seconds (default: 10). "
+        default=20,
+        help="Per-test-class JVM fork overhead in seconds (default: 20). "
         "With forkEvery=1, each test class spawns a new JVM.",
     )
     parser.add_argument(
