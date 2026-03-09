@@ -89,6 +89,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
@@ -1412,65 +1413,48 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testDemotionTriggeredLatchReleaseIsIdempotent() throws Exception {
+  public void testStopTrackingCurrentVersionIngestionOnDemotion() throws Exception {
     LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
 
-    AggVersionedIngestionStats mockVersionedIngestionStats = mock(AggVersionedIngestionStats.class);
-    HostLevelIngestionStats mockHostLevelStats = mock(HostLevelIngestionStats.class);
-    AtomicBoolean emitTehutiMetrics = new AtomicBoolean(false);
-    setField(storeIngestionTask, "versionedIngestionStats", mockVersionedIngestionStats);
-    setField(storeIngestionTask, "hostLevelIngestionStats", mockHostLevelStats);
-    setField(storeIngestionTask, "emitTehutiMetrics", emitTehutiMetrics);
-    setField(storeIngestionTask, "storeName", "foo");
-    setField(storeIngestionTask, "isCurrentVersion", (BooleanSupplier) () -> false);
-
-    doReturn("foo").when(storeIngestionTask).getStoreName();
-    doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriter();
-    doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriterForRealTime();
-    doCallRealMethod().when(storeIngestionTask).isEmitTehutiMetricsEnabled();
-    doReturn(TimeUnit.DAYS.toMillis(1)).when(storeIngestionTask).getBootstrapTimeoutInMs();
-    doReturn(new PubSubTopicImpl("foo_v1")).when(storeIngestionTask).getVersionTopic();
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(true).when(serverConfig).isResubscriptionTriggeredByVersionIngestionContextChangeEnabled();
+    doReturn(0).when(serverConfig).getResubscriptionCheckIntervalInSeconds();
+    setField(storeIngestionTask, "serverConfig", serverConfig);
+    setField(storeIngestionTask, "versionBootstrapCompleted", true);
+    setField(storeIngestionTask, "lastResubscriptionCheckTimestamp", 0L);
+    setField(storeIngestionTask, "versionRole", VersionRole.CURRENT);
+    setField(storeIngestionTask, "workloadType", PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     setVersion(storeIngestionTask, 1);
 
-    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    doReturn(true).when(storeIngestionTask).isHybridMode();
+    doCallRealMethod().when(storeIngestionTask).refreshIngestionContextIfChanged(any(Store.class));
+
     Store store = mock(Store.class);
     doReturn(5).when(store).getCurrentVersion();
-    doReturn(null).when(store).getVersion(anyInt());
-    doReturn(store).when(storeRepository).getStore(anyString());
-    doReturn(storeRepository).when(storeIngestionTask).getStoreRepository();
-    setField(storeIngestionTask, "storeRepository", storeRepository);
+    doReturn(false).when(store).isWriteComputationEnabled();
 
-    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-    pcsMap.put(1, pcs);
-    doReturn(pcsMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
-    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
-    doReturn(false).when(pcs).isComplete();
-    doReturn(false).when(pcs).isErrorReported();
-    doReturn(1).when(pcs).getPartition();
-    doReturn("foo_v1_1").when(pcs).getReplicaId();
-    doReturn(System.currentTimeMillis()).when(pcs).getConsumptionStartTimeInMs();
     doReturn(true).when(pcs).isLatchCreated();
     AtomicBoolean latchReleased = new AtomicBoolean(false);
     doAnswer(invocation -> latchReleased.get()).when(pcs).isLatchReleased();
-    doAnswer(invocation -> {
-      latchReleased.set(true);
-      return null;
-    }).when(pcs).releaseLatch();
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(1, pcs);
+    setField(storeIngestionTask, "partitionConsumptionStateMap", pcsMap);
 
     IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
     doAnswer(invocation -> {
-      PartitionConsumptionState partitionConsumptionState = invocation.getArgument(0);
-      partitionConsumptionState.releaseLatch();
+      latchReleased.set(true);
       return null;
-    }).when(mockDispatcher).reportStoppedConsumptionForDemotedVersion(any(PartitionConsumptionState.class));
+    }).when(mockDispatcher).reportCompleted(any(PartitionConsumptionState.class));
     setField(storeIngestionTask, "ingestionNotificationDispatcher", mockDispatcher);
 
-    doCallRealMethod().when(storeIngestionTask).checkLongRunningTaskState();
-    storeIngestionTask.checkLongRunningTaskState();
-    storeIngestionTask.checkLongRunningTaskState();
+    // First call: versionRole transitions CURRENT -> BACKUP, reportCompleted should be called once
+    storeIngestionTask.refreshIngestionContextIfChanged(store);
+    verify(mockDispatcher, times(1)).reportCompleted(eq(pcs));
 
-    verify(mockDispatcher, times(1)).reportStoppedConsumptionForDemotedVersion(eq(pcs));
+    // Second call: versionRole is already BACKUP, no further latch release
+    storeIngestionTask.refreshIngestionContextIfChanged(store);
+    verify(mockDispatcher, times(1)).reportCompleted(eq(pcs));
   }
 
   private static void addStandbyPcs(Map<Integer, PartitionConsumptionState> pcsMap, int partition, long ageMs) {
