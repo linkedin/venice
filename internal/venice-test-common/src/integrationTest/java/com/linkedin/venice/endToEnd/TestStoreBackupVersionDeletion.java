@@ -27,6 +27,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -74,6 +75,13 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
     veniceHelixAdmin =
         (VeniceHelixAdmin) childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
     childControllerClient = new ControllerClient(CLUSTER_NAME, childDatacenters.get(0).getControllerConnectString());
+  }
+
+  @Override
+  @AfterClass(alwaysRun = true)
+  public void cleanUp() {
+    Utils.closeQuietlyWithErrorLogged(childControllerClient);
+    super.cleanUp();
   }
 
   @Test(timeOut = TEST_TIMEOUT)

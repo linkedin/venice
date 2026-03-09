@@ -127,9 +127,16 @@ def discover_test_classes(repo_root: str) -> set[str]:
             has_test = bool(re.search(r"@Test\b", content))
             is_abstract = bool(re.search(r"\babstract\s+class\b", content))
 
-            # Extract parent class (simple name) from "extends ParentClass"
-            parent_match = re.search(r"\bextends\s+(\w+)", content)
-            parent_simple = parent_match.group(1) if parent_match else None
+            # Extract parent class from "class Foo extends ParentClass"
+            parent_simple = None
+            for line in content.splitlines():
+                parent_match = re.search(
+                    r"\bclass\s+\w+\s+extends\s+(\w+)",
+                    line,
+                )
+                if parent_match:
+                    parent_simple = parent_match.group(1)
+                    break
 
             class_info[class_name] = {
                 "has_test": has_test,

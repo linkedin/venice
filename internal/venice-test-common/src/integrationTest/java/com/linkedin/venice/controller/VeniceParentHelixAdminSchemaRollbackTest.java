@@ -4,7 +4,6 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -104,7 +103,7 @@ public class VeniceParentHelixAdminSchemaRollbackTest {
             new ControllerClient(clusterName, childDatacenter.getControllerConnectString())) {
           StoreResponse store = childControllerClient.getStore(storeName);
           Optional<Version> version = store.getStore().getVersion(2);
-          assertNotNull(version);
+          Assert.assertTrue(version.isPresent(), "Version 2 should exist after rollback");
           assertEquals(version.get().getStatus(), VersionStatus.ERROR);
         }
       }
