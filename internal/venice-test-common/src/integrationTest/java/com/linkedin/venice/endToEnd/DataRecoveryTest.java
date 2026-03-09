@@ -16,6 +16,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -140,9 +141,13 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
             parentControllerClient.isStoreVersionReadyForDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty());
         Assert.assertTrue(readinessResponse.isReady(), readinessResponse.getReason());
       });
-      // Initiate data recovery
-      Assert.assertFalse(
-          parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty()).isError());
+      // Initiate data recovery. The readiness check queries the parent controller, but dataRecovery()
+      // also verifies readiness on the child controller, which may lag behind briefly.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        ControllerResponse dr =
+            parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty());
+        Assert.assertFalse(dr.isError(), dr.getError());
+      });
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         Admin dc1Admin = childDatacenters.get(1).getLeaderController(clusterName).getVeniceAdmin();
         Assert.assertTrue(dc1Admin.getStore(clusterName, storeName).containsVersion(1));
@@ -166,10 +171,13 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
       Assert.assertFalse(
           parentControllerClient.prepareDataRecovery(src, dest, storeName, VERSION_ID_UNSET, Optional.empty())
               .isError());
-      // Initiate data recovery, a new version will be created in dest fabric.
-      Assert.assertFalse(
-          parentControllerClient.dataRecovery(src, dest, storeName, VERSION_ID_UNSET, false, true, Optional.empty())
-              .isError());
+      // Initiate data recovery, a new version will be created in dest fabric. Retry briefly in case
+      // the child controller hasn't fully cleaned up the previous version's artifacts yet.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        ControllerResponse dr =
+            parentControllerClient.dataRecovery(src, dest, storeName, VERSION_ID_UNSET, false, true, Optional.empty());
+        Assert.assertFalse(dr.isError(), dr.getError());
+      });
       int finalVersion = version;
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         Assert.assertEquals(destColoClient.getStore(storeName).getStore().getCurrentVersion(), finalVersion);
@@ -307,9 +315,13 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
             parentControllerClient.isStoreVersionReadyForDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty());
         Assert.assertTrue(readinessResponse.isReady(), readinessResponse.getReason());
       });
-      // Initiate data recovery
-      Assert.assertFalse(
-          parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty()).isError());
+      // Initiate data recovery. The parent readiness check above queries the parent controller, but
+      // dataRecovery() also verifies readiness on the child controller, which may lag behind briefly.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        ControllerResponse response =
+            parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty());
+        Assert.assertFalse(response.isError(), response.getError());
+      });
       TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient, 60, TimeUnit.SECONDS);
 
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
