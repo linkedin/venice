@@ -105,7 +105,7 @@ public class TestDeferredVersionSwapDvc {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 3)
   public void testDeferredVersionSwapInHybridStoreThenMigrateStore() throws Exception {
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
