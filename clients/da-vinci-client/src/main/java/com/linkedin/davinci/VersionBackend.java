@@ -137,6 +137,9 @@ public class VersionBackend {
     }
     for (Map.Entry<Integer, CompletableFuture<Void>> entry: partitionFutures.entrySet()) {
       entry.getValue().cancel(true);
+      // Clean up per-replica state in the ingestion backend to prevent stale RUNNING state on restart
+      String replicaId = Utils.getReplicaId(version.kafkaTopicName(), entry.getKey());
+      backend.getIngestionBackend().removeReplicaState(replicaId);
     }
     try {
       backend.getIngestionBackend().shutdownIngestionTask(version.kafkaTopicName());

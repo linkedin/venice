@@ -961,4 +961,23 @@ public abstract class KafkaStoreIngestionServiceTest {
       service.close();
     }
   }
+
+  @Test
+  public void testShutdownStoreIngestionTaskRemovesRecordTransformerConfig() {
+    String topicName = "test-store_v1";
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+
+    // Register a record transformer config
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
+    kafkaStoreIngestionService.registerRecordTransformerConfig(storeName, recordTransformerConfig);
+    assertNotNull(kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName));
+
+    // Shutdown ingestion task (no task exists, but should still clean up the config)
+    kafkaStoreIngestionService.shutdownStoreIngestionTask(topicName);
+
+    // Verify the record transformer config is removed
+    assertNull(kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName));
+  }
 }

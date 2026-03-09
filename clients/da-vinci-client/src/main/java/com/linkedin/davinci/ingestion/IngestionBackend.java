@@ -67,6 +67,12 @@ public interface IngestionBackend extends Closeable {
   void setStorageEngineReference(String topicName, AtomicReference<StorageEngine> storageEngineReference);
 
   /**
+   * Remove per-replica state (consumption context and locks) for the given replicaId.
+   * This prevents stale RUNNING state from blocking re-subscription on restart.
+   */
+  void removeReplicaState(String replicaId);
+
+  /**
    * Check whether there are any current version bootstrapping or not.
    */
   boolean hasCurrentVersionBootstrapping();

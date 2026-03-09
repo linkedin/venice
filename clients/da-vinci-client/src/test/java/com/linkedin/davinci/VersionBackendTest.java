@@ -245,6 +245,68 @@ public class VersionBackendTest {
   }
 
   @Test
+  public void testCloseRemovesReplicaState() {
+    DaVinciBackend mockDaVinciBackend = mock(DaVinciBackend.class);
+    String storeName = "test_store";
+    Version version = new VersionImpl(storeName, 1);
+    int partitionCount = 6;
+    version.setPartitionCount(partitionCount);
+    StoreBackendStats mockStoreBackendStats = mock(StoreBackendStats.class);
+
+    File baseDataPath = Utils.getTempDataDirectory();
+    VeniceProperties backendConfig = new PropertyBuilder().put(ConfigKeys.CLUSTER_NAME, "test-cluster")
+        .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
+        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
+        .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
+        .put(ConfigKeys.LOCAL_REGION_NAME, "dc-0")
+        .build();
+    VeniceConfigLoader veniceConfigLoader = new VeniceConfigLoader(backendConfig);
+    when(mockDaVinciBackend.getConfigLoader()).thenReturn(veniceConfigLoader);
+
+    StorageService mockStorageService = mock(StorageService.class);
+    when(mockDaVinciBackend.getStorageService()).thenReturn(mockStorageService);
+
+    IngestionBackend mockIngestionBackend = mock(IngestionBackend.class);
+    when(mockDaVinciBackend.getIngestionBackend()).thenReturn(mockIngestionBackend);
+
+    SubscriptionBasedReadOnlyStoreRepository mockStoreRepository = mock(SubscriptionBasedReadOnlyStoreRepository.class);
+    when(mockDaVinciBackend.getStoreRepository()).thenReturn(mockStoreRepository);
+
+    StoreBackend mockStoreBackend = mock(StoreBackend.class);
+    when(mockDaVinciBackend.getStoreOrThrow(anyString())).thenReturn(mockStoreBackend);
+
+    HeartbeatMonitoringService mockHeartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    when(mockDaVinciBackend.getHeartbeatMonitoringService()).thenReturn(mockHeartbeatMonitoringService);
+
+    ZKStore store = TestUtils.populateZKStore(
+        (ZKStore) TestUtils.createTestStore(
+            Long.toString(RANDOM.nextLong()),
+            Long.toString(RANDOM.nextLong()),
+            System.currentTimeMillis()),
+        RANDOM);
+    ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
+    when(mockStoreRepository.getStoreOrThrow(storeName)).thenReturn(readOnlyStore);
+
+    when(mockDaVinciBackend.getIngestionService()).thenReturn(mock(KafkaStoreIngestionService.class));
+    when(mockDaVinciBackend.getExecutor()).thenReturn(mock(java.util.concurrent.ScheduledExecutorService.class));
+    VersionBackend versionBackend = new VersionBackend(mockDaVinciBackend, version, mockStoreBackendStats);
+
+    // Subscribe to partitions
+    Collection<Integer> partitionList = Arrays.asList(0, 1, 2);
+    ComplementSet<Integer> complementSet = ComplementSet.newSet(partitionList);
+    versionBackend.subscribe(complementSet, null, null);
+
+    // Close the version backend
+    versionBackend.close();
+
+    // Verify removeReplicaState was called for each subscribed partition
+    String topicName = version.kafkaTopicName();
+    verify(mockIngestionBackend).removeReplicaState(eq(Utils.getReplicaId(topicName, 0)));
+    verify(mockIngestionBackend).removeReplicaState(eq(Utils.getReplicaId(topicName, 1)));
+    verify(mockIngestionBackend).removeReplicaState(eq(Utils.getReplicaId(topicName, 2)));
+  }
+
+  @Test
   public void testPushStatusDisabledForVersionSpecificClient() {
     DaVinciBackend mockDaVinciBackend = mock(DaVinciBackend.class);
     String storeName = "test_store";

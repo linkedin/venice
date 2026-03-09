@@ -667,8 +667,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
     return context == null ? ReplicaIntendedState.NOT_EXIST : context.state;
   }
 
-  void removeReplicaConsumptionContext(String replicaId) {
+  @Override
+  public void removeReplicaState(String replicaId) {
     replicaContexts.remove(replicaId);
+    consumptionLocks.remove(replicaId);
   }
 
   /**
