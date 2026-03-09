@@ -18,6 +18,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -87,7 +88,11 @@ public class LeaderFollowerPartitionStateModelTest {
     partitionPushStatusAccessorFuture = CompletableFuture.completedFuture(mock(HelixPartitionStatusAccessor.class));
     stateTransitionStats = mock(ParticipantStateTransitionStats.class);
     heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
-    leaderFollowerPartitionStateModel = new LeaderFollowerPartitionStateModel(
+    leaderFollowerPartitionStateModel = buildModel(notifier);
+  }
+
+  private LeaderFollowerPartitionStateModel buildModel(LeaderFollowerIngestionProgressNotifier notifier) {
+    return new LeaderFollowerPartitionStateModel(
         ingestionBackend,
         storeAndServerConfigs,
         partition,
@@ -367,33 +372,18 @@ public class LeaderFollowerPartitionStateModelTest {
    */
   @Test
   public void testOnStandbyCompletionUponDemotionToBackupVersion() throws Exception {
-    LeaderFollowerIngestionProgressNotifier notifier = new LeaderFollowerIngestionProgressNotifier();
-
     Store store = mock(Store.class);
-    // Version starts as the current version so the latch is created.
-    when(store.getCurrentVersion()).thenReturn(storeVersion);
-    // Use a large bootstrap timeout so the latch await does not expire during the test.
-    when(store.getBootstrapToOnlineTimeoutInHours()).thenReturn(24);
+    when(store.getCurrentVersion()).thenReturn(storeVersion); // Version starts as current so the latch is created
+    when(store.getBootstrapToOnlineTimeoutInHours()).thenReturn(24); // large timeout for latch await
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+    LeaderFollowerIngestionProgressNotifier notifier = new LeaderFollowerIngestionProgressNotifier();
+    LeaderFollowerPartitionStateModel model = buildModel(notifier);
 
-    LeaderFollowerPartitionStateModel model = new LeaderFollowerPartitionStateModel(
-        ingestionBackend,
-        storeAndServerConfigs,
-        partition,
-        notifier,
-        metadataRepo,
-        partitionPushStatusAccessorFuture,
-        "instanceName",
-        stateTransitionStats,
-        heartbeatMonitoringService,
-        resourceName);
-
+    // Start the OFFLINE -> STANDBY transition in a background thread which should be blocked in
+    // waitConsumptionCompleted, because this is the current version,
     Message message = mock(Message.class);
     when(message.getResourceName()).thenReturn(resourceName);
     NotificationContext context = mock(NotificationContext.class);
-
-    // Start OFFLINE -> STANDBY in a background thread. Because this is the current version,
-    // the transition creates a latch and blocks in waitConsumptionCompleted.
     CompletableFuture<Void> transitionFuture =
         CompletableFuture.runAsync(() -> model.onBecomeStandbyFromOffline(message, context));
 
@@ -409,16 +399,11 @@ public class LeaderFollowerPartitionStateModelTest {
     // Simulate CURRENT -> BACKUP version role flip: a newer version has been promoted.
     when(store.getCurrentVersion()).thenReturn(storeVersion + 1);
 
-    // In the real system the ingestion task's reportIfCatchUpVersionTopicOffset now fires but
-    // re-checks isCurrentVersion (now false for a backup) and skips reportCompleted(), so
-    // notifier.completed() is never called. The ingestion task should emit a stop-like notification
-    // to release the latch when this version is demoted to backup.
-    notifier.stopped(resourceName, partition, null);
+    // Simulate StoreIngestionTask.stopTrackingCurrentVersionIngestion() being called
+    notifier.completed(resourceName, partition, null);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, transitionFuture::isDone);
-    transitionFuture.get(5, TimeUnit.SECONDS);
-    assertEquals(
+    assertNull(
         notifier.getIngestionCompleteFlag(resourceName, partition),
-        null,
         "Latch should be released/removed after current version is demoted");
   }
 

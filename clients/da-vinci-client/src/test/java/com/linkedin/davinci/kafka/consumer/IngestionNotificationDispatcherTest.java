@@ -90,5 +90,4 @@ public class IngestionNotificationDispatcherTest {
     Mockito.doReturn(false).when(pcs).isCurrentVersion();
     dispatcher.reportError(Collections.singletonList(pcs), "fake ingestion error", mock(VeniceException.class));
   }
-
 }

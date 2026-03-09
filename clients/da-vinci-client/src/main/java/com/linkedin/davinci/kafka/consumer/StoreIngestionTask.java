@@ -1866,7 +1866,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void stopTrackingCurrentVersionIngestion() {
     for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
       if (pcs.isLatchCreated() && !pcs.isLatchReleased()) {
-        ingestionNotificationDispatcher.reportCompleted(pcs); // releases the latch and fixes ingestion state tracking
+        ingestionNotificationDispatcher.reportStopped(pcs); // releases the latch and fixes ingestion state tracking
       }
     }
   }

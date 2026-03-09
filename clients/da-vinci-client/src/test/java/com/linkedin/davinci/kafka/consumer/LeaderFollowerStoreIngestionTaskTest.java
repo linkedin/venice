@@ -1415,37 +1415,26 @@ public class LeaderFollowerStoreIngestionTaskTest {
   @Test
   public void testStopTrackingCurrentVersionIngestionOnDemotion() throws Exception {
     LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     doReturn(true).when(serverConfig).isResubscriptionTriggeredByVersionIngestionContextChangeEnabled();
     doReturn(0).when(serverConfig).getResubscriptionCheckIntervalInSeconds();
     setField(storeIngestionTask, "serverConfig", serverConfig);
-    setField(storeIngestionTask, "versionBootstrapCompleted", true);
-    setField(storeIngestionTask, "lastResubscriptionCheckTimestamp", 0L);
     setField(storeIngestionTask, "versionRole", VersionRole.CURRENT);
-    setField(storeIngestionTask, "workloadType", PartitionReplicaIngestionContext.WorkloadType.NON_AA_OR_WRITE_COMPUTE);
     setVersion(storeIngestionTask, 1);
-
     doReturn(true).when(storeIngestionTask).isHybridMode();
     doCallRealMethod().when(storeIngestionTask).refreshIngestionContextIfChanged(any(Store.class));
 
     Store store = mock(Store.class);
     doReturn(5).when(store).getCurrentVersion();
-    doReturn(false).when(store).isWriteComputationEnabled();
 
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     doReturn(true).when(pcs).isLatchCreated();
-    AtomicBoolean latchReleased = new AtomicBoolean(false);
-    doAnswer(invocation -> latchReleased.get()).when(pcs).isLatchReleased();
+    doReturn(false).when(pcs).isLatchReleased();
     VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
     pcsMap.put(1, pcs);
     setField(storeIngestionTask, "partitionConsumptionStateMap", pcsMap);
 
     IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
-    doAnswer(invocation -> {
-      latchReleased.set(true);
-      return null;
-    }).when(mockDispatcher).reportCompleted(any(PartitionConsumptionState.class));
     setField(storeIngestionTask, "ingestionNotificationDispatcher", mockDispatcher);
 
     // First call: versionRole transitions CURRENT -> BACKUP, reportCompleted should be called once
