@@ -325,6 +325,11 @@ public class DaVinciBackend implements Closeable {
         blobTransferManager = null;
       }
 
+      // Inject blob transfer manager into ingestion service so SIT can use it
+      if (blobTransferManager != null) {
+        ingestionService.setBlobTransferManager(blobTransferManager);
+      }
+
       bootstrap();
 
       storeRepository.registerStoreDataChangedListener(storeChangeListener);
@@ -406,7 +411,6 @@ public class DaVinciBackend implements Closeable {
         storageMetadataService,
         ingestionService,
         getStorageService(),
-        blobTransferManager,
         configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
   }

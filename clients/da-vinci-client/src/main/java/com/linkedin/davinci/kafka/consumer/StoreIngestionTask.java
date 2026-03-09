@@ -456,6 +456,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean skipValidationsForDaVinciClientEnabled = false;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
 
+  // Helper encapsulating blob transfer utility methods. Null when blob transfer is not configured.
+  protected final BlobTransferIngestionHelper blobTransferHelper;
+
   public StoreIngestionTask(
       StorageService storageService,
       StoreIngestionTaskFactory.Builder builder,
@@ -729,6 +732,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
     this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
+    this.blobTransferHelper = builder.getBlobTransferHelper(storageService);
   }
 
   @VisibleForTesting
@@ -2496,7 +2500,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
 
         // Load the VT segments from the offset record into the appropriate data integrity validator
-        getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
+        initDataIntegrityValidatorForPartition(partition, offsetRecord);
+
+        // check blob transfer config and trigger transfer async
+        if (shouldStartBlobTransfer(partition, newPartitionConsumptionState, consumerAction)) {
+          storageUtilizationManager.initPartition(partition);
+          blobTransferHelper.startBlobTransferAsyncForPartition(
+              partition,
+              newPartitionConsumptionState,
+              storageEngine,
+              storeName,
+              versionNumber,
+              storeVersionConfig,
+              kafkaVersionTopic);
+          break;
+        }
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
@@ -2517,64 +2535,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             LatencyUtils.getElapsedTimeFromMsToMs(consumptionStatePrepTimeStart));
         updateLeaderTopicOnFollower(newPartitionConsumptionState);
 
-        // Subscribe to local version topic.
-        PubSubPosition subscribePosition;
-        if (consumerAction.getPubSubPosition() != null) {
-          if (recordTransformer == null) {
-            throw new VeniceException("seekToCheckpoint will not be supported for non-transformed client");
-          }
-          skipValidationsForDaVinciClientEnabled = true;
-          subscribePosition = consumerAction.getPubSubPosition();
-          LOGGER.info("Subscribed to user given partition: {} position: {}", topicPartition, subscribePosition);
-          // report completion immediately for user seek subscription
-          partitionConsumptionStateMap.get(partition).lagHasCaughtUp();
-          reportCompleted(partitionConsumptionStateMap.get(partition), true);
-
-          // Synthesize StoreVersionState when seeking past SOP (SOP was not consumed).
-          // Skip for EARLIEST since SOP will be consumed naturally and populate SVS correctly.
-          if (!PubSubSymbolicPosition.EARLIEST.equals(subscribePosition)
-              && storageEngine.getStoreVersionState() == null) {
-            storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
-              if (previousStoreVersionState != null) {
-                return previousStoreVersionState;
-              }
-              return getNewStoreVersionState(0L, !isHybridMode(), null);
-            });
-          }
-        } else {
-          subscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
-          LOGGER.info("Subscribed to local: {} position: {}", topicPartition, subscribePosition);
-        }
-        consumerSubscribe(
-            topicPartition.getPubSubTopic(),
-            newPartitionConsumptionState,
-            subscribePosition,
-            localKafkaServer);
-
-        if (getServerConfig().isIngestionProgressLoggingEnabled() && !subscribePosition.isSymbolic()) {
-          try {
-            TopicManager topicManager = getTopicManager(localKafkaServer);
-            int percentage = topicManager.getIngestionProgressPercentage(topicPartition, subscribePosition);
-            LOGGER.info(
-                "Subscribed to: {} position: {} latestPosition: {} progress: {}%",
-                topicPartition,
-                subscribePosition,
-                topicManager.getLatestPositionCached(topicPartition),
-                percentage);
-          } catch (Exception e) {
-            // this log message is best-effort. there is no point in throwing an exception for the sake of this.
-            LOGGER.warn("Swallowed an exception when trying to determine progress for {}", topicPartition, e);
-          }
-        } else { // no point in logging progress if it's symbolic (earliest or latest position)
-          LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
-        }
-        storageUtilizationManager.initPartition(partition);
+        // Normal path: subscribe to Kafka directly.
+        executeKafkaSubscribe(consumerAction, topicPartition, partition, newPartitionConsumptionState);
         break;
       case UNSUBSCRIBE:
         LOGGER.info("{} Unsubscribing to: {}", ingestionTaskName, topicPartition);
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
         forceUnSubscribedCount--;
         subscribedCount--;
+        // Cancel any pending blob transfer before unsubscribing
+        if (consumptionState != null && blobTransferHelper != null) {
+          blobTransferHelper.requestPendingBlobTransferCancellation(consumptionState);
+        }
         if (consumptionState != null) {
           consumerUnSubscribeAllTopics(consumptionState);
         }
@@ -2644,11 +2616,205 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
         throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + topic);
       case DROP_PARTITION:
+        // Cancel any pending blob transfer and wait for it to fully stop before dropping,
+        // to ensure Netty is not still writing files when we delete the partition.
+        if (blobTransferHelper != null) {
+          blobTransferHelper.cancelBlobTransferAndAwaitTermination(
+              partition,
+              serverConfig.getStopConsumptionTimeoutInSeconds(),
+              getReplicaId(topic, partition));
+        }
         dropPartitionSynchronously(topicPartition);
         break;
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
     }
+  }
+
+  /**
+   * Determines whether blob transfer should be used for the given partition.
+   * Returns true if blob transfer is configured and the replica is lagged enough to benefit from it.
+   */
+  protected boolean shouldStartBlobTransfer(
+      int partition,
+      PartitionConsumptionState pcs,
+      ConsumerAction consumerAction) {
+    if (blobTransferHelper == null) {
+      return false;
+    }
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    return blobTransferHelper.shouldStartBlobTransfer(
+        consumerAction,
+        store,
+        storeName,
+        versionNumber,
+        partition,
+        pcs.getReplicaId(),
+        isDaVinciClient,
+        hybridStoreConfig.isPresent(),
+        kafkaVersionTopic,
+        pubSubContext);
+  }
+
+  /**
+   * Executes the Kafka subscribe logic
+   * Extracted to allow it to be called both during initial subscribe and after blob transfer completion.
+   */
+  protected void executeKafkaSubscribe(
+      ConsumerAction consumerAction,
+      PubSubTopicPartition topicPartition,
+      int partition,
+      PartitionConsumptionState pcs) {
+    PubSubPosition subscribePosition;
+    if (consumerAction != null && consumerAction.getPubSubPosition() != null) {
+      if (recordTransformer == null) {
+        throw new VeniceException("seekToCheckpoint will not be supported for non-transformed client");
+      }
+      skipValidationsForDaVinciClientEnabled = true;
+      subscribePosition = consumerAction.getPubSubPosition();
+      LOGGER.info("Subscribed to user given partition: {} position: {}", topicPartition, subscribePosition);
+      partitionConsumptionStateMap.get(partition).lagHasCaughtUp();
+      reportCompleted(partitionConsumptionStateMap.get(partition), true);
+
+      if (!PubSubSymbolicPosition.EARLIEST.equals(subscribePosition) && storageEngine.getStoreVersionState() == null) {
+        storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
+          if (previousStoreVersionState != null) {
+            return previousStoreVersionState;
+          }
+          return getNewStoreVersionState(0L, !isHybridMode(), null);
+        });
+      }
+    } else {
+      subscribePosition = getLocalVtSubscribePosition(pcs);
+      LOGGER.info("Subscribed to local: {} position: {}", topicPartition, subscribePosition);
+    }
+    consumerSubscribe(topicPartition.getPubSubTopic(), pcs, subscribePosition, localKafkaServer);
+
+    if (getServerConfig().isIngestionProgressLoggingEnabled() && !subscribePosition.isSymbolic()) {
+      try {
+        TopicManager topicManager = getTopicManager(localKafkaServer);
+        int percentage = topicManager.getIngestionProgressPercentage(topicPartition, subscribePosition);
+        LOGGER.info(
+            "Subscribed to: {} position: {} latestPosition: {} progress: {}%",
+            topicPartition,
+            subscribePosition,
+            topicManager.getLatestPositionCached(topicPartition),
+            percentage);
+      } catch (Exception e) {
+        LOGGER.warn("Swallowed an exception when trying to determine progress for {}", topicPartition, e);
+      }
+    } else {
+      LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
+    }
+    storageUtilizationManager.initPartition(partition);
+  }
+
+  /**
+   * Called from checkLongRunningTaskState() when a blob transfer completes (success or failure).
+   * Creates a fresh PCS from the post-transfer offset record while preserving any leader/follower
+   * and DoL state that may have been set during blob transfer (e.g. STANDBY_TO_LEADER transition),
+   * then performs Kafka subscribe.
+   */
+  protected void completeBlobTransferAndSubscribe(PartitionConsumptionState pcs) {
+    int partition = pcs.getPartition();
+    String replicaId = pcs.getReplicaId();
+    PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
+    CompletableFuture<Void> future = pcs.getPendingBlobTransfer();
+
+    boolean transferSucceeded = !future.isCompletedExceptionally() && !future.isCancelled();
+
+    // Record blob transfer stats
+    blobTransferHelper.updateBlobTransferResponseStats(storeName, versionNumber, transferSucceeded, future);
+
+    if (transferSucceeded) {
+      LOGGER.info("Blob transfer completed successfully for replica: {}. Proceeding with Kafka subscribe.", replicaId);
+    } else {
+      LOGGER.warn("Blob transfer failed for replica: {}. Falling back to Kafka bootstrap from scratch.", replicaId);
+    }
+
+    // Post-transfer directory validation
+    blobTransferHelper
+        .validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partition, transferSucceeded, replicaId);
+
+    // Adjust storage partition: drop the blob-transfer-in-progress partition and create a new one
+    // with default options (RocksDB open, read/write enabled).
+    blobTransferHelper.adjustStoragePartitionWhenBlobTransferComplete(storageEngine, partition, replicaId);
+
+    if (recordTransformer != null) {
+      long startTime = System.nanoTime();
+      recordTransformer.onStartVersionIngestion(partition, isCurrentVersion.getAsBoolean());
+      LOGGER.info(
+          "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {} (after blob transfer)",
+          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+          replicaId);
+
+      startTime = System.nanoTime();
+      recordTransformer.internalOnRecovery(
+          storageEngine,
+          partition,
+          partitionStateSerializer,
+          compressor,
+          pubSubContext,
+          schemaIdToSchemaMap,
+          schemaRepository);
+      LOGGER.info(
+          "DaVinciRecordTransformer onRecovery took {} ms for replica: {} (after blob transfer)",
+          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+          replicaId);
+      recordTransformer.countDownStartConsumptionLatch();
+    }
+
+    // Update PCS
+    // Preserve leader/follower and DoL state from the old PCS — a STANDBY_TO_LEADER transition
+    // may have been processed during blob transfer that we need to carry forward.
+    LeaderFollowerStateType preservedLfState = pcs.getLeaderFollowerState();
+    DolStamp preservedDolStamp = pcs.getDolState();
+
+    // Create a fresh PCS from the post-transfer offset record so that offset, endOfPushReceived,
+    // and other fields derived from the offset record reflect the transferred data.
+    String topic = topicPartition.getPubSubTopic().getName();
+    OffsetRecord newOffsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
+    if (newOffsetRecord == null) {
+      LOGGER.warn("No offset record found after blob transfer for replica: {}. Using empty offset record.", replicaId);
+      newOffsetRecord = new OffsetRecord(partitionStateSerializer, pubSubContext);
+    }
+    PartitionConsumptionState newPcs = new PartitionConsumptionState(
+        topicPartition,
+        newOffsetRecord,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
+        schemaRepository.getKeySchema(storeName).getSchema());
+    newPcs.setCurrentVersionSupplier(isCurrentVersion);
+
+    boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+    if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
+      newPcs.setLatchCreated();
+    }
+
+    // Restore preserved leader/follower and DoL state
+    newPcs.setLeaderFollowerState(preservedLfState);
+    if (preservedDolStamp != null) {
+      newPcs.setDolState(preservedDolStamp);
+    }
+    LOGGER.info(
+        "Created fresh PCS after blob transfer for replica: {}. Restored leader/follower state: {}",
+        replicaId,
+        preservedLfState);
+
+    partitionConsumptionStateMap.put(partition, newPcs);
+
+    // Load the VT segments from the offset record into the data integrity validator
+    initDataIntegrityValidatorForPartition(partition, newOffsetRecord);
+
+    // Run the same consumption state initialization as checkConsumptionStateWhenStart:
+    // set TopicSwitch, beginBatchWrite, timestamps, report restarted, and ready-to-serve check.
+    checkConsumptionStateWhenStart(newOffsetRecord, newPcs);
+    reportIfCatchUpVersionTopicOffset(newPcs);
+    updateLeaderTopicOnFollower(newPcs);
+
+    PubSubPosition subscribePosition = getLocalVtSubscribePosition(newPcs);
+    LOGGER.info("Post-blob-transfer Kafka subscribe for replica: {} at position: {}", replicaId, subscribePosition);
+    consumerSubscribe(topicPartition.getPubSubTopic(), newPcs, subscribePosition, localKafkaServer);
   }
 
   private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {
@@ -5278,6 +5444,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   @VisibleForTesting
   public DataIntegrityValidator getDataIntegrityValidator() {
     return (isGlobalRtDivEnabled()) ? consumerDiv : drainerDiv;
+  }
+
+  /**
+   * Initializes the data integrity validator partition state from the given offset record.
+   * Used during both initial subscription and post-blob-transfer subscription.
+   */
+  protected void initDataIntegrityValidatorForPartition(int partition, OffsetRecord offsetRecord) {
+    getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
   }
 
   /**

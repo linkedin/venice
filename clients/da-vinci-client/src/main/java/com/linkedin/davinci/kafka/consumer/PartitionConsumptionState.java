@@ -303,6 +303,16 @@ public class PartitionConsumptionState {
   private boolean hasResubscribedAfterBootstrapAsCurrentVersion;
 
   /**
+   * Tracks an in-progress blob transfer for this partition. When non-null, blob transfer is in progress
+   * and Kafka subscribe has not yet happened. The SIT main loop's checkLongRunningTaskState() will poll
+   * this future for completion and then perform Kafka subscribe.
+   *
+   * Set during SUBSCRIBE action processing when blob transfer is needed.
+   * Cleared when blob transfer completes (success or failure) or when UNSUBSCRIBE cancels it.
+   */
+  private volatile CompletableFuture<Void> pendingBlobTransfer;
+
+  /**
    * Cached HeartbeatKey references keyed by region, populated during lag monitor setup.
    * Eliminates HeartbeatKey creation and hash computation on the per-record recording path.
    */
@@ -403,6 +413,18 @@ public class PartitionConsumptionState {
 
   public void setCurrentVersionSupplier(BooleanSupplier isCurrentVersion) {
     this.isCurrentVersion = isCurrentVersion;
+  }
+
+  public CompletableFuture<Void> getPendingBlobTransfer() {
+    return this.pendingBlobTransfer;
+  }
+
+  public void setPendingBlobTransfer(CompletableFuture<Void> pendingBlobTransfer) {
+    this.pendingBlobTransfer = pendingBlobTransfer;
+  }
+
+  public boolean isBlobTransferInProgress() {
+    return this.pendingBlobTransfer != null;
   }
 
   public OffsetRecord getOffsetRecord() {

@@ -621,6 +621,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     for (PartitionConsumptionState partitionConsumptionState: getPartitionConsumptionStateMap().values()) {
       final int partition = partitionConsumptionState.getPartition();
 
+      // Check if blob transfer has completed for this partition.
+      // If so, perform post-transfer work and Kafka subscribe on this SIT thread.
+      if (partitionConsumptionState.isBlobTransferInProgress()) {
+        CompletableFuture<Void> blobFuture = partitionConsumptionState.getPendingBlobTransfer();
+        if (blobFuture.isDone()) {
+          completeBlobTransferAndSubscribe(partitionConsumptionState);
+        }
+        // Skip all other checks while blob transfer is in progress (timeout, leader transition, etc.)
+        // since Kafka subscribe hasn't happened yet.
+        continue;
+      }
+
       /**
        * Check whether the ingestion timeout for bootstrapping replicas.
        * For future version, it should fail the push job.
@@ -987,6 +999,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final long DOL_LOOPBACK_TIMEOUT_MS = 10 * 60 * 1000L;
 
   private boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
+    // Block leader switch while blob transfer is in progress
+    if (pcs.isBlobTransferInProgress()) {
+      LOGGER.debug(
+          "canSwitchToLeaderTopic returning false for replica: {} because blob transfer is in progress",
+          pcs.getReplicaId());
+      return false;
+    }
+
     // Check if DoL mechanism is enabled via config (system stores vs user stores)
     DolStamp dolStamp = pcs.getDolState();
     if (shouldUseDolMechanism() && dolStamp != null) {
