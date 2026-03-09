@@ -87,8 +87,8 @@ public class TestChangelogConsumerSeek extends AbstractChangelogConsumerTest {
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
-    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap();
-    Map<Integer, VeniceChangeCoordinate> partitionToChangeCoordinateMap = new HashMap();
+    Map<Integer, PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesMap = new HashMap<>();
+    Map<Integer, VeniceChangeCoordinate> partitionToChangeCoordinateMap = new HashMap<>();
 
     try (VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
         veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1)) {
@@ -236,7 +236,6 @@ public class TestChangelogConsumerSeek extends AbstractChangelogConsumerTest {
       validateVersionSpecificMessages(pubSubMessagesMap, version - 1, numKeys);
 
       // Push version 3 with deferred version swap and subscribe to the future version
-      changeLogConsumer.close();
       pubSubMessagesMap.clear();
       version++;
       TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);

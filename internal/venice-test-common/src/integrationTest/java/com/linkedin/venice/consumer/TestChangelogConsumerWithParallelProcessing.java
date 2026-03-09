@@ -33,7 +33,8 @@ public class TestChangelogConsumerWithParallelProcessing extends TestChangelogCo
 
   @Override
   @Test(enabled = false)
-  public void testNewChangelogConsumerWithNewValueSchema() throws IOException, ExecutionException, InterruptedException {
+  public void testNewChangelogConsumerWithNewValueSchema()
+      throws IOException, ExecutionException, InterruptedException {
   }
 
   @Override
