@@ -133,7 +133,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     String storeName = version.getStoreName();
     int versionNum = version.getNumber();
     long currentTime = System.currentTimeMillis();
-    if (version.isActiveActiveReplicationEnabled()) {
+    if (version.isActiveActiveReplicationEnabled() && !isFollower) {
       for (String region: regionNames) {
         if (Utils.isSeparateTopicRegion(region) && !version.isSeparateRealTimeTopicEnabled()) {
           continue;
