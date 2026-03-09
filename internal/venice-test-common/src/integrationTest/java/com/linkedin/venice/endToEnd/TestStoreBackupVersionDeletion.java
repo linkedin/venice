@@ -114,11 +114,12 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
           childControllerClient,
           30,
           TimeUnit.SECONDS);
-      // repush sourced from v2, so the backup cleanup service should delete v2
+      // repush sourced from v2, so the backup cleanup service should delete v2.
+      // v1 may also be cleaned up depending on timing, so only assert v2 is gone and v3 (current) remains.
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         Store store = veniceHelixAdmin.getStore(CLUSTER_NAME, storeName);
         assertNull(store.getVersion(2), "Version 2 should be deleted (repush source). " + describeStore(store));
-        assertEquals(store.getVersions().size(), 2, "Should have 2 versions (v1, v3). " + describeStore(store));
+        assertEquals(store.getCurrentVersion(), 3, "Current version should be 3. " + describeStore(store));
       });
     }
   }
