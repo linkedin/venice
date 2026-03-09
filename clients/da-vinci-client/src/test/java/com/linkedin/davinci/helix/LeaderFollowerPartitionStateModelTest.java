@@ -17,6 +17,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -40,12 +41,14 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.FileUtils;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -357,6 +360,67 @@ public class LeaderFollowerPartitionStateModelTest {
     // Verify timestamp is reset
     long resetTimestamp = leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs();
     assertEquals(resetTimestamp, -1L, "Timestamp should be reset to -1 after transition");
+  }
+
+  /**
+   * Regression test for the bug where the OFFLINE -> STANDBY consumption latch is permanently
+   * unreleased when the version role flips from CURRENT to BACKUP mid-transition.
+   */
+  @Test
+  public void testLatchNotReleasedWhenCurrentVersionDemotedToBackupDuringOfflineToStandby() throws Exception {
+    LeaderFollowerIngestionProgressNotifier realNotifier = new LeaderFollowerIngestionProgressNotifier();
+
+    Store store = mock(Store.class);
+    // Version starts as the current version so the latch is created.
+    when(store.getCurrentVersion()).thenReturn(storeVersion);
+    // Use a large bootstrap timeout so the latch await does not expire during the test.
+    when(store.getBootstrapToOnlineTimeoutInHours()).thenReturn(24);
+    doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+
+    LeaderFollowerPartitionStateModel model = new LeaderFollowerPartitionStateModel(
+        ingestionBackend,
+        storeAndServerConfigs,
+        partition,
+        realNotifier,
+        metadataRepo,
+        partitionPushStatusAccessorFuture,
+        "instanceName",
+        stateTransitionStats,
+        heartbeatMonitoringService,
+        resourceName);
+
+    Message message = mock(Message.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+    NotificationContext context = mock(NotificationContext.class);
+
+    // Start OFFLINE -> STANDBY in a background thread. Because this is the current version,
+    // the transition creates a latch and blocks in waitConsumptionCompleted.
+    CompletableFuture<Void> transitionFuture =
+        CompletableFuture.runAsync(() -> model.onBecomeStandbyFromOffline(message, context));
+
+    // Wait until the latch is created, confirming the transition is blocking.
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> assertNotNull(
+            realNotifier.getIngestionCompleteFlag(resourceName, partition),
+            "Latch must be created for a current-version OFFLINE->STANDBY transition"));
+    assertFalse(transitionFuture.isDone(), "Transition must be blocked waiting for the latch");
+
+    // Simulate CURRENT -> BACKUP version role flip: a newer version has been promoted.
+    when(store.getCurrentVersion()).thenReturn(storeVersion + 1);
+
+    // In the real system the ingestion task's reportIfCatchUpVersionTopicOffset now fires but
+    // re-checks isCurrentVersion (now false for a backup) and skips reportCompleted(), so
+    // notifier.completed() is never called. The latch must be released via another mechanism.
+    // This assertion fails until the bug is fixed.
+    try {
+      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, transitionFuture::isDone);
+      transitionFuture.get(5, TimeUnit.SECONDS);
+    } finally {
+      // Ensure the background thread is always unblocked, even when the assertion fails (bug present).
+      realNotifier.completed(resourceName, partition, null, "test cleanup");
+    }
   }
 
   /**
