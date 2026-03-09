@@ -552,6 +552,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
         .setAAWCIngestionStorageLookupThreadPool(aaWCIngestionStorageLookupThreadPool)
         .setReusableObjectsSupplier(reusableObjectsSupplier)
+        .setBlobTransferManagerSupplier(() -> this.blobTransferManager)
         .build();
   }
 
@@ -668,9 +669,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         getInternalRecordTransformerConfig(storeName),
         zkHelixAdmin);
 
-    if (blobTransferManager != null) {
-      task.setBlobTransferManager(blobTransferManager);
-    }
     return task;
   }
 

@@ -12,7 +12,6 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -48,8 +47,6 @@ public class DefaultIngestionBackendTest {
   private KafkaStoreIngestionService storeIngestionService;
   @Mock
   private StorageService storageService;
-  @Mock
-  private BlobTransferManager blobTransferManager;
   @Mock
   private VeniceStoreVersionConfig storeConfig;
   @Mock
@@ -87,12 +84,8 @@ public class DefaultIngestionBackendTest {
     when(storageMetadataService.getStoreVersionState(STORE_VERSION)).thenReturn(storeVersionState);
     when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any())).thenReturn(storageEngine);
 
-    ingestionBackend = new DefaultIngestionBackend(
-        storageMetadataService,
-        storeIngestionService,
-        storageService,
-        blobTransferManager,
-        veniceServerConfig);
+    ingestionBackend =
+        new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService, veniceServerConfig);
   }
 
   @Test
@@ -136,13 +129,9 @@ public class DefaultIngestionBackendTest {
   }
 
   @Test
-  public void testStopConsumption_NoBlobTransferManager() {
-    DefaultIngestionBackend backend = new DefaultIngestionBackend(
-        storageMetadataService,
-        storeIngestionService,
-        storageService,
-        null,
-        veniceServerConfig);
+  public void testStopConsumption_MinimalBackend() {
+    DefaultIngestionBackend backend =
+        new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService, veniceServerConfig);
 
     backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
 
@@ -165,8 +154,7 @@ public class DefaultIngestionBackendTest {
   @Test
   public void testHasCurrentVersionBootstrapping() {
     KafkaStoreIngestionService mockIngestionService = mock(KafkaStoreIngestionService.class);
-    DefaultIngestionBackend ingestionBackend =
-        new DefaultIngestionBackend(null, mockIngestionService, null, null, null);
+    DefaultIngestionBackend ingestionBackend = new DefaultIngestionBackend(null, mockIngestionService, null, null);
     doReturn(true).when(mockIngestionService).hasCurrentVersionBootstrapping();
     assertTrue(ingestionBackend.hasCurrentVersionBootstrapping());
 

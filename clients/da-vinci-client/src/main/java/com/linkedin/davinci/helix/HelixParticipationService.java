@@ -139,7 +139,6 @@ public class HelixParticipationService extends AbstractVeniceService
         storageMetadataService,
         (KafkaStoreIngestionService) storeIngestionService,
         storageService,
-        blobTransferManager,
         veniceConfigLoader.getVeniceServerConfig());
   }
 

@@ -463,7 +463,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
 
   /** Blob transfer manager for P2P blob transfer. Null when blob transfer is not configured. */
-  protected volatile BlobTransferManager blobTransferManager;
+  protected final BlobTransferManager blobTransferManager;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -738,6 +738,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
     this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
+    this.blobTransferManager = builder.getBlobTransferManager();
   }
 
   @VisibleForTesting
@@ -758,10 +759,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public StorageEngine getStorageEngine() {
     return storageEngine;
-  }
-
-  public void setBlobTransferManager(BlobTransferManager blobTransferManager) {
-    this.blobTransferManager = blobTransferManager;
   }
 
   public String getIngestionTaskName() {

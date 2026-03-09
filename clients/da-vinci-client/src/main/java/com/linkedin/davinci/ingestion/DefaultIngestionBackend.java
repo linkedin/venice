@@ -1,6 +1,5 @@
 package com.linkedin.davinci.ingestion;
 
-import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -35,18 +34,15 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private final VeniceServerConfig serverConfig;
   private final Map<String, AtomicReference<StorageEngine>> topicStorageEngineReferenceMap =
       new VeniceConcurrentHashMap<>();
-  private final BlobTransferManager blobTransferManager;
 
   public DefaultIngestionBackend(
       StorageMetadataService storageMetadataService,
       KafkaStoreIngestionService storeIngestionService,
       StorageService storageService,
-      BlobTransferManager blobTransferManager,
       VeniceServerConfig serverConfig) {
     this.storageMetadataService = storageMetadataService;
     this.storeIngestionService = storeIngestionService;
     this.storageService = storageService;
-    this.blobTransferManager = blobTransferManager;
     this.serverConfig = serverConfig;
   }
 

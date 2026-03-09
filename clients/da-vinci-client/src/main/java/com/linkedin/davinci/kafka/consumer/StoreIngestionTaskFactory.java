@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -122,6 +123,7 @@ public class StoreIngestionTaskFactory {
     private ExecutorService aaWCWorkLoadProcessingThreadPool;
     private ExecutorService aaWCIngestionStorageLookupThreadPool;
     private Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier;
+    private Supplier<BlobTransferManager> blobTransferManagerSupplier;
 
     private interface Setter {
       void apply();
@@ -323,6 +325,20 @@ public class StoreIngestionTaskFactory {
 
     public Supplier<IngestionTaskReusableObjects> getReusableObjectsSupplier() {
       return this.reusableObjectsSupplier;
+    }
+
+    /**
+     * Sets a supplier for the blob transfer manager. Uses a supplier because the blob transfer
+     * manager is created after the factory is built (due to initialization ordering), so it
+     * needs to be resolved lazily when each SIT is constructed.
+     */
+    public Builder setBlobTransferManagerSupplier(Supplier<BlobTransferManager> blobTransferManagerSupplier) {
+      this.blobTransferManagerSupplier = blobTransferManagerSupplier;
+      return this;
+    }
+
+    public BlobTransferManager getBlobTransferManager() {
+      return blobTransferManagerSupplier != null ? blobTransferManagerSupplier.get() : null;
     }
   }
 }

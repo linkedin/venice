@@ -409,7 +409,6 @@ public class DaVinciBackend implements Closeable {
         storageMetadataService,
         ingestionService,
         getStorageService(),
-        blobTransferManager,
         configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
   }
