@@ -363,12 +363,11 @@ public class LeaderFollowerPartitionStateModelTest {
   }
 
   /**
-   * Regression test for the bug where the OFFLINE -> STANDBY consumption latch is permanently
-   * unreleased when the version role flips from CURRENT to BACKUP mid-transition.
+   * OFFLINE->STANDBY needs to complete when the current version is demoted to a backup version.
    */
   @Test
-  public void testLatchNotReleasedWhenCurrentVersionDemotedToBackupDuringOfflineToStandby() throws Exception {
-    LeaderFollowerIngestionProgressNotifier realNotifier = new LeaderFollowerIngestionProgressNotifier();
+  public void testOnStandbyCompletionUponDemotionToBackupVersion() throws Exception {
+    LeaderFollowerIngestionProgressNotifier notifier = new LeaderFollowerIngestionProgressNotifier();
 
     Store store = mock(Store.class);
     // Version starts as the current version so the latch is created.
@@ -381,7 +380,7 @@ public class LeaderFollowerPartitionStateModelTest {
         ingestionBackend,
         storeAndServerConfigs,
         partition,
-        realNotifier,
+        notifier,
         metadataRepo,
         partitionPushStatusAccessorFuture,
         "instanceName",
@@ -403,7 +402,7 @@ public class LeaderFollowerPartitionStateModelTest {
         5,
         TimeUnit.SECONDS,
         () -> assertNotNull(
-            realNotifier.getIngestionCompleteFlag(resourceName, partition),
+            notifier.getIngestionCompleteFlag(resourceName, partition),
             "Latch must be created for a current-version OFFLINE->STANDBY transition"));
     assertFalse(transitionFuture.isDone(), "Transition must be blocked waiting for the latch");
 
@@ -414,11 +413,11 @@ public class LeaderFollowerPartitionStateModelTest {
     // re-checks isCurrentVersion (now false for a backup) and skips reportCompleted(), so
     // notifier.completed() is never called. The ingestion task should emit a stop-like notification
     // to release the latch when this version is demoted to backup.
-    realNotifier.stopped(resourceName, partition, null);
+    notifier.stopped(resourceName, partition, null);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, transitionFuture::isDone);
     transitionFuture.get(5, TimeUnit.SECONDS);
     assertEquals(
-        realNotifier.getIngestionCompleteFlag(resourceName, partition),
+        notifier.getIngestionCompleteFlag(resourceName, partition),
         null,
         "Latch should be released/removed after current version is demoted");
   }
