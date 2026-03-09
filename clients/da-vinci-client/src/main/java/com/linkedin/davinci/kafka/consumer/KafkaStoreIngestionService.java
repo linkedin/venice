@@ -13,6 +13,7 @@ import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -227,6 +228,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final MetricsRepository metricsRepository;
 
   private final HeartbeatMonitoringService heartbeatMonitoringService;
+  private volatile BlobTransferManager blobTransferManager;
 
   public KafkaStoreIngestionService(
       StorageService storageService,
@@ -825,7 +827,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
       updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
       PubSubTopicPartition partition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
-      storeIngestionTask.subscribePartition(partition, pubSubPosition);
+
+      if (shouldUseBlobTransfer(storeName, storeIngestionTask)) {
+        storeIngestionTask.startBlobTransfer(partition, pubSubPosition);
+      } else {
+        storeIngestionTask.subscribePartition(partition, pubSubPosition);
+      }
     }
     LOGGER.info("Started Consuming - Replica: {}.", Utils.getReplicaId(topic, partitionId));
   }
@@ -1465,6 +1472,62 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public PubSubContext getPubSubContext() {
     return pubSubContext;
+  }
+
+  /**
+   * Sets the BlobTransferManager, which enables blob transfer for store ingestion tasks.
+   * Must be called before any startConsumption calls if blob transfer should be used.
+   */
+  public void setBlobTransferManager(BlobTransferManager blobTransferManager) {
+    this.blobTransferManager = blobTransferManager;
+    ingestionTaskFactory.getBuilder().setBlobTransferManager(blobTransferManager);
+  }
+
+  private boolean shouldUseBlobTransfer(String storeName, StoreIngestionTask storeIngestionTask) {
+    if (blobTransferManager == null || storeIngestionTask.getBlobTransferHelper() == null) {
+      return false;
+    }
+    try {
+      Store store = metadataRepo.getStoreOrThrow(storeName);
+      return shouldEnableBlobTransfer(store);
+    } catch (VeniceNoStoreException e) {
+      LOGGER.warn("Unable to find store metadata for {}. Skipping blob transfer.", storeName);
+      return false;
+    }
+  }
+
+  /**
+   * Determines whether blob transfer should be enabled based on the combined logic of
+   * store-level and server-level configurations.
+   */
+  boolean shouldEnableBlobTransfer(Store store) {
+    if (isDaVinciClient) {
+      if (isBlobTransferDisabledForStore(store.getName())) {
+        return false;
+      }
+      return store.isBlobTransferEnabled();
+    }
+
+    // For server mode, apply the combined logic
+    String blobTransferInServerPolicyForStoreLevel = store.getBlobTransferInServerEnabled();
+    com.linkedin.venice.utils.ConfigCommonUtils.ActivationState blobTransferInServerPolicyForNodeLevel =
+        serverConfig.getBlobTransferReceiverServerPolicy();
+
+    if (com.linkedin.venice.utils.ConfigCommonUtils.ActivationState.DISABLED.name()
+        .equals(blobTransferInServerPolicyForStoreLevel)
+        || com.linkedin.venice.utils.ConfigCommonUtils.ActivationState.DISABLED
+            .equals(blobTransferInServerPolicyForNodeLevel)) {
+      return false;
+    }
+
+    if (com.linkedin.venice.utils.ConfigCommonUtils.ActivationState.ENABLED.name()
+        .equals(blobTransferInServerPolicyForStoreLevel)
+        || com.linkedin.venice.utils.ConfigCommonUtils.ActivationState.ENABLED
+            .equals(blobTransferInServerPolicyForNodeLevel)) {
+      return true;
+    }
+
+    return false;
   }
 
   private boolean ingestionTaskHasAnySubscription(String topic) {

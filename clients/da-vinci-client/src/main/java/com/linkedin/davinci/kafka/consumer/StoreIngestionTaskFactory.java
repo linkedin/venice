@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -43,6 +44,10 @@ public class StoreIngestionTaskFactory {
    */
   private StoreIngestionTaskFactory(Builder builder) {
     this.builder = builder;
+  }
+
+  Builder getBuilder() {
+    return builder;
   }
 
   public StoreIngestionTask getNewIngestionTask(
@@ -122,6 +127,12 @@ public class StoreIngestionTaskFactory {
     private ExecutorService aaWCWorkLoadProcessingThreadPool;
     private ExecutorService aaWCIngestionStorageLookupThreadPool;
     private Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier;
+    /**
+     * BlobTransferManager is set after the builder is built, since it's available only when
+     * DefaultIngestionBackend is constructed (after KafkaStoreIngestionService). Using volatile
+     * to allow late binding without the built-flag guard.
+     */
+    private volatile BlobTransferManager blobTransferManager;
 
     private interface Setter {
       void apply();
@@ -323,6 +334,16 @@ public class StoreIngestionTaskFactory {
 
     public Supplier<IngestionTaskReusableObjects> getReusableObjectsSupplier() {
       return this.reusableObjectsSupplier;
+    }
+
+    public BlobTransferManager getBlobTransferManager() {
+      return blobTransferManager;
+    }
+
+    public Builder setBlobTransferManager(BlobTransferManager blobTransferManager) {
+      // Bypass the built-flag guard since BlobTransferManager is set after build()
+      this.blobTransferManager = blobTransferManager;
+      return this;
     }
   }
 }

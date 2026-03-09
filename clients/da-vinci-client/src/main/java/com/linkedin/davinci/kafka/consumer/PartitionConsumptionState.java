@@ -98,6 +98,7 @@ public class PartitionConsumptionState {
   private volatile boolean completionReported;
   private boolean isSubscribed;
   private boolean isDataRecoveryCompleted;
+  private volatile boolean blobTransferInProgress = false;
   private LeaderFollowerStateType leaderFollowerState;
 
   /**
@@ -1038,6 +1039,14 @@ public class PartitionConsumptionState {
 
   public boolean isDataRecoveryCompleted() {
     return isDataRecoveryCompleted;
+  }
+
+  public boolean isBlobTransferInProgress() {
+    return blobTransferInProgress;
+  }
+
+  public void setBlobTransferInProgress(boolean blobTransferInProgress) {
+    this.blobTransferInProgress = blobTransferInProgress;
   }
 
   public GUID getLeaderGUID() {

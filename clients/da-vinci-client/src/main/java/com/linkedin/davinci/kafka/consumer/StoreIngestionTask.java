@@ -453,6 +453,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean skipAfterBatchPushUnsubEnabled = false;
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
   private final Version version;
+  protected final BlobTransferIngestionHelper blobTransferHelper;
   private boolean skipValidationsForDaVinciClientEnabled = false;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
 
@@ -729,6 +730,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
     this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
+
+    // Initialize blob transfer helper if BlobTransferManager is available
+    com.linkedin.davinci.blobtransfer.BlobTransferManager btm = builder.getBlobTransferManager();
+    if (btm != null) {
+      this.blobTransferHelper =
+          new BlobTransferIngestionHelper(btm, storageService, storageMetadataService, serverConfig);
+    } else {
+      this.blobTransferHelper = null;
+    }
   }
 
   @VisibleForTesting
@@ -892,6 +902,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } else {
       consumerActionsQueue.add(consumerAction);
     }
+  }
+
+  public BlobTransferIngestionHelper getBlobTransferHelper() {
+    return blobTransferHelper;
+  }
+
+  /**
+   * Enqueues a BLOB_TRANSFER consumer action for the given partition.
+   * This creates PCS first, then runs blob transfer asynchronously, and enqueues SUBSCRIBE when done.
+   */
+  public synchronized void startBlobTransfer(
+      PubSubTopicPartition topicPartition,
+      Optional<PubSubPosition> pubSubPosition) {
+    activeReplicaCount.incrementAndGet();
+    LOGGER.info(
+        "Start blob transfer for replica: {}. Active replica count in SIT: {}",
+        topicPartition,
+        activeReplicaCount.get());
+    throwIfNotRunning();
+    int partitionNumber = topicPartition.getPartitionNumber();
+    partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
+        .incrementAndGet();
+    pendingSubscriptionActionCount.incrementAndGet();
+    ConsumerAction consumerAction =
+        new ConsumerAction(ConsumerActionType.BLOB_TRANSFER, topicPartition, nextSeqNum(), true);
+    consumerActionsQueue.add(consumerAction);
   }
 
   public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
@@ -2454,6 +2490,56 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
         subscribedCount++;
 
+        // Check if PCS was created by BLOB_TRANSFER action — if so, reuse it
+        PartitionConsumptionState existingBlobTransferPcs = partitionConsumptionStateMap.get(partition);
+        if (existingBlobTransferPcs != null && existingBlobTransferPcs.isBlobTransferInProgress()) {
+          existingBlobTransferPcs.setBlobTransferInProgress(false);
+          LOGGER.info(
+              "SUBSCRIBE after blob transfer: Reusing existing PCS for replica: {}. Preserving leader/follower state: {}",
+              existingBlobTransferPcs.getReplicaId(),
+              existingBlobTransferPcs.getLeaderFollowerState());
+
+          // Re-read OffsetRecord (updated by blob transfer's updateStorePartitionMetadata)
+          // Create a new PCS with the updated offset record but preserve leader/follower state
+          LeaderFollowerStateType preservedLfState = existingBlobTransferPcs.getLeaderFollowerState();
+          DolStamp preservedDolStamp = existingBlobTransferPcs.getDolState();
+
+          OffsetRecord freshOffsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
+          PartitionConsumptionState freshPcs = new PartitionConsumptionState(
+              topicPartition,
+              freshOffsetRecord,
+              pubSubContext,
+              hybridStoreConfig.isPresent(),
+              schemaRepository.getKeySchema(storeName).getSchema());
+          freshPcs.setCurrentVersionSupplier(isCurrentVersion);
+
+          boolean isFvReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+          if (isCurrentVersion.getAsBoolean() || isFvReady) {
+            freshPcs.setLatchCreated();
+          }
+          // Restore leader/follower state from blob transfer phase
+          freshPcs.setLeaderFollowerState(preservedLfState);
+          if (preservedDolStamp != null) {
+            freshPcs.setDolState(preservedDolStamp);
+          }
+
+          partitionConsumptionStateMap.put(partition, freshPcs);
+          getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, freshOffsetRecord);
+
+          checkConsumptionStateWhenStart(freshOffsetRecord, freshPcs);
+          reportIfCatchUpVersionTopicOffset(freshPcs);
+          updateLeaderTopicOnFollower(freshPcs);
+
+          PubSubPosition subscribePos = getLocalVtSubscribePosition(freshPcs);
+          LOGGER.info(
+              "Subscribing after blob transfer for replica: {} at position: {}",
+              freshPcs.getReplicaId(),
+              subscribePos);
+          consumerSubscribe(topicPartition.getPubSubTopic(), freshPcs, subscribePos, localKafkaServer);
+          storageUtilizationManager.initPartition(partition);
+          break;
+        }
+
         // Get the last persisted Offset record from metadata service
         OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
 
@@ -2552,6 +2638,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case UNSUBSCRIBE:
         LOGGER.info("{} Unsubscribing to: {}", ingestionTaskName, topicPartition);
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
+        // Cancel any in-progress blob transfer for this partition
+        if (consumptionState != null && consumptionState.isBlobTransferInProgress() && blobTransferHelper != null) {
+          LOGGER.info("Cancelling blob transfer for replica: {} during UNSUBSCRIBE", getReplicaId(topic, partition));
+          blobTransferHelper.cancelTransfer(getReplicaId(topic, partition));
+          consumptionState.setBlobTransferInProgress(false);
+        }
         forceUnSubscribedCount--;
         subscribedCount--;
         if (consumptionState != null) {
@@ -2625,9 +2717,82 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case DROP_PARTITION:
         dropPartitionSynchronously(topicPartition);
         break;
+      case BLOB_TRANSFER:
+        handleBlobTransferAction(consumerAction, topicPartition, partition, topic);
+        break;
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
     }
+  }
+
+  /**
+   * Handles the BLOB_TRANSFER consumer action. Creates PCS, starts async blob transfer,
+   * and enqueues SUBSCRIBE when done.
+   */
+  private void handleBlobTransferAction(
+      ConsumerAction consumerAction,
+      PubSubTopicPartition topicPartition,
+      int partition,
+      String topic) throws InterruptedException {
+    // Clear error tracking (same as SUBSCRIBE)
+    partitionIngestionExceptionList.set(partition, null);
+    failedPartitions.remove(partition);
+    storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
+    subscribedCount++;
+
+    // Create PCS (same logic as SUBSCRIBE)
+    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
+    PartitionConsumptionState newPcs = new PartitionConsumptionState(
+        topicPartition,
+        offsetRecord,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
+        schemaRepository.getKeySchema(storeName).getSchema());
+    newPcs.setCurrentVersionSupplier(isCurrentVersion);
+
+    boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+    if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
+      newPcs.setLatchCreated();
+    }
+
+    partitionConsumptionStateMap.put(partition, newPcs);
+    newPcs.setBlobTransferInProgress(true);
+
+    // Load VT segments from offset record into DIV
+    getDataIntegrityValidator()
+        .setPartitionState(com.linkedin.davinci.validation.PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
+
+    String replicaId = getReplicaId(topic, partition);
+    LOGGER.info("BLOB_TRANSFER action: PCS created for replica: {}. Starting blob transfer.", replicaId);
+
+    // Start async blob transfer
+    com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat tableFormat =
+        blobTransferHelper.getRequestTableFormat();
+
+    blobTransferHelper
+        .bootstrapFromBlobs(
+            storeName,
+            versionNumber,
+            partition,
+            tableFormat,
+            hybridStoreConfig.isPresent(),
+            storeVersionConfig,
+            () -> storageMetadataService.getStoreVersionState(kafkaVersionTopic),
+            replicaId,
+            pubSubContext)
+        .whenComplete((result, throwable) -> {
+          if (throwable != null) {
+            LOGGER
+                .warn("Blob transfer failed for replica: {}. Will fall back to Kafka ingestion.", replicaId, throwable);
+          }
+          // Enqueue SUBSCRIBE action to complete the subscription
+          // The SUBSCRIBE handler will detect the existing PCS and reuse it
+          LOGGER.info("Blob transfer completed for replica: {}. Enqueuing SUBSCRIBE action.", replicaId);
+          ConsumerAction subscribeAction = new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), false);
+          consumerActionsQueue.add(subscribeAction);
+        });
+
+    storageUtilizationManager.initPartition(partition);
   }
 
   private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {

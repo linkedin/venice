@@ -33,8 +33,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -53,10 +51,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
       new VeniceConcurrentHashMap<>();
   private final BlobTransferManager blobTransferManager;
 
-  // Per-replica locks to ensure mutual exclusion between blob transfer triggerred consumption start and cancel
-  // operations
-  private final Map<String, Lock> consumptionLocks = new VeniceConcurrentHashMap<>();
-
   // Per-replica consumption state tracking for coordinating start/stop/drop lifecycle
   private final Map<String, ReplicaConsumptionContext> replicaContexts = new VeniceConcurrentHashMap<>();
 
@@ -71,6 +65,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
     this.storageService = storageService;
     this.blobTransferManager = blobTransferManager;
     this.serverConfig = serverConfig;
+
+    // Pass BlobTransferManager to ingestion service so SIT can use it for blob transfer within the action queue
+    if (blobTransferManager != null) {
+      storeIngestionService.setBlobTransferManager(blobTransferManager);
+    }
   }
 
   @Override
@@ -106,67 +105,16 @@ public class DefaultIngestionBackend implements IngestionBackend {
     replicaContext.state = ReplicaIntendedState.RUNNING;
     LOGGER.info("Replica {} state set to RUNNING.", replicaId);
 
-    Runnable runnable = () -> {
-      StorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
-      topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
-        if (storageEngineAtomicReference != null) {
-          storageEngineAtomicReference.set(storageEngine);
-        }
-        return storageEngineAtomicReference;
-      });
-      LOGGER.info("Retrieved storage engine for replica {}. Starting consumption in ingestion service", replicaId);
-      getStoreIngestionService().startConsumption(storeConfig, partition, pubSubPosition);
-      LOGGER.info("Completed starting consumption in ingestion service for replica {}", replicaId);
-    };
-
-    boolean blobTransferActiveInReceiver = shouldEnableBlobTransfer(storeAndVersion.getStore());
-
-    if (!blobTransferActiveInReceiver || blobTransferManager == null) {
-      runnable.run();
-    } else {
-      // Status: null -> TRANSFER_NOT_STARTED
-      blobTransferManager.getTransferStatusTrackingManager().initialTransfer(replicaId);
-
-      BlobTransferTableFormat requestTableFormat =
-          serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
-              ? BlobTransferTableFormat.PLAIN_TABLE
-              : BlobTransferTableFormat.BLOCK_BASED_TABLE;
-
-      // Status: TRANSFER_NOT_STARTED -> TRANSFER_STARTED
-      CompletionStage<Void> bootstrapFuture = bootstrapFromBlobs(
-          storeAndVersion.getStore(),
-          storeAndVersion.getVersion().getNumber(),
-          partition,
-          requestTableFormat,
-          serverConfig.getBlobTransferDisabledOffsetLagThreshold(),
-          serverConfig.getBlobTransferDisabledTimeLagThresholdInMinutes(),
-          storeConfig,
-          svsSupplier,
-          replicaId);
-
-      // Status: (normal case) TRANSFER_STARTED -> TRANSFER_COMPLETED
-      // Status: (cancel in half) TRANSFER_STARTED -> TRANSFER_CANCEL_REQUESTED -> TRANSFER_CANCELLED
-      bootstrapFuture.whenComplete((result, throwable) -> {
-        Lock consumptionLock = consumptionLocks.computeIfAbsent(replicaId, k -> new ReentrantLock());
-        consumptionLock.lock();
-        try {
-          // Check if cancellation is in progress or completed
-          if (blobTransferManager.getTransferStatusTrackingManager().isBlobTransferCancelRequested(replicaId)) {
-            LOGGER.info(
-                "Blob transfer cancellation was requested for replica {}. Discarding bootstrap result and skipping consumption startup.",
-                replicaId);
-            blobTransferManager.getTransferStatusTrackingManager().markTransferCancelled(replicaId);
-            return;
-          }
-
-          blobTransferManager.getTransferStatusTrackingManager().markTransferCompleted(replicaId);
-          runnable.run();
-        } finally {
-          consumptionLock.unlock();
-          LOGGER.info("Released consumption lock for replica {} after transfer completion check.", replicaId);
-        }
-      });
-    }
+    StorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
+    topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
+      if (storageEngineAtomicReference != null) {
+        storageEngineAtomicReference.set(storageEngine);
+      }
+      return storageEngineAtomicReference;
+    });
+    LOGGER.info("Retrieved storage engine for replica {}. Starting consumption in ingestion service", replicaId);
+    getStoreIngestionService().startConsumption(storeConfig, partition, pubSubPosition);
+    LOGGER.info("Completed starting consumption in ingestion service for replica {}", replicaId);
   }
 
   /**
@@ -478,46 +426,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     replicaContext.state = ReplicaIntendedState.STOPPED;
     LOGGER.info("Replica {} state set to STOPPED.", replicaId);
 
-    cancelBlobTransferIfInProgressInternal(storeConfig, partition, replicaId);
     return getStoreIngestionService().stopConsumption(storeConfig, partition);
-  }
-
-  private void cancelBlobTransferIfInProgressInternal(
-      VeniceStoreVersionConfig storeConfig,
-      int partition,
-      String replicaId) {
-    if (blobTransferManager == null) {
-      return;
-    }
-
-    String storeVersion = storeConfig.getStoreVersionName();
-
-    try {
-      StoreVersionInfo storeAndVersion =
-          Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
-      Store store = storeAndVersion.getStore();
-
-      boolean blobTransferActiveInReceiver = shouldEnableBlobTransfer(store);
-
-      if (!blobTransferActiveInReceiver) {
-        return;
-      }
-
-      Lock consumptionLock = consumptionLocks.computeIfAbsent(replicaId, k -> new ReentrantLock());
-      consumptionLock.lock();
-
-      try {
-        blobTransferManager.getTransferStatusTrackingManager().cancelTransfer(replicaId);
-      } finally {
-        consumptionLock.unlock();
-        LOGGER.info("Released consumption lock for replica {} after initiating cancellation", replicaId);
-      }
-    } catch (Exception e) {
-      LOGGER.warn(
-          "Exception while canceling blob transfer for replica {} during OFFLINE transition. Proceeding with state transition.",
-          replicaId,
-          e);
-    }
   }
 
   @Override
@@ -620,7 +529,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
           finalStatus);
     } finally {
       blobTransferManager.getTransferStatusTrackingManager().clearTransferStatusEnum(replicaId);
-      consumptionLocks.remove(replicaId);
     }
   }
 

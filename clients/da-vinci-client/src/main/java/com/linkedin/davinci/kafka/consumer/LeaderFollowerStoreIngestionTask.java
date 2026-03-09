@@ -988,6 +988,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final long DOL_LOOPBACK_TIMEOUT_MS = 10 * 60 * 1000L;
 
   private boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
+    // Block leader switch while blob transfer is in progress
+    if (pcs.isBlobTransferInProgress()) {
+      LOGGER.debug(
+          "canSwitchToLeaderTopic returning false for replica: {} because blob transfer is in progress",
+          pcs.getReplicaId());
+      return false;
+    }
+
     // Check if DoL mechanism is enabled via config (system stores vs user stores)
     DolStamp dolStamp = pcs.getDolState();
     if (shouldUseDolMechanism() && dolStamp != null) {
