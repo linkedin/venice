@@ -1864,11 +1864,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * needs to {@link AbstractPartitionStateModel#waitConsumptionCompleted}.
    */
   private void stopTrackingCurrentVersionIngestion() {
-    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
-      if (pcs.isLatchCreated() && !pcs.isLatchReleased()) {
-        ingestionNotificationDispatcher.reportStopped(pcs); // releases the latch and fixes ingestion state tracking
-      }
-    }
+    partitionConsumptionStateMap.values()
+        .stream()
+        .filter(pcs -> pcs.isLatchCreated() && !pcs.isLatchReleased())
+        .forEach(ingestionNotificationDispatcher::reportStopped); // releases the latch and stops tracking ingestion
   }
 
   private void maybeUnsubscribeCompletedPartitions(Store store) {
