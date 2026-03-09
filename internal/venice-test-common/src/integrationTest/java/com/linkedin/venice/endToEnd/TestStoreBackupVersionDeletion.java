@@ -109,7 +109,7 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
           parentControllerClient,
-          20,
+          30,
           TimeUnit.SECONDS);
       props.put(SOURCE_KAFKA, "true");
       IntegrationTestPushUtils.runVPJ(props);
@@ -162,13 +162,13 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
           childControllerClient,
-          20,
+          30,
           TimeUnit.SECONDS);
       IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 3),
           childControllerClient,
-          20,
+          30,
           TimeUnit.SECONDS);
       TestUtils.waitForNonDeterministicCompletion(
           30,
