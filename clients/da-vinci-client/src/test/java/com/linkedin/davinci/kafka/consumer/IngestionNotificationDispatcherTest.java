@@ -1,6 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -89,5 +91,30 @@ public class IngestionNotificationDispatcherTest {
     Mockito.doReturn(true).when(pcs).isComplete();
     Mockito.doReturn(false).when(pcs).isCurrentVersion();
     dispatcher.reportError(Collections.singletonList(pcs), "fake ingestion error", mock(VeniceException.class));
+  }
+
+  @Test
+  public void testReportStoppedConsumptionForDemotedVersion() {
+    String topic = Utils.getUniqueString("test_v1");
+    int partitionId = 1;
+    VeniceNotifier mockNotifier = mock(VeniceNotifier.class);
+    Queue<VeniceNotifier> notifiers = new ArrayDeque<>();
+    notifiers.add(mockNotifier);
+    IngestionNotificationDispatcher dispatcher =
+        new IngestionNotificationDispatcher(notifiers, topic, () -> false, pcs -> 0);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    Mockito.doReturn(partitionId).when(pcs).getPartition();
+    Mockito.doReturn(false).when(pcs).isLatchReleased();
+
+    dispatcher.reportStoppedConsumptionForDemotedVersion(pcs);
+
+    verify(mockNotifier, times(1)).stopped(topic, partitionId, null);
+    verify(pcs, times(1)).releaseLatch();
+
+    // Idempotency guard: should skip once latch has already been released.
+    Mockito.doReturn(true).when(pcs).isLatchReleased();
+    dispatcher.reportStoppedConsumptionForDemotedVersion(pcs);
+    verify(mockNotifier, times(1)).stopped(topic, partitionId, null);
+    verify(pcs, times(1)).releaseLatch();
   }
 }

@@ -1411,6 +1411,68 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(mockHostLevelStats, times(1)).recordIngestionFailure();
   }
 
+  @Test
+  public void testDemotionTriggeredLatchReleaseIsIdempotent() throws Exception {
+    LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+
+    AggVersionedIngestionStats mockVersionedIngestionStats = mock(AggVersionedIngestionStats.class);
+    HostLevelIngestionStats mockHostLevelStats = mock(HostLevelIngestionStats.class);
+    AtomicBoolean emitTehutiMetrics = new AtomicBoolean(false);
+    setField(storeIngestionTask, "versionedIngestionStats", mockVersionedIngestionStats);
+    setField(storeIngestionTask, "hostLevelIngestionStats", mockHostLevelStats);
+    setField(storeIngestionTask, "emitTehutiMetrics", emitTehutiMetrics);
+    setField(storeIngestionTask, "storeName", "foo");
+    setField(storeIngestionTask, "isCurrentVersion", (BooleanSupplier) () -> false);
+
+    doReturn("foo").when(storeIngestionTask).getStoreName();
+    doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriter();
+    doReturn(Lazy.of(() -> mock(VeniceWriter.class))).when(storeIngestionTask).getVeniceWriterForRealTime();
+    doCallRealMethod().when(storeIngestionTask).isEmitTehutiMetricsEnabled();
+    doReturn(TimeUnit.DAYS.toMillis(1)).when(storeIngestionTask).getBootstrapTimeoutInMs();
+    doReturn(new PubSubTopicImpl("foo_v1")).when(storeIngestionTask).getVersionTopic();
+    setVersion(storeIngestionTask, 1);
+
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    Store store = mock(Store.class);
+    doReturn(5).when(store).getCurrentVersion();
+    doReturn(null).when(store).getVersion(anyInt());
+    doReturn(store).when(storeRepository).getStore(anyString());
+    doReturn(storeRepository).when(storeIngestionTask).getStoreRepository();
+    setField(storeIngestionTask, "storeRepository", storeRepository);
+
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    pcsMap.put(1, pcs);
+    doReturn(pcsMap).when(storeIngestionTask).getPartitionConsumptionStateMap();
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+    doReturn(false).when(pcs).isComplete();
+    doReturn(false).when(pcs).isErrorReported();
+    doReturn(1).when(pcs).getPartition();
+    doReturn("foo_v1_1").when(pcs).getReplicaId();
+    doReturn(System.currentTimeMillis()).when(pcs).getConsumptionStartTimeInMs();
+    doReturn(true).when(pcs).isLatchCreated();
+    AtomicBoolean latchReleased = new AtomicBoolean(false);
+    doAnswer(invocation -> latchReleased.get()).when(pcs).isLatchReleased();
+    doAnswer(invocation -> {
+      latchReleased.set(true);
+      return null;
+    }).when(pcs).releaseLatch();
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    doAnswer(invocation -> {
+      PartitionConsumptionState partitionConsumptionState = invocation.getArgument(0);
+      partitionConsumptionState.releaseLatch();
+      return null;
+    }).when(mockDispatcher).reportStoppedConsumptionForDemotedVersion(any(PartitionConsumptionState.class));
+    setField(storeIngestionTask, "ingestionNotificationDispatcher", mockDispatcher);
+
+    doCallRealMethod().when(storeIngestionTask).checkLongRunningTaskState();
+    storeIngestionTask.checkLongRunningTaskState();
+    storeIngestionTask.checkLongRunningTaskState();
+
+    verify(mockDispatcher, times(1)).reportStoppedConsumptionForDemotedVersion(eq(pcs));
+  }
+
   private static void addStandbyPcs(Map<Integer, PartitionConsumptionState> pcsMap, int partition, long ageMs) {
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     pcsMap.put(partition, pcs);
