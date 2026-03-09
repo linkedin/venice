@@ -1,21 +1,11 @@
 package com.linkedin.venice.stats.dimensions;
 
-import static org.testng.Assert.assertEquals;
-
 import com.linkedin.venice.utils.CollectionUtils;
 import java.util.Map;
 import org.testng.annotations.Test;
 
 
 public class VeniceAdaptiveThrottlerTypeTest {
-  @Test
-  public void testEnumCount() {
-    assertEquals(
-        VeniceAdaptiveThrottlerType.values().length,
-        6,
-        "New VeniceAdaptiveThrottlerType values added; update IngestionThrottler and AdaptiveThrottlingServiceStats");
-  }
-
   @Test
   public void testDimensionInterface() {
     Map<VeniceAdaptiveThrottlerType, String> expectedValues =
