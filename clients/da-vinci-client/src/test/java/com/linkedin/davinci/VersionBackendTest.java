@@ -50,6 +50,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.function.Consumer;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -58,22 +59,12 @@ public class VersionBackendTest {
   private static final String TEST_STORE_NAME = "test_store";
   private static final int TEST_PARTITION_COUNT = 6;
 
-  private static class VersionBackendTestContext {
-    final VersionBackend versionBackend;
-    final IngestionBackend mockIngestionBackend;
+  private IngestionBackend mockIngestionBackend;
+  private InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig;
+  private VersionBackend versionBackend;
 
-    VersionBackendTestContext(VersionBackend versionBackend, IngestionBackend mockIngestionBackend) {
-      this.versionBackend = versionBackend;
-      this.mockIngestionBackend = mockIngestionBackend;
-    }
-  }
-
-  private VersionBackendTestContext createVersionBackendWithMocks() {
-    return createVersionBackendWithMocks(null);
-  }
-
-  private VersionBackendTestContext createVersionBackendWithMocks(
-      InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig) {
+  @BeforeMethod
+  public void setUp() {
     DaVinciBackend mockBackend = mock(DaVinciBackend.class);
     Version version = new VersionImpl(TEST_STORE_NAME, 1);
     version.setPartitionCount(TEST_PARTITION_COUNT);
@@ -88,7 +79,7 @@ public class VersionBackendTest {
     when(mockBackend.getConfigLoader()).thenReturn(new VeniceConfigLoader(backendConfig));
     when(mockBackend.getStorageService()).thenReturn(mock(StorageService.class));
 
-    IngestionBackend mockIngestionBackend = mock(IngestionBackend.class);
+    mockIngestionBackend = mock(IngestionBackend.class);
     when(mockBackend.getIngestionBackend()).thenReturn(mockIngestionBackend);
 
     SubscriptionBasedReadOnlyStoreRepository mockStoreRepository = mock(SubscriptionBasedReadOnlyStoreRepository.class);
@@ -104,14 +95,19 @@ public class VersionBackendTest {
         RANDOM);
     when(mockStoreRepository.getStoreOrThrow(TEST_STORE_NAME)).thenReturn(new ReadOnlyStore(store));
 
-    if (internalRecordTransformerConfig != null) {
-      when(mockBackend.getInternalRecordTransformerConfig(TEST_STORE_NAME)).thenReturn(internalRecordTransformerConfig);
-    }
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
+    internalRecordTransformerConfig = spy(
+        new InternalDaVinciRecordTransformerConfig(
+            recordTransformerConfig,
+            mock(AggVersionedDaVinciRecordTransformerStats.class)));
+    when(mockBackend.getInternalRecordTransformerConfig(TEST_STORE_NAME)).thenReturn(internalRecordTransformerConfig);
+
     when(mockBackend.getIngestionService()).thenReturn(mock(KafkaStoreIngestionService.class));
     when(mockBackend.getExecutor()).thenReturn(mock(java.util.concurrent.ScheduledExecutorService.class));
 
-    VersionBackend versionBackend = new VersionBackend(mockBackend, version, mock(StoreBackendStats.class));
-    return new VersionBackendTestContext(versionBackend, mockIngestionBackend);
+    versionBackend = new VersionBackend(mockBackend, version, mock(StoreBackendStats.class));
   }
 
   @Test
@@ -211,69 +207,58 @@ public class VersionBackendTest {
 
   @Test
   public void testRecordTransformerSubscribe() {
-    DaVinciRecordTransformerConfig recordTransformerConfig =
-        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
-            .build();
-    InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig = spy(
-        new InternalDaVinciRecordTransformerConfig(
-            recordTransformerConfig,
-            mock(AggVersionedDaVinciRecordTransformerStats.class)));
-    VersionBackendTestContext ctx = createVersionBackendWithMocks(internalRecordTransformerConfig);
-
     Collection<Integer> partitionList = Arrays.asList(0, 1, 2);
     ComplementSet<Integer> complementSet = ComplementSet.newSet(partitionList);
 
     // First subscription
-    ctx.versionBackend.subscribe(complementSet, null, null);
+    versionBackend.subscribe(complementSet, null, null);
 
     // Verify the latch count is set to 3 (number of partitions)
     verify(internalRecordTransformerConfig).setStartConsumptionLatchCount(3);
 
     // Verify consumption started for each partition
-    verify(ctx.mockIngestionBackend).startConsumption(any(), eq(0), any(), any());
-    verify(ctx.mockIngestionBackend).startConsumption(any(), eq(1), any(), any());
-    verify(ctx.mockIngestionBackend).startConsumption(any(), eq(2), any(), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(0), any(), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(1), any(), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(2), any(), any());
 
     // Reset mocks for next test case
     clearInvocations(internalRecordTransformerConfig);
-    clearInvocations(ctx.mockIngestionBackend);
+    clearInvocations(mockIngestionBackend);
 
     // Test with overlapping partitions
     partitionList = Arrays.asList(2, 3, 4);
     complementSet = ComplementSet.newSet(partitionList);
-    ctx.versionBackend.subscribe(complementSet, null, null);
+    versionBackend.subscribe(complementSet, null, null);
 
     // Shouldn't try to start consumption on already subscribed partition (2)
-    verify(ctx.mockIngestionBackend, never()).startConsumption(any(), eq(2), any(), any());
+    verify(mockIngestionBackend, never()).startConsumption(any(), eq(2), any(), any());
     // Should start consumption for new partitions (3, 4)
-    verify(ctx.mockIngestionBackend).startConsumption(any(), eq(3), any(), any());
-    verify(ctx.mockIngestionBackend).startConsumption(any(), eq(4), any(), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(3), any(), any());
+    verify(mockIngestionBackend).startConsumption(any(), eq(4), any(), any());
     // Shouldn't set latch count again
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
 
     // Test empty subscription
-    ctx.versionBackend.subscribe(ComplementSet.emptySet(), null, null);
-    verify(ctx.mockIngestionBackend, never()).startConsumption(any(), eq(0), any(), any());
+    versionBackend.subscribe(ComplementSet.emptySet(), null, null);
+    verify(mockIngestionBackend, never()).startConsumption(any(), eq(0), any(), any());
     verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
   }
 
   @Test
   public void testCloseRemovesReplicaState() {
-    VersionBackendTestContext ctx = createVersionBackendWithMocks();
-
     // Subscribe to partitions
     Collection<Integer> partitionList = Arrays.asList(0, 1, 2);
     ComplementSet<Integer> complementSet = ComplementSet.newSet(partitionList);
-    ctx.versionBackend.subscribe(complementSet, null, null);
+    versionBackend.subscribe(complementSet, null, null);
 
     // Close the version backend
-    ctx.versionBackend.close();
+    versionBackend.close();
 
     // Verify removeReplicaState was called for each subscribed partition
     String topicName = Version.composeKafkaTopic(TEST_STORE_NAME, 1);
-    verify(ctx.mockIngestionBackend).removeReplicaState(eq(Utils.getReplicaId(topicName, 0)));
-    verify(ctx.mockIngestionBackend).removeReplicaState(eq(Utils.getReplicaId(topicName, 1)));
-    verify(ctx.mockIngestionBackend).removeReplicaState(eq(Utils.getReplicaId(topicName, 2)));
+    verify(mockIngestionBackend).removeReplicaState(eq(Utils.getReplicaId(topicName, 0)));
+    verify(mockIngestionBackend).removeReplicaState(eq(Utils.getReplicaId(topicName, 1)));
+    verify(mockIngestionBackend).removeReplicaState(eq(Utils.getReplicaId(topicName, 2)));
   }
 
   @Test
