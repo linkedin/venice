@@ -26,6 +26,8 @@ public class AdaptiveThrottlerSignalServiceTest {
   @Test
   public void testUpdateSignal() {
     MetricsRepository metricsRepository = mock(MetricsRepository.class);
+    Sensor sensor = mock(Sensor.class);
+    doReturn(sensor).when(metricsRepository).sensor(anyString(), any());
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
     when(veniceServerConfig.getAdaptiveThrottlerSingleGetLatencyThreshold()).thenReturn(10d);
