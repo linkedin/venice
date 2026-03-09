@@ -285,7 +285,7 @@ public class StatefulVeniceChangelogConsumerTest {
       // Test restart with shared backend: create a second consumer on a different store using the same factory.
       // This ensures the DaVinciBackend stays alive when the first consumer is stopped/restarted.
       String storeName2 = Utils.getUniqueString("store");
-      String inputDirPath2 = setUpStore(storeName2);
+      setUpStore(storeName2);
 
       try (StatefulVeniceChangelogConsumer<GenericRecord, GenericRecord> consumer2 =
           veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(storeName2)) {

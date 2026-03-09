@@ -708,6 +708,7 @@ public class DaVinciBackend implements Closeable {
       storeClientRefCounts.remove(storeName);
       storeClientTypes.remove(storeName);
       ingestionService.unregisterBlobTransferDisabled(storeName);
+      ingestionService.unregisterRecordTransformerConfig(storeName);
       if (storeVersion != null) {
         versionSpecificStoreVersions.remove(storeName);
       }

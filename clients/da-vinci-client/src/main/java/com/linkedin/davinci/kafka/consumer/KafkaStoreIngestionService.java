@@ -843,8 +843,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       } else {
         LOGGER.info("Ignoring close request for not-existing consumption task {}", topicName);
       }
-      String storeName = Version.parseStoreFromKafkaTopicName(topicName);
-      storeNameToInternalRecordTransformerConfig.remove(storeName);
     }
     topicLockManager.removeLockForResource(topicName);
   }
@@ -1524,6 +1522,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {
     return storeNameToInternalRecordTransformerConfig.get(storeName);
+  }
+
+  public void unregisterRecordTransformerConfig(String storeName) {
+    storeNameToInternalRecordTransformerConfig.remove(storeName);
   }
 
   @Override

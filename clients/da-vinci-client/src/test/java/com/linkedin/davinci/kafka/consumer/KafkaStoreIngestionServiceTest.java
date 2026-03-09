@@ -963,9 +963,8 @@ public abstract class KafkaStoreIngestionServiceTest {
   }
 
   @Test
-  public void testShutdownStoreIngestionTaskRemovesRecordTransformerConfig() {
-    String topicName = "test-store_v1";
-    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+  public void testUnregisterRecordTransformerConfig() {
+    String storeName = "test-store";
 
     // Register a record transformer config
     DaVinciRecordTransformerConfig recordTransformerConfig =
@@ -974,8 +973,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService.registerRecordTransformerConfig(storeName, recordTransformerConfig);
     assertNotNull(kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName));
 
-    // Shutdown ingestion task (no task exists, but should still clean up the config)
-    kafkaStoreIngestionService.shutdownStoreIngestionTask(topicName);
+    // Unregister the config
+    kafkaStoreIngestionService.unregisterRecordTransformerConfig(storeName);
 
     // Verify the record transformer config is removed
     assertNull(kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName));
