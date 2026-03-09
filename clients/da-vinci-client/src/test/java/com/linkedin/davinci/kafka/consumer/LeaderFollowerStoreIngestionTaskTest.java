@@ -27,6 +27,8 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferStatusTrackingManager;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -92,6 +94,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -1794,6 +1797,51 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
+  public void testShouldStartBlobTransferReturnsFalseForNullConsumerAction() throws InterruptedException {
+    setUp();
+    // null consumerAction should not throw; with null blobTransferManager returns false
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, null));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerDisabledByStorePolicy() throws InterruptedException {
+    setUp();
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("DISABLED");
+    assertFalse(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerEnabledByStorePolicy() throws InterruptedException {
+    setUp();
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    assertTrue(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerDisabledByServerPolicy() throws InterruptedException {
+    setUp();
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn(null);
+    when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.DISABLED);
+    assertFalse(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerEnabledByServerPolicy() throws InterruptedException {
+    setUp();
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn(null);
+    when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.ENABLED);
+    assertTrue(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerNotSpecifiedPolicy() throws InterruptedException {
+    setUp();
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn(null);
+    when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.NOT_SPECIFIED);
+    assertFalse(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+  }
+
+  @Test
   public void testCancelPendingBlobTransfer() throws InterruptedException {
     setUp();
     CompletableFuture<Void> pendingFuture = new CompletableFuture<>();
@@ -1844,6 +1892,19 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
+  public void testStopBlobTransferAndWaitCancelledFuture() throws InterruptedException {
+    setUp();
+    CompletableFuture<Void> cancelledFuture = new CompletableFuture<>();
+    cancelledFuture.cancel(true);
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(cancelledFuture);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+
+    leaderFollowerStoreIngestionTask.stopBlobTransferAndWait(mockPartitionConsumptionState);
+
+    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+  }
+
+  @Test
   public void testStopBlobTransferAndWaitNoOpsWhenNoPendingTransfer() throws InterruptedException {
     setUp();
     when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(null);
@@ -1852,5 +1913,324 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Should not try to clear since there's nothing to stop
     verify(mockPartitionConsumptionState, never()).setPendingBlobTransfer(any());
+  }
+
+  // --- Tests requiring non-null BlobTransferManager ---
+
+  private BlobTransferManager mockBlobTransferManager;
+
+  /**
+   * Sets up the test with a non-null BlobTransferManager so that shouldStartBlobTransfer
+   * can proceed past the null check and exercise isReplicaLaggedAndNeedBlobTransfer.
+   */
+  public void setUpWithBlobTransfer(boolean isHybrid) throws InterruptedException {
+    String storeName = Utils.getUniqueString("store");
+    int versionNumber = 1;
+    mockStorageService = mock(StorageService.class);
+    doReturn(new ReferenceCounted<>(mock(DelegatingStorageEngine.class), se -> {})).when(mockStorageService)
+        .getRefCountedStorageEngine(anyString());
+    mockVeniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    hostLevelIngestionStats = mock(HostLevelIngestionStats.class);
+    AggHostLevelIngestionStats aggHostLevelIngestionStats = mock(AggHostLevelIngestionStats.class);
+    doReturn(hostLevelIngestionStats).when(aggHostLevelIngestionStats).getStoreStats(storeName);
+    StorageMetadataService inMemoryStorageMetadataService = new InMemoryStorageMetadataService();
+    StoreIngestionTaskFactory.Builder builder =
+        getStoreIngestionTaskBuilder(isHybrid, storeName, inMemoryStorageMetadataService, aggHostLevelIngestionStats);
+    when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
+
+    // Set up blob transfer manager on builder
+    mockBlobTransferManager = mock(BlobTransferManager.class);
+    builder.setBlobTransferManagerSupplier(() -> mockBlobTransferManager);
+
+    mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
+    mockStoreBufferService = (StoreBufferService) builder.getStoreBufferService();
+    Version version = mockStore.getVersion(versionNumber);
+    assert version != null;
+    version.setCompressionStrategy(CompressionStrategy.GZIP);
+    Map<String, ViewConfig> viewConfigMap = new HashMap<>();
+    String viewName = "testView";
+    MaterializedViewParameters.Builder viewParamBuilder = new MaterializedViewParameters.Builder(viewName);
+    viewParamBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName()).setPartitionCount(3);
+    ViewConfig viewConfig = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), viewParamBuilder.build());
+    viewConfigMap.put(viewName, viewConfig);
+    when(mockStore.getViewConfigs()).thenReturn(viewConfigMap);
+
+    mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
+    mockConsumerAction = mock(ConsumerAction.class);
+
+    mockProperties = new Properties();
+    mockProperties.put(KAFKA_BOOTSTRAP_SERVERS, "bootStrapServers");
+    mockBooleanSupplier = mock(BooleanSupplier.class);
+    mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
+    String versionTopic = version.kafkaTopicName();
+    doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
+    mockStorageMetadataService = builder.getStorageMetadataService();
+    storeRepository = builder.getMetadataRepo();
+    PubSubContext pubSubContext = builder.getPubSubContext();
+    mockTopicManagerRepository = pubSubContext.getTopicManagerRepository();
+    leaderFollowerStoreIngestionTask = spy(
+        new LeaderFollowerStoreIngestionTask(
+            mockStorageService,
+            builder,
+            mockStore,
+            version,
+            mockProperties,
+            mockBooleanSupplier,
+            mockVeniceStoreVersionConfig,
+            0,
+            Optional.empty(),
+            null,
+            null));
+
+    leaderFollowerStoreIngestionTask.addPartitionConsumptionState(0, mockPartitionConsumptionState);
+  }
+
+  @Test
+  public void testShouldStartBlobTransferReturnsTrueWhenNullOffsetRecord() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    // Mock: store has blob transfer enabled (DaVinci path)
+    when(mockStore.isBlobTransferEnabled()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    // storageMetadataService.getLastOffset returns null by default for non-partition-0 — use partition 0 which
+    // returns mock OffsetRecord. Override to return null.
+    doReturn(null).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+
+    // isDaVinciClient is false by default; need to set store policy for server mode
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+
+    assertTrue(
+        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferNegativeThresholdAlwaysReturnsTrue() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    // getLastOffset returns a mock OffsetRecord
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    // Negative threshold means always use blob transfer
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(-1L);
+
+    assertTrue(
+        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferBatchStoreEOPReceived() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(false);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(100L);
+    // Batch store with EOP received — should bootstrap from Kafka, not blob transfer
+    when(mockOffset.isEndOfPushReceived()).thenReturn(true);
+
+    assertFalse(
+        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferBatchStoreEOPNotReceived() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(false);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(100L);
+    when(mockOffset.isEndOfPushReceived()).thenReturn(false);
+
+    assertTrue(
+        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferHybridStoreOffsetLagBelowThreshold() throws InterruptedException {
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(0);
+    // Offset lag below threshold — should bootstrap from Kafka
+    when(mockOffset.getOffsetLag()).thenReturn(500L);
+    when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
+
+    assertFalse(
+        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferHybridStoreOffsetLagAboveThreshold() throws InterruptedException {
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(0);
+    // Offset lag above threshold — should use blob transfer
+    when(mockOffset.getOffsetLag()).thenReturn(5000L);
+    when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(new ApacheKafkaOffsetPosition(100L));
+
+    assertTrue(
+        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferHybridStoreZeroLagEarliestPosition() throws InterruptedException {
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(0);
+    // Zero offset lag but EARLIEST position — needs blob transfer
+    when(mockOffset.getOffsetLag()).thenReturn(0L);
+    when(mockOffset.getCheckpointedLocalVtPosition()).thenReturn(PubSubSymbolicPosition.EARLIEST);
+
+    assertTrue(
+        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreDaVinciClient() throws Exception {
+    setUpWithBlobTransfer(false);
+    // Use reflection to set isDaVinciClient = true
+    Field isDaVinciClientField = StoreIngestionTask.class.getDeclaredField("isDaVinciClient");
+    isDaVinciClientField.setAccessible(true);
+    isDaVinciClientField.setBoolean(leaderFollowerStoreIngestionTask, true);
+
+    when(mockStore.isBlobTransferEnabled()).thenReturn(true);
+    assertTrue(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+
+    when(mockStore.isBlobTransferEnabled()).thenReturn(false);
+    assertFalse(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+  }
+
+  @Test
+  public void testCancelPendingBlobTransferWithTrackingManager() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    CompletableFuture<Void> pendingFuture = new CompletableFuture<>();
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(pendingFuture);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+
+    BlobTransferStatusTrackingManager mockTrackingManager = mock(BlobTransferStatusTrackingManager.class);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockTrackingManager);
+
+    leaderFollowerStoreIngestionTask.cancelPendingBlobTransfer(mockPartitionConsumptionState);
+
+    verify(mockTrackingManager).cancelTransfer("test_v1-0");
+    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+  }
+
+  @Test
+  public void testCancelPendingBlobTransferWithNullTrackingManager() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    CompletableFuture<Void> pendingFuture = new CompletableFuture<>();
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(pendingFuture);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(null);
+
+    // Should not throw even when tracking manager is null
+    leaderFollowerStoreIngestionTask.cancelPendingBlobTransfer(mockPartitionConsumptionState);
+
+    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+  }
+
+  @Test
+  public void testStopBlobTransferAndWaitWithTrackingManager() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    CompletableFuture<Void> completedFuture = CompletableFuture.completedFuture(null);
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(completedFuture);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+
+    BlobTransferStatusTrackingManager mockTrackingManager = mock(BlobTransferStatusTrackingManager.class);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockTrackingManager);
+
+    leaderFollowerStoreIngestionTask.stopBlobTransferAndWait(mockPartitionConsumptionState);
+
+    verify(mockTrackingManager).cancelTransfer("test_v1-0");
+    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+  }
+
+  @Test
+  public void testStopBlobTransferAndWaitWithNullTrackingManager() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    CompletableFuture<Void> completedFuture = CompletableFuture.completedFuture(null);
+    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(completedFuture);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(null);
+
+    leaderFollowerStoreIngestionTask.stopBlobTransferAndWait(mockPartitionConsumptionState);
+
+    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+  }
+
+  @Test
+  public void testShouldStartBlobTransferHybridStoreTimeLagThreshold() throws InterruptedException {
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    // Set time lag threshold > 0 to exercise that branch
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(10);
+    // Recent heartbeat — within threshold, so should NOT need blob transfer
+    when(mockOffset.getHeartbeatTimestamp()).thenReturn(System.currentTimeMillis());
+
+    assertFalse(
+        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferHybridStoreTimeLagExceedsThreshold() throws InterruptedException {
+    setUpWithBlobTransfer(true);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockStore.isHybrid()).thenReturn(true);
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(1000L);
+    when(mockVeniceServerConfig.getBlobTransferDisabledTimeLagThresholdInMinutes()).thenReturn(10);
+    // Old heartbeat — exceeds 10 minute threshold
+    when(mockOffset.getHeartbeatTimestamp()).thenReturn(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(30));
+
+    assertTrue(
+        leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, mockPartitionConsumptionState, mockConsumerAction));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerDisabledByServerPolicyWithNonNullStorePolicy()
+      throws InterruptedException {
+    setUp();
+    // Store policy is non-null but not DISABLED/ENABLED, server policy is DISABLED
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("SOMETHING_ELSE");
+    when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.DISABLED);
+    assertFalse(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+  }
+
+  @Test
+  public void testIsBlobTransferEnabledForStoreServerEnabledByStorePolicyWithServerDisabled()
+      throws InterruptedException {
+    setUp();
+    // Store policy ENABLED takes precedence even when server policy is NOT_SPECIFIED
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.NOT_SPECIFIED);
+    assertTrue(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
   }
 }
