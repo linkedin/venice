@@ -356,7 +356,15 @@ public abstract class AbstractPartitionStateModel extends StateModel {
           resourceName,
           partition,
           bootstrapToOnlineTimeoutInHours,
-          getStoreIngestionService());
+          getStoreIngestionService(),
+          () -> {
+            try {
+              Store store = getStoreRepo().getStoreOrThrow(storeName);
+              return store.getCurrentVersion() > versionNumber;
+            } catch (Exception e) {
+              return false;
+            }
+          });
     } catch (InterruptedException e) {
       String errorMsg = "Can not complete consumption for resource:" + resourceName + " partition:" + partition;
       logger.error(errorMsg, e);

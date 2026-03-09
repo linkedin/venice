@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -25,6 +26,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class StateModelIngestionProgressNotifier implements VeniceNotifier {
   private final Logger logger = LogManager.getLogger(this.getClass());
+  private static final long WAIT_POLL_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
   private final Map<String, CountDownLatch> stateModelToIngestionCompleteFlagMap = new VeniceConcurrentHashMap<>();
   private final Map<String, Boolean> stateModelToSuccessMap = new VeniceConcurrentHashMap<>();
 
@@ -39,6 +41,20 @@ public class StateModelIngestionProgressNotifier implements VeniceNotifier {
       int partitionId,
       int bootstrapToOnlineTimeoutInHours,
       StoreIngestionService storeIngestionService) throws InterruptedException {
+    waitConsumptionCompleted(
+        resourceName,
+        partitionId,
+        bootstrapToOnlineTimeoutInHours,
+        storeIngestionService,
+        () -> false);
+  }
+
+  boolean waitConsumptionCompleted(
+      String resourceName,
+      int partitionId,
+      int bootstrapToOnlineTimeoutInHours,
+      StoreIngestionService storeIngestionService,
+      BooleanSupplier shouldStopWaiting) throws InterruptedException {
     String stateModelId = getStateModelID(resourceName, partitionId);
     CountDownLatch ingestionCompleteFlag = stateModelToIngestionCompleteFlagMap.get(stateModelId);
     if (ingestionCompleteFlag == null) {
@@ -47,7 +63,23 @@ public class StateModelIngestionProgressNotifier implements VeniceNotifier {
       logger.error(errorMsg);
       throw new VeniceException(errorMsg);
     } else {
-      if (!ingestionCompleteFlag.await(bootstrapToOnlineTimeoutInHours, TimeUnit.HOURS)) {
+      long remainingWaitTimeInMs = TimeUnit.HOURS.toMillis(bootstrapToOnlineTimeoutInHours);
+      long deadlineInMs = System.currentTimeMillis() + remainingWaitTimeInMs;
+      boolean ingestionCompleted = false;
+      while (!ingestionCompleted && remainingWaitTimeInMs > 0) {
+        if (shouldStopWaiting.getAsBoolean()) {
+          logger.info(
+              "Stop waiting for ingestion completion for resource: {} partition: {} because version role changed",
+              resourceName,
+              partitionId);
+          stopConsumption(resourceName, partitionId);
+          return false;
+        }
+        ingestionCompleted =
+            ingestionCompleteFlag.await(Math.min(WAIT_POLL_INTERVAL_MS, remainingWaitTimeInMs), TimeUnit.MILLISECONDS);
+        remainingWaitTimeInMs = deadlineInMs - System.currentTimeMillis();
+      }
+      if (!ingestionCompleted) {
         // Timeout
         String errorMsg = "After waiting " + bootstrapToOnlineTimeoutInHours + " hours, resource:" + resourceName
             + " partition:" + partitionId + " still can not become online from bootstrap.";
@@ -66,13 +98,19 @@ public class StateModelIngestionProgressNotifier implements VeniceNotifier {
         throw new VeniceException(
             "Consumption is failed. Thrown an exception to put this replica:" + stateModelId + " to ERROR state.");
       }
+      return true;
     }
   }
 
   void stopConsumption(String resourceName, int partitionId) {
     final String stateModelID = getStateModelID(resourceName, partitionId);
-    stateModelToIngestionCompleteFlagMap.remove(stateModelID);
+    // Remove success first to avoid false ERROR promotion if a waiting transition wakes up while stopping.
     stateModelToSuccessMap.remove(stateModelID);
+    CountDownLatch ingestionCompleteFlag = stateModelToIngestionCompleteFlagMap.get(stateModelID);
+    if (ingestionCompleteFlag != null) {
+      ingestionCompleteFlag.countDown();
+    }
+    stateModelToIngestionCompleteFlagMap.remove(stateModelID);
   }
 
   CountDownLatch getIngestionCompleteFlag(String resourceName, int partitionId) {

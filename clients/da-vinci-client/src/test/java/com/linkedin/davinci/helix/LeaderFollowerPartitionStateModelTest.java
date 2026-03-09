@@ -413,14 +413,12 @@ public class LeaderFollowerPartitionStateModelTest {
     // In the real system the ingestion task's reportIfCatchUpVersionTopicOffset now fires but
     // re-checks isCurrentVersion (now false for a backup) and skips reportCompleted(), so
     // notifier.completed() is never called. The latch must be released via another mechanism.
-    // This assertion fails until the bug is fixed.
-    try {
-      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, transitionFuture::isDone);
-      transitionFuture.get(5, TimeUnit.SECONDS);
-    } finally {
-      // Ensure the background thread is always unblocked, even when the assertion fails (bug present).
-      realNotifier.completed(resourceName, partition, null, "test cleanup");
-    }
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, transitionFuture::isDone);
+    transitionFuture.get(5, TimeUnit.SECONDS);
+    assertEquals(
+        realNotifier.getIngestionCompleteFlag(resourceName, partition),
+        null,
+        "Latch should be released/removed after current version is demoted");
   }
 
   /**
