@@ -870,28 +870,16 @@ public class ActiveActiveStoreIngestionTaskTest {
     // Set up a non-ignored MergeConflictResult via the processedResult path
     MergeConflictResult mcResult = mock(MergeConflictResult.class);
     when(mcResult.isUpdateIgnored()).thenReturn(false);
-    MergeConflictResultWrapper mcWrapper = mock(MergeConflictResultWrapper.class);
-    when(mcWrapper.getMergeConflictResult()).thenReturn(mcResult);
+    MergeConflictResultWrapper mcWrapper = mockMergeConflictResultWrapper(mcResult);
     PubSubMessageProcessedResult processedResult = new PubSubMessageProcessedResult(mcWrapper);
 
     byte[] keyBytes = "testKey".getBytes();
 
     // Build consumer record wrapper with pre-computed processedResult
-    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    KafkaKey kafkaKey = mock(KafkaKey.class);
-    when(kafkaKey.getKey()).thenReturn(keyBytes);
-    when(consumerRecord.getKey()).thenReturn(kafkaKey);
-    PubSubMessageProcessedResultWrapper wrapper = new PubSubMessageProcessedResultWrapper(consumerRecord);
-    wrapper.setProcessedResult(processedResult);
+    PubSubMessageProcessedResultWrapper wrapper = buildConsumerRecordWrapper(keyBytes, processedResult);
 
-    // --- First call: no prior produce → should pass coalescing check and proceed ---
-    // The private producePutOrDeleteToKafka will throw NPE due to missing mock state,
-    // but the coalescing logic has already executed by then
-    try {
-      ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
-    } catch (NullPointerException e) {
-      // Expected: producePutOrDeleteToKafka accesses uninitialized fields
-    }
+    // --- First call: no prior produce → should pass coalescing check and proceed to VT produce ---
+    ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
 
     // First call should NOT record coalesced metric (window expired / first produce path)
     verify(hostLevelIngestionStats, times(0)).recordVtProduceCoalesced();
@@ -922,7 +910,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     HostLevelIngestionStats hostLevelIngestionStats = mock(HostLevelIngestionStats.class);
     setProtectedField(ingestionTask, "hostLevelIngestionStats", hostLevelIngestionStats);
 
-    // View writers present → coalescing should be skipped
+    // View writers present → coalescing should be skipped, but code proceeds to view writer path
+    // which calls queueUpVersionTopicWritesWithViewWriters (mocked, does nothing)
     when(ingestionTask.hasViewWriters()).thenReturn(true);
 
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
@@ -930,27 +919,14 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     MergeConflictResult mcResult = mock(MergeConflictResult.class);
     when(mcResult.isUpdateIgnored()).thenReturn(false);
-    MergeConflictResultWrapper mcWrapper = mock(MergeConflictResultWrapper.class);
-    when(mcWrapper.getMergeConflictResult()).thenReturn(mcResult);
-    when(mcWrapper.getUpdatedValueBytes()).thenReturn(ByteBuffer.wrap(new byte[] { 1 }));
+    MergeConflictResultWrapper mcWrapper = mockMergeConflictResultWrapper(mcResult);
     PubSubMessageProcessedResult processedResult = new PubSubMessageProcessedResult(mcWrapper);
 
-    byte[] keyBytes = "testKey".getBytes();
-    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    KafkaKey kafkaKey = mock(KafkaKey.class);
-    when(kafkaKey.getKey()).thenReturn(keyBytes);
-    when(consumerRecord.getKey()).thenReturn(kafkaKey);
-    PubSubMessageProcessedResultWrapper wrapper = new PubSubMessageProcessedResultWrapper(consumerRecord);
-    wrapper.setProcessedResult(processedResult);
+    PubSubMessageProcessedResultWrapper wrapper = buildConsumerRecordWrapper("testKey".getBytes(), processedResult);
 
     // Both calls should proceed past coalescing (view writers present)
-    for (int i = 0; i < 2; i++) {
-      try {
-        ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
-      } catch (NullPointerException e) {
-        // Expected: downstream code accesses uninitialized fields
-      }
-    }
+    ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
+    ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
 
     // Neither call should have been coalesced
     verify(hostLevelIngestionStats, times(0)).recordVtProduceCoalesced();
@@ -974,34 +950,61 @@ public class ActiveActiveStoreIngestionTaskTest {
     HostLevelIngestionStats hostLevelIngestionStats = mock(HostLevelIngestionStats.class);
     setProtectedField(ingestionTask, "hostLevelIngestionStats", hostLevelIngestionStats);
 
+    // hasViewWriters returns false so code goes to direct produce path
+    when(ingestionTask.hasViewWriters()).thenReturn(false);
+
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     when(pcs.isEndOfPushReceived()).thenReturn(true);
 
     MergeConflictResult mcResult = mock(MergeConflictResult.class);
     when(mcResult.isUpdateIgnored()).thenReturn(false);
-    MergeConflictResultWrapper mcWrapper = mock(MergeConflictResultWrapper.class);
-    when(mcWrapper.getMergeConflictResult()).thenReturn(mcResult);
+    MergeConflictResultWrapper mcWrapper = mockMergeConflictResultWrapper(mcResult);
     PubSubMessageProcessedResult processedResult = new PubSubMessageProcessedResult(mcWrapper);
 
-    byte[] keyBytes = "testKey".getBytes();
+    PubSubMessageProcessedResultWrapper wrapper = buildConsumerRecordWrapper("testKey".getBytes(), processedResult);
+
+    // Both calls should proceed past coalescing (disabled) and hit producePutOrDeleteToKafka
+    ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
+    ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
+
+    // Neither call should have been coalesced
+    verify(hostLevelIngestionStats, times(0)).recordVtProduceCoalesced();
+  }
+
+  /**
+   * Creates a mock MergeConflictResultWrapper with enough state for producePutOrDeleteToKafka
+   * to execute without NPEs (it calls produceToLocalKafka which is a mock no-op).
+   */
+  private MergeConflictResultWrapper mockMergeConflictResultWrapper(MergeConflictResult mcResult) {
+    MergeConflictResultWrapper mcWrapper = mock(MergeConflictResultWrapper.class);
+    when(mcWrapper.getMergeConflictResult()).thenReturn(mcResult);
+    // Provide non-null values so producePutOrDeleteToKafka doesn't NPE
+    when(mcWrapper.getUpdatedValueBytes()).thenReturn(ByteBuffer.wrap(new byte[] { 1 }));
+    when(mcWrapper.getUpdatedRmdBytes()).thenReturn(ByteBuffer.wrap(new byte[] { 2 }));
+    ChunkedValueManifestContainer manifestContainer = mock(ChunkedValueManifestContainer.class);
+    when(manifestContainer.getManifest()).thenReturn(null);
+    when(mcWrapper.getOldValueManifestContainer()).thenReturn(manifestContainer);
+    when(mcWrapper.getOldRmdWithValueSchemaId()).thenReturn(null);
+    // For view writer path
+    when(mcWrapper.getOldValueByteBufferProvider()).thenReturn(Lazy.of(() -> null));
+    when(mcWrapper.getValueProvider()).thenReturn(Lazy.of(() -> null));
+    return mcWrapper;
+  }
+
+  /**
+   * Builds a PubSubMessageProcessedResultWrapper with the given key and processed result.
+   */
+  private PubSubMessageProcessedResultWrapper buildConsumerRecordWrapper(
+      byte[] keyBytes,
+      PubSubMessageProcessedResult processedResult) {
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
     KafkaKey kafkaKey = mock(KafkaKey.class);
     when(kafkaKey.getKey()).thenReturn(keyBytes);
     when(consumerRecord.getKey()).thenReturn(kafkaKey);
+    when(consumerRecord.getPosition()).thenReturn(ApacheKafkaOffsetPosition.of(1));
     PubSubMessageProcessedResultWrapper wrapper = new PubSubMessageProcessedResultWrapper(consumerRecord);
     wrapper.setProcessedResult(processedResult);
-
-    // Both calls should proceed past coalescing (disabled) and hit producePutOrDeleteToKafka
-    for (int i = 0; i < 2; i++) {
-      try {
-        ingestionTask.processMessageAndMaybeProduceToKafka(wrapper, pcs, 0, "dummyUrl", 0, 0L, 0L);
-      } catch (NullPointerException e) {
-        // Expected: producePutOrDeleteToKafka accesses uninitialized fields
-      }
-    }
-
-    // Neither call should have been coalesced
-    verify(hostLevelIngestionStats, times(0)).recordVtProduceCoalesced();
+    return wrapper;
   }
 
   private static void setProtectedField(Object target, String fieldName, Object value) throws Exception {
