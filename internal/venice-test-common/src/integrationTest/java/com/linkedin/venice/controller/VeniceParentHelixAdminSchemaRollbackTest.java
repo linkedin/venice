@@ -54,7 +54,7 @@ public class VeniceParentHelixAdminSchemaRollbackTest {
     Utils.closeQuietlyWithErrorLogged(fixture);
   }
 
-  @Test
+  @Test(timeOut = 2 * DEFAULT_TEST_TIMEOUT_MS)
   public void testRollbackToBackupVersion() throws IOException {
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
@@ -89,7 +89,7 @@ public class VeniceParentHelixAdminSchemaRollbackTest {
       parentControllerClient.rollbackToBackupVersion(storeName);
 
       // Verify store is back on version 1
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
@@ -121,7 +121,7 @@ public class VeniceParentHelixAdminSchemaRollbackTest {
       parentControllerClient.rollbackToBackupVersion(storeName);
 
       // Verify store is back on version 1 even after version 3 creation
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 

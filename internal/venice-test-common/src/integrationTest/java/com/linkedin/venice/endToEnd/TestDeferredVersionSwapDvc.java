@@ -66,7 +66,7 @@ import org.testng.annotations.Test;
  * cluster configuration: 100ms deferred swap polling, no auto-materialize meta system store.
  */
 public class TestDeferredVersionSwapDvc {
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
+  private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 2;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private static final String REGION1 = "dc-0";
@@ -105,7 +105,7 @@ public class TestDeferredVersionSwapDvc {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 3)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testDeferredVersionSwapInHybridStoreThenMigrateStore() throws Exception {
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
@@ -135,18 +135,11 @@ public class TestDeferredVersionSwapDvc {
           30,
           TimeUnit.SECONDS);
 
-      // Version should be swapped in all regions
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-        Map<String, Integer> coloVersions =
-            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-        coloVersions.forEach((colo, version) -> {
-          Assert.assertEquals((int) version, 1);
-        });
-      });
-
+      // Version should be swapped in all regions. Deferred swap polls every 100ms, so this should be fast.
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+        Map<String, Integer> coloVersions = parentStore.getColoToCurrentVersions();
+        coloVersions.forEach((colo, version) -> Assert.assertEquals((int) version, 1));
         Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ONLINE);
       });
 
