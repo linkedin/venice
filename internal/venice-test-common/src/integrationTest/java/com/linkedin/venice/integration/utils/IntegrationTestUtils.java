@@ -107,7 +107,7 @@ public class IntegrationTestUtils {
       for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
         ControllerClient client = new ControllerClient(clusterName, childDatacenter.getControllerConnectString());
         clients.add(client);
-        TestUtils.waitForNonDeterministicPushCompletion(versionTopic, client, 8, TimeUnit.MINUTES);
+        TestUtils.waitForNonDeterministicPushCompletion(versionTopic, client, 2, TimeUnit.MINUTES);
       }
     } finally {
       clients.forEach(Utils::closeQuietlyWithErrorLogged);
@@ -123,6 +123,7 @@ public class IntegrationTestUtils {
 
   /**
    * Wait for the participant store v1 push to reach COMPLETED for multiple clusters across multiple controllers.
+   * If the push ERRORed (e.g. resource assignment timeout during controller init), retry by requesting a new push.
    */
   public static void waitForParticipantStorePush(String[] clusterNames, String... controllerUrls) {
     List<ControllerClient> clients = new ArrayList<>();
@@ -132,11 +133,20 @@ public class IntegrationTestUtils {
           ControllerClient client = new ControllerClient(cluster, controllerUrl);
           clients.add(client);
           String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster);
-          TestUtils.waitForNonDeterministicPushCompletion(
-              Version.composeKafkaTopic(participantStoreName, 1),
-              client,
-              8,
-              TimeUnit.MINUTES);
+          String versionTopic = Version.composeKafkaTopic(participantStoreName, 1);
+          try {
+            TestUtils.waitForNonDeterministicPushCompletion(versionTopic, client, 2, TimeUnit.MINUTES);
+          } catch (Exception e) {
+            // The participant store push can fail if server registration races with the controller's
+            // cluster leader initialization (resource assignment timeout). By the time we get here,
+            // servers are registered with Helix, so a retry should complete quickly.
+            client.emptyPush(participantStoreName, "retryParticipantStorePush", 1L);
+            TestUtils.waitForNonDeterministicPushCompletion(
+                Version.composeKafkaTopic(participantStoreName, 2),
+                client,
+                1,
+                TimeUnit.MINUTES);
+          }
         }
       }
     } finally {
