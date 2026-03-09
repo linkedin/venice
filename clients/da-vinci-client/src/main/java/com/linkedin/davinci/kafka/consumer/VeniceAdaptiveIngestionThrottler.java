@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.stats.AdaptiveThrottlingServiceStats;
+import com.linkedin.venice.stats.dimensions.VeniceAdaptiveThrottlerType;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.throttle.VeniceAdaptiveThrottler;
 import java.text.DecimalFormat;
@@ -8,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import org.apache.commons.lang3.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -23,6 +25,7 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
   private final int signalIdleThreshold;
   private int signalIdleCount = 0;
   private final AtomicInteger currentThrottlerIndex = new AtomicInteger();
+  private final VeniceAdaptiveThrottlerType throttlerType;
   private final String throttlerName;
   private final AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats;
 
@@ -31,14 +34,15 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
       long quotaPerSecond,
       List<Double> factors,
       long timeWindow,
-      String throttlerName,
+      VeniceAdaptiveThrottlerType throttlerType,
       AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats) {
     if (quotaPerSecond == 0) {
       throw new IllegalArgumentException("Can not create throttler with 0 quotaPerSecond");
     }
 
     this.signalIdleThreshold = signalIdleThreshold;
-    this.throttlerName = throttlerName;
+    this.throttlerType = throttlerType;
+    this.throttlerName = throttlerType.getDimensionValue();
     DecimalFormat decimalFormat = new DecimalFormat("0.0");
     throttlerNum = factors.size();
     for (int i = 0; i < throttlerNum; i++) {
@@ -65,17 +69,22 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler implements 
           EventThrottler.BLOCK_STRATEGY);
       eventThrottlers.add(eventThrottler);
     }
-    this.adaptiveThrottlingServiceStats = adaptiveThrottlingServiceStats;
+    this.adaptiveThrottlingServiceStats = Validate.notNull(adaptiveThrottlingServiceStats);
   }
 
+  @Override
   public String getThrottlerName() {
     return throttlerName;
+  }
+
+  public VeniceAdaptiveThrottlerType getThrottlerType() {
+    return throttlerType;
   }
 
   @Override
   public void maybeThrottle(double eventsSeen) {
     eventThrottlers.get(currentThrottlerIndex.get()).maybeThrottle(eventsSeen);
-    adaptiveThrottlingServiceStats.recordRateForAdaptiveThrottler(this, (int) eventsSeen);
+    adaptiveThrottlingServiceStats.recordRateForAdaptiveThrottler(throttlerType, (long) eventsSeen);
   }
 
   @Override

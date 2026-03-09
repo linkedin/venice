@@ -130,6 +130,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_READ_COMPUTE_OPERATION_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.read_compute.operation_type");
           break;
+        case VENICE_ADAPTIVE_THROTTLER_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.adaptive_throttler.type");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -258,6 +261,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_READ_COMPUTE_OPERATION_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.readCompute.operationType");
           break;
+        case VENICE_ADAPTIVE_THROTTLER_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.adaptiveThrottler.type");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -385,6 +391,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_READ_COMPUTE_OPERATION_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.ReadCompute.OperationType");
+          break;
+        case VENICE_ADAPTIVE_THROTTLER_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.AdaptiveThrottler.Type");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
