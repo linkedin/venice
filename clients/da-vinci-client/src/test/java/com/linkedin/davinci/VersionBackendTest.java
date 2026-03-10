@@ -245,23 +245,6 @@ public class VersionBackendTest {
   }
 
   @Test
-  public void testCloseRemovesReplicaState() {
-    // Subscribe to partitions
-    Collection<Integer> partitionList = Arrays.asList(0, 1, 2);
-    ComplementSet<Integer> complementSet = ComplementSet.newSet(partitionList);
-    versionBackend.subscribe(complementSet, null, null);
-
-    // Close the version backend
-    versionBackend.close();
-
-    // Verify removeReplicaState was called for each subscribed partition
-    String topicName = Version.composeKafkaTopic(TEST_STORE_NAME, 1);
-    verify(mockIngestionBackend).removeReplicaState(eq(Utils.getReplicaId(topicName, 0)));
-    verify(mockIngestionBackend).removeReplicaState(eq(Utils.getReplicaId(topicName, 1)));
-    verify(mockIngestionBackend).removeReplicaState(eq(Utils.getReplicaId(topicName, 2)));
-  }
-
-  @Test
   public void testPushStatusDisabledForVersionSpecificClient() {
     DaVinciBackend mockDaVinciBackend = mock(DaVinciBackend.class);
     String storeName = "test_store";

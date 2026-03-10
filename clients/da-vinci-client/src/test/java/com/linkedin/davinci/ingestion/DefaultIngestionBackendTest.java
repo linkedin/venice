@@ -158,7 +158,7 @@ public class DefaultIngestionBackendTest {
         .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(true));
 
     // Reset replica state for next iteration
-    ingestionBackend.removeReplicaState(Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION));
+    ingestionBackend.shutdownIngestionTask(storeConfig.getStoreVersionName());
 
     // Case 2: Server client (DaVinci = false, store.isBlobTransferEnabled = false)
     when(storeIngestionService.isDaVinciClient()).thenReturn(false);
@@ -226,7 +226,7 @@ public class DefaultIngestionBackendTest {
     verifyBlobTransfer(expectEnabled);
 
     // Reset replica state for next iteration
-    ingestionBackend.removeReplicaState(Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION));
+    ingestionBackend.shutdownIngestionTask(storeConfig.getStoreVersionName());
   }
 
   private void verifyBlobTransfer(boolean expectEnabled) {
@@ -1236,7 +1236,7 @@ public class DefaultIngestionBackendTest {
   }
 
   @Test
-  public void testRemoveReplicaStateClearsRunningState() {
+  public void testShutdownIngestionTaskClearsReplicaState() {
     DefaultIngestionBackend backend = new DefaultIngestionBackend(
         storageMetadataService,
         storeIngestionService,
@@ -1244,15 +1244,16 @@ public class DefaultIngestionBackendTest {
         null,
         veniceServerConfig);
 
-    String replicaId = Utils.getReplicaId(storeConfig.getStoreVersionName(), PARTITION);
+    String topicName = storeConfig.getStoreVersionName();
+    String replicaId = Utils.getReplicaId(topicName, PARTITION);
 
     // Start consumption to set state to RUNNING
     backend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
     Assert
         .assertEquals(backend.getReplicaIntendedState(replicaId), DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
 
-    // Remove replica state
-    backend.removeReplicaState(replicaId);
+    // Shutdown ingestion task should clean up replica state
+    backend.shutdownIngestionTask(topicName);
 
     // State should be NOT_EXIST, allowing re-subscription
     Assert.assertEquals(
