@@ -115,7 +115,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -2956,7 +2955,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     .asyncSendControlMessage(
                         controlMessage,
                         versionTopicPartitionToBeProduced,
-                        new HashMap<>(),
+                        Collections.emptyMap(),
                         callback,
                         leaderMetadataWrapper),
                 partition,
@@ -2988,7 +2987,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     .asyncSendControlMessage(
                         controlMessage,
                         consumerRecord.getTopicPartition().getPartitionNumber(),
-                        new HashMap<>(),
+                        Collections.emptyMap(),
                         callback,
                         DEFAULT_LEADER_METADATA_WRAPPER),
                 partition,
@@ -3006,7 +3005,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     .asyncSendControlMessage(
                         controlMessage,
                         consumerRecord.getTopicPartition().getPartitionNumber(),
-                        new HashMap<>(),
+                        Collections.emptyMap(),
                         callback,
                         DEFAULT_LEADER_METADATA_WRAPPER),
                 partition,

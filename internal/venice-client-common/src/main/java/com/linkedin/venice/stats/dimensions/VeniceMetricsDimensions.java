@@ -126,7 +126,10 @@ public enum VeniceMetricsDimensions {
   VENICE_CHUNKING_STATUS("venice.chunking.status"),
 
   /** {@link VeniceComputeOperationType} Type of read-compute operation: dot_product, cosine_similarity, etc. */
-  VENICE_READ_COMPUTE_OPERATION_TYPE("venice.read_compute.operation_type");
+  VENICE_READ_COMPUTE_OPERATION_TYPE("venice.read_compute.operation_type"),
+
+  /** {@link VeniceAdaptiveThrottlerType} Type of adaptive throttler: pubsub_consumption_records_count, pubsub_consumption_bandwidth, etc. */
+  VENICE_ADAPTIVE_THROTTLER_TYPE("venice.adaptive_throttler.type");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
