@@ -1,5 +1,6 @@
 package com.linkedin.davinci.ingestion;
 
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
@@ -7,8 +8,10 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
@@ -123,6 +126,9 @@ public class DefaultIngestionBackendTest {
   public void testStopConsumption() {
     when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
 
+    // Start consumption first to set state to RUNNING
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+
     ingestionBackend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
 
     verify(storeIngestionService).stopConsumption(storeConfig, PARTITION);
@@ -181,5 +187,179 @@ public class DefaultIngestionBackendTest {
     String topicName = Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER);
     ingestionBackend.removeStorageEngine(topicName);
     verify(storageService).removeStorageEngine(topicName);
+  }
+
+  // --- ReplicaIntendedState tests ---
+
+  @Test
+  public void testReplicaIntendedState_NormalStartSetsRunning() {
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+  }
+
+  @Test
+  public void testReplicaIntendedState_DuplicateStartIgnored() {
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+
+    // Second start should be ignored (no extra openStoreForNewPartition call)
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+
+    // openStoreForNewPartition should only be called once
+    verify(storageService).openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any());
+  }
+
+  @Test
+  public void testReplicaIntendedState_StopSetsStoppedFromRunning() {
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    ingestionBackend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
+
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
+  }
+
+  @Test
+  public void testReplicaIntendedState_StopWithoutStartIsNoop() {
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+
+    ingestionBackend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
+
+    // State should remain NOT_EXIST since stop was a no-op
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+    // stopConsumption on the ingestion service should NOT be called
+    verify(storeIngestionService, never()).stopConsumption(any(), anyInt());
+  }
+
+  @Test
+  public void testReplicaIntendedState_DuplicateStopIsNoop() {
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    ingestionBackend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
+    ingestionBackend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
+
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
+    // stopConsumption on the ingestion service should only be called once
+    verify(storeIngestionService).stopConsumption(any(), anyInt());
+  }
+
+  @Test
+  public void testReplicaIntendedState_DropFromRunningSetsNotExist() {
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+    when(storeIngestionService.dropStoragePartitionGracefully(any(), anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    ingestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, true, REPLICA_ID);
+
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+  }
+
+  @Test
+  public void testReplicaIntendedState_DropFromStoppedSetsNotExist() {
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+    when(storeIngestionService.dropStoragePartitionGracefully(any(), anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    ingestionBackend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
+    ingestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, true, REPLICA_ID);
+
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+  }
+
+  @Test
+  public void testReplicaIntendedState_DropFromNotExistSetsNotExist() {
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+    when(storeIngestionService.dropStoragePartitionGracefully(any(), anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    ingestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, true, REPLICA_ID);
+
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+  }
+
+  @Test
+  public void testReplicaIntendedState_StartAfterStopWaitsAndSetsRunning() {
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    ingestionBackend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
+
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
+
+    // Start again after stop should wait for stop to complete, then set to RUNNING
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+
+    // stopConsumptionAndWait should have been called to wait for the previous stop
+    verify(storeIngestionService).stopConsumptionAndWait(eq(storeConfig), eq(PARTITION), anyInt(), anyInt(), eq(false));
+  }
+
+  @Test
+  public void testReplicaIntendedState_FullLifecycle() {
+    when(storeIngestionService.stopConsumption(any(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
+    doNothing().when(storeIngestionService).stopConsumptionAndWait(any(), anyInt(), anyInt(), anyInt(), anyBoolean());
+    when(storeIngestionService.dropStoragePartitionGracefully(any(), anyInt()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    // NOT_EXIST -> start -> RUNNING
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+
+    // RUNNING -> stop -> STOPPED
+    ingestionBackend.stopConsumption(storeConfig, PARTITION, REPLICA_ID);
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.STOPPED);
+
+    // STOPPED -> start -> RUNNING (with wait)
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+
+    // RUNNING -> drop -> NOT_EXIST
+    ingestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, true, REPLICA_ID);
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(REPLICA_ID),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
   }
 }

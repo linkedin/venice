@@ -35,6 +35,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private final Map<String, AtomicReference<StorageEngine>> topicStorageEngineReferenceMap =
       new VeniceConcurrentHashMap<>();
 
+  // Per-replica consumption state tracking for coordinating start/stop/drop lifecycle
+  private final Map<String, ReplicaConsumptionContext> replicaContexts = new VeniceConcurrentHashMap<>();
+
   public DefaultIngestionBackend(
       StorageMetadataService storageMetadataService,
       KafkaStoreIngestionService storeIngestionService,
@@ -60,6 +63,22 @@ public class DefaultIngestionBackend implements IngestionBackend {
     Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
     syncStoreVersionConfig(storeAndVersion.getStore(), storeConfig);
 
+    ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
+
+    if (replicaContext.state == ReplicaIntendedState.RUNNING) {
+      LOGGER.info("startConsumption called for replica {} but it is already RUNNING. Ignoring duplicate.", replicaId);
+      return;
+    }
+
+    if (replicaContext.state == ReplicaIntendedState.STOPPED) {
+      LOGGER.info("startConsumption: Waiting for consumption to stop for replica {}.", replicaId);
+      int stopConsumptionTimeout = serverConfig.getStopConsumptionTimeoutInSeconds();
+      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, stopConsumptionTimeout, false);
+    }
+
+    replicaContext.state = ReplicaIntendedState.RUNNING;
+    LOGGER.info("Replica {} state set to RUNNING.", replicaId);
+
     // Blob transfer is now handled inside StoreIngestionTask's processCommonConsumerAction SUBSCRIBE handler.
     // DefaultIngestionBackend only needs to open the store and start consumption.
     StorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
@@ -79,6 +98,18 @@ public class DefaultIngestionBackend implements IngestionBackend {
       VeniceStoreVersionConfig storeConfig,
       int partition,
       String replicaId) {
+    ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
+
+    if (replicaContext.state != ReplicaIntendedState.RUNNING) {
+      LOGGER.info(
+          "stopConsumption called for replica {} but state is {} (not RUNNING). Skipping.",
+          replicaId,
+          replicaContext.state);
+      return CompletableFuture.completedFuture(null);
+    }
+    replicaContext.state = ReplicaIntendedState.STOPPED;
+    LOGGER.info("Replica {} state set to STOPPED.", replicaId);
+
     return getStoreIngestionService().stopConsumption(storeConfig, partition);
   }
 
@@ -104,14 +135,22 @@ public class DefaultIngestionBackend implements IngestionBackend {
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine,
       String replicaId) {
-    LOGGER.info("dropStoragePartitionGracefully: Dropping replica {}", replicaId);
+    LOGGER.info(
+        "dropStoragePartitionGracefully: Replica {} state {} before gracefully dropping",
+        replicaId,
+        getOrCreateReplicaContext(replicaId).state);
 
     // Blob transfer cancellation is now handled inside SIT's DROP_PARTITION action handler.
     final int waitIntervalInSecond = 1;
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, waitIntervalInSecond, maxRetry, true);
 
-    return getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
+    try {
+      return getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
+    } finally {
+      replicaContexts.remove(replicaId);
+      LOGGER.info("dropStoragePartitionGracefully: Replica {} context removed.", replicaId);
+    }
   }
 
   @Override
@@ -147,6 +186,20 @@ public class DefaultIngestionBackend implements IngestionBackend {
     return storageMetadataService;
   }
 
+  private ReplicaConsumptionContext getOrCreateReplicaContext(String replicaId) {
+    return replicaContexts.computeIfAbsent(replicaId, k -> new ReplicaConsumptionContext());
+  }
+
+  // For test assertions
+  ReplicaIntendedState getReplicaIntendedState(String replicaId) {
+    ReplicaConsumptionContext context = replicaContexts.get(replicaId);
+    return context == null ? ReplicaIntendedState.NOT_EXIST : context.state;
+  }
+
+  void removeReplicaConsumptionContext(String replicaId) {
+    replicaContexts.remove(replicaId);
+  }
+
   /**
    * This method is used to sync the store version config with on the store metadata obtained from ZK.
    * VeniceStoreVersionConfig was introduced to allow store-version level configs be configurable via a config file.
@@ -159,5 +212,18 @@ public class DefaultIngestionBackend implements IngestionBackend {
     if (store.isBlobTransferEnabled()) {
       storeConfig.setBlobTransferEnabled(true);
     }
+  }
+
+  enum ReplicaIntendedState {
+    /** The replica has never been started on this host, or has been dropped. */
+    NOT_EXIST,
+    /** Consumption is active (blob transfer in progress or Kafka consumer subscribed). */
+    RUNNING,
+    /** A stop has been requested (but not yet dropped). */
+    STOPPED
+  }
+
+  static class ReplicaConsumptionContext {
+    ReplicaIntendedState state = ReplicaIntendedState.NOT_EXIST;
   }
 }
