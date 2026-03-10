@@ -657,7 +657,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
     };
 
-    StoreIngestionTask task = ingestionTaskFactory.getNewIngestionTask(
+    return ingestionTaskFactory.getNewIngestionTask(
         storageService,
         store,
         version,
@@ -668,8 +668,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         cacheBackend,
         getInternalRecordTransformerConfig(storeName),
         zkHelixAdmin);
-
-    return task;
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {

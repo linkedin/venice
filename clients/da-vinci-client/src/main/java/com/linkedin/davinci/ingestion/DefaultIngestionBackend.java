@@ -9,9 +9,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -24,7 +22,6 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * The default ingestion backend implementation.
- *
  */
 public class DefaultIngestionBackend implements IngestionBackend {
   private static final Logger LOGGER = LogManager.getLogger(DefaultIngestionBackend.class);
@@ -57,11 +54,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
       String replicaId) {
     String storeVersion = storeConfig.getStoreVersionName();
     LOGGER.info("Retrieving storage engine for replica {}", replicaId);
-
-    StoreVersionInfo storeAndVersion =
-        Utils.waitStoreVersionOrThrow(storeVersion, getStoreIngestionService().getMetadataRepo());
     Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(storeVersion);
-    syncStoreVersionConfig(storeAndVersion.getStore(), storeConfig);
 
     ReplicaConsumptionContext replicaContext = getOrCreateReplicaContext(replicaId);
 
@@ -140,7 +133,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
         replicaId,
         getOrCreateReplicaContext(replicaId).state);
 
-    // Blob transfer cancellation is now handled inside SIT's DROP_PARTITION action handler.
+    // Stop consumption of the partition.
     final int waitIntervalInSecond = 1;
     final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, waitIntervalInSecond, maxRetry, true);
