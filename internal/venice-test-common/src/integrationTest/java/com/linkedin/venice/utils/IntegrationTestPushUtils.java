@@ -20,6 +20,7 @@ import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
@@ -171,6 +172,9 @@ public class IntegrationTestPushUtils {
    * Run VPJ and blocking wait for complete.
    */
   public static void runVPJ(Properties props) {
+    // Default unknown-state timeout is 30 minutes — far too long for integration tests.
+    // Override to 2 minutes so tests fail fast instead of hanging.
+    props.putIfAbsent(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, 120_000L);
     try (VenicePushJob job = new VenicePushJob(
         "venice-push-job-" + props.get(VENICE_STORE_NAME_PROP) + "-" + System.currentTimeMillis(),
         props)) {

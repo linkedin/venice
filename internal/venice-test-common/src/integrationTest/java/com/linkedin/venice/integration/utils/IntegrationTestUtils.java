@@ -16,10 +16,12 @@ import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.endToEnd.TestChangelogValue;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -83,6 +85,72 @@ public class IntegrationTestUtils {
     ZkClient zkClient = ZkClientFactory.newZkClient(zkAddress);
     if (!zkClient.exists(zkBasePath)) {
       zkClient.create(zkBasePath, null, CreateMode.PERSISTENT);
+    }
+  }
+
+  /**
+   * Wait for the participant store v1 push to reach COMPLETED in all child regions.
+   *
+   * The participant store is a hybrid system store initialized lazily by each child controller.
+   * Its push involves a DoL (Declaration-of-Leadership) loopback that can take up to 10 minutes
+   * to fall back to the legacy mechanism if the DoL message is not consumed in time (e.g., due
+   * to shared-consumer starvation during cluster startup). Using a generous timeout here prevents
+   * flaky setUp failures across many test classes.
+   */
+  public static void waitForParticipantStorePushInAllRegions(
+      String clusterName,
+      List<? extends VeniceMultiClusterWrapper> childDatacenters) {
+    String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
+    String versionTopic = Version.composeKafkaTopic(participantStoreName, 1);
+    List<ControllerClient> clients = new ArrayList<>();
+    try {
+      for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+        ControllerClient client = new ControllerClient(clusterName, childDatacenter.getControllerConnectString());
+        clients.add(client);
+        TestUtils.waitForNonDeterministicPushCompletion(versionTopic, client, 2, TimeUnit.MINUTES);
+      }
+    } finally {
+      clients.forEach(Utils::closeQuietlyWithErrorLogged);
+    }
+  }
+
+  /**
+   * Wait for the participant store v1 push to reach COMPLETED for multiple clusters on a single controller.
+   */
+  public static void waitForParticipantStorePush(String[] clusterNames, String controllerUrl) {
+    waitForParticipantStorePush(clusterNames, new String[] { controllerUrl });
+  }
+
+  /**
+   * Wait for the participant store v1 push to reach COMPLETED for multiple clusters across multiple controllers.
+   * If the push ERRORed (e.g. resource assignment timeout during controller init), retry by requesting a new push.
+   */
+  public static void waitForParticipantStorePush(String[] clusterNames, String... controllerUrls) {
+    List<ControllerClient> clients = new ArrayList<>();
+    try {
+      for (String cluster: clusterNames) {
+        for (String controllerUrl: controllerUrls) {
+          ControllerClient client = new ControllerClient(cluster, controllerUrl);
+          clients.add(client);
+          String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster);
+          String versionTopic = Version.composeKafkaTopic(participantStoreName, 1);
+          try {
+            TestUtils.waitForNonDeterministicPushCompletion(versionTopic, client, 2, TimeUnit.MINUTES);
+          } catch (Exception e) {
+            // The participant store push can fail if server registration races with the controller's
+            // cluster leader initialization (resource assignment timeout). By the time we get here,
+            // servers are registered with Helix, so a retry should complete quickly.
+            int retryVersion = client.emptyPush(participantStoreName, "retryParticipantStorePush", 1L).getVersion();
+            TestUtils.waitForNonDeterministicPushCompletion(
+                Version.composeKafkaTopic(participantStoreName, retryVersion),
+                client,
+                1,
+                TimeUnit.MINUTES);
+          }
+        }
+      }
+    } finally {
+      clients.forEach(Utils::closeQuietlyWithErrorLogged);
     }
   }
 

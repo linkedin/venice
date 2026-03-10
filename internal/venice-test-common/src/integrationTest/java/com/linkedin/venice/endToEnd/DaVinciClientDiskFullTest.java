@@ -135,9 +135,10 @@ public class DaVinciClientDiskFullTest {
    * as "full". In particular, with RocksDB memtable buffering, actual disk usage lags behind
    * logical bytes written, so the margin must be conservative.
    *
-   * We set marginBytes = 0.01% of usableSpaceBytes (1/10 of the reserve), so that after
-   * the reserve is exhausted (~0.1% of usableSpaceBytes of data written and mostly flushed
-   * via frequent 2MB sync/flush cycles), the tiny margin is easily bridged.
+   * We set marginBytes = max(50MB, 1/10 of reserve). The 50MB minimum absorbs disk space
+   * fluctuations on CI (temp files, log rotation, concurrent tests). After the reserve is
+   * exhausted (~0.1% of usableSpaceBytes written and flushed via 2MB sync cycles), the
+   * margin is easily bridged.
    *
    * Data size is set to 0.5% of usableSpaceBytes (5x the reserve) to ensure the reserve
    * is exhausted well before all records are consumed, giving the disk check ample opportunity
@@ -168,9 +169,10 @@ public class DaVinciClientDiskFullTest {
     // space to have decreased below freeSpaceBytesRequired. With a 2MB sync interval (configured
     // in getDaVinciBackendConfig), RocksDB flushes every 2MB, so after writing ~reserve bytes
     // almost all data is on disk. We set marginBytes to 1/10 of the reserve so that the actual
-    // disk usage easily exceeds the threshold. The 10MB minimum handles noise from short-term
-    // disk space fluctuations between when we measure usableSpaceBytes and when DiskUsage checks.
-    long marginBytes = Math.max(10 * 1024 * 1024L, estimatedReserve / 10);
+    // disk usage easily exceeds the threshold. The 50MB minimum handles noise from disk space
+    // fluctuations on CI runners (temp files, log rotation, concurrent test cleanup) between
+    // when we measure usableSpaceBytes at test start and when DiskUsage checks during ingestion.
+    long marginBytes = Math.max(50 * 1024 * 1024L, estimatedReserve / 10);
 
     // freeSpaceBytesRequired = (1 - threshold) * totalSpaceBytes = usableSpaceBytes - marginBytes
     // threshold = 1 - (usableSpaceBytes - marginBytes) / totalSpaceBytes

@@ -35,8 +35,27 @@ public class PerClusterInternalRTStoreInitializationRoutine implements ClusterLe
   @Override
   public void execute(String clusterName) {
     String storeName = clusterToStoreNameSupplier.apply(clusterName);
+    /*
+     * Stores initialized by this routine are created independently by each region's child
+     * controller, which writes SOP, EOP, and TopicSwitch directly to the local version topic.
+     * The native replication source must therefore point to the local region so that the leader
+     * replica does NOT try to consume the version topic from a remote fabric.
+     *
+     * If the source were remote, the leader would consume the remote VT and produce those
+     * records into the local VT — the same VT that the local controller already wrote to.
+     * After the leader finishes consuming the remote VT (past its EOP), it switches back to
+     * the local VT at an offset beyond the controller's TopicSwitch message. Because the
+     * leader skips all remote-VT records after EOP (including the remote TopicSwitch), and
+     * its local-VT subscription starts past the controller's TopicSwitch, the leader never
+     * sees any TopicSwitch at all. Without a TopicSwitch the leader never transitions to the
+     * real-time topic, and the push remains stuck at END_OF_PUSH_RECEIVED indefinitely.
+     *
+     * Setting the source to {@code multiClusterConfigs.getRegionName()} (which always returns
+     * the local region name) ensures the leader consumes the local VT directly.
+     */
     UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setHybridOffsetLagThreshold(100L)
-        .setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
+        .setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7))
+        .setNativeReplicationSourceFabric(multiClusterConfigs.getRegionName());
     SystemStoreInitializationHelper.setupSystemStore(
         clusterName,
         storeName,

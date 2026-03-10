@@ -3633,10 +3633,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         validateEndOfPushReceivedBeforeTopicSwitch(partitionConsumptionState, offset);
 
         LOGGER.info(
-            "Received {} control message. Replica: {}, Offset: {} NewSource: {}",
+            "Received {} control message. Replica: {}, Offset: {} SourceTopic: {} SourceKafkaServers: {}",
             type.name(),
             partitionConsumptionState.getReplicaId(),
             offset,
+            topicSwitch.getSourceTopicName(),
             topicSwitch.getSourceKafkaServers());
         processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
         break;

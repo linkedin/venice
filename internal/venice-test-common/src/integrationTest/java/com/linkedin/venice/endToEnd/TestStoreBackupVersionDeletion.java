@@ -10,6 +10,8 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.controller.StoreBackupVersionCleanupService;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -25,6 +27,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -33,6 +36,7 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
   private static final int TEST_TIMEOUT = 120_000; // ms
 
   private VeniceHelixAdmin veniceHelixAdmin;
+  private ControllerClient childControllerClient;
 
   @Override
   protected int getNumberOfRegions() {
@@ -70,6 +74,14 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
     super.setUp();
     veniceHelixAdmin =
         (VeniceHelixAdmin) childDatacenters.get(0).getControllers().values().iterator().next().getVeniceAdmin();
+    childControllerClient = new ControllerClient(CLUSTER_NAME, childDatacenters.get(0).getControllerConnectString());
+  }
+
+  @Override
+  @AfterClass(alwaysRun = true)
+  public void cleanUp() {
+    Utils.closeQuietlyWithErrorLogged(childControllerClient);
+    super.cleanUp();
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -97,21 +109,32 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
           parentControllerClient,
-          20,
+          30,
           TimeUnit.SECONDS);
       props.put(SOURCE_KAFKA, "true");
       IntegrationTestPushUtils.runVPJ(props);
+      // Wait for push completion on the CHILD controller — this ensures the child has promoted v3 to current.
+      // Using the parent controller here is insufficient: the parent may report completion before the child
+      // promotes v3, and the backup cleanup service (running on the child) needs currentVersion=3 to use
+      // the short repush retention (10ms) instead of the default 7-day retention.
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 3),
-          parentControllerClient,
-          20,
+          childControllerClient,
+          30,
           TimeUnit.SECONDS);
-      // repush pushed 2 as source version, so version 2 should be deleted
-      TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      // repush sourced from v2, so the backup cleanup service should delete v2.
+      // v1 may also be cleaned up depending on timing, so only assert v2 is gone and v3 (current) remains.
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
         Store store = veniceHelixAdmin.getStore(CLUSTER_NAME, storeName);
-        return store.getVersion(2) == null && store.getVersions().size() == 2;
+        assertNull(store.getVersion(2), "Version 2 should be deleted (repush source). " + describeStore(store));
+        assertEquals(store.getCurrentVersion(), 3, "Current version should be 3. " + describeStore(store));
       });
     }
+  }
+
+  private static String describeStore(Store store) {
+    return "currentVersion=" + store.getCurrentVersion() + ", versions="
+        + store.getVersions().stream().map(v -> "v" + v.getNumber()).collect(java.util.stream.Collectors.joining(","));
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -132,20 +155,20 @@ public class TestStoreBackupVersionDeletion extends AbstractMultiRegionTest {
       IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
-          parentControllerClient,
+          childControllerClient,
           30,
           TimeUnit.SECONDS);
       IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
-          parentControllerClient,
-          20,
+          childControllerClient,
+          30,
           TimeUnit.SECONDS);
       IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 3),
-          parentControllerClient,
-          20,
+          childControllerClient,
+          30,
           TimeUnit.SECONDS);
       TestUtils.waitForNonDeterministicCompletion(
           30,

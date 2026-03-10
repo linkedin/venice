@@ -518,11 +518,16 @@ public class TestGlobalRtDiv {
     LOGGER.info("Stopping leader server: {}", leaderNode.getNodeId());
     venice.stopVeniceServer(leaderNode.getPort());
 
+    // Wait for a new leader (different from the stopped one) to be elected.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+      Instance leader = routingDataRepo.getLeaderInstance(topicName, PARTITION);
+      assertNotNull(leader, "New leader should be elected");
+      assertNotEquals(leader.getNodeId(), oldLeaderNode.getNodeId(), "New leader should be different from old leader");
+    });
+
     // Verify that the other server is promoted to leader and load the Global RT DIV State correctly.
     Instance newLeader = verifyGlobalDivStateOnAllServers(topicName, PARTITION);
     LOGGER.info("New leader server: {}", newLeader.getNodeId());
-    // Confirm that leader has changed.
-    assertNotEquals(newLeader.getNodeId(), oldLeaderNode.getNodeId());
 
     // Restart the old leader server to test if it can load the Global RT DIV State correctly as a follower.
     LOGGER.info("Restarting old leader server: {}", oldLeaderNode.getNodeId());
