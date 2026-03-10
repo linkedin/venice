@@ -1,10 +1,10 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.CLUSTER_NAME;
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.METRIC_PREFIX;
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildResponseCountAttributes;
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildVersionRoleAttributes;
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
@@ -14,7 +14,6 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -25,8 +24,6 @@ import org.testng.annotations.Test;
 
 
 public class BlobTransferOtelStatsTest {
-  private static final String TEST_METRIC_PREFIX = "server";
-  private static final String TEST_CLUSTER_NAME = "test-cluster";
   private static final String TEST_STORE_NAME = "test-store";
 
   private static final String OTEL_RESPONSE_COUNT =
@@ -45,12 +42,12 @@ public class BlobTransferOtelStatsTest {
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
     metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
+        new VeniceMetricsConfig.Builder().setMetricPrefix(METRIC_PREFIX)
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build());
-    stats = new BlobTransferOtelStats(metricsRepository, TEST_STORE_NAME, TEST_CLUSTER_NAME);
+    stats = new BlobTransferOtelStats(metricsRepository, TEST_STORE_NAME, CLUSTER_NAME);
     // Set version info: version 1 = CURRENT, version 2 = FUTURE
     stats.updateVersionInfo(1, 2);
   }
@@ -71,7 +68,11 @@ public class BlobTransferOtelStatsTest {
     validateCounter(
         OTEL_RESPONSE_COUNT,
         1,
-        buildResponseCountAttributes(VersionRole.CURRENT, VeniceResponseStatusCategory.SUCCESS));
+        buildResponseCountAttributes(
+            TEST_STORE_NAME,
+            CLUSTER_NAME,
+            VersionRole.CURRENT,
+            VeniceResponseStatusCategory.SUCCESS));
   }
 
   @Test
@@ -81,7 +82,11 @@ public class BlobTransferOtelStatsTest {
     validateCounter(
         OTEL_RESPONSE_COUNT,
         1,
-        buildResponseCountAttributes(VersionRole.CURRENT, VeniceResponseStatusCategory.FAIL));
+        buildResponseCountAttributes(
+            TEST_STORE_NAME,
+            CLUSTER_NAME,
+            VersionRole.CURRENT,
+            VeniceResponseStatusCategory.FAIL));
   }
 
   @Test
@@ -95,23 +100,29 @@ public class BlobTransferOtelStatsTest {
         timeInSec,
         1,
         timeInSec,
-        buildVersionRoleAttributes(VersionRole.CURRENT),
+        buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.CURRENT),
         OTEL_TIME,
-        TEST_METRIC_PREFIX);
+        METRIC_PREFIX);
   }
 
   @Test
   public void testRecordBytesReceived() {
     stats.recordBytesReceived(1, 1024);
 
-    validateCounter(OTEL_BYTES_RECEIVED, 1024, buildVersionRoleAttributes(VersionRole.CURRENT));
+    validateCounter(
+        OTEL_BYTES_RECEIVED,
+        1024,
+        buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.CURRENT));
   }
 
   @Test
   public void testRecordBytesSent() {
     stats.recordBytesSent(1, 2048);
 
-    validateCounter(OTEL_BYTES_SENT, 2048, buildVersionRoleAttributes(VersionRole.CURRENT));
+    validateCounter(
+        OTEL_BYTES_SENT,
+        2048,
+        buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.CURRENT));
   }
 
   // --- Version classification tests ---
@@ -120,14 +131,20 @@ public class BlobTransferOtelStatsTest {
   public void testFutureVersionClassification() {
     stats.recordBytesReceived(2, 200);
 
-    validateCounter(OTEL_BYTES_RECEIVED, 200, buildVersionRoleAttributes(VersionRole.FUTURE));
+    validateCounter(
+        OTEL_BYTES_RECEIVED,
+        200,
+        buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.FUTURE));
   }
 
   @Test
   public void testBackupVersionClassification() {
     stats.recordBytesReceived(99, 300);
 
-    validateCounter(OTEL_BYTES_RECEIVED, 300, buildVersionRoleAttributes(VersionRole.BACKUP));
+    validateCounter(
+        OTEL_BYTES_RECEIVED,
+        300,
+        buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.BACKUP));
   }
 
   // --- Accumulation tests ---
@@ -141,7 +158,11 @@ public class BlobTransferOtelStatsTest {
     validateCounter(
         OTEL_RESPONSE_COUNT,
         3,
-        buildResponseCountAttributes(VersionRole.CURRENT, VeniceResponseStatusCategory.SUCCESS));
+        buildResponseCountAttributes(
+            TEST_STORE_NAME,
+            CLUSTER_NAME,
+            VersionRole.CURRENT,
+            VeniceResponseStatusCategory.SUCCESS));
   }
 
   @Test
@@ -149,7 +170,10 @@ public class BlobTransferOtelStatsTest {
     stats.recordBytesReceived(1, 100);
     stats.recordBytesReceived(1, 200);
 
-    validateCounter(OTEL_BYTES_RECEIVED, 300, buildVersionRoleAttributes(VersionRole.CURRENT));
+    validateCounter(
+        OTEL_BYTES_RECEIVED,
+        300,
+        buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.CURRENT));
   }
 
   @Test
@@ -163,9 +187,9 @@ public class BlobTransferOtelStatsTest {
         7.0,
         2,
         10.0,
-        buildVersionRoleAttributes(VersionRole.CURRENT),
+        buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.CURRENT),
         OTEL_TIME,
-        TEST_METRIC_PREFIX);
+        METRIC_PREFIX);
   }
 
   // --- Dimension isolation tests ---
@@ -179,11 +203,19 @@ public class BlobTransferOtelStatsTest {
     validateCounter(
         OTEL_RESPONSE_COUNT,
         2,
-        buildResponseCountAttributes(VersionRole.CURRENT, VeniceResponseStatusCategory.SUCCESS));
+        buildResponseCountAttributes(
+            TEST_STORE_NAME,
+            CLUSTER_NAME,
+            VersionRole.CURRENT,
+            VeniceResponseStatusCategory.SUCCESS));
     validateCounter(
         OTEL_RESPONSE_COUNT,
         1,
-        buildResponseCountAttributes(VersionRole.CURRENT, VeniceResponseStatusCategory.FAIL));
+        buildResponseCountAttributes(
+            TEST_STORE_NAME,
+            CLUSTER_NAME,
+            VersionRole.CURRENT,
+            VeniceResponseStatusCategory.FAIL));
   }
 
   @Test
@@ -192,9 +224,18 @@ public class BlobTransferOtelStatsTest {
     stats.recordBytesReceived(2, 200); // FUTURE
     stats.recordBytesReceived(99, 300); // BACKUP
 
-    validateCounter(OTEL_BYTES_RECEIVED, 100, buildVersionRoleAttributes(VersionRole.CURRENT));
-    validateCounter(OTEL_BYTES_RECEIVED, 200, buildVersionRoleAttributes(VersionRole.FUTURE));
-    validateCounter(OTEL_BYTES_RECEIVED, 300, buildVersionRoleAttributes(VersionRole.BACKUP));
+    validateCounter(
+        OTEL_BYTES_RECEIVED,
+        100,
+        buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.CURRENT));
+    validateCounter(
+        OTEL_BYTES_RECEIVED,
+        200,
+        buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.FUTURE));
+    validateCounter(
+        OTEL_BYTES_RECEIVED,
+        300,
+        buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.BACKUP));
   }
 
   // --- Cross-metric isolation tests ---
@@ -204,17 +245,21 @@ public class BlobTransferOtelStatsTest {
     stats.recordTime(1, 5.0);
 
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    Attributes currentAttrs = buildVersionRoleAttributes(VersionRole.CURRENT);
+    Attributes currentAttrs = buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.CURRENT);
 
     OpenTelemetryDataTestUtils
-        .assertNoLongSumDataForAttributes(metricsData, OTEL_BYTES_RECEIVED, TEST_METRIC_PREFIX, currentAttrs);
+        .assertNoLongSumDataForAttributes(metricsData, OTEL_BYTES_RECEIVED, METRIC_PREFIX, currentAttrs);
     OpenTelemetryDataTestUtils
-        .assertNoLongSumDataForAttributes(metricsData, OTEL_BYTES_SENT, TEST_METRIC_PREFIX, currentAttrs);
+        .assertNoLongSumDataForAttributes(metricsData, OTEL_BYTES_SENT, METRIC_PREFIX, currentAttrs);
     OpenTelemetryDataTestUtils.assertNoLongSumDataForAttributes(
         metricsData,
         OTEL_RESPONSE_COUNT,
-        TEST_METRIC_PREFIX,
-        buildResponseCountAttributes(VersionRole.CURRENT, VeniceResponseStatusCategory.SUCCESS));
+        METRIC_PREFIX,
+        buildResponseCountAttributes(
+            TEST_STORE_NAME,
+            CLUSTER_NAME,
+            VersionRole.CURRENT,
+            VeniceResponseStatusCategory.SUCCESS));
   }
 
   @Test
@@ -222,15 +267,19 @@ public class BlobTransferOtelStatsTest {
     stats.recordBytesSent(1, 2048);
 
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    Attributes currentAttrs = buildVersionRoleAttributes(VersionRole.CURRENT);
+    Attributes currentAttrs = buildVersionRoleAttributes(TEST_STORE_NAME, CLUSTER_NAME, VersionRole.CURRENT);
 
     OpenTelemetryDataTestUtils
-        .assertNoLongSumDataForAttributes(metricsData, OTEL_BYTES_RECEIVED, TEST_METRIC_PREFIX, currentAttrs);
+        .assertNoLongSumDataForAttributes(metricsData, OTEL_BYTES_RECEIVED, METRIC_PREFIX, currentAttrs);
     OpenTelemetryDataTestUtils.assertNoLongSumDataForAttributes(
         metricsData,
         OTEL_RESPONSE_COUNT,
-        TEST_METRIC_PREFIX,
-        buildResponseCountAttributes(VersionRole.CURRENT, VeniceResponseStatusCategory.SUCCESS));
+        METRIC_PREFIX,
+        buildResponseCountAttributes(
+            TEST_STORE_NAME,
+            CLUSTER_NAME,
+            VersionRole.CURRENT,
+            VeniceResponseStatusCategory.SUCCESS));
   }
 
   // --- NPE prevention tests ---
@@ -238,8 +287,8 @@ public class BlobTransferOtelStatsTest {
   @Test
   public void testNoNpeWhenOtelDisabled() {
     try (VeniceMetricsRepository disabledRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
-      BlobTransferOtelStats disabledStats = new BlobTransferOtelStats(disabledRepo, TEST_STORE_NAME, TEST_CLUSTER_NAME);
+        new VeniceMetricsConfig.Builder().setMetricPrefix(METRIC_PREFIX).setEmitOtelMetrics(false).build())) {
+      BlobTransferOtelStats disabledStats = new BlobTransferOtelStats(disabledRepo, TEST_STORE_NAME, CLUSTER_NAME);
       assertFalse(disabledStats.emitOtelMetrics());
       assertAllMethodsSafe(disabledStats);
     }
@@ -248,7 +297,7 @@ public class BlobTransferOtelStatsTest {
   @Test
   public void testNoNpeWhenPlainMetricsRepository() {
     BlobTransferOtelStats plainStats =
-        new BlobTransferOtelStats(new MetricsRepository(), TEST_STORE_NAME, TEST_CLUSTER_NAME);
+        new BlobTransferOtelStats(new MetricsRepository(), TEST_STORE_NAME, CLUSTER_NAME);
     assertFalse(plainStats.emitOtelMetrics());
     assertAllMethodsSafe(plainStats);
   }
@@ -269,30 +318,13 @@ public class BlobTransferOtelStatsTest {
 
   // --- Helper methods ---
 
-  private Attributes buildVersionRoleAttributes(VersionRole role) {
-    return baseAttributesBuilder().put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), role.getDimensionValue())
-        .build();
-  }
-
-  private Attributes buildResponseCountAttributes(VersionRole role, VeniceResponseStatusCategory status) {
-    return baseAttributesBuilder().put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), role.getDimensionValue())
-        .put(VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(), status.getDimensionValue())
-        .build();
-  }
-
-  private AttributesBuilder baseAttributesBuilder() {
-    return Attributes.builder()
-        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME);
-  }
-
   private void validateCounter(String metricName, long expectedValue, Attributes expectedAttributes) {
     OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
         inMemoryMetricReader,
         expectedValue,
         expectedAttributes,
         metricName,
-        TEST_METRIC_PREFIX);
+        METRIC_PREFIX);
   }
 
 }
