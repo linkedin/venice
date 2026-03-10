@@ -140,9 +140,9 @@ public class IntegrationTestUtils {
             // The participant store push can fail if server registration races with the controller's
             // cluster leader initialization (resource assignment timeout). By the time we get here,
             // servers are registered with Helix, so a retry should complete quickly.
-            client.emptyPush(participantStoreName, "retryParticipantStorePush", 1L);
+            int retryVersion = client.emptyPush(participantStoreName, "retryParticipantStorePush", 1L).getVersion();
             TestUtils.waitForNonDeterministicPushCompletion(
-                Version.composeKafkaTopic(participantStoreName, 2),
+                Version.composeKafkaTopic(participantStoreName, retryVersion),
                 client,
                 1,
                 TimeUnit.MINUTES);

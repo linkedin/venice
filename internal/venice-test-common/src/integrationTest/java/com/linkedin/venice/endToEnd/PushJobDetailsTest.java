@@ -368,6 +368,13 @@ public class PushJobDetailsTest {
     }
   }
 
+  /**
+   * Consolidated from the original 4-combination DataProvider (useCustomCheckpoints × migratePushStatusStoreToAA).
+   * The A/A migration path is now always exercised in setUp(). The useCustomCheckpoints=true path (which configured
+   * PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR to reclassify DUP_KEY_WITH_DIFF_VALUE as non-user-error) was
+   * dropped because it only tested config wiring, not core push-job-details logic, and running 4× cluster setups
+   * made this test too slow for CI.
+   */
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testPushJobDetails() {
     // create maps for expected metrics: Tehuti Count and OTel cumulative counter

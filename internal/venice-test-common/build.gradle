@@ -146,6 +146,9 @@ def integrationTestConfigs = {
 }
 
 def shardAssignmentsFile = new File(projectDir, "test-shard-assignments.json")
+if (!shardAssignmentsFile.exists()) {
+  throw new GradleException("Missing test-shard-assignments.json in ${projectDir}. Run './gradlew generateGHCI' or 'git checkout' the file.")
+}
 def shardAssignments = new JsonSlurper().parse(shardAssignmentsFile)
 def integrationTestBuckets = shardAssignments.shards as Map<String, List<String>>
 
@@ -181,7 +184,8 @@ integrationTestBuckets.each { name, patterns ->
         def timingDir = new File(buildDir, "test-timings")
         timingDir.mkdirs()
         def timingFile = new File(timingDir, "integrationTests_${name}.json")
-        timingFile.text = JsonOutput.prettyPrint(JsonOutput.toJson([shard: name, suites: timingResults]))
+        def snapshot = new ArrayList(timingResults)
+        timingFile.text = JsonOutput.prettyPrint(JsonOutput.toJson([shard: name, suites: snapshot]))
       }
     }
   }
@@ -220,7 +224,8 @@ task integrationTests_99(type: Test) {
       def timingDir = new File(buildDir, "test-timings")
       timingDir.mkdirs()
       def timingFile = new File(timingDir, "integrationTests_99.json")
-      timingFile.text = JsonOutput.prettyPrint(JsonOutput.toJson([shard: "99", suites: timingResults]))
+      def snapshot = new ArrayList(timingResults)
+      timingFile.text = JsonOutput.prettyPrint(JsonOutput.toJson([shard: "99", suites: snapshot]))
     }
   }
 }
