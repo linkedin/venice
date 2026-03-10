@@ -30,7 +30,8 @@ public interface PubSubMessage<K, V, POSITION> extends Measurable {
   POSITION getPosition();
 
   /**
-   * @return the timestamp at which the message was persisted in the pub sub system
+   * @return the best-available message timestamp. This is the pub-sub system timestamp when available and
+   *         non-zero, otherwise the Venice producer timestamp embedded in the message envelope.
    */
   long getPubSubMessageTime();
 

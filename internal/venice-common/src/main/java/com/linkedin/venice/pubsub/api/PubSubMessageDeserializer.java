@@ -81,13 +81,17 @@ public class PubSubMessageDeserializer {
     if (value == null) {
       value = valueSerializer.deserialize(valueBytes, getEnvelope(key.getKeyHeaderByte()));
     }
+    // Prefer Venice's own producer timestamp when the pub-sub system timestamp is missing or zero.
+    // Some pub-sub systems do not provide reliable per-message timestamps. Venice always embeds a
+    // producer timestamp in the KafkaMessageEnvelope, so we can fall back to it.
+    long effectiveTimestamp = timestamp != null && timestamp > 0 ? timestamp : value.producerMetadata.messageTimestamp;
     // TODO: Put the message container in an object pool as well
     return new ImmutablePubSubMessage(
         key,
         value,
         topicPartition,
         pubSubPosition,
-        timestamp,
+        effectiveTimestamp,
         keyBytes.length + valueBytes.length,
         headers);
   }
