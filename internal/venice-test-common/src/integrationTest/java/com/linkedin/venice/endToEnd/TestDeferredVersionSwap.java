@@ -40,7 +40,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.IntStream;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -54,18 +53,11 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
   private static final String REGION1 = "dc-0";
   private static final String REGION2 = "dc-1";
   private static final String REGION3 = "dc-2";
-  private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, 2).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   private static final int TEST_TIMEOUT = 120_000;
 
   @Override
   protected int getNumberOfRegions() {
     return 3;
-  }
-
-  @Override
-  protected int getNumberOfClusters() {
-    return 2;
   }
 
   @Override
@@ -113,8 +105,8 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
         new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true).setTargetRegionSwapWaitTime(60);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
-      createStoreWithRetry(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms);
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURLs)) {
+      createStoreWithRetry(CLUSTER_NAME, keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms);
 
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, targetRegions);
@@ -166,8 +158,8 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
     storeParms.setTargetRegionSwapWaitTime(60);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
-      createStoreWithRetry(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms);
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURLs)) {
+      createStoreWithRetry(CLUSTER_NAME, keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms);
 
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, REGION1);
@@ -191,13 +183,13 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
         // Forcibly mark parent version and child status as ONLINE to confirm that version swap will still happen if
         // non-target regions are not swapped yet
         Admin admin =
-            multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(CLUSTER_NAMES[0]).getVeniceAdmin();
+            multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(CLUSTER_NAME).getVeniceAdmin();
         updateVersionStatus(admin, storeName, VersionStatus.ONLINE, parentControllerClient);
 
         for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
-          VeniceHelixAdmin childAdmin = childDatacenter.getLeaderController(CLUSTER_NAMES[0]).getVeniceHelixAdmin();
+          VeniceHelixAdmin childAdmin = childDatacenter.getLeaderController(CLUSTER_NAME).getVeniceHelixAdmin();
           try (ControllerClient childControllerClient =
-              new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString())) {
+              new ControllerClient(CLUSTER_NAME, childDatacenter.getControllerConnectString())) {
             updateVersionStatus(childAdmin, storeName, VersionStatus.ONLINE, childControllerClient);
           }
         }
@@ -240,8 +232,8 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setStoreLifecycleHooks(lifecycleHooks);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
-      createStoreWithRetry(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms);
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURLs)) {
+      createStoreWithRetry(CLUSTER_NAME, keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms);
 
       // Run first push in background to avoid hanging the test thread if controller is slow
       runVPJInBackground(props, storeName, 1, parentControllerClient);
@@ -450,7 +442,7 @@ public class TestDeferredVersionSwap extends AbstractMultiRegionTest {
       VersionStatus status,
       ControllerClient controllerClient) {
     ReadWriteStoreRepository storeRepository =
-        admin.getHelixVeniceClusterResources(CLUSTER_NAMES[0]).getStoreMetadataRepository();
+        admin.getHelixVeniceClusterResources(CLUSTER_NAME).getStoreMetadataRepository();
     Store store = storeRepository.getStore(storeName);
     store.updateVersionStatus(1, status);
     storeRepository.updateStore(store);

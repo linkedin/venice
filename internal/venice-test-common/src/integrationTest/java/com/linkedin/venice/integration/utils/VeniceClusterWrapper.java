@@ -1111,6 +1111,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public void createMetaSystemStore(String storeName) {
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    // Wait for the controller to auto-materialize the meta system store before pushing
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreResponse response = controllerClient.get().getStore(metaSystemStoreName);
+      Assert.assertFalse(response.isError(), "Meta system store not yet available: " + response.getError());
+    });
     assertCommand(controllerClient.get().emptyPush(metaSystemStoreName, "createMetaSystemStore", 1L));
     waitVersion(metaSystemStoreName, 1);
   }

@@ -18,7 +18,6 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PO
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_PASSWORD;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -31,9 +30,11 @@ import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.endToEnd.TestStringRecordTransformer;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
-import com.linkedin.venice.utils.SslUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -49,6 +50,23 @@ import org.apache.logging.log4j.Logger;
  */
 public class DaVinciUserApp {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciUserApp.class);
+
+  /**
+   * Writes a marker file to signal that the DaVinci client is fully initialized
+   * (ingestion complete + blob transfer server ready). Tests poll for this file
+   * instead of using Thread.sleep.
+   */
+  private static void writeReadyMarker(String markerPath) {
+    if (markerPath == null || markerPath.isEmpty()) {
+      return;
+    }
+    try {
+      Files.write(Paths.get(markerPath), "ready".getBytes());
+      LOGGER.info("Wrote ready marker to {}", markerPath);
+    } catch (IOException e) {
+      LOGGER.warn("Failed to write ready marker to {}", markerPath, e);
+    }
+  }
 
   public static void main(String[] args) throws Exception {
     if (args.length != 1) {
@@ -73,6 +91,7 @@ public class DaVinciUserApp {
     boolean blobTransferDaVinciManagerEnabled =
         Boolean.parseBoolean(props.getProperty("blob.transfer.manager.enabled"));
     boolean batchPushReportEnabled = Boolean.parseBoolean(props.getProperty("batch.push.report.enabled"));
+    String readyMarkerPath = props.getProperty("ready.marker.path");
 
     D2Client d2Client = new D2ClientBuilder().setZkHosts(zkHosts)
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
@@ -92,7 +111,10 @@ public class DaVinciUserApp {
       extraBackendConfig.put(BLOB_TRANSFER_SSL_ENABLED, true);
       extraBackendConfig.put(BLOB_TRANSFER_ACL_ENABLED, true);
 
-      String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
+      // Use the keystore path passed by the parent test JVM to avoid classpath
+      // mismatch: stale fat JARs may contain a different localhost.jks than the
+      // one the test JVM loaded, causing SSL handshake failures.
+      String keyStorePath = props.getProperty("ssl.keystore.path");
       extraBackendConfig.put(SSL_KEYSTORE_TYPE, "JKS");
       extraBackendConfig.put(SSL_KEYSTORE_LOCATION, keyStorePath);
       extraBackendConfig.put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD);
@@ -135,6 +157,7 @@ public class DaVinciUserApp {
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
       client.subscribeAll().get();
       LOGGER.info("Da Vinci client finished subscription.");
+      writeReadyMarker(readyMarkerPath);
       // This guarantees this dummy app process can finish in time and will not linger forever.
       Thread.sleep(TimeUnit.SECONDS.toMillis(sleepSeconds));
       LOGGER.info("Da Vinci user app finished sleeping.");

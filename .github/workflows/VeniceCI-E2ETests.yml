@@ -3,6 +3,7 @@
 # To alter these flows, edit:
 #
 #     internal/venice-test-common/build.gradle
+#     internal/venice-test-common/test-shard-assignments.json
 #
 # To regenerate, run:
 #
@@ -450,8 +451,8 @@ jobs:
         with:
           shard: 23
 
-  integrationTests_99:
-    name: integrationTests_99
+  IntegrationTests_24:
+    name: IntegrationTests_24
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
@@ -459,7 +460,1052 @@ jobs:
      contents: read
     timeout-minutes: 30
     concurrency:
-     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-integrationTests_99
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_24
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 24
+
+  IntegrationTests_25:
+    name: IntegrationTests_25
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_25
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 25
+
+  IntegrationTests_26:
+    name: IntegrationTests_26
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_26
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 26
+
+  IntegrationTests_27:
+    name: IntegrationTests_27
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_27
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 27
+
+  IntegrationTests_28:
+    name: IntegrationTests_28
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_28
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 28
+
+  IntegrationTests_29:
+    name: IntegrationTests_29
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_29
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 29
+
+  IntegrationTests_30:
+    name: IntegrationTests_30
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_30
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 30
+
+  IntegrationTests_31:
+    name: IntegrationTests_31
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_31
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 31
+
+  IntegrationTests_32:
+    name: IntegrationTests_32
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_32
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 32
+
+  IntegrationTests_33:
+    name: IntegrationTests_33
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_33
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 33
+
+  IntegrationTests_34:
+    name: IntegrationTests_34
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_34
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 34
+
+  IntegrationTests_35:
+    name: IntegrationTests_35
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_35
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 35
+
+  IntegrationTests_36:
+    name: IntegrationTests_36
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_36
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 36
+
+  IntegrationTests_37:
+    name: IntegrationTests_37
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_37
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 37
+
+  IntegrationTests_38:
+    name: IntegrationTests_38
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_38
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 38
+
+  IntegrationTests_39:
+    name: IntegrationTests_39
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_39
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 39
+
+  IntegrationTests_40:
+    name: IntegrationTests_40
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_40
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 40
+
+  IntegrationTests_41:
+    name: IntegrationTests_41
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_41
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 41
+
+  IntegrationTests_42:
+    name: IntegrationTests_42
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_42
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 42
+
+  IntegrationTests_43:
+    name: IntegrationTests_43
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_43
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 43
+
+  IntegrationTests_44:
+    name: IntegrationTests_44
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_44
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 44
+
+  IntegrationTests_45:
+    name: IntegrationTests_45
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_45
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 45
+
+  IntegrationTests_46:
+    name: IntegrationTests_46
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_46
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 46
+
+  IntegrationTests_47:
+    name: IntegrationTests_47
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_47
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 47
+
+  IntegrationTests_48:
+    name: IntegrationTests_48
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_48
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 48
+
+  IntegrationTests_49:
+    name: IntegrationTests_49
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_49
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 49
+
+  IntegrationTests_50:
+    name: IntegrationTests_50
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_50
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 50
+
+  IntegrationTests_51:
+    name: IntegrationTests_51
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_51
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 51
+
+  IntegrationTests_52:
+    name: IntegrationTests_52
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_52
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 52
+
+  IntegrationTests_53:
+    name: IntegrationTests_53
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_53
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 53
+
+  IntegrationTests_54:
+    name: IntegrationTests_54
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_54
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 54
+
+  IntegrationTests_55:
+    name: IntegrationTests_55
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_55
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 55
+
+  IntegrationTests_56:
+    name: IntegrationTests_56
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_56
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 56
+
+  IntegrationTests_57:
+    name: IntegrationTests_57
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_57
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 57
+
+  IntegrationTests_58:
+    name: IntegrationTests_58
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_58
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 58
+
+  IntegrationTests_59:
+    name: IntegrationTests_59
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_59
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 59
+
+  IntegrationTests_60:
+    name: IntegrationTests_60
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_60
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 60
+
+  IntegrationTests_61:
+    name: IntegrationTests_61
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_61
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 61
+
+  IntegrationTests_62:
+    name: IntegrationTests_62
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_62
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 62
+
+  IntegrationTests_63:
+    name: IntegrationTests_63
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_63
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 63
+
+  IntegrationTests_64:
+    name: IntegrationTests_64
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_64
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 64
+
+  IntegrationTests_65:
+    name: IntegrationTests_65
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_65
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 65
+
+  IntegrationTests_66:
+    name: IntegrationTests_66
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_66
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 66
+
+  IntegrationTests_67:
+    name: IntegrationTests_67
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_67
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 67
+
+  IntegrationTests_68:
+    name: IntegrationTests_68
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_68
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 68
+
+  IntegrationTests_69:
+    name: IntegrationTests_69
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_69
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 69
+
+  IntegrationTests_70:
+    name: IntegrationTests_70
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_70
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 70
+
+  IntegrationTests_71:
+    name: IntegrationTests_71
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_71
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 71
+
+  IntegrationTests_72:
+    name: IntegrationTests_72
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_72
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 72
+
+  IntegrationTests_73:
+    name: IntegrationTests_73
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_73
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 73
+
+  IntegrationTests_74:
+    name: IntegrationTests_74
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_74
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 74
+
+  IntegrationTests_75:
+    name: IntegrationTests_75
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_75
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 75
+
+  IntegrationTests_76:
+    name: IntegrationTests_76
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_76
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 76
+
+  IntegrationTests_77:
+    name: IntegrationTests_77
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_77
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 77
+
+  IntegrationTests_78:
+    name: IntegrationTests_78
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_78
+     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/integration-test-run
+        with:
+          shard: 78
+
+  IntegrationTests_99:
+    name: IntegrationTests_99
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-latest
+    permissions:
+     contents: read
+    timeout-minutes: 30
+    concurrency:
+     group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-IntegrationTests_99
      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v6
@@ -477,7 +1523,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [IntegrationTests_1, IntegrationTests_2, IntegrationTests_3, IntegrationTests_4, IntegrationTests_5, IntegrationTests_6, IntegrationTests_7, IntegrationTests_8, IntegrationTests_9, IntegrationTests_10, IntegrationTests_11, IntegrationTests_12, IntegrationTests_13, IntegrationTests_14, IntegrationTests_15, IntegrationTests_16, IntegrationTests_17, IntegrationTests_18, IntegrationTests_19, IntegrationTests_20, IntegrationTests_21, IntegrationTests_22, IntegrationTests_23, integrationTests_99]
+    needs: [IntegrationTests_1, IntegrationTests_2, IntegrationTests_3, IntegrationTests_4, IntegrationTests_5, IntegrationTests_6, IntegrationTests_7, IntegrationTests_8, IntegrationTests_9, IntegrationTests_10, IntegrationTests_11, IntegrationTests_12, IntegrationTests_13, IntegrationTests_14, IntegrationTests_15, IntegrationTests_16, IntegrationTests_17, IntegrationTests_18, IntegrationTests_19, IntegrationTests_20, IntegrationTests_21, IntegrationTests_22, IntegrationTests_23, IntegrationTests_24, IntegrationTests_25, IntegrationTests_26, IntegrationTests_27, IntegrationTests_28, IntegrationTests_29, IntegrationTests_30, IntegrationTests_31, IntegrationTests_32, IntegrationTests_33, IntegrationTests_34, IntegrationTests_35, IntegrationTests_36, IntegrationTests_37, IntegrationTests_38, IntegrationTests_39, IntegrationTests_40, IntegrationTests_41, IntegrationTests_42, IntegrationTests_43, IntegrationTests_44, IntegrationTests_45, IntegrationTests_46, IntegrationTests_47, IntegrationTests_48, IntegrationTests_49, IntegrationTests_50, IntegrationTests_51, IntegrationTests_52, IntegrationTests_53, IntegrationTests_54, IntegrationTests_55, IntegrationTests_56, IntegrationTests_57, IntegrationTests_58, IntegrationTests_59, IntegrationTests_60, IntegrationTests_61, IntegrationTests_62, IntegrationTests_63, IntegrationTests_64, IntegrationTests_65, IntegrationTests_66, IntegrationTests_67, IntegrationTests_68, IntegrationTests_69, IntegrationTests_70, IntegrationTests_71, IntegrationTests_72, IntegrationTests_73, IntegrationTests_74, IntegrationTests_75, IntegrationTests_76, IntegrationTests_77, IntegrationTests_78, IntegrationTests_99]
     timeout-minutes: 20
     if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}
     steps:

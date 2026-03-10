@@ -6,8 +6,9 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 
@@ -16,8 +17,8 @@ import org.apache.avro.util.Utf8;
  * Transforms int values to strings
  */
 public class TestIntToStringRecordTransformer extends DaVinciRecordTransformer<Integer, Integer, String> {
-  private final Map<Integer, String> inMemoryDB = new HashMap<>();
-  private int transformInvocationCount = 0;
+  private final Map<Integer, String> inMemoryDB = new ConcurrentHashMap<>();
+  private final AtomicInteger transformInvocationCount = new AtomicInteger();
 
   public TestIntToStringRecordTransformer(
       String storeName,
@@ -37,7 +38,7 @@ public class TestIntToStringRecordTransformer extends DaVinciRecordTransformer<I
       DaVinciRecordTransformerRecordMetadata recordMetadata) {
     String valueStr = value.get().toString();
     String transformedValue = valueStr + "Transformed";
-    transformInvocationCount++;
+    transformInvocationCount.incrementAndGet();
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
   }
 
@@ -91,7 +92,7 @@ public class TestIntToStringRecordTransformer extends DaVinciRecordTransformer<I
   }
 
   public int getTransformInvocationCount() {
-    return transformInvocationCount;
+    return transformInvocationCount.get();
   }
 
   @Override

@@ -6,14 +6,14 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 
 
 public class TestSkipResultRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
-  private final Map<Integer, String> inMemoryDB = new HashMap<>();
+  private final Map<Integer, String> inMemoryDB = new ConcurrentHashMap<>();
 
   public TestSkipResultRecordTransformer(
       String storeName,

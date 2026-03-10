@@ -549,10 +549,13 @@ public class TestStreaming {
 
       // Verify some client-side metrics, and we could add verification for more metrics if necessary
       String metricPrefix = "." + storeName;
-      Map<String, ? extends Metric> metrics = clientMetrics.metrics();
-      Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate").value() > 0);
-      Assert
-          .assertTrue(metrics.get(metricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate").value() > 0);
+      // Rate metrics are computed over a time window; wait for them to become non-zero
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Map<String, ? extends Metric> metrics = clientMetrics.metrics();
+        Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate").value() > 0);
+        Assert.assertTrue(
+            metrics.get(metricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate").value() > 0);
+      });
 
       // Verify some router metrics
       Map<String, ? extends Metric> routerMetrics = routerMetricsRepositoryWithHttpAsyncClient.metrics();

@@ -162,8 +162,8 @@ public class ZkRoutersClusterManager
 
   @Override
   public void updateExpectedRouterCount(int expectedNumber) {
+    validateExpectRouterCount(expectedNumber);
     compareAndSetClusterConfig(currentData -> {
-      validateExpectRouterCount(expectedNumber);
       currentData.setExpectedRouterCount(expectedNumber);
       return currentData;
     });
