@@ -10,6 +10,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.AssertJUnit.assertFalse;
 
@@ -453,5 +454,35 @@ public abstract class OpenTelemetryDataTestUtils {
 
     boolean found = data.getLongGaugeData().getPoints().stream().anyMatch(p -> p.getValue() >= minValue);
     assertTrue(found, fullMetricName + " should have at least one data point with value >= " + minValue);
+  }
+
+  /**
+   * Assert that no Sum (counter) data point exists for the given metric name and attributes.
+   * If the metric is not present at all, this passes (no data = no counter data).
+   * If attributes is null, asserts that no data points exist at all for the metric.
+   */
+  public static void assertNoLongSumDataForAttributes(
+      Collection<MetricData> metricsData,
+      String metricName,
+      String metricPrefix,
+      Attributes expectedAttributes) {
+    String fullMetricName = DEFAULT_METRIC_PREFIX + metricPrefix + "." + metricName;
+    MetricData data =
+        metricsData.stream().filter(metricData -> metricData.getName().equals(fullMetricName)).findFirst().orElse(null);
+    if (data == null) {
+      return; // metric not present at all — no data recorded
+    }
+    LongPointData point;
+    if (expectedAttributes != null) {
+      point = data.getLongSumData()
+          .getPoints()
+          .stream()
+          .filter(p -> p.getAttributes().equals(expectedAttributes))
+          .findFirst()
+          .orElse(null);
+    } else {
+      point = data.getLongSumData().getPoints().stream().findFirst().orElse(null);
+    }
+    assertNull(point, "Expected no counter data for " + fullMetricName);
   }
 }
