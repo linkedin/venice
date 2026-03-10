@@ -762,7 +762,6 @@ public class VenicePushJob implements AutoCloseable {
       HadoopUtils.createDirectoryWithPermission(sharedTmpDir, PERMISSION_777);
       HadoopUtils.createDirectoryWithPermission(jobTmpDir, PERMISSION_700);
       pushJobSetting.newKmeSchemasFromController = validateAndFetchNewKafkaMessageEnvelopeSchemas(pushJobSetting);
-      validateRemoteHybridSettings(pushJobSetting);
       validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(pushJobSetting.storeStorageQuota);
 
@@ -2029,15 +2028,6 @@ public class VenicePushJob implements AutoCloseable {
           String.format(errorMessageFormat, setting.storeName, pushJobSetting.keySchemaString, serverSchema.toString());
       throw new VeniceSchemaMismatchException(errorMessage);
     }
-  }
-
-  protected void validateRemoteHybridSettings() {
-    validateRemoteHybridSettings(pushJobSetting);
-  }
-
-  protected void validateRemoteHybridSettings(PushJobSetting setting) {
-    // No-op: With epoch passthrough, the absolute epoch timestamp flows directly through the
-    // pipeline, making the SOP/EOP replay policy validation unnecessary.
   }
 
   private Map<Integer, String> validateAndFetchNewKafkaMessageEnvelopeSchemas(PushJobSetting setting) {

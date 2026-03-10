@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
@@ -62,28 +61,6 @@ public class TestKafkaFormatTopicAutoDiscover {
       venicePushJob.initKIFRepushDetails();
       String expectedTopicName = Version.composeKafkaTopic(STORE_NAME, singleColoCurrentVersion);
       Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
-    }
-  }
-
-  @Test
-  public void testUserProvidedEpochRewind() {
-    final int singleColoCurrentVersion = 1;
-    ControllerClient controllerClient = mock(ControllerClient.class);
-    Map<String, Integer> coloToVersionMap = Collections.emptyMap();
-    StoreResponse storeResponse =
-        getMockHybridStoreResponse(coloToVersionMap, singleColoCurrentVersion, BufferReplayPolicy.REWIND_FROM_SOP);
-    when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
-    RepushInfoResponse repushInfo = getMockRepushResponse(1);
-    when(controllerClient.getRepushInfo(STORE_NAME, Optional.empty())).thenReturn(repushInfo);
-    configureClusterDiscoveryControllerClient(controllerClient);
-    Map<String, String> overrideProperties = new HashMap<>();
-    overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
-    overrideProperties.put(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, "1637016606");
-    try (VenicePushJob venicePushJob = new VenicePushJob(JOB_ID, getJobProperties(overrideProperties))) {
-      venicePushJob.setControllerClient(controllerClient);
-      venicePushJob.initKIFRepushDetails();
-      venicePushJob.setControllerClient(controllerClient);
-      venicePushJob.validateRemoteHybridSettings();
     }
   }
 
