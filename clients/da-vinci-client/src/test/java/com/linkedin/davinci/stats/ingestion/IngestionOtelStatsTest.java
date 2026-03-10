@@ -8,8 +8,10 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BAT
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BYTES_CONSUMED_AS_UNCOMPRESSED_SIZE;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.CHECKSUM_VERIFICATION_FAILURE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.CONSUMER_ACTION_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.CONSUMER_IDLE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.CONSUMER_QUEUE_PUT_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_EVENT_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DISK_QUOTA_USED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_LOOKUP_CACHE_HIT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_LOOKUP_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_MERGE_TIME;
@@ -18,6 +20,9 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DUP
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_CONSUMED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_PRODUCED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_FAILURE_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TASK_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TASK_ERROR_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TASK_PUSH_TIMEOUT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_PREPROCESSING_INTERNAL_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_PREPROCESSING_LEADER_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_PRODUCER_CALLBACK_TIME;
@@ -48,6 +53,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIE
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.WRITE_COMPUTE_AMPLIFICATION_ALERT_COUNT;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
+import static com.linkedin.venice.utils.Utils.setOf;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_EVENT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_OPERATION;
@@ -72,6 +78,9 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -92,6 +101,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
