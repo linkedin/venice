@@ -25,9 +25,10 @@ import java.util.stream.Collectors;
  * </ul>
  *
  * <h3>Reporting</h3>
- * Reporting is piggy-backed on the write-compute path: after each {@link #record} call, the caller checks
- * {@link #shouldReport} and, if true, calls {@link #buildReportAndReset} to get a snapshot and reset the window.
- * This produces at most one summary log per partition per window — not per key, not per event.
+ * Reporting is piggy-backed on the write-compute path: after each {@link #record} call, the caller calls
+ * {@link #tryBuildReportAndReset} which atomically checks whether the window has elapsed and, if so, builds a
+ * snapshot and resets the window. This produces at most one summary log per partition per window — not per key,
+ * not per event.
  *
  * <h3>Threading</h3>
  * All public methods are {@code synchronized}. Write-compute processing may be parallel when
