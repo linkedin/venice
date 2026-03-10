@@ -282,38 +282,81 @@ public class StatefulVeniceChangelogConsumerTest {
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
 
-      // Test restart
-      polledChangeEventsList.clear();
-      polledChangeEventsMap.clear();
-      statefulVeniceChangelogConsumer.stop();
-      statefulVeniceChangelogConsumer.start().get();
+      // Test restart with shared backend: create a second consumer on a different store using the same factory.
+      // This ensures the DaVinciBackend stays alive when the first consumer is stopped/restarted.
+      String storeName2 = Utils.getUniqueString("store");
+      setUpStore(storeName2);
 
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
-        pollChangeEventsFromChangeCaptureConsumer(
-            polledChangeEventsMap,
-            polledChangeEventsList,
-            statefulVeniceChangelogConsumer);
-        // 40 near-line put events, but one of them overwrites a key from batch push.
-        // Also, Deletes won't show up on restart when scanning RocksDB.
-        // Use >= to be resilient to at-least-once delivery: the change capture topic replay
-        // after restart may surface a few extra delete or duplicate events as unique keys.
-        // Upper bound guards against gross duplication bugs.
-        int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 39;
-        int upperBound = (int) (expectedRecordCount * 1.1);
-        assertTrue(
-            polledChangeEventsMap.size() >= expectedRecordCount,
-            "Expected at least " + expectedRecordCount + " records, but got " + polledChangeEventsMap.size());
-        assertTrue(
-            polledChangeEventsMap.size() <= upperBound,
-            "Too many records (" + polledChangeEventsMap.size() + "), expected at most " + upperBound
-                + ". Possible duplicate event production.");
-        verifyPut(polledChangeEventsMap, 100, 110, 3, false);
-        verifyPut(polledChangeEventsMap, 120, 130, 3, false);
-        verifyPut(polledChangeEventsMap, 140, 150, 3, false);
-        verifyPut(polledChangeEventsMap, 160, 170, 3, false);
-      });
-      verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
+      try (StatefulVeniceChangelogConsumer<GenericRecord, GenericRecord> consumer2 =
+          veniceChangelogConsumerClientFactory.getStatefulChangelogConsumer(storeName2)) {
 
+        try (VeniceSystemProducer veniceProducer2 =
+            IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName2, Version.PushType.STREAM)) {
+          runSamzaStreamJob(veniceProducer2, storeName2, 1, null, 10, 10, 100, false);
+        }
+
+        consumer2.start().get();
+
+        Map<String, PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> consumer2EventsMap =
+            new HashMap<>();
+        List<PubSubMessage<GenericRecord, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> consumer2EventsList =
+            new ArrayList<>();
+        // Verify consumer2 can poll events
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+          pollChangeEventsFromChangeCaptureConsumer(consumer2EventsMap, consumer2EventsList, consumer2);
+          int expectedRecordCount2 = DEFAULT_USER_DATA_RECORD_COUNT + 20;
+          assertTrue(consumer2EventsList.size() >= expectedRecordCount2);
+        });
+
+        // Stop only the first consumer while the second keeps running (backend stays alive)
+        polledChangeEventsList.clear();
+        polledChangeEventsMap.clear();
+        statefulVeniceChangelogConsumer.stop();
+
+        // Verify consumer2 is unaffected - it can still poll
+        consumer2EventsMap.clear();
+        consumer2EventsList.clear();
+        try (VeniceSystemProducer veniceProducer2 =
+            IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName2, Version.PushType.STREAM)) {
+          runSamzaStreamJob(veniceProducer2, storeName2, 1, null, 10, 0, 120, false);
+        }
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          pollChangeEventsFromChangeCaptureConsumer(consumer2EventsMap, consumer2EventsList, consumer2);
+          assertTrue(consumer2EventsList.size() >= 10);
+        });
+
+        // Restart the first consumer - DVRT should be properly re-hooked into a new SIT
+        statefulVeniceChangelogConsumer.start().get();
+
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
+          pollChangeEventsFromChangeCaptureConsumer(
+              polledChangeEventsMap,
+              polledChangeEventsList,
+              statefulVeniceChangelogConsumer);
+          // 40 near-line put events, but one of them overwrites a key from batch push.
+          // Also, Deletes won't show up on restart when scanning RocksDB.
+          // Use >= to be resilient to at-least-once delivery: the change capture topic replay
+          // after restart may surface a few extra delete or duplicate events as unique keys.
+          // Upper bound guards against gross duplication bugs.
+          int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 39;
+          int upperBound = (int) (expectedRecordCount * 1.1);
+          assertTrue(
+              polledChangeEventsMap.size() >= expectedRecordCount,
+              "Expected at least " + expectedRecordCount + " records, but got " + polledChangeEventsMap.size());
+          assertTrue(
+              polledChangeEventsMap.size() <= upperBound,
+              "Too many records (" + polledChangeEventsMap.size() + "), expected at most " + upperBound
+                  + ". Possible duplicate event production.");
+          verifyPut(polledChangeEventsMap, 100, 110, 3, false);
+          verifyPut(polledChangeEventsMap, 120, 130, 3, false);
+          verifyPut(polledChangeEventsMap, 140, 150, 3, false);
+          verifyPut(polledChangeEventsMap, 160, 170, 3, false);
+        });
+        verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
+      } finally {
+        cleanUpStoreAndVerify(storeName2);
+      }
+    } finally {
       cleanUpStoreAndVerify(storeName);
     }
   }
@@ -466,7 +509,7 @@ public class StatefulVeniceChangelogConsumerTest {
 
       // Since nothing is produced, so no changed events generated.
       verifyNoRecordsProduced(polledChangeEventsMap, polledChangeEventsList, statefulVeniceChangelogConsumer);
-
+    } finally {
       cleanUpStoreAndVerify(storeName);
     }
   }
@@ -544,7 +587,7 @@ public class StatefulVeniceChangelogConsumerTest {
 
       // Since nothing is produced, so no changed events generated.
       verifyNoSpecificRecordsProduced(polledChangeEventsMap, polledChangeEventsList, statefulVeniceChangelogConsumer);
-
+    } finally {
       cleanUpStoreAndVerify(storeName);
     }
   }
@@ -671,7 +714,7 @@ public class StatefulVeniceChangelogConsumerTest {
 
       // Since nothing is produced, so no changed events generated.
       verifyNoSpecificRecordsProduced(polledChangeEventsMap, polledChangeEventsList, statefulVeniceChangelogConsumer);
-
+    } finally {
       cleanUpStoreAndVerify(storeName);
     }
   }

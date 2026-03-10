@@ -974,4 +974,22 @@ public abstract class KafkaStoreIngestionServiceTest {
       }
     }
   }
+
+  @Test
+  public void testUnregisterRecordTransformerConfig() {
+    String storeName = "test-store";
+
+    // Register a record transformer config
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build();
+    kafkaStoreIngestionService.registerRecordTransformerConfig(storeName, recordTransformerConfig);
+    assertNotNull(kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName));
+
+    // Unregister the config
+    kafkaStoreIngestionService.unregisterRecordTransformerConfig(storeName);
+
+    // Verify the record transformer config is removed
+    assertNull(kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName));
+  }
 }

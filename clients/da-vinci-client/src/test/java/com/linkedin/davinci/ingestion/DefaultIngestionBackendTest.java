@@ -108,6 +108,9 @@ public class DefaultIngestionBackendTest {
 
     // Verify blob transfer flag is synced from store metadata to store config
     verify(storeIngestionService).startConsumption(eq(storeConfig), eq(PARTITION), any());
+
+    // Reset replica state for next iteration
+    ingestionBackend.shutdownIngestionTask(storeConfig.getStoreVersionName());
   }
 
   @Test
@@ -186,6 +189,26 @@ public class DefaultIngestionBackendTest {
     String topicName = Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER);
     ingestionBackend.removeStorageEngine(topicName);
     verify(storageService).removeStorageEngine(topicName);
+  }
+
+  @Test
+  public void testShutdownIngestionTaskClearsReplicaState() {
+    String topicName = storeConfig.getStoreVersionName();
+    String replicaId = Utils.getReplicaId(topicName, PARTITION);
+
+    // Start consumption to set state to RUNNING
+    ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(replicaId),
+        DefaultIngestionBackend.ReplicaIntendedState.RUNNING);
+
+    // Shutdown ingestion task should clean up replica state
+    ingestionBackend.shutdownIngestionTask(topicName);
+
+    // State should be NOT_EXIST, allowing re-subscription
+    assertEquals(
+        ingestionBackend.getReplicaIntendedState(replicaId),
+        DefaultIngestionBackend.ReplicaIntendedState.NOT_EXIST);
   }
 
   // --- ReplicaIntendedState tests ---
