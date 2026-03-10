@@ -383,8 +383,9 @@ public class VeniceServer {
       return true;
     });
 
+    String clusterName = clusterConfig.getClusterName();
     HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats =
-        new HeartbeatMonitoringServiceStats(metricsRepository, clusterConfig.getClusterName());
+        new HeartbeatMonitoringServiceStats(metricsRepository, clusterName, clusterName);
 
     heartbeatMonitoringService = new HeartbeatMonitoringService(
         metricsRepository,

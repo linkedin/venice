@@ -230,8 +230,10 @@ public class DaVinciBackend implements Closeable {
       cacheBackend = cacheConfig
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
 
-      HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats =
-          new HeartbeatMonitoringServiceStats(metricsRepository, "da-vinci");
+      HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats = new HeartbeatMonitoringServiceStats(
+          metricsRepository,
+          "da-vinci",
+          configLoader.getVeniceClusterConfig().getClusterName());
       heartbeatMonitoringService = new HeartbeatMonitoringService(
           metricsRepository,
           readOnlyStoreRepository,
