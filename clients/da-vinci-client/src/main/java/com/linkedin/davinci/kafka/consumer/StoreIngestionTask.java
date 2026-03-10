@@ -99,6 +99,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubHealthCategory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -109,6 +110,8 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -168,6 +171,7 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -287,7 +291,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Set<Integer> failedPartitions = new ConcurrentSkipListSet<>();
 
   /** Persists the exception thrown by {@link KafkaConsumerService}. */
-  private Exception lastConsumerException = null;
+  private volatile Exception lastConsumerException = null;
   /** Persists the last exception thrown by any asynchronous component that should terminate the entire ingestion task */
   private final AtomicReference<Exception> lastStoreIngestionException = new AtomicReference<>();
   /**
@@ -454,6 +458,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final List<AutoCloseable> thingsToClose = new ArrayList<>();
   private final Version version;
   private boolean skipValidationsForDaVinciClientEnabled = false;
+
+  /** Tracks partitions paused due to PubSub health issues (broker down). Maps partition -> pubSubAddress. */
+  protected final Map<Integer, String> pubSubHealthPausedPartitions = new ConcurrentHashMap<>();
+  /** PubSub addresses that have recovered and need partitions resumed. Processed on the SIT thread. */
+  private final Set<String> pendingPubSubHealthResumes = ConcurrentHashMap.newKeySet();
+  protected final boolean isPubSubPartitionPauseEnabled;
+  private volatile PubSubHealthMonitor pubSubHealthMonitor;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
 
   public StoreIngestionTask(
@@ -695,6 +706,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         ingestionNotificationDispatcher,
         this::pauseConsumption,
         this::resumeConsumption);
+    this.isPubSubPartitionPauseEnabled = serverConfig.isPubSubPartitionPauseEnabled();
     this.storeRepository.registerStoreDataChangedListener(this.storageUtilizationManager);
     this.versionRole =
         PartitionReplicaIngestionContext.determineStoreVersionRole(versionNumber, store.getCurrentVersion());
@@ -1695,6 +1707,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * this shouldn't happen since {@link #processCommonConsumerAction} will clear the exception list during un-subscribing.
          */
         partitionIngestionExceptionList.set(exceptionPartition, null);
+      } else if (isPubSubPartitionPauseEnabled && ExceptionUtils.recursiveClassEquals(
+          partitionException,
+          PubSubClientException.class,
+          PubSubClientRetriableException.class)) {
+        LOGGER.warn(
+            "Pausing partition {} due to PubSub exception. Replica: {}",
+            exceptionPartition,
+            getReplicaId(kafkaVersionTopic, exceptionPartition),
+            partitionException);
+        pausePartitionForPubSubHealth(
+            exceptionPartition,
+            partitionConsumptionState,
+            partitionExceptionInfo.getPubSubExceptionSourceUrl());
+        partitionIngestionExceptionList.set(exceptionPartition, null);
+        if (failedPartitions.remove(exceptionPartition)) {
+          LOGGER.info(
+              "Removed partition {} from failedPartitions due to PubSub health pause. Replica: {}",
+              exceptionPartition,
+              getReplicaId(kafkaVersionTopic, exceptionPartition));
+        }
       } else {
         if (isCurrentVersion.getAsBoolean() && resetErrorReplicaEnabled && !isDaVinciClient) {
           try {
@@ -1754,13 +1786,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           ingestionTaskException);
     }
     if (lastConsumerException != null) {
-      throw new VeniceException("Exception thrown by shared consumer", lastConsumerException);
+      if (isPubSubPartitionPauseEnabled && ExceptionUtils.recursiveClassEquals(
+          lastConsumerException,
+          PubSubClientException.class,
+          PubSubClientRetriableException.class)) {
+        Exception consumerException = lastConsumerException;
+        LOGGER.warn(
+            "PubSub exception from shared consumer, pausing all partitions instead of killing task: {}",
+            consumerException.getMessage(),
+            consumerException);
+        for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
+          pausePartitionForPubSubHealth(entry.getKey(), entry.getValue(), null);
+        }
+        lastConsumerException = null;
+      } else {
+        throw new VeniceException("Exception thrown by shared consumer", lastConsumerException);
+      }
     }
 
     /**
      * We will unsubscribe all the errored partitions without killing the ingestion task.
      */
     processIngestionException();
+
+    // Process any pending PubSub health resumes on the SIT thread to ensure thread safety
+    processPendingPubSubHealthResumes();
+
     maybeUnsubscribeCompletedPartitions(store);
 
     // record before consumer unsub as it might lead to stale metrics after unsub
@@ -3130,12 +3181,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   void setIngestionException(int partitionId, Exception e) {
+    setIngestionException(partitionId, e, null);
+  }
+
+  void setIngestionException(int partitionId, Exception e, String pubSubExceptionSourceUrl) {
     boolean replicaCompleted = false;
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
     if (partitionConsumptionState != null && partitionConsumptionState.isCompletionReported()) {
       replicaCompleted = true;
     }
-    partitionIngestionExceptionList.set(partitionId, new PartitionExceptionInfo(e, partitionId, replicaCompleted));
+    partitionIngestionExceptionList
+        .set(partitionId, new PartitionExceptionInfo(e, partitionId, replicaCompleted, pubSubExceptionSourceUrl));
     failedPartitions.add(partitionId);
   }
 
@@ -5623,5 +5679,146 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   boolean shouldSkipValidationsForDaVinciClientEnabled() {
     return skipValidationsForDaVinciClientEnabled;
+  }
+
+  public boolean isPubSubPartitionPauseEnabled() {
+    return isPubSubPartitionPauseEnabled;
+  }
+
+  public void setPubSubHealthMonitor(PubSubHealthMonitor pubSubHealthMonitor) {
+    this.pubSubHealthMonitor = pubSubHealthMonitor;
+  }
+
+  public Set<Integer> getPubSubHealthPausedPartitions() {
+    return Collections.unmodifiableSet(pubSubHealthPausedPartitions.keySet());
+  }
+
+  /**
+   * Pause a single partition due to a PubSub health issue. Unsubscribes the partition's consuming
+   * topic(s) at the consumer level to stop further poll attempts that would hit the same exception,
+   * then adds it to the paused set. The PCS is preserved so that resume can resubscribe at the
+   * checkpointed position. Reports the exception to the health monitor to trigger recovery probing.
+   *
+   * <p>Overridden in {@link LeaderFollowerStoreIngestionTask} to also unsubscribe from the leader
+   * topic (RT) when the partition is a leader consuming from a non-VT topic.
+   *
+   * @param exceptionSourceUrl the broker URL where the exception originated, or null if unknown
+   *                           (defaults to localKafkaServer)
+   */
+  protected void pausePartitionForPubSubHealth(
+      int partitionId,
+      PartitionConsumptionState pcs,
+      String exceptionSourceUrl) {
+    String pubSubAddress = exceptionSourceUrl != null ? exceptionSourceUrl : localKafkaServer;
+    pubSubHealthPausedPartitions.put(partitionId, pubSubAddress);
+    unsubscribeFromTopic(versionTopic, pcs);
+    reportPubSubHealthException(pubSubAddress);
+  }
+
+  /**
+   * Report a PubSub exception to the health monitor, triggering recovery probing.
+   *
+   * @param pubSubAddress the actual PubSub broker address that the exception originated from.
+   *                      For followers this is the local Kafka server; for leaders in A/A mode
+   *                      this may be a remote Kafka server.
+   */
+  protected void reportPubSubHealthException(String pubSubAddress) {
+    if (pubSubHealthMonitor != null) {
+      pubSubHealthMonitor.reportPubSubException(pubSubAddress, PubSubHealthCategory.BROKER);
+    }
+  }
+
+  /**
+   * Signal that partitions paused for the given broker should be resumed. This is called from the
+   * health monitor's listener thread and simply enqueues the address for processing on the SIT's
+   * own thread (via {@link #processPendingPubSubHealthResumes()}) to avoid concurrent PCS modification.
+   *
+   * <p>The actual resume logic runs on the SIT thread to ensure thread safety with PCS. Each
+   * consuming topic-partition is re-subscribed at the consumer level with the correct checkpointed
+   * position, preserving the {@link PartitionConsumptionState} and leader state.
+   */
+  public void resumePartitionsForPubSubHealth(String pubSubAddress) {
+    // Always enqueue the address for processing. The SIT thread will filter to only matching
+    // partitions in processPendingPubSubHealthResumes(). Avoiding the isEmpty()/anyMatch()
+    // pre-check eliminates a race where a partition is re-paused between the check and
+    // when processPendingPubSubHealthResumes() executes.
+    pendingPubSubHealthResumes.add(pubSubAddress);
+  }
+
+  /**
+   * Process pending PubSub health resumes on the SIT's own thread. Called from
+   * {@link #checkIngestionProgress(Store)} to ensure PCS modifications happen on the correct thread.
+   */
+  private void processPendingPubSubHealthResumes() {
+    if (pendingPubSubHealthResumes.isEmpty()) {
+      return;
+    }
+
+    Set<String> addressesToResume = new HashSet<>(pendingPubSubHealthResumes);
+    pendingPubSubHealthResumes.removeAll(addressesToResume);
+
+    for (String pubSubAddress: addressesToResume) {
+      // Collect partitions paused for this specific pubSubAddress
+      Set<Integer> partitionsToResume = new HashSet<>();
+      for (Map.Entry<Integer, String> entry: pubSubHealthPausedPartitions.entrySet()) {
+        if (pubSubAddress.equals(entry.getValue())) {
+          partitionsToResume.add(entry.getKey());
+        }
+      }
+
+      if (partitionsToResume.isEmpty()) {
+        continue;
+      }
+
+      LOGGER.info(
+          "Resuming {} partitions paused for PubSub health on broker {}",
+          partitionsToResume.size(),
+          pubSubAddress);
+
+      boolean allResumed = true;
+      for (int partitionId: partitionsToResume) {
+        PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partitionId);
+        if (pcs == null || !pcs.isSubscribed()) {
+          pubSubHealthPausedPartitions.remove(partitionId);
+          continue;
+        }
+        try {
+          seekToCheckpointAndResume(pcs);
+          pubSubHealthPausedPartitions.remove(partitionId);
+        } catch (InterruptedException e) {
+          LOGGER.warn("Interrupted while resuming partition {} for PubSub health", partitionId, e);
+          Thread.currentThread().interrupt();
+          return;
+        } catch (Exception e) {
+          LOGGER.error("Failed to resume partition {} for PubSub health, will retry next cycle", partitionId, e);
+          allResumed = false;
+        }
+      }
+      // Re-enqueue the address so failed partitions are retried on the next checkIngestionProgress
+      // cycle. The monitor only emits HEALTHY once, so without this the partitions would be stuck.
+      if (!allResumed) {
+        pendingPubSubHealthResumes.add(pubSubAddress);
+      }
+    }
+  }
+
+  /**
+   * Re-subscribes a partition at its checkpointed position to resume consumption. The partition
+   * must already be unsubscribed (done during {@link #pausePartitionForPubSubHealth}).
+   *
+   * <p>Overridden in {@link LeaderFollowerStoreIngestionTask} to handle leader vs follower
+   * resubscription (RT vs VT topic, leader position calculation).
+   */
+  protected void seekToCheckpointAndResume(PartitionConsumptionState pcs) throws InterruptedException {
+    // Default implementation for non-L/F SITs (currently all SITs are L/F, so this is a safety fallback)
+    int partitionId = pcs.getPartition();
+    // Drain buffered records before resubscribing to ensure checkpoint is up-to-date
+    waitForAllMessageToBeProcessedFromTopicPartition(new PubSubTopicPartitionImpl(versionTopic, partitionId), pcs);
+    PubSubPosition vtPosition = getLocalVtSubscribePosition(pcs);
+    LOGGER.info(
+        "Re-subscribing replica: {} resubscribe to offset: {} for PubSub health resume.",
+        pcs.getReplicaId(),
+        vtPosition);
+    consumerSubscribe(versionTopic, pcs, vtPosition, localKafkaServer);
   }
 }
