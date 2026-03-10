@@ -10,6 +10,20 @@
     timeout-minutes: $TimeOut
     if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - name: Download All Shard Artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: all-artifacts
+      - name: Check Test Class Duration Limits
+        shell: bash
+        run: |
+          for tarball in all-artifacts/*/IntegrationTests_*-jdk17-logs.tar.gz; do
+            [ -f "$tarball" ] && tar -xzf "$tarball" -C all-artifacts/ 2>/dev/null || true
+          done
+          python3 scripts/ci/check_test_duration.py all-artifacts || true
       - name: NoGood
         shell: bash
         run: |
