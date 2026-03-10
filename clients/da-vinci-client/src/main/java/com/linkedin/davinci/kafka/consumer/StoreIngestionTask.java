@@ -2844,14 +2844,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * Called from checkLongRunningTaskState() when a blob transfer completes (success or failure).
-   * Re-reads the offset from storage metadata (which reflects post-transfer state on success),
+   * Creates a fresh PCS from the post-transfer offset record while preserving any leader/follower
+   * and DoL state that may have been set during blob transfer (e.g. STANDBY_TO_LEADER transition),
    * then performs Kafka subscribe.
    */
   protected void completeBlobTransferAndSubscribe(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
     String replicaId = pcs.getReplicaId();
+    PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
     CompletableFuture<Void> future = pcs.getPendingBlobTransfer();
-    pcs.setPendingBlobTransfer(null);
 
     boolean transferSucceeded = !future.isCompletedExceptionally() && !future.isCancelled();
 
@@ -2871,21 +2872,87 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // with default options (RocksDB open, read/write enabled).
     adjustStoragePartitionWhenBlobTransferComplete(partition, replicaId);
 
-    // Re-read offset from storage metadata — reflects post-transfer state on success.
-    // Update PCS's internal position so getLocalVtSubscribePosition() returns the correct position.
-    PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
-    OffsetRecord newOffsetRecord =
-        storageMetadataService.getLastOffset(topicPartition.getPubSubTopic().getName(), partition, pubSubContext);
-    if (newOffsetRecord != null) {
-      pcs.setLatestProcessedVtPosition(newOffsetRecord.getCheckpointedLocalVtPosition());
-    } else {
-      LOGGER
-          .warn("No offset record found after blob transfer for replica: {}. Will subscribe from earliest.", replicaId);
+    // Preserve leader/follower and DoL state from the old PCS — a STANDBY_TO_LEADER transition
+    // may have been processed during blob transfer that we need to carry forward.
+    LeaderFollowerStateType preservedLfState = pcs.getLeaderFollowerState();
+    DolStamp preservedDolStamp = pcs.getDolState();
+
+    // Create a fresh PCS from the post-transfer offset record so that offset, endOfPushReceived,
+    // and other fields derived from the offset record reflect the transferred data.
+    String topic = topicPartition.getPubSubTopic().getName();
+    OffsetRecord newOffsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
+    PartitionConsumptionState newPcs = new PartitionConsumptionState(
+        topicPartition,
+        newOffsetRecord,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
+        schemaRepository.getKeySchema(storeName).getSchema());
+    newPcs.setCurrentVersionSupplier(isCurrentVersion);
+
+    boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+    if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
+      newPcs.setLatchCreated();
     }
 
-    PubSubPosition subscribePosition = getLocalVtSubscribePosition(pcs);
-    LOGGER.info("Post-blob-transfer Kafka subscribe for replica: {} at position: {}", replicaId, subscribePosition);
-    consumerSubscribe(topicPartition.getPubSubTopic(), pcs, subscribePosition, localKafkaServer);
+    // Restore preserved leader/follower and DoL state
+    newPcs.setLeaderFollowerState(preservedLfState);
+    if (preservedDolStamp != null) {
+      newPcs.setDolState(preservedDolStamp);
+    }
+    LOGGER.info(
+        "Created fresh PCS after blob transfer for replica: {}. Restored leader/follower state: {}",
+        replicaId,
+        preservedLfState);
+
+    partitionConsumptionStateMap.put(partition, newPcs);
+
+    // Load the VT segments from the offset record into the data integrity validator
+    getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, newOffsetRecord);
+
+    updateLeaderTopicOnFollower(newPcs);
+
+    // If record transformer is present, run initialization (onStartVersionIngestion + internalOnRecovery)
+    // on the recovery thread pool before subscribing. This ensures the transformer processes the
+    // blob-transferred data before Kafka consumption begins.
+    if (recordTransformer != null) {
+      recordTransformerOnRecoveryThreadPool.submit(() -> {
+        try {
+          long startTime = System.nanoTime();
+          recordTransformer.onStartVersionIngestion(partition, isCurrentVersion.getAsBoolean());
+          LOGGER.info(
+              "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {} (after blob transfer)",
+              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+              replicaId);
+
+          startTime = System.nanoTime();
+          recordTransformer.internalOnRecovery(
+              storageEngine,
+              partition,
+              partitionStateSerializer,
+              compressor,
+              pubSubContext,
+              schemaIdToSchemaMap,
+              schemaRepository);
+          LOGGER.info(
+              "DaVinciRecordTransformer onRecovery took {} ms for replica: {} (after blob transfer)",
+              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+              replicaId);
+          recordTransformer.countDownStartConsumptionLatch();
+
+          PubSubPosition subscribePosition = getLocalVtSubscribePosition(newPcs);
+          LOGGER
+              .info("Post-blob-transfer Kafka subscribe for replica: {} at position: {}", replicaId, subscribePosition);
+          consumerSubscribe(topicPartition.getPubSubTopic(), newPcs, subscribePosition, localKafkaServer);
+        } catch (Exception e) {
+          LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {} after blob transfer", replicaId, e);
+          setLastStoreIngestionException(e);
+        }
+      });
+    } else {
+      PubSubPosition subscribePosition = getLocalVtSubscribePosition(newPcs);
+      LOGGER.info("Post-blob-transfer Kafka subscribe for replica: {} at position: {}", replicaId, subscribePosition);
+      consumerSubscribe(topicPartition.getPubSubTopic(), newPcs, subscribePosition, localKafkaServer);
+    }
   }
 
   /**
