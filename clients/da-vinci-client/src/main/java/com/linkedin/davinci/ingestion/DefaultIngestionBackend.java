@@ -528,6 +528,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
   @Override
   public void shutdownIngestionTask(String topicName) {
     getStoreIngestionService().shutdownStoreIngestionTask(topicName);
+    // Clean up per-replica state to prevent stale RUNNING state from blocking re-subscription on restart
+    String replicaPrefix = topicName + "-";
+    replicaContexts.keySet().removeIf(replicaId -> replicaId.startsWith(replicaPrefix));
+    consumptionLocks.keySet().removeIf(replicaId -> replicaId.startsWith(replicaPrefix));
   }
 
   @Override
@@ -665,10 +669,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
   ReplicaIntendedState getReplicaIntendedState(String replicaId) {
     ReplicaConsumptionContext context = replicaContexts.get(replicaId);
     return context == null ? ReplicaIntendedState.NOT_EXIST : context.state;
-  }
-
-  void removeReplicaConsumptionContext(String replicaId) {
-    replicaContexts.remove(replicaId);
   }
 
   /**
