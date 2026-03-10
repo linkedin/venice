@@ -2610,8 +2610,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Cancel any pending blob transfer and wait for it to fully stop before dropping,
         // to ensure Netty is not still writing files when we delete the partition.
         if (blobTransferHelper != null) {
-          String replicaId = getReplicaId(topic, partition);
-          blobTransferHelper.stopBlobTransferAndWait(partition, 30, replicaId);
+          blobTransferHelper.stopBlobTransferAndWait(partition, 60, getReplicaId(topic, partition));
         }
         dropPartitionSynchronously(topicPartition);
         break;

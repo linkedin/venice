@@ -72,8 +72,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
     replicaContext.state = ReplicaIntendedState.RUNNING;
     LOGGER.info("Replica {} state set to RUNNING.", replicaId);
 
-    // Blob transfer is now handled inside StoreIngestionTask's processCommonConsumerAction SUBSCRIBE handler.
-    // DefaultIngestionBackend only needs to open the store and start consumption.
     StorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
     topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
       if (storageEngineAtomicReference != null) {

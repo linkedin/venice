@@ -72,10 +72,6 @@ public class BlobTransferIngestionHelper {
     if (blobTransferManager == null) {
       return false;
     }
-    // Skip blob transfer for user-driven seek/subscribe (non-null PubSubPosition)
-    if (consumerAction != null && consumerAction.getPubSubPosition() != null) {
-      return false;
-    }
     if (!isBlobTransferEnabledForStore(store, isDaVinciClient)) {
       return false;
     }
