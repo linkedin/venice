@@ -2729,6 +2729,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // with default options (RocksDB open, read/write enabled).
     blobTransferHelper.adjustStoragePartitionWhenBlobTransferComplete(storageEngine, partition, replicaId);
 
+    if (recordTransformer != null) {
+      long startTime = System.nanoTime();
+      recordTransformer.onStartVersionIngestion(partition, isCurrentVersion.getAsBoolean());
+      LOGGER.info(
+          "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {} (after blob transfer)",
+          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+          replicaId);
+
+      startTime = System.nanoTime();
+      recordTransformer.internalOnRecovery(
+          storageEngine,
+          partition,
+          partitionStateSerializer,
+          compressor,
+          pubSubContext,
+          schemaIdToSchemaMap,
+          schemaRepository);
+      LOGGER.info(
+          "DaVinciRecordTransformer onRecovery took {} ms for replica: {} (after blob transfer)",
+          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+          replicaId);
+      recordTransformer.countDownStartConsumptionLatch();
+    }
+
+    // Update PCS
     // Preserve leader/follower and DoL state from the old PCS — a STANDBY_TO_LEADER transition
     // may have been processed during blob transfer that we need to carry forward.
     LeaderFollowerStateType preservedLfState = pcs.getLeaderFollowerState();
