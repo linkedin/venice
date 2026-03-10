@@ -16,6 +16,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -90,15 +91,13 @@ public class QueryTool {
     Map<String, String> flags = parseFlags(args, REQUIRED_ARGS_COUNT);
 
     if (flags.containsKey("countByValue") && flags.containsKey("countByBucket")) {
-      System.out.println("ERROR: --countByValue and --countByBucket are mutually exclusive");
-      System.exit(1);
+      throw new VeniceException("--countByValue and --countByBucket are mutually exclusive");
     }
 
     if (flags.containsKey("countByValue")) {
       String fieldsArg = flags.get("fields");
       if (fieldsArg == null || fieldsArg.trim().isEmpty()) {
-        System.out.println("ERROR: --countByValue requires --fields=f1,f2,...");
-        System.exit(1);
+        throw new VeniceException("--countByValue requires --fields=f1,f2,...");
       }
       String topKString = flags.get("topK");
       int topK;
@@ -108,21 +107,16 @@ public class QueryTool {
         try {
           topK = Integer.parseInt(topKString);
         } catch (NumberFormatException e) {
-          System.out.println("ERROR: --topK must be a positive integer (got '" + topKString + "')");
-          System.exit(1);
-          return;
+          throw new VeniceException("--topK must be a positive integer (got '" + topKString + "')", e);
         }
       }
       if (topK <= 0) {
-        System.out.println("ERROR: --topK must be a positive integer (got '" + topK + "')");
-        System.exit(1);
-        return;
+        throw new VeniceException("--topK must be a positive integer (got '" + topK + "')");
       }
       String[] fieldNames = fieldsArg.split("\\s*,\\s*");
       for (String fieldName: fieldNames) {
         if (fieldName.isEmpty()) {
-          System.out.println("ERROR: --fields contains an empty field name");
-          System.exit(1);
+          throw new VeniceException("--fields contains an empty field name");
         }
       }
 
@@ -132,19 +126,16 @@ public class QueryTool {
     } else if (flags.containsKey("countByBucket")) {
       String fieldsArg = flags.get("fields");
       if (fieldsArg == null || fieldsArg.trim().isEmpty()) {
-        System.out.println("ERROR: --countByBucket requires --fields=f1,f2,...");
-        System.exit(1);
+        throw new VeniceException("--countByBucket requires --fields=f1,f2,...");
       }
       String bucketsArg = flags.get("buckets");
       if (bucketsArg == null || bucketsArg.trim().isEmpty()) {
-        System.out.println("ERROR: --countByBucket requires --buckets=name:op:value,...");
-        System.exit(1);
+        throw new VeniceException("--countByBucket requires --buckets=name:op:value,...");
       }
       String[] fieldNames = fieldsArg.split("\\s*,\\s*");
       for (String fieldName: fieldNames) {
         if (fieldName.isEmpty()) {
-          System.out.println("ERROR: --fields contains an empty field name");
-          System.exit(1);
+          throw new VeniceException("--fields contains an empty field name");
         }
       }
 
@@ -372,7 +363,14 @@ public class QueryTool {
     return predicates;
   }
 
+  private static final Set<String> VALID_OPERATORS =
+      Collections.unmodifiableSet(new HashSet<>(Arrays.asList("eq", "gt", "gte", "lt", "lte")));
+
   static Predicate createTypedPredicate(String operator, String valueStr) {
+    if (!VALID_OPERATORS.contains(operator)) {
+      throw new VeniceException("Unknown operator '" + operator + "'. Supported: eq, gt, gte, lt, lte");
+    }
+
     // Check for explicit type suffixes: 100i (int), 100L (long), 1.5d (double)
     if (!valueStr.isEmpty()) {
       char lastChar = valueStr.charAt(valueStr.length() - 1);
@@ -400,6 +398,7 @@ public class QueryTool {
             throw new VeniceException("Invalid double literal in bucket value: '" + valueStr + "'", e);
           }
         default:
+          // No explicit type suffix — fall through to implicit type inference (long → double → string)
           break;
       }
     }
@@ -438,7 +437,7 @@ public class QueryTool {
       case "lte":
         return IntPredicate.lowerOrEquals(value);
       default:
-        throw new VeniceException("Unknown operator '" + operator + "'. Supported: eq, gt, gte, lt, lte");
+        throw new IllegalStateException("Unexpected operator: " + operator);
     }
   }
 
@@ -455,7 +454,7 @@ public class QueryTool {
       case "lte":
         return LongPredicate.lowerOrEquals(value);
       default:
-        throw new VeniceException("Unknown operator '" + operator + "'. Supported: eq, gt, gte, lt, lte");
+        throw new IllegalStateException("Unexpected operator: " + operator);
     }
   }
 
@@ -472,10 +471,9 @@ public class QueryTool {
       case "lte":
         return DoublePredicate.lowerOrEquals(value);
       default:
-        throw new VeniceException("Unknown operator '" + operator + "'. Supported: eq, gt, gte, lt, lte");
+        throw new IllegalStateException("Unexpected operator: " + operator);
     }
   }
-
 
   public static Object convertKey(String keyString, Schema keySchema) {
     Object key;
