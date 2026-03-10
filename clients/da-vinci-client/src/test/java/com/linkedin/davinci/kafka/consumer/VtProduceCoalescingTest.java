@@ -114,7 +114,7 @@ public class VtProduceCoalescingTest {
     // Next 99 records within window — all coalesced
     int coalesced = 0;
     for (int i = 1; i < burstCount; i++) {
-      if (shouldCoalesce(lastProduceTimeMs, hotKey, coalescingWindowMs, i * 100) == CoalescingResult.COALESCED) {
+      if (shouldCoalesce(lastProduceTimeMs, hotKey, coalescingWindowMs, (long) i * 100) == CoalescingResult.COALESCED) {
         coalesced++;
       }
     }
@@ -139,7 +139,7 @@ public class VtProduceCoalescingTest {
     // All records should produce when feature is disabled
     for (int i = 0; i < 10; i++) {
       assertEquals(
-          shouldCoalesce(lastProduceTimeMs, key, coalescingWindowMs, i * 1000),
+          shouldCoalesce(lastProduceTimeMs, key, coalescingWindowMs, (long) i * 1000),
           CoalescingResult.PRODUCE,
           "Record " + i + " should produce when feature disabled");
     }
