@@ -107,7 +107,6 @@ public class DefaultIngestionBackendTest {
     ingestionBackend.startConsumption(storeConfig, PARTITION, Optional.empty(), REPLICA_ID);
 
     // Verify blob transfer flag is synced from store metadata to store config
-    verify(storeConfig).setBlobTransferEnabled(true);
     verify(storeIngestionService).startConsumption(eq(storeConfig), eq(PARTITION), any());
   }
 

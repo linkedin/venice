@@ -2767,48 +2767,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     updateLeaderTopicOnFollower(newPcs);
 
-    // If record transformer is present, run initialization (onStartVersionIngestion + internalOnRecovery)
-    // on the recovery thread pool before subscribing. This ensures the transformer processes the
-    // blob-transferred data before Kafka consumption begins.
-    if (recordTransformer != null) {
-      recordTransformerOnRecoveryThreadPool.submit(() -> {
-        try {
-          long startTime = System.nanoTime();
-          recordTransformer.onStartVersionIngestion(partition, isCurrentVersion.getAsBoolean());
-          LOGGER.info(
-              "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {} (after blob transfer)",
-              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              replicaId);
-
-          startTime = System.nanoTime();
-          recordTransformer.internalOnRecovery(
-              storageEngine,
-              partition,
-              partitionStateSerializer,
-              compressor,
-              pubSubContext,
-              schemaIdToSchemaMap,
-              schemaRepository);
-          LOGGER.info(
-              "DaVinciRecordTransformer onRecovery took {} ms for replica: {} (after blob transfer)",
-              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              replicaId);
-          recordTransformer.countDownStartConsumptionLatch();
-
-          PubSubPosition subscribePosition = getLocalVtSubscribePosition(newPcs);
-          LOGGER
-              .info("Post-blob-transfer Kafka subscribe for replica: {} at position: {}", replicaId, subscribePosition);
-          consumerSubscribe(topicPartition.getPubSubTopic(), newPcs, subscribePosition, localKafkaServer);
-        } catch (Exception e) {
-          LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {} after blob transfer", replicaId, e);
-          setLastStoreIngestionException(e);
-        }
-      });
-    } else {
-      PubSubPosition subscribePosition = getLocalVtSubscribePosition(newPcs);
-      LOGGER.info("Post-blob-transfer Kafka subscribe for replica: {} at position: {}", replicaId, subscribePosition);
-      consumerSubscribe(topicPartition.getPubSubTopic(), newPcs, subscribePosition, localKafkaServer);
-    }
+    PubSubPosition subscribePosition = getLocalVtSubscribePosition(newPcs);
+    LOGGER.info("Post-blob-transfer Kafka subscribe for replica: {} at position: {}", replicaId, subscribePosition);
+    consumerSubscribe(topicPartition.getPubSubTopic(), newPcs, subscribePosition, localKafkaServer);
   }
 
   private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {
