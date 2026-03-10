@@ -13,7 +13,7 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 
-THRESHOLD_SECONDS = int(os.environ.get("TEST_DURATION_THRESHOLD_SECONDS", "600"))
+THRESHOLD_SECONDS = int(os.environ.get("TEST_DURATION_THRESHOLD_SECONDS", "360"))
 
 
 def main():
