@@ -1834,7 +1834,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
-    if (versionRole.equals(VersionRole.CURRENT) && !newVersionRole.equals(VersionRole.CURRENT)) {
+    if (versionRole == VersionRole.CURRENT && newVersionRole != VersionRole.CURRENT) {
       stopTrackingCurrentVersionIngestion();
     }
 
