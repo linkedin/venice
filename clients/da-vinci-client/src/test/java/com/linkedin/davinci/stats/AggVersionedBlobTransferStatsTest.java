@@ -1,5 +1,7 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
+import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.DEFAULT_METRIC_PREFIX;
 import static java.lang.Double.NaN;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
@@ -14,14 +16,20 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.stats.LongAdderRateGauge;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -116,6 +124,57 @@ public class AggVersionedBlobTransferStatsTest {
         reporter.query("." + storeName + "_total--blob_transfer_bytes_sent.IngestionStatsGauge").value(),
         expectedRate);
 
+  }
+
+  /**
+   * Verifies that Tehuti-only recording methods ({@link AggVersionedBlobTransferStats#recordBlobTransferResponsesCount}
+   * and {@link AggVersionedBlobTransferStats#recordBlobTransferFileReceiveThroughput}) do NOT produce OTel metrics,
+   * while dual-recording methods do.
+   */
+  @Test
+  public void testTehutiOnlyMethodsDoNotProduceOtelMetrics() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    String metricPrefix = "server";
+    try (VeniceMetricsRepository otelRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(metricPrefix)
+            .setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .build())) {
+
+      VeniceServerConfig mockConfig = Mockito.mock(VeniceServerConfig.class);
+      doReturn(Int2ObjectMaps.emptyMap()).when(mockConfig).getKafkaClusterIdToAliasMap();
+      doReturn(true).when(mockConfig).isUnregisterMetricForDeletedStoreEnabled();
+      doReturn("test-cluster").when(mockConfig).getClusterName();
+
+      ReadOnlyStoreRepository mockMetaRepo = mock(ReadOnlyStoreRepository.class);
+      String storeName = Utils.getUniqueString("store_foo");
+      Store mockStore = createStore(storeName);
+      List<Store> storeList = new ArrayList<>();
+      storeList.add(mockStore);
+      doReturn(mockStore).when(mockMetaRepo).getStoreOrThrow(any());
+      doReturn(storeList).when(mockMetaRepo).getAllStores();
+
+      AggVersionedBlobTransferStats stats = new AggVersionedBlobTransferStats(otelRepo, mockMetaRepo, mockConfig);
+      stats.loadAllStats();
+      storeName = mockStore.getName();
+
+      // Call Tehuti-only methods
+      stats.recordBlobTransferResponsesCount(storeName, 1);
+      stats.recordBlobTransferFileReceiveThroughput(storeName, 1, 1000.0);
+
+      // Verify no OTel RESPONSE_COUNT metric was produced
+      String responseCountMetric = BlobTransferOtelMetricEntity.RESPONSE_COUNT.getMetricEntity().getMetricName();
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+      OpenTelemetryDataTestUtils.assertNoLongSumDataForAttributes(metricsData, responseCountMetric, metricPrefix, null);
+
+      // Now call a dual-recording method and verify OTel IS produced
+      stats.recordBlobTransferResponsesBasedOnBoostrapStatus(storeName, 1, true);
+      metricsData = inMemoryMetricReader.collectAllMetrics();
+      String fullName = DEFAULT_METRIC_PREFIX + metricPrefix + "." + responseCountMetric;
+      MetricData data = metricsData.stream().filter(md -> md.getName().equals(fullName)).findFirst().orElse(null);
+      Assert.assertNotNull(data, "OTel RESPONSE_COUNT should be present after dual-recording method call");
+    }
   }
 
   private Store createStore(String storeName) {
