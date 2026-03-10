@@ -353,10 +353,10 @@ public class StatefulVeniceChangelogConsumerTest {
           verifyPut(polledChangeEventsMap, 160, 170, 3, false);
         });
         verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
-
+      } finally {
         cleanUpStoreAndVerify(storeName2);
       }
-
+    } finally {
       cleanUpStoreAndVerify(storeName);
     }
   }
@@ -509,7 +509,7 @@ public class StatefulVeniceChangelogConsumerTest {
 
       // Since nothing is produced, so no changed events generated.
       verifyNoRecordsProduced(polledChangeEventsMap, polledChangeEventsList, statefulVeniceChangelogConsumer);
-
+    } finally {
       cleanUpStoreAndVerify(storeName);
     }
   }
@@ -587,7 +587,7 @@ public class StatefulVeniceChangelogConsumerTest {
 
       // Since nothing is produced, so no changed events generated.
       verifyNoSpecificRecordsProduced(polledChangeEventsMap, polledChangeEventsList, statefulVeniceChangelogConsumer);
-
+    } finally {
       cleanUpStoreAndVerify(storeName);
     }
   }
@@ -714,7 +714,7 @@ public class StatefulVeniceChangelogConsumerTest {
 
       // Since nothing is produced, so no changed events generated.
       verifyNoSpecificRecordsProduced(polledChangeEventsMap, polledChangeEventsList, statefulVeniceChangelogConsumer);
-
+    } finally {
       cleanUpStoreAndVerify(storeName);
     }
   }
