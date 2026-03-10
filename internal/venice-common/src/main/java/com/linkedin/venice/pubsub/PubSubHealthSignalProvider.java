@@ -1,7 +1,7 @@
 package com.linkedin.venice.pubsub;
 
 /**
- * A pluggable provider of health signals for PubSub targets. The {@link PubSubHealthMonitor}
+ * A pluggable provider of health signals for PubSub targets. The PubSub health monitor
  * aggregates signals from all registered providers to determine overall broker health.
  *
  * <p>The first implementation is exception-based (any PubSub exception marks the target unhealthy).

@@ -62,6 +62,7 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
   // Background threads — created in startInner() when enabled
   private ScheduledExecutorService probeExecutor;
   private ExecutorService listenerNotificationExecutor;
+  private ExecutorService probeAsyncExecutor;
 
   // Probe topic — a well-known topic used to test broker reachability
   private volatile PubSubTopic probeTopic;
@@ -78,6 +79,7 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
     // Executors are initialized in startInner() to avoid wasting threads when disabled
     this.probeExecutor = null;
     this.listenerNotificationExecutor = null;
+    this.probeAsyncExecutor = null;
   }
 
   @Override
@@ -92,6 +94,8 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
         Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("PubSubHealthMonitor-Probe"));
     this.listenerNotificationExecutor =
         Executors.newSingleThreadExecutor(new DaemonThreadFactory("PubSubHealthMonitor-Listener"));
+    this.probeAsyncExecutor =
+        Executors.newSingleThreadExecutor(new DaemonThreadFactory("PubSubHealthMonitor-ProbeAsync"));
     probeExecutor
         .scheduleWithFixedDelay(this::runRecoveryProbe, probeIntervalSeconds, probeIntervalSeconds, TimeUnit.SECONDS);
 
@@ -101,6 +105,7 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
   @Override
   public void stopInner() {
     shutdownExecutor(probeExecutor, "probe");
+    shutdownExecutor(probeAsyncExecutor, "probe-async");
     shutdownExecutor(listenerNotificationExecutor, "listener-notification");
   }
 
@@ -182,7 +187,7 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
   }
 
   /**
-   * @return the number of currently unhealthy targets across all categories
+   * @return the number of currently unhealthy targets for the given category
    */
   public int getUnhealthyCount(PubSubHealthCategory category) {
     int count = 0;
@@ -352,12 +357,16 @@ public class PubSubHealthMonitor extends AbstractVeniceService {
    * @return true if the probe succeeds (target is reachable)
    */
   private boolean probe(String address, PubSubHealthCategory category, PubSubTopic topic) {
+    CompletableFuture<Boolean> future = null;
     try {
       TopicManager topicManager = topicManagerRepository.getTopicManager(address);
-      CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(() -> topicManager.containsTopic(topic));
+      future = CompletableFuture.supplyAsync(() -> topicManager.containsTopic(topic), probeAsyncExecutor);
       return future.get(PROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     } catch (java.util.concurrent.TimeoutException e) {
       LOGGER.debug("Probe timed out for {} (category={})", address, category);
+      if (future != null) {
+        future.cancel(true);
+      }
       return false;
     } catch (Exception e) {
       LOGGER.debug("Probe failed for {} (category={}): {}", address, category, e.getMessage());

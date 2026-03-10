@@ -449,7 +449,6 @@ public class VeniceServer {
       PubSubTopicRepository topicRepo = kafkaStoreIngestionService.getPubSubContext().getPubSubTopicRepository();
       pubSubHealthMonitor.setProbeTopic(topicRepo.getTopic(probeTopicName));
     }
-    services.add(pubSubHealthMonitor);
     PubSubHealthMonitorStats pubSubHealthMonitorStats = new PubSubHealthMonitorStats(
         metricsRepository,
         pubSubHealthMonitor,
@@ -602,6 +601,9 @@ public class VeniceServer {
     services.add(kafkaStoreIngestionService);
     // Add HB monitoring service after Kafka consumer service so that it will be started after Kafka consumer service
     services.add(heartbeatMonitoringService);
+    // Add PubSub health monitor after KSIS so it stops first during shutdown (reverse order),
+    // preventing probes from running after TopicManagerRepository is closed.
+    services.add(pubSubHealthMonitor);
 
     /**
      * Resource cleanup service

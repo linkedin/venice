@@ -5729,22 +5729,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Resume partitions that were paused due to PubSub health issues for the given broker address.
-   * Called by {@link KafkaStoreIngestionService} when the health monitor detects broker recovery.
-   *
-   * <p>To avoid data loss from partially-processed poll batches, each consuming topic-partition is
-   * unsubscribed and re-subscribed at the consumer level with the correct checkpointed position.
-   * This is done directly on the consumer (not via the SIT action queue) to preserve the
-   * {@link PartitionConsumptionState} and leader state — using UNSUBSCRIBE/SUBSCRIBE actions
-   * would destroy the PCS and lose leader's RT subscription.
-   *
-   * <p>For followers consuming VT, seeks back to the VT checkpointed position.
-   * For leaders consuming RT, seeks back to the RT checkpointed position, preserving leader state.
-   */
-  /**
    * Signal that partitions paused for the given broker should be resumed. This is called from the
    * health monitor's listener thread and simply enqueues the address for processing on the SIT's
    * own thread (via {@link #processPendingPubSubHealthResumes()}) to avoid concurrent PCS modification.
+   *
+   * <p>The actual resume logic runs on the SIT thread to ensure thread safety with PCS. Each
+   * consuming topic-partition is re-subscribed at the consumer level with the correct checkpointed
+   * position, preserving the {@link PartitionConsumptionState} and leader state.
    */
   public void resumePartitionsForPubSubHealth(String pubSubAddress) {
     // Always enqueue the address for processing. The SIT thread will filter to only matching

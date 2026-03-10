@@ -252,9 +252,7 @@ public class TestPubSubHealthPartitionPauseResumeMultiRegion {
         leaderSits[1],
         followerSits[1],
         regionClusters[0],
-        regionClusters[1],
-        storeName,
-        versionTopic);
+        regionClusters[1]);
   }
 
   private void simulatePubSubFailureAndWaitForPause(StoreIngestionTask sit, String label) {
@@ -629,8 +627,6 @@ public class TestPubSubHealthPartitionPauseResumeMultiRegion {
     final StoreIngestionTask dc1FollowerSit;
     final VeniceClusterWrapper dc0Cluster;
     final VeniceClusterWrapper dc1Cluster;
-    final String storeName;
-    final String versionTopic;
 
     RegionTestContext(
         StoreIngestionTask dc0LeaderSit,
@@ -638,17 +634,13 @@ public class TestPubSubHealthPartitionPauseResumeMultiRegion {
         StoreIngestionTask dc1LeaderSit,
         StoreIngestionTask dc1FollowerSit,
         VeniceClusterWrapper dc0Cluster,
-        VeniceClusterWrapper dc1Cluster,
-        String storeName,
-        String versionTopic) {
+        VeniceClusterWrapper dc1Cluster) {
       this.dc0LeaderSit = dc0LeaderSit;
       this.dc0FollowerSit = dc0FollowerSit;
       this.dc1LeaderSit = dc1LeaderSit;
       this.dc1FollowerSit = dc1FollowerSit;
       this.dc0Cluster = dc0Cluster;
       this.dc1Cluster = dc1Cluster;
-      this.storeName = storeName;
-      this.versionTopic = versionTopic;
     }
   }
 }
