@@ -55,7 +55,7 @@ jobs:
 
 
   Clients:
-   uses: ./.github/workflows/UnitTests-core.yml
+   uses: ./.github/workflows/reusable/UnitTests-core.yml
    with:
     artifact_suffix: clients
     arg:
@@ -68,7 +68,7 @@ jobs:
      --continue
 
   Integrations:
-    uses: ./.github/workflows/UnitTests-core.yml
+    uses: ./.github/workflows/reusable/UnitTests-core.yml
     with:
       artifact_suffix: integrations
       arg:
@@ -76,7 +76,7 @@ jobs:
        --continue
 
   Internal:
-   uses: ./.github/workflows/UnitTests-core.yml
+   uses: ./.github/workflows/reusable/UnitTests-core.yml
    with:
     artifact_suffix: internal
     arg:
@@ -88,7 +88,7 @@ jobs:
       --continue
 
   Controller:
-   uses: ./.github/workflows/UnitTests-core.yml
+   uses: ./.github/workflows/reusable/UnitTests-core.yml
    with:
     artifact_suffix: controller
     arg:
@@ -96,7 +96,7 @@ jobs:
      --continue
 
   Server:
-   uses: ./.github/workflows/UnitTests-core.yml
+   uses: ./.github/workflows/reusable/UnitTests-core.yml
    with:
     artifact_suffix: server
     arg:
@@ -105,7 +105,7 @@ jobs:
      --continue
 
   Router:
-   uses: ./.github/workflows/UnitTests-core.yml
+   uses: ./.github/workflows/reusable/UnitTests-core.yml
    with:
     artifact_suffix: router
     arg:
