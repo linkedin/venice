@@ -3483,6 +3483,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         final byte[] updatedValueBytes;
         final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
+        final int incomingUpdatePayloadSize = update.updateValue.remaining();
         WriteComputeResult writeComputeResult;
         try {
           long writeComputeStartTimeInNS = System.nanoTime();
@@ -3501,14 +3502,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           hostLevelIngestionStats.recordWriteComputeUpdateLatency(wcUpdateLatency);
           versionedIngestionStats
               .recordPartialUpdateTime(storeName, versionNumber, VenicePartialUpdateOperation.UPDATE, wcUpdateLatency);
+        } catch (Exception e) {
+          setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
+          throw new RuntimeException(e);
+        }
 
-          // Write-compute amplification detection
+        // Write-compute amplification detection (outside WC try-catch to avoid masking failures as WC errors)
+        if (updatedValueBytes != null) {
           int largeResultThreshold = serverConfig.getWriteComputeLargeResultLogThresholdBytes();
           WriteComputeAmplificationDetector amplificationDetector =
               partitionConsumptionState.getOrCreateWriteComputeAmplificationDetector(
                   serverConfig.getWriteComputeAmplificationReportIntervalMs());
           amplificationDetector
-              .record(keyBytes, update.updateValue.remaining(), updatedValueBytes.length, largeResultThreshold);
+              .record(keyBytes, incomingUpdatePayloadSize, updatedValueBytes.length, largeResultThreshold);
           WriteComputeAmplificationDetector.AmplificationReport ampReport =
               amplificationDetector.tryBuildReportAndReset(System.currentTimeMillis(), largeResultThreshold);
           if (ampReport != null) {
@@ -3519,9 +3525,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 ampReport);
             versionedIngestionStats.recordWriteComputeAmplificationAlertCount(storeName, versionNumber);
           }
-        } catch (Exception e) {
-          setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
-          throw new RuntimeException(e);
         }
 
         if (updatedValueBytes == null) {
