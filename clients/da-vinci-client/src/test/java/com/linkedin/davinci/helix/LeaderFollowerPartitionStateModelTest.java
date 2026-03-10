@@ -400,8 +400,10 @@ public class LeaderFollowerPartitionStateModelTest {
     when(store.getCurrentVersion()).thenReturn(storeVersion + 1);
 
     // Simulate StoreIngestionTask.stopTrackingCurrentVersionIngestion() being called
-    notifier.completed(resourceName, partition, null);
+    notifier.stopped(resourceName, partition, null);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, transitionFuture::isDone);
+    // Ensure the transition completed successfully (will throw if it completed exceptionally)
+    transitionFuture.join();
     assertNull(
         notifier.getIngestionCompleteFlag(resourceName, partition),
         "Latch should be released/removed after current version is demoted");
