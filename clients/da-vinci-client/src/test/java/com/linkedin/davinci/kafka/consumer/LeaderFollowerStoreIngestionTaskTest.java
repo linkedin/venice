@@ -89,6 +89,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
@@ -1409,6 +1410,40 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // Tehuti: now fires because emitTehutiMetrics=true
     verify(mockHostLevelStats, times(1)).recordCheckLongRunningTasksLatency(anyDouble());
     verify(mockHostLevelStats, times(1)).recordIngestionFailure();
+  }
+
+  @Test
+  public void testStopTrackingCurrentVersionIngestionOnDemotion() throws Exception {
+    LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(true).when(serverConfig).isResubscriptionTriggeredByVersionIngestionContextChangeEnabled();
+    doReturn(0).when(serverConfig).getResubscriptionCheckIntervalInSeconds();
+    setField(storeIngestionTask, "serverConfig", serverConfig);
+    setField(storeIngestionTask, "versionRole", VersionRole.CURRENT);
+    setVersion(storeIngestionTask, 1);
+    doReturn(true).when(storeIngestionTask).isHybridMode();
+    doCallRealMethod().when(storeIngestionTask).refreshIngestionContextIfChanged(any(Store.class));
+
+    Store store = mock(Store.class);
+    doReturn(5).when(store).getCurrentVersion();
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(true).when(pcs).isLatchCreated();
+    doReturn(false).when(pcs).isLatchReleased();
+    VeniceConcurrentHashMap<Integer, PartitionConsumptionState> pcsMap = new VeniceConcurrentHashMap<>();
+    pcsMap.put(1, pcs);
+    setField(storeIngestionTask, "partitionConsumptionStateMap", pcsMap);
+
+    IngestionNotificationDispatcher mockDispatcher = mock(IngestionNotificationDispatcher.class);
+    setField(storeIngestionTask, "ingestionNotificationDispatcher", mockDispatcher);
+
+    // First call: versionRole transitions CURRENT -> BACKUP, reportStopped should be called once
+    storeIngestionTask.refreshIngestionContextIfChanged(store);
+    verify(mockDispatcher, times(1)).reportStopped(eq(pcs));
+
+    // Second call: versionRole is already BACKUP, no further latch release
+    storeIngestionTask.refreshIngestionContextIfChanged(store);
+    verify(mockDispatcher, times(1)).reportStopped(eq(pcs));
   }
 
   private static void addStandbyPcs(Map<Integer, PartitionConsumptionState> pcsMap, int partition, long ageMs) {
