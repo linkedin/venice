@@ -2036,18 +2036,8 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   protected void validateRemoteHybridSettings(PushJobSetting setting) {
-    if (setting.validateRemoteReplayPolicy != null) {
-      StoreResponse response = getStoreResponse(setting.storeName);
-      HybridStoreConfig hybridStoreConfig = response.getStore().getHybridStoreConfig();
-      if (!setting.validateRemoteReplayPolicy.equals(hybridStoreConfig.getBufferReplayPolicy())) {
-        throw new VeniceException(
-            String.format(
-                "Remote rewind policy is %s but push settings require a policy of %s. "
-                    + "Please adjust hybrid settings or push job configuration!",
-                hybridStoreConfig.getBufferReplayPolicy(),
-                setting.validateRemoteReplayPolicy));
-      }
-    }
+    // No-op: With epoch passthrough, the absolute epoch timestamp flows directly through the
+    // pipeline, making the SOP/EOP replay policy validation unnecessary.
   }
 
   private Map<Integer, String> validateAndFetchNewKafkaMessageEnvelopeSchemas(PushJobSetting setting) {

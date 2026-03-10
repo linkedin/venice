@@ -5,7 +5,6 @@ import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
-import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.vson.VsonSchema;
@@ -57,7 +56,7 @@ public class PushJobSetting implements Serializable {
   public boolean pushToSeparateRealtimeTopicEnabled;
   public boolean kafkaInputCombinerEnabled;
   public boolean kafkaInputBuildNewDictEnabled;
-  public BufferReplayPolicy validateRemoteReplayPolicy;
+
   public boolean suppressEndOfPushMessage;
   public boolean deferVersionSwap;
   public boolean extendedSchemaValidityCheckEnabled;
