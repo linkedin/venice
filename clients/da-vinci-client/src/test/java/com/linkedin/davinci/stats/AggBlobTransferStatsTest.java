@@ -1,28 +1,29 @@
 package com.linkedin.davinci.stats;
 
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.CLUSTER_NAME;
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.METRIC_PREFIX;
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.buildVersionRoleAttributes;
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.createMockMetaRepository;
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.createMockServerConfig;
+import static com.linkedin.davinci.stats.BlobTransferStatsTestUtils.createStore;
+import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.ReadStrategy;
-import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.LongAdderRateGauge;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
-import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import org.mockito.Mockito;
+import java.util.Collections;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -33,38 +34,23 @@ public class AggBlobTransferStatsTest {
     TestMockTime mockTime = new TestMockTime();
     MetricsRepository metricsRepo = new MetricsRepository(mockTime);
     MockTehutiReporter reporter = new MockTehutiReporter();
-    VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
+    metricsRepo.addReporter(reporter);
 
     String storeName = Utils.getUniqueString("store_foo");
+    Store mockStore = createStore(storeName);
+    ReadOnlyStoreRepository mockMetaRepository = createMockMetaRepository(mockStore);
+    VeniceServerConfig mockServerConfig = createMockServerConfig();
 
-    metricsRepo.addReporter(reporter);
-    ReadOnlyStoreRepository mockMetaRepository = mock(ReadOnlyStoreRepository.class);
-    doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
-    doReturn(true).when(mockVeniceServerConfig).isUnregisterMetricForDeletedStoreEnabled();
-    doReturn("test-cluster").when(mockVeniceServerConfig).getClusterName();
-
-    // Create AggVersionedBlobTransferStats
     AggVersionedBlobTransferStats aggVersionedStats =
-        new AggVersionedBlobTransferStats(metricsRepo, mockMetaRepository, mockVeniceServerConfig, mockTime);
-
-    // Create AggHostLevelIngestionStats
+        new AggVersionedBlobTransferStats(metricsRepo, mockMetaRepository, mockServerConfig, mockTime);
     AggHostLevelIngestionStats aggHostLevelStats = new AggHostLevelIngestionStats(
         metricsRepo,
-        mockVeniceServerConfig,
-        new HashMap<>(),
+        mockServerConfig,
+        Collections.emptyMap(),
         mockMetaRepository,
         true,
         mockTime);
-
-    // Create AggBlobTransferStats that wraps both
     AggBlobTransferStats aggBlobTransferStats = new AggBlobTransferStats(aggVersionedStats, aggHostLevelStats);
-
-    Store mockStore = createStore(storeName);
-    List<Store> storeList = new ArrayList<>();
-    storeList.add(mockStore);
-
-    doReturn(mockStore).when(mockMetaRepository).getStoreOrThrow(any());
-    doReturn(storeList).when(mockMetaRepository).getAllStores();
 
     aggVersionedStats.loadAllStats();
     storeName = mockStore.getName();
@@ -98,38 +84,23 @@ public class AggBlobTransferStatsTest {
     TestMockTime mockTime = new TestMockTime();
     MetricsRepository metricsRepo = new MetricsRepository(mockTime);
     MockTehutiReporter reporter = new MockTehutiReporter();
-    VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
+    metricsRepo.addReporter(reporter);
 
     String storeName = Utils.getUniqueString("store_bar");
+    Store mockStore = createStore(storeName);
+    ReadOnlyStoreRepository mockMetaRepository = createMockMetaRepository(mockStore);
+    VeniceServerConfig mockServerConfig = createMockServerConfig();
 
-    metricsRepo.addReporter(reporter);
-    ReadOnlyStoreRepository mockMetaRepository = mock(ReadOnlyStoreRepository.class);
-    doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
-    doReturn(true).when(mockVeniceServerConfig).isUnregisterMetricForDeletedStoreEnabled();
-    doReturn("test-cluster").when(mockVeniceServerConfig).getClusterName();
-
-    // Create AggVersionedBlobTransferStats
     AggVersionedBlobTransferStats aggVersionedStats =
-        new AggVersionedBlobTransferStats(metricsRepo, mockMetaRepository, mockVeniceServerConfig, mockTime);
-
-    // Create AggHostLevelIngestionStats
+        new AggVersionedBlobTransferStats(metricsRepo, mockMetaRepository, mockServerConfig, mockTime);
     AggHostLevelIngestionStats aggHostLevelStats = new AggHostLevelIngestionStats(
         metricsRepo,
-        mockVeniceServerConfig,
-        new HashMap<>(),
+        mockServerConfig,
+        Collections.emptyMap(),
         mockMetaRepository,
         true,
         mockTime);
-
-    // Create AggBlobTransferStats that wraps both
     AggBlobTransferStats aggBlobTransferStats = new AggBlobTransferStats(aggVersionedStats, aggHostLevelStats);
-
-    Store mockStore = createStore(storeName);
-    List<Store> storeList = new ArrayList<>();
-    storeList.add(mockStore);
-
-    doReturn(mockStore).when(mockMetaRepository).getStoreOrThrow(any());
-    doReturn(storeList).when(mockMetaRepository).getAllStores();
 
     aggVersionedStats.loadAllStats();
     storeName = mockStore.getName();
@@ -155,15 +126,61 @@ public class AggBlobTransferStatsTest {
     Assert.assertEquals(reporter.query(".total--blob_transfer_bytes_sent.Rate").value(), expectedSentRate);
   }
 
-  private Store createStore(String storeName) {
-    return new ZKStore(
-        storeName,
-        "",
-        10,
-        PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_ALL_REPLICAS,
-        1);
+  /**
+   * Validates OTel metrics are produced when bytes are recorded through AggBlobTransferStats.
+   * Uses VeniceMetricsRepository with InMemoryMetricReader for OTel validation.
+   */
+  @Test
+  public void testOtelMetricsForBytesReceivedAndSent() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository metricsRepo = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricPrefix(METRIC_PREFIX)
+            .setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .build())) {
+
+      String storeName = Utils.getUniqueString("store_otel");
+      Store mockStore = createStore(storeName);
+      ReadOnlyStoreRepository mockMetaRepo = createMockMetaRepository(mockStore);
+      VeniceServerConfig mockServerConfig = createMockServerConfig();
+
+      AggVersionedBlobTransferStats aggVersionedStats =
+          new AggVersionedBlobTransferStats(metricsRepo, mockMetaRepo, mockServerConfig);
+      AggHostLevelIngestionStats aggHostLevelStats = new AggHostLevelIngestionStats(
+          metricsRepo,
+          mockServerConfig,
+          Collections.emptyMap(),
+          mockMetaRepo,
+          true,
+          new TestMockTime());
+      AggBlobTransferStats aggBlobTransferStats = new AggBlobTransferStats(aggVersionedStats, aggHostLevelStats);
+
+      aggVersionedStats.loadAllStats();
+      storeName = mockStore.getName();
+
+      // Record bytes for two versions
+      aggBlobTransferStats.recordBlobTransferBytesReceived(storeName, 1, 1000);
+      aggBlobTransferStats.recordBlobTransferBytesSent(storeName, 1, 2000);
+      aggBlobTransferStats.recordBlobTransferBytesReceived(storeName, 2, 3000);
+      aggBlobTransferStats.recordBlobTransferBytesSent(storeName, 2, 4000);
+
+      // OTel counters accumulate per VersionRole — both versions are BACKUP (no current/future set)
+      String otelBytesReceived = BlobTransferOtelMetricEntity.BYTES_RECEIVED.getMetricEntity().getMetricName();
+      String otelBytesSent = BlobTransferOtelMetricEntity.BYTES_SENT.getMetricEntity().getMetricName();
+      Attributes backupAttrs = buildVersionRoleAttributes(storeName, CLUSTER_NAME, VersionRole.BACKUP);
+      OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+          inMemoryMetricReader,
+          1000 + 3000,
+          backupAttrs,
+          otelBytesReceived,
+          METRIC_PREFIX);
+      OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
+          inMemoryMetricReader,
+          2000 + 4000,
+          backupAttrs,
+          otelBytesSent,
+          METRIC_PREFIX);
+    }
   }
 }
