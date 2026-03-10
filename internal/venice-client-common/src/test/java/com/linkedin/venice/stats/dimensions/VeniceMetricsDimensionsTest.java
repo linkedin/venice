@@ -133,6 +133,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_ADAPTIVE_THROTTLER_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.adaptive_throttler.type");
           break;
+        case VENICE_HEARTBEAT_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.heartbeat.component");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -264,6 +267,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_ADAPTIVE_THROTTLER_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.adaptiveThrottler.type");
           break;
+        case VENICE_HEARTBEAT_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.heartbeat.component");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -394,6 +400,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_ADAPTIVE_THROTTLER_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.AdaptiveThrottler.Type");
+          break;
+        case VENICE_HEARTBEAT_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "Venice.Heartbeat.Component");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
