@@ -113,12 +113,7 @@ public class QueryTool {
       if (topK <= 0) {
         throw new VeniceException("--topK must be a positive integer (got '" + topK + "')");
       }
-      String[] fieldNames = fieldsArg.split("\\s*,\\s*");
-      for (String fieldName: fieldNames) {
-        if (fieldName.isEmpty()) {
-          throw new VeniceException("--fields contains an empty field name");
-        }
-      }
+      String[] fieldNames = trimAndValidateFieldNames(fieldsArg);
 
       Map<String, Map<Object, Integer>> result =
           queryStoreForCountByValue(store, keyString, url, isVsonStore, sslConfigFilePathArgs, topK, fieldNames);
@@ -132,12 +127,7 @@ public class QueryTool {
       if (bucketsArg == null || bucketsArg.trim().isEmpty()) {
         throw new VeniceException("--countByBucket requires --buckets=name:op:value,...");
       }
-      String[] fieldNames = fieldsArg.split("\\s*,\\s*");
-      for (String fieldName: fieldNames) {
-        if (fieldName.isEmpty()) {
-          throw new VeniceException("--fields contains an empty field name");
-        }
-      }
+      String[] fieldNames = trimAndValidateFieldNames(fieldsArg);
 
       Map<String, Predicate> bucketPredicates = parseBucketPredicates(bucketsArg);
       Map<String, Map<String, Integer>> result = queryStoreForCountByBucket(
@@ -249,6 +239,9 @@ public class QueryTool {
       Schema keySchema = resolveKeySchema(getInnerClient(client));
 
       List<String> keyStrings = parseKeys(keysString);
+      if (keyStrings.isEmpty()) {
+        throw new VeniceException("No keys provided for countByValue aggregation");
+      }
       Set<Object> keys = new HashSet<>();
       for (String ks: keyStrings) {
         keys.add(convertKey(removeQuotes(ks.trim()), keySchema));
@@ -290,6 +283,9 @@ public class QueryTool {
       Schema keySchema = resolveKeySchema(getInnerClient(client));
 
       List<String> keyStrings = parseKeys(keysString);
+      if (keyStrings.isEmpty()) {
+        throw new VeniceException("No keys provided for countByBucket aggregation");
+      }
       Set<Object> keys = new HashSet<>();
       for (String ks: keyStrings) {
         keys.add(convertKey(removeQuotes(ks.trim()), keySchema));
@@ -309,6 +305,17 @@ public class QueryTool {
       }
       return result;
     }
+  }
+
+  private static String[] trimAndValidateFieldNames(String fieldsArg) {
+    String[] fieldNames = fieldsArg.split("\\s*,\\s*");
+    for (int i = 0; i < fieldNames.length; i++) {
+      fieldNames[i] = fieldNames[i].trim();
+      if (fieldNames[i].isEmpty()) {
+        throw new VeniceException("--fields contains an empty field name");
+      }
+    }
+    return fieldNames;
   }
 
   private static SSLFactory createAndValidateSslFactory(String url, Optional<String> sslConfigFile) throws Exception {
