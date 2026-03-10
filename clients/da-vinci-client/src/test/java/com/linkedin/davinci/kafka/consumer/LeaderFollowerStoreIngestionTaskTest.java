@@ -29,6 +29,7 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferStatusTrackingManager;
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferStatus;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -1805,50 +1806,50 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
   @Test
   public void testIsBlobTransferEnabledForStoreServerDisabledByStorePolicy() throws InterruptedException {
-    setUp();
+    setUpWithBlobTransfer(false);
     when(mockStore.getBlobTransferInServerEnabled()).thenReturn("DISABLED");
-    assertFalse(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+    assertFalse(leaderFollowerStoreIngestionTask.blobTransferHelper.isBlobTransferEnabledForStore(mockStore, false));
   }
 
   @Test
   public void testIsBlobTransferEnabledForStoreServerEnabledByStorePolicy() throws InterruptedException {
-    setUp();
+    setUpWithBlobTransfer(false);
     when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
-    assertTrue(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+    assertTrue(leaderFollowerStoreIngestionTask.blobTransferHelper.isBlobTransferEnabledForStore(mockStore, false));
   }
 
   @Test
   public void testIsBlobTransferEnabledForStoreServerDisabledByServerPolicy() throws InterruptedException {
-    setUp();
+    setUpWithBlobTransfer(false);
     when(mockStore.getBlobTransferInServerEnabled()).thenReturn(null);
     when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.DISABLED);
-    assertFalse(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+    assertFalse(leaderFollowerStoreIngestionTask.blobTransferHelper.isBlobTransferEnabledForStore(mockStore, false));
   }
 
   @Test
   public void testIsBlobTransferEnabledForStoreServerEnabledByServerPolicy() throws InterruptedException {
-    setUp();
+    setUpWithBlobTransfer(false);
     when(mockStore.getBlobTransferInServerEnabled()).thenReturn(null);
     when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.ENABLED);
-    assertTrue(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+    assertTrue(leaderFollowerStoreIngestionTask.blobTransferHelper.isBlobTransferEnabledForStore(mockStore, false));
   }
 
   @Test
   public void testIsBlobTransferEnabledForStoreServerNotSpecifiedPolicy() throws InterruptedException {
-    setUp();
+    setUpWithBlobTransfer(false);
     when(mockStore.getBlobTransferInServerEnabled()).thenReturn(null);
     when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.NOT_SPECIFIED);
-    assertFalse(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+    assertFalse(leaderFollowerStoreIngestionTask.blobTransferHelper.isBlobTransferEnabledForStore(mockStore, false));
   }
 
   @Test
   public void testCancelPendingBlobTransfer() throws InterruptedException {
-    setUp();
+    setUpWithBlobTransfer(false);
     CompletableFuture<Void> pendingFuture = new CompletableFuture<>();
     when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(pendingFuture);
     when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
 
-    leaderFollowerStoreIngestionTask.cancelPendingBlobTransfer(mockPartitionConsumptionState);
+    leaderFollowerStoreIngestionTask.blobTransferHelper.cancelPendingBlobTransfer(mockPartitionConsumptionState);
 
     // Verify the pending transfer is cleared
     verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
@@ -1856,63 +1857,50 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
   @Test
   public void testCancelPendingBlobTransferNoOpsWhenNoPendingTransfer() throws InterruptedException {
-    setUp();
+    setUpWithBlobTransfer(false);
     when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(null);
 
-    leaderFollowerStoreIngestionTask.cancelPendingBlobTransfer(mockPartitionConsumptionState);
+    leaderFollowerStoreIngestionTask.blobTransferHelper.cancelPendingBlobTransfer(mockPartitionConsumptionState);
 
     // Should not try to clear since there's nothing to cancel
     verify(mockPartitionConsumptionState, never()).setPendingBlobTransfer(any());
   }
 
   @Test
-  public void testStopBlobTransferAndWaitCompletedFuture() throws InterruptedException {
-    setUp();
-    CompletableFuture<Void> completedFuture = CompletableFuture.completedFuture(null);
-    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(completedFuture);
-    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+  public void testStopBlobTransferAndWaitAlreadyInFinalState() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    BlobTransferStatusTrackingManager mockTrackingManager = mock(BlobTransferStatusTrackingManager.class);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockTrackingManager);
+    when(mockTrackingManager.isTransferInFinalState("test_v1-0")).thenReturn(true);
 
-    leaderFollowerStoreIngestionTask.stopBlobTransferAndWait(mockPartitionConsumptionState);
+    leaderFollowerStoreIngestionTask.blobTransferHelper.stopBlobTransferAndWait(0, 5, "test_v1-0");
 
-    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+    // Already in final state, should not poll or clear
+    verify(mockTrackingManager, never()).getTransferStatus(anyString());
+    verify(mockTrackingManager, never()).clearTransferStatusEnum(anyString());
   }
 
   @Test
-  public void testStopBlobTransferAndWaitFailedFuture() throws InterruptedException {
-    setUp();
-    CompletableFuture<Void> failedFuture = new CompletableFuture<>();
-    failedFuture.completeExceptionally(new RuntimeException("transfer failed"));
-    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(failedFuture);
-    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+  public void testStopBlobTransferAndWaitPollsUntilFinalState() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    BlobTransferStatusTrackingManager mockTrackingManager = mock(BlobTransferStatusTrackingManager.class);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockTrackingManager);
+    // First call: not final, second call (after poll): final
+    when(mockTrackingManager.isTransferInFinalState("test_v1-0")).thenReturn(false, true);
+    when(mockTrackingManager.getTransferStatus("test_v1-0")).thenReturn(BlobTransferStatus.TRANSFER_STARTED);
 
-    // Should not throw — exception is caught
-    leaderFollowerStoreIngestionTask.stopBlobTransferAndWait(mockPartitionConsumptionState);
+    leaderFollowerStoreIngestionTask.blobTransferHelper.stopBlobTransferAndWait(0, 5, "test_v1-0");
 
-    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+    verify(mockTrackingManager).clearTransferStatusEnum("test_v1-0");
   }
 
   @Test
-  public void testStopBlobTransferAndWaitCancelledFuture() throws InterruptedException {
-    setUp();
-    CompletableFuture<Void> cancelledFuture = new CompletableFuture<>();
-    cancelledFuture.cancel(true);
-    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(cancelledFuture);
-    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+  public void testStopBlobTransferAndWaitNoOpsWhenNullTrackingManager() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(null);
 
-    leaderFollowerStoreIngestionTask.stopBlobTransferAndWait(mockPartitionConsumptionState);
-
-    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
-  }
-
-  @Test
-  public void testStopBlobTransferAndWaitNoOpsWhenNoPendingTransfer() throws InterruptedException {
-    setUp();
-    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(null);
-
-    leaderFollowerStoreIngestionTask.stopBlobTransferAndWait(mockPartitionConsumptionState);
-
-    // Should not try to clear since there's nothing to stop
-    verify(mockPartitionConsumptionState, never()).setPendingBlobTransfer(any());
+    // Should not throw
+    leaderFollowerStoreIngestionTask.blobTransferHelper.stopBlobTransferAndWait(0, 5, "test_v1-0");
   }
 
   // --- Tests requiring non-null BlobTransferManager ---
@@ -2106,16 +2094,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
   @Test
   public void testIsBlobTransferEnabledForStoreDaVinciClient() throws Exception {
     setUpWithBlobTransfer(false);
-    // Use reflection to set isDaVinciClient = true
-    Field isDaVinciClientField = StoreIngestionTask.class.getDeclaredField("isDaVinciClient");
-    isDaVinciClientField.setAccessible(true);
-    isDaVinciClientField.setBoolean(leaderFollowerStoreIngestionTask, true);
 
     when(mockStore.isBlobTransferEnabled()).thenReturn(true);
-    assertTrue(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+    assertTrue(leaderFollowerStoreIngestionTask.blobTransferHelper.isBlobTransferEnabledForStore(mockStore, true));
 
     when(mockStore.isBlobTransferEnabled()).thenReturn(false);
-    assertFalse(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+    assertFalse(leaderFollowerStoreIngestionTask.blobTransferHelper.isBlobTransferEnabledForStore(mockStore, true));
   }
 
   @Test
@@ -2128,7 +2112,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     BlobTransferStatusTrackingManager mockTrackingManager = mock(BlobTransferStatusTrackingManager.class);
     when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockTrackingManager);
 
-    leaderFollowerStoreIngestionTask.cancelPendingBlobTransfer(mockPartitionConsumptionState);
+    leaderFollowerStoreIngestionTask.blobTransferHelper.cancelPendingBlobTransfer(mockPartitionConsumptionState);
 
     verify(mockTrackingManager).cancelTransfer("test_v1-0");
     verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
@@ -2144,39 +2128,33 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(null);
 
     // Should not throw even when tracking manager is null
-    leaderFollowerStoreIngestionTask.cancelPendingBlobTransfer(mockPartitionConsumptionState);
+    leaderFollowerStoreIngestionTask.blobTransferHelper.cancelPendingBlobTransfer(mockPartitionConsumptionState);
 
     verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
   }
 
   @Test
-  public void testStopBlobTransferAndWaitWithTrackingManager() throws InterruptedException {
+  public void testStopBlobTransferAndWaitWithTrackingManagerCompletedTransfer() throws InterruptedException {
     setUpWithBlobTransfer(false);
-    CompletableFuture<Void> completedFuture = CompletableFuture.completedFuture(null);
-    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(completedFuture);
-    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
-
     BlobTransferStatusTrackingManager mockTrackingManager = mock(BlobTransferStatusTrackingManager.class);
     when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockTrackingManager);
+    // Not in final state initially, then transitions to final
+    when(mockTrackingManager.isTransferInFinalState("test_v1-0")).thenReturn(false, true);
+    when(mockTrackingManager.getTransferStatus("test_v1-0"))
+        .thenReturn(BlobTransferStatus.TRANSFER_STARTED, BlobTransferStatus.TRANSFER_COMPLETED);
 
-    leaderFollowerStoreIngestionTask.stopBlobTransferAndWait(mockPartitionConsumptionState);
+    leaderFollowerStoreIngestionTask.blobTransferHelper.stopBlobTransferAndWait(0, 5, "test_v1-0");
 
-    verify(mockTrackingManager).cancelTransfer("test_v1-0");
-    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+    verify(mockTrackingManager).clearTransferStatusEnum("test_v1-0");
   }
 
   @Test
-  public void testStopBlobTransferAndWaitWithNullTrackingManager() throws InterruptedException {
+  public void testStopBlobTransferAndWaitWithNullTrackingManagerIsNoOp() throws InterruptedException {
     setUpWithBlobTransfer(false);
-    CompletableFuture<Void> completedFuture = CompletableFuture.completedFuture(null);
-    when(mockPartitionConsumptionState.getPendingBlobTransfer()).thenReturn(completedFuture);
-    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
-
     when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(null);
 
-    leaderFollowerStoreIngestionTask.stopBlobTransferAndWait(mockPartitionConsumptionState);
-
-    verify(mockPartitionConsumptionState).setPendingBlobTransfer(null);
+    // Should not throw
+    leaderFollowerStoreIngestionTask.blobTransferHelper.stopBlobTransferAndWait(0, 5, "test_v1-0");
   }
 
   @Test
@@ -2217,20 +2195,20 @@ public class LeaderFollowerStoreIngestionTaskTest {
   @Test
   public void testIsBlobTransferEnabledForStoreServerDisabledByServerPolicyWithNonNullStorePolicy()
       throws InterruptedException {
-    setUp();
+    setUpWithBlobTransfer(false);
     // Store policy is non-null but not DISABLED/ENABLED, server policy is DISABLED
     when(mockStore.getBlobTransferInServerEnabled()).thenReturn("SOMETHING_ELSE");
     when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.DISABLED);
-    assertFalse(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+    assertFalse(leaderFollowerStoreIngestionTask.blobTransferHelper.isBlobTransferEnabledForStore(mockStore, false));
   }
 
   @Test
   public void testIsBlobTransferEnabledForStoreServerEnabledByStorePolicyWithServerDisabled()
       throws InterruptedException {
-    setUp();
+    setUpWithBlobTransfer(false);
     // Store policy ENABLED takes precedence even when server policy is NOT_SPECIFIED
     when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
     when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.NOT_SPECIFIED);
-    assertTrue(leaderFollowerStoreIngestionTask.isBlobTransferEnabledForStore(mockStore));
+    assertTrue(leaderFollowerStoreIngestionTask.blobTransferHelper.isBlobTransferEnabledForStore(mockStore, false));
   }
 }
