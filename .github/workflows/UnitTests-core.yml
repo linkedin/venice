@@ -48,6 +48,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Unit Tests with Code Coverage
         run: ./gradlew  -x :internal:venice-avro-compatibility-test:test  ${{ inputs.arg }}
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash

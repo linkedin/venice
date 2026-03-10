@@ -52,6 +52,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_1
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -149,6 +190,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_2
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -246,6 +328,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_3
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -343,6 +466,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_4
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -440,6 +604,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_5
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -537,6 +742,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_6
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -634,6 +880,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_7
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -731,6 +1018,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_8
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -828,6 +1156,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_9
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -925,6 +1294,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_10
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1022,6 +1432,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_11
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1119,6 +1570,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_12
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1216,6 +1708,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_13
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1313,6 +1846,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_14
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1410,6 +1984,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_15
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1507,6 +2122,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_16
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1604,6 +2260,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_17
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1701,6 +2398,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_18
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1798,6 +2536,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_19
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1895,6 +2674,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_20
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -1992,6 +2812,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_21
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2089,6 +2950,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_22
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2186,6 +3088,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_23
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
@@ -2283,6 +3226,47 @@ jobs:
           bash scripts/ci/util_free_space.sh > background_cleanup.log 2>&1 &
       - name: Run Integration Tests
         run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_99
+
+      - name: Print Failed Test Logs
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed_cases = 0
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(xml_path).getroot()
+              except Exception as parse_error:
+                  print(f"Skipping unparsable report {xml_path}: {parse_error}")
+                  continue
+
+              for testcase in root.iter("testcase"):
+                  failures = list(testcase.findall("failure")) + list(testcase.findall("error"))
+                  if not failures:
+                      continue
+
+                  failed_cases += 1
+                  class_name = testcase.attrib.get("classname", "UnknownClass")
+                  test_name = testcase.attrib.get("name", "unknownTest")
+                  print(f"::group::{class_name}.{test_name} ({xml_path})")
+                  for failure in failures:
+                      failure_type = failure.attrib.get("type", failure.tag)
+                      failure_message = failure.attrib.get("message")
+                      if failure_message:
+                          print(f"{failure_type}: {failure_message}")
+                      failure_text = (failure.text or "").strip()
+                      if failure_text:
+                          print(failure_text)
+                  print("::endgroup::")
+
+          if failed_cases == 0:
+              print("No failed test cases were found in JUnit XML reports.")
+          else:
+              print(f"Printed logs for {failed_cases} failed test case(s).")
+          PY
       - name: Package Build Artifacts
         if: always()
         shell: bash
