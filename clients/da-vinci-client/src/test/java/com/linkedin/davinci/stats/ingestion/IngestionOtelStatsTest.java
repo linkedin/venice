@@ -1642,7 +1642,7 @@ public class IngestionOtelStatsTest {
         "Count of reporting windows where write-compute amplification was detected (large result values)",
         storeClusterVersion);
 
-    // Verify total count (24 original + 27 new = 51)
+    // Verify total count matches enum size
     assertEquals(IngestionOtelMetricEntity.values().length, 51, "Expected 51 metric entities");
   }
 
