@@ -3687,7 +3687,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     try {
       long currentTimeMs = System.currentTimeMillis();
       if (recordLevelMetricEnabled.get()) {
-        // Assumes the timestamp on the record is the broker's timestamp when it received the message.
+        // getPubSubMessageTime() returns the best-available timestamp: the pub-sub system timestamp
+        // when available, otherwise the Venice producer timestamp. When both timestamps originate from
+        // the same source (e.g., pub-sub systems without broker timestamps), producerBrokerLatencyMs
+        // will be 0 and brokerConsumerLatencyMs represents end-to-end producer-to-consumer latency.
         long producerBrokerLatencyMs =
             Math.max(consumerRecord.getPubSubMessageTime() - kafkaValue.producerMetadata.messageTimestamp, 0);
         long brokerConsumerLatencyMs = Math.max(currentTimeMs - consumerRecord.getPubSubMessageTime(), 0);

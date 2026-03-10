@@ -85,7 +85,7 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
       configMap.put(KafkaConfig.LogDirProp(), dir.getAbsolutePath());
       configMap.put(KafkaConfig.AutoCreateTopicsEnableProp(), false);
       configMap.put(KafkaConfig.DeleteTopicEnableProp(), true);
-      configMap.put(KafkaConfig.LogMessageTimestampTypeProp(), "LogAppendTime");
+      configMap.put(KafkaConfig.LogMessageTimestampTypeProp(), "CreateTime");
       configMap.put(KafkaConfig.LogMessageFormatVersionProp(), "2.4");
 
       // The configs below aim to reduce the overhead of the Kafka process:
