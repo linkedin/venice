@@ -56,6 +56,7 @@ public class ListenerService extends AbstractVeniceService {
   private final int port;
   private final int grpcPort;
   private VeniceGrpcServer grpcServer;
+  private VeniceIngestionMonitorServiceImpl ingestionMonitorService;
   private final boolean isGrpcEnabled;
   private final VeniceServerConfig serverConfig;
   private final ThreadPoolExecutor executor;
@@ -176,8 +177,10 @@ public class ListenerService extends AbstractVeniceService {
           .setExecutor(grpcExecutor)
           .setInterceptors(interceptors);
 
-      kafkaStoreIngestionService
-          .ifPresent(service -> grpcServerBuilder.addService(new VeniceIngestionMonitorServiceImpl(service)));
+      kafkaStoreIngestionService.ifPresent(service -> {
+        ingestionMonitorService = new VeniceIngestionMonitorServiceImpl(service);
+        grpcServerBuilder.addService(ingestionMonitorService);
+      });
 
       sslFactory.ifPresent(grpcServerBuilder::setSslFactory);
 
@@ -217,6 +220,9 @@ public class ListenerService extends AbstractVeniceService {
     bossGroup.shutdownGracefully();
     shutdown.sync();
 
+    if (ingestionMonitorService != null) {
+      ingestionMonitorService.close();
+    }
     if (grpcServer != null) {
       LOGGER.info("Stopping gRPC service on port {}", grpcPort);
       grpcServer.stop();
