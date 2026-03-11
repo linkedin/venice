@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -597,52 +598,32 @@ public class ApacheKafkaAdminAdapterTest {
   }
 
   @Test
-  public void testSetTopicConfigWithUncleanLeaderElectionDisabled() {
-    PubSubTopicConfiguration topicConfiguration =
-        new PubSubTopicConfiguration(Optional.of(1111L), true, Optional.of(222), 333L, Optional.empty());
-    topicConfiguration.setUncleanLeaderElectionEnable(Optional.of(false));
+  public void testSetTopicConfigWithUncleanLeaderElectionSet() {
+    for (boolean enabled: new boolean[] { false, true }) {
+      // Reset mock state between iterations
+      reset(internalKafkaAdminClientMock);
 
-    AlterConfigsResult alterConfigsResultMock = mock(AlterConfigsResult.class);
-    KafkaFuture<Void> alterConfigsKafkaFutureMock = mock(KafkaFuture.class);
+      PubSubTopicConfiguration topicConfiguration =
+          new PubSubTopicConfiguration(Optional.of(1111L), true, Optional.of(222), 333L, Optional.empty());
+      topicConfiguration.setUncleanLeaderElectionEnable(Optional.of(enabled));
 
-    Map<ConfigResource, Config> resourceConfigMap = new HashMap<>();
-    when(internalKafkaAdminClientMock.alterConfigs(any())).thenAnswer(invocation -> {
-      resourceConfigMap.putAll(invocation.getArgument(0));
-      return alterConfigsResultMock;
-    });
-    when(alterConfigsResultMock.all()).thenReturn(alterConfigsKafkaFutureMock);
+      AlterConfigsResult alterConfigsResultMock = mock(AlterConfigsResult.class);
+      KafkaFuture<Void> alterConfigsKafkaFutureMock = mock(KafkaFuture.class);
 
-    kafkaAdminAdapter.setTopicConfig(testPubSubTopic, topicConfiguration);
+      Map<ConfigResource, Config> resourceConfigMap = new HashMap<>();
+      when(internalKafkaAdminClientMock.alterConfigs(any())).thenAnswer(invocation -> {
+        resourceConfigMap.putAll(invocation.getArgument(0));
+        return alterConfigsResultMock;
+      });
+      when(alterConfigsResultMock.all()).thenReturn(alterConfigsKafkaFutureMock);
 
-    assertEquals(resourceConfigMap.size(), 1);
-    for (Map.Entry<ConfigResource, Config> entry: resourceConfigMap.entrySet()) {
-      Config config = entry.getValue();
-      assertEquals(config.get(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG).value(), "false");
-    }
-  }
+      kafkaAdminAdapter.setTopicConfig(testPubSubTopic, topicConfiguration);
 
-  @Test
-  public void testSetTopicConfigWithUncleanLeaderElectionEnabled() {
-    PubSubTopicConfiguration topicConfiguration =
-        new PubSubTopicConfiguration(Optional.of(1111L), true, Optional.of(222), 333L, Optional.empty());
-    topicConfiguration.setUncleanLeaderElectionEnable(Optional.of(true));
-
-    AlterConfigsResult alterConfigsResultMock = mock(AlterConfigsResult.class);
-    KafkaFuture<Void> alterConfigsKafkaFutureMock = mock(KafkaFuture.class);
-
-    Map<ConfigResource, Config> resourceConfigMap = new HashMap<>();
-    when(internalKafkaAdminClientMock.alterConfigs(any())).thenAnswer(invocation -> {
-      resourceConfigMap.putAll(invocation.getArgument(0));
-      return alterConfigsResultMock;
-    });
-    when(alterConfigsResultMock.all()).thenReturn(alterConfigsKafkaFutureMock);
-
-    kafkaAdminAdapter.setTopicConfig(testPubSubTopic, topicConfiguration);
-
-    assertEquals(resourceConfigMap.size(), 1);
-    for (Map.Entry<ConfigResource, Config> entry: resourceConfigMap.entrySet()) {
-      Config config = entry.getValue();
-      assertEquals(config.get(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG).value(), "true");
+      assertEquals(resourceConfigMap.size(), 1);
+      for (Map.Entry<ConfigResource, Config> entry: resourceConfigMap.entrySet()) {
+        Config config = entry.getValue();
+        assertEquals(config.get(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG).value(), Boolean.toString(enabled));
+      }
     }
   }
 
