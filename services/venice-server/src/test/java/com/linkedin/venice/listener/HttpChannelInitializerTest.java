@@ -47,6 +47,7 @@ public class HttpChannelInitializerTest {
     storeMetadataRepository = mock(ReadOnlyStoreRepository.class);
     metricsRepository = new MetricsRepository();
     sslFactory = mock(SSLFactory.class);
+    doReturn(new SSLConfig()).when(sslFactory).getSSLConfig();
     sslFactoryOptional = Optional.of(sslFactory);
     sslHandshakeExecutor = mock(ThreadPoolExecutor.class);
     accessController = Optional.of(mock(StaticAccessController.class));

@@ -84,15 +84,15 @@ public class NettyH2Server {
   }
 
   private static class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
-    private final SSLFactory sslFactory;
+    private final com.linkedin.alpini.base.ssl.SslFactory alpiniSslFactory;
 
     public HttpChannelInitializer(SSLFactory sslFactory) {
-      this.sslFactory = sslFactory;
+      this.alpiniSslFactory = SslUtils.toAlpiniSSLFactory(sslFactory);
     }
 
     @Override
     protected void initChannel(SocketChannel ch) {
-      ch.pipeline().addLast(new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory), false), getServerAPNHandler());
+      ch.pipeline().addLast(new SslInitializer(alpiniSslFactory, false), getServerAPNHandler());
     }
 
     public static ApplicationProtocolNegotiationHandler getServerAPNHandler() {
