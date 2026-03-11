@@ -952,6 +952,7 @@ public class RouterServer extends AbstractVeniceService {
 
     routersClusterManager.unregisterRouter(Utils.getHelixNodeIdentifier(config.getHostname(), config.getPort()));
     routersClusterManager.clear();
+    dictionaryRetrievalService.stop();
     routingDataRepository.clear();
     metadataRepository.clear();
     schemaRepository.clear();
@@ -959,7 +960,6 @@ public class RouterServer extends AbstractVeniceService {
     hybridStoreQuotaRepository.ifPresent(repo -> repo.clear());
     liveInstanceMonitor.clear();
     timeoutProcessor.shutdownNow();
-    dictionaryRetrievalService.stop();
     if (instanceConfigRepository != null) {
       instanceConfigRepository.clear();
     }

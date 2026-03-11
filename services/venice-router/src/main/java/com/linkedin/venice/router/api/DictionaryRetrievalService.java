@@ -550,6 +550,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws IOException {
+    metadataRepository.unregisterStoreDataChangedListener(storeChangeListener);
     dictionaryRetrieverThread.interrupt();
     executor.shutdownNow();
     downloadingDictionaryFutures.forEach(
