@@ -3384,7 +3384,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       ControllerResponse response = new ControllerResponse();
-      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
+      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any());
     }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
 
@@ -3411,7 +3411,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       ControllerResponse response = new ControllerResponse();
       response.setError("test error");
-      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
+      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any());
     }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
   }
@@ -3458,12 +3458,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         throw new VeniceException("Timed out waiting for latch release in test");
       }
       return new ControllerResponse();
-    }).when(r1Client).rollForwardToFutureVersion(any(), any(), anyInt());
+    }).when(r1Client).rollForwardToFutureVersion(any(), any());
 
     doAnswer(invocation -> {
       r2Invoked.countDown();
       return new ControllerResponse();
-    }).when(r2Client).rollForwardToFutureVersion(any(), any(), anyInt());
+    }).when(r2Client).rollForwardToFutureVersion(any(), any());
 
     // Run roll forward in a separate thread since r1 blocks
     CompletableFuture<Void> rollForwardFuture =
@@ -3478,8 +3478,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
     rollForwardFuture.get(10, TimeUnit.SECONDS);
 
-    verify(r1Client).rollForwardToFutureVersion(any(), any(), anyInt());
-    verify(r2Client).rollForwardToFutureVersion(any(), any(), anyInt());
+    verify(r1Client).rollForwardToFutureVersion(any(), any());
+    verify(r2Client).rollForwardToFutureVersion(any(), any());
   }
 
   @Test
@@ -3511,7 +3511,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       ControllerResponse response = new ControllerResponse();
-      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
+      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any());
     }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
 
