@@ -53,6 +53,23 @@ public class MergedValueRmdRocksDBStoragePartition extends RocksDBStoragePartiti
   }
 
   /**
+   * Overrides the standard put() to store value in the merged format with empty RMD.
+   * This ensures that data written during batch push (which uses put() instead of
+   * putWithReplicationMetadata()) is stored in the correct merged format so that
+   * subsequent get() calls can correctly parse it.
+   */
+  @Override
+  public synchronized void put(byte[] key, byte[] value) {
+    putWithReplicationMetadata(key, value, new byte[0]);
+  }
+
+  @Override
+  public synchronized void put(byte[] key, ByteBuffer valueBuffer) {
+    byte[] valueBytes = ByteUtils.extractByteArray(valueBuffer);
+    put(key, valueBytes);
+  }
+
+  /**
    * Writes a key with both value and replication metadata in the merged format.
    */
   @Override
@@ -225,9 +242,7 @@ public class MergedValueRmdRocksDBStoragePartition extends RocksDBStoragePartiti
         rocksDB.put(writeOptions, key, mergedRecord);
       }
     } catch (RocksDBException e) {
-      throw new VeniceException(
-          "Failed to delete with replication metadata in RocksDB: " + replicaId,
-          e);
+      throw new VeniceException("Failed to delete with replication metadata in RocksDB: " + replicaId, e);
     }
   }
 
