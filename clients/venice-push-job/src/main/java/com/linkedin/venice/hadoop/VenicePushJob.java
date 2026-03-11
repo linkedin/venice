@@ -238,6 +238,11 @@ public class VenicePushJob implements AutoCloseable {
   private VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter;
   /** TODO: refactor to use {@link Lazy} */
 
+  // Externally provided D2Client for controller discovery (optional).
+  // When non-null, VPJ uses this instead of creating one via D2ClientFactory.
+  // The caller is responsible for managing the D2Client lifecycle.
+  private final D2Client externalD2Client;
+
   // Mutable state
   private ControllerClient controllerClient;
   private ControllerClient kmeSchemaSystemStoreControllerClient;
@@ -271,7 +276,17 @@ public class VenicePushJob implements AutoCloseable {
    * @param vanillaProps  Property bag for the job
    */
   public VenicePushJob(String jobId, Properties vanillaProps) {
+    this(jobId, vanillaProps, null);
+  }
+
+  /**
+   * @param jobId  id of the job
+   * @param vanillaProps  Property bag for the job
+   * @param d2Client  externally managed D2Client for controller discovery, or null to use D2ClientFactory
+   */
+  public VenicePushJob(String jobId, Properties vanillaProps, D2Client d2Client) {
     this.jobId = jobId;
+    this.externalD2Client = d2Client;
     this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
     this.timeoutExecutor = Executors
         .newSingleThreadScheduledExecutor(new DaemonThreadFactory(this.getClass().getName() + "-VPJTimeoutExecutor"));
@@ -1428,8 +1443,8 @@ public class VenicePushJob implements AutoCloseable {
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
     if (useD2ControllerClient) {
-      // TODO: we probably need to provide more for constructing d2Client here.
-      D2Client d2Client = D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
+      D2Client d2Client =
+          externalD2Client != null ? externalD2Client : D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
       return D2ControllerClientFactory
           .discoverAndConstructControllerClient(storeName, controllerD2ServiceName, retryAttempts, d2Client);
     } else {
