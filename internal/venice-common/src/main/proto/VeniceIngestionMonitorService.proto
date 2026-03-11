@@ -10,7 +10,7 @@ service VeniceIngestionMonitorService {
 message IngestionMonitorRequest {
   string version_topic = 1;
   int32 partition = 2;
-  int32 interval_ms = 3; // default 5000, minimum 1000
+  int32 interval_ms = 3; // default 5000, min 1000, max 600000
 }
 
 message IngestionMonitorResponse {

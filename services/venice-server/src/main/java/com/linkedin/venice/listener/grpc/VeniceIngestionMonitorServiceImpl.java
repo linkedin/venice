@@ -8,6 +8,7 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.protocols.IngestionMonitorRequest;
 import com.linkedin.venice.protocols.IngestionMonitorResponse;
 import com.linkedin.venice.protocols.VeniceIngestionMonitorServiceGrpc;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.grpc.Status;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
@@ -35,12 +36,13 @@ public class VeniceIngestionMonitorServiceImpl
     extends VeniceIngestionMonitorServiceGrpc.VeniceIngestionMonitorServiceImplBase implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceIngestionMonitorServiceImpl.class);
   private static final int MIN_INTERVAL_MS = 1000;
+  private static final int MAX_INTERVAL_MS = 600_000; // 10 minutes
   private static final int DEFAULT_INTERVAL_MS = 5000;
 
   private final KafkaStoreIngestionService ingestionService;
   private final ConcurrentHashMap<String, ActiveSession> activeSessions = new ConcurrentHashMap<>();
   private final ScheduledExecutorService scheduler =
-      Executors.newScheduledThreadPool(2, r -> new Thread(r, "ingestion-monitor-scheduler"));
+      Executors.newScheduledThreadPool(2, new DaemonThreadFactory("ingestion-monitor-scheduler"));
 
   public VeniceIngestionMonitorServiceImpl(KafkaStoreIngestionService ingestionService) {
     this.ingestionService = ingestionService;
@@ -62,8 +64,8 @@ public class VeniceIngestionMonitorServiceImpl
 
     if (intervalMs <= 0) {
       intervalMs = DEFAULT_INTERVAL_MS;
-    } else if (intervalMs < MIN_INTERVAL_MS) {
-      intervalMs = MIN_INTERVAL_MS;
+    } else {
+      intervalMs = Math.max(MIN_INTERVAL_MS, Math.min(intervalMs, MAX_INTERVAL_MS));
     }
 
     String sessionKey = versionTopic + "_" + partition;
@@ -104,7 +106,13 @@ public class VeniceIngestionMonitorServiceImpl
     ServerCallStreamObserver<IngestionMonitorResponse> serverObserver =
         (ServerCallStreamObserver<IngestionMonitorResponse>) responseObserver;
 
-    // Schedule periodic emission
+    // Register cancel handler before scheduling to avoid missing early disconnects
+    serverObserver.setOnCancelHandler(() -> {
+      LOGGER.info("Client disconnected from monitoring session for {}", sessionKey);
+      cleanup(sessionKey, pcs);
+    });
+
+    // Schedule periodic emission with initial delay to avoid racing with setFuture()
     final long[] lastSnapshotTimeMs = { System.currentTimeMillis() };
     ScheduledFuture<?> future = scheduler.scheduleAtFixedRate(() -> {
       try {
@@ -163,16 +171,10 @@ public class VeniceIngestionMonitorServiceImpl
               .debug("Failed to send error to observer for {} (likely already closed)", sessionKey, observerException);
         }
       }
-    }, 0, intervalMs, TimeUnit.MILLISECONDS);
+    }, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
 
-    // Update the session with the scheduled future
+    // Future is now set before the first tick fires (initial delay = intervalMs)
     newSession.setFuture(future);
-
-    // Handle client disconnect
-    serverObserver.setOnCancelHandler(() -> {
-      LOGGER.info("Client disconnected from monitoring session for {}", sessionKey);
-      cleanup(sessionKey, pcs);
-    });
 
     LOGGER.info("Started ingestion monitoring session for {} with interval {}ms", sessionKey, intervalMs);
   }

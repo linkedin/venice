@@ -5315,8 +5315,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (writerSchemaId > 0) {
           valueSchemaId = writerSchemaId;
         }
+        long putElapsedNs = System.nanoTime() - startTimeNs;
         if (recordMetrics) {
-          double putLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);
+          double putLatency = putElapsedNs / 1_000_000.0;
           versionedIngestionStats.recordStorageEnginePutTime(storeName, versionNumber, putLatency);
           if (tehutiRecordMetrics) {
             hostLevelIngestionStats.recordStorageEnginePutLatency(putLatency, currentTimeMs);
@@ -5324,7 +5325,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         PartitionIngestionMonitor putMonitor = partitionConsumptionState.getIngestionMonitor();
         if (putMonitor != null) {
-          putMonitor.recordStoragePutLatencyNs(System.nanoTime() - startTimeNs);
+          putMonitor.recordStoragePutLatencyNs(putElapsedNs);
         }
         break;
 

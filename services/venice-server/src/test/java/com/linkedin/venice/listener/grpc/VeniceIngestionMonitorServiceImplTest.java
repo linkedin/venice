@@ -135,6 +135,31 @@ public class VeniceIngestionMonitorServiceImplTest {
     responses.next();
   }
 
+  @Test(expectedExceptions = StatusRuntimeException.class)
+  public void testDuplicateSessionReturnsAlreadyExists() {
+    IngestionMonitorRequest request = IngestionMonitorRequest.newBuilder()
+        .setVersionTopic(VERSION_TOPIC)
+        .setPartition(PARTITION)
+        .setIntervalMs(1000)
+        .build();
+
+    // Start first session
+    Iterator<IngestionMonitorResponse> firstSession = blockingStub.monitorIngestion(request);
+    assertTrue(firstSession.hasNext());
+    firstSession.next(); // consume one response to ensure session is active
+
+    // Attempt second session for the same partition - should fail with ALREADY_EXISTS
+    try {
+      Iterator<IngestionMonitorResponse> secondSession = blockingStub.monitorIngestion(request);
+      secondSession.next();
+    } catch (StatusRuntimeException e) {
+      assertTrue(
+          e.getStatus().getCode() == io.grpc.Status.Code.ALREADY_EXISTS,
+          "Expected ALREADY_EXISTS but got: " + e.getStatus().getCode());
+      throw e;
+    }
+  }
+
   @Test
   public void testMinimumIntervalEnforced() {
     IngestionMonitorRequest request = IngestionMonitorRequest.newBuilder()

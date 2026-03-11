@@ -485,7 +485,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     ValueRecord result = databaseLookupWithConcurrencyLimit(
         () -> getRmdWithValueSchemaByteBufferFromStorageInternal(partition, key, rmdManifestContainer));
     long rmdLookupElapsedNs = System.nanoTime() - lookupStartTimeInNS;
-    double rmdLookupLatency = LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS);
+    double rmdLookupLatency = rmdLookupElapsedNs / 1_000_000.0;
     getHostLevelIngestionStats()
         .recordIngestionReplicationMetadataLookUpLatency(rmdLookupLatency, currentTimeForMetricsMs);
     versionedIngestionStats
@@ -882,7 +882,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               compressor.get(),
               valueManifestContainer));
       long valueLookupElapsedNs = System.nanoTime() - lookupStartTimeInNS;
-      double valueLookupLatency = LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS);
+      double valueLookupLatency = valueLookupElapsedNs / 1_000_000.0;
       getHostLevelIngestionStats().recordIngestionValueBytesLookUpLatency(valueLookupLatency, currentTimeForMetricsMs);
       versionedIngestionStats.recordDcrLookupTime(storeName, versionNumber, VeniceRecordType.DATA, valueLookupLatency);
       PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
