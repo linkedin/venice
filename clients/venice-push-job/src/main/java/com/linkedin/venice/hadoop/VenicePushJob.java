@@ -1435,7 +1435,8 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private ControllerClient getControllerClient(
+  // Visible for testing
+  ControllerClient getControllerClient(
       String storeName,
       boolean useD2ControllerClient,
       String controllerD2ServiceName,
