@@ -12,6 +12,7 @@ public class PubSubTopicConfiguration implements Cloneable {
   Long minLogCompactionLagMs;
   Optional<Long> maxLogCompactionLagMs;
   Optional<Integer> minInSyncReplicas;
+  private Optional<Boolean> uncleanLeaderElectionEnable = Optional.empty();
   private boolean useAlternativeBackend = false;
 
   public PubSubTopicConfiguration(
@@ -85,6 +86,14 @@ public class PubSubTopicConfiguration implements Cloneable {
    */
   public void setMinInSyncReplicas(Optional<Integer> minInSyncReplicas) {
     this.minInSyncReplicas = minInSyncReplicas;
+  }
+
+  public Optional<Boolean> getUncleanLeaderElectionEnable() {
+    return uncleanLeaderElectionEnable;
+  }
+
+  public void setUncleanLeaderElectionEnable(Optional<Boolean> uncleanLeaderElectionEnable) {
+    this.uncleanLeaderElectionEnable = uncleanLeaderElectionEnable;
   }
 
   /**
