@@ -2492,6 +2492,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Load the VT segments from the offset record into the appropriate data integrity validator
         getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
 
+        // Check if blob transfer should be used BEFORE ready-to-serve checks.
+        // Blob transfer will drop existing partition data and re-transfer it, so we must not
+        // report completion based on stale offset records from a previous ingestion.
+        if (shouldStartBlobTransfer(partition, newPartitionConsumptionState, consumerAction)) {
+          storageUtilizationManager.initPartition(partition);
+          blobTransferHelper.startBlobTransferAsyncForPartition(
+              partition,
+              newPartitionConsumptionState,
+              storageEngine,
+              storeName,
+              versionNumber,
+              storeVersionConfig,
+              kafkaVersionTopic);
+          break;
+        }
+
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
           LOGGER.warn(
@@ -2510,21 +2526,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             versionNumber,
             LatencyUtils.getElapsedTimeFromMsToMs(consumptionStatePrepTimeStart));
         updateLeaderTopicOnFollower(newPartitionConsumptionState);
-
-        // Check if blob transfer should be used instead of direct Kafka subscribe.
-        // If so, start async blob transfer and defer Kafka subscribe to checkLongRunningTaskState().
-        if (shouldStartBlobTransfer(partition, newPartitionConsumptionState, consumerAction)) {
-          blobTransferHelper.startBlobTransferAsyncForPartition(
-              partition,
-              newPartitionConsumptionState,
-              storageEngine,
-              storeName,
-              versionNumber,
-              storeVersionConfig,
-              kafkaVersionTopic);
-          storageUtilizationManager.initPartition(partition);
-          break;
-        }
 
         // Normal path: subscribe to Kafka directly.
         executeKafkaSubscribe(consumerAction, topicPartition, partition, newPartitionConsumptionState);
@@ -2790,6 +2791,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Load the VT segments from the offset record into the data integrity validator
     getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, newOffsetRecord);
 
+    // Run the same consumption state initialization as checkConsumptionStateWhenStart:
+    // set TopicSwitch, beginBatchWrite, timestamps, report restarted, and ready-to-serve check.
+    checkConsumptionStateWhenStart(newOffsetRecord, newPcs);
+    reportIfCatchUpVersionTopicOffset(newPcs);
     updateLeaderTopicOnFollower(newPcs);
 
     PubSubPosition subscribePosition = getLocalVtSubscribePosition(newPcs);
