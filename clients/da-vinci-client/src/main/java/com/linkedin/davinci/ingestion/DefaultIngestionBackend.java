@@ -8,7 +8,6 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -188,20 +187,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
   ReplicaIntendedState getReplicaIntendedState(String replicaId) {
     ReplicaConsumptionContext context = replicaContexts.get(replicaId);
     return context == null ? ReplicaIntendedState.NOT_EXIST : context.state;
-  }
-
-  /**
-   * This method is used to sync the store version config with on the store metadata obtained from ZK.
-   * VeniceStoreVersionConfig was introduced to allow store-version level configs be configurable via a config file.
-   * However, that's no longer a standard practice today since every metadata is stored in ZK. For backward compatibility,
-   * there are some configs may need to be copied over from ZK to VeniceStoreVersionConfig.
-   * @param store, the store metadata obtained from ZK.
-   * @param storeConfig, a POJO class to hold some store-version level configs.
-   */
-  private void syncStoreVersionConfig(Store store, VeniceStoreVersionConfig storeConfig) {
-    if (store.isBlobTransferEnabled()) {
-      storeConfig.setBlobTransferEnabled(true);
-    }
   }
 
   enum ReplicaIntendedState {
