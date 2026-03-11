@@ -67,15 +67,12 @@ import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.D2ControllerClient;
-import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
@@ -121,8 +118,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -1923,76 +1918,15 @@ public class VenicePushJobTest {
   }
 
   @Test
-  public void testGetControllerClientWithExternalD2Client() {
+  public void testResolveD2ClientWithExternalD2Client() {
     D2Client mockD2Client = mock(D2Client.class);
-    D2ControllerClient mockD2ControllerClient = mock(D2ControllerClient.class);
 
-    Properties baseProps = TestWriteUtils.defaultVPJPropsWithD2Routing(
-        "dc-parent",
-        TEST_PARENT_ZK_ADDRESS,
-        Collections.singletonMap("dc-0", TEST_ZK_ADDRESS),
-        TEST_PARENT_CONTROLLER_D2_SERVICE,
-        TEST_CHILD_CONTROLLER_D2_SERVICE,
-        TEST_PATH,
-        TEST_STORE,
-        Collections.emptyMap());
+    Properties baseProps = TestWriteUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE, Collections.emptyMap());
     baseProps.put(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
 
-    // Test with external D2Client (non-null path)
-    try (MockedStatic<D2ControllerClientFactory> mockedFactory = Mockito.mockStatic(D2ControllerClientFactory.class)) {
-      mockedFactory
-          .when(
-              () -> D2ControllerClientFactory
-                  .discoverAndConstructControllerClient(anyString(), anyString(), anyInt(), any(D2Client.class)))
-          .thenReturn(mockD2ControllerClient);
-
-      VenicePushJob pushJob = new VenicePushJob(TEST_PUSH, baseProps, mockD2Client);
-      ControllerClient result = pushJob.getControllerClient(
-          TEST_STORE,
-          true,
-          TEST_PARENT_CONTROLLER_D2_SERVICE,
-          TEST_PARENT_ZK_ADDRESS,
-          Optional.empty(),
-          1);
-      assertEquals(result, mockD2ControllerClient);
-
-      // Verify the external D2Client was passed to the factory
-      mockedFactory.verify(
-          () -> D2ControllerClientFactory
-              .discoverAndConstructControllerClient(TEST_STORE, TEST_PARENT_CONTROLLER_D2_SERVICE, 1, mockD2Client));
-    }
-
-    // Test without external D2Client (null path - uses D2ClientFactory)
-    try (MockedStatic<D2ControllerClientFactory> mockedFactory = Mockito.mockStatic(D2ControllerClientFactory.class)) {
-      D2Client factoryD2Client = mock(D2Client.class);
-      mockedFactory
-          .when(
-              () -> D2ControllerClientFactory
-                  .discoverAndConstructControllerClient(anyString(), anyString(), anyInt(), any(D2Client.class)))
-          .thenReturn(mockD2ControllerClient);
-
-      try (MockedStatic<D2ClientFactory> mockedD2Factory = Mockito.mockStatic(D2ClientFactory.class)) {
-        mockedD2Factory.when(() -> D2ClientFactory.getD2Client(anyString(), any())).thenReturn(factoryD2Client);
-
-        VenicePushJob pushJob = new VenicePushJob(TEST_PUSH, baseProps);
-        ControllerClient result = pushJob.getControllerClient(
-            TEST_STORE,
-            true,
-            TEST_PARENT_CONTROLLER_D2_SERVICE,
-            TEST_PARENT_ZK_ADDRESS,
-            Optional.empty(),
-            1);
-        assertEquals(result, mockD2ControllerClient);
-
-        // Verify D2ClientFactory was used (not the external one)
-        mockedD2Factory.verify(() -> D2ClientFactory.getD2Client(TEST_PARENT_ZK_ADDRESS, Optional.empty()));
-        mockedFactory.verify(
-            () -> D2ControllerClientFactory.discoverAndConstructControllerClient(
-                TEST_STORE,
-                TEST_PARENT_CONTROLLER_D2_SERVICE,
-                1,
-                factoryD2Client));
-      }
-    }
+    // When an external D2Client is provided, resolveD2Client should return it directly
+    VenicePushJob pushJob = new VenicePushJob(TEST_PUSH, baseProps, mockD2Client);
+    D2Client resolved = pushJob.resolveD2Client("someZkHost", Optional.empty());
+    assertEquals(resolved, mockD2Client);
   }
 }

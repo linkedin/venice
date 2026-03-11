@@ -1435,8 +1435,7 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  // Visible for testing
-  ControllerClient getControllerClient(
+  private ControllerClient getControllerClient(
       String storeName,
       boolean useD2ControllerClient,
       String controllerD2ServiceName,
@@ -1444,8 +1443,7 @@ public class VenicePushJob implements AutoCloseable {
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
     if (useD2ControllerClient) {
-      D2Client d2Client =
-          externalD2Client != null ? externalD2Client : D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
+      D2Client d2Client = resolveD2Client(d2ZkHosts, sslFactory);
       return D2ControllerClientFactory
           .discoverAndConstructControllerClient(storeName, controllerD2ServiceName, retryAttempts, d2Client);
     } else {
@@ -1455,6 +1453,11 @@ public class VenicePushJob implements AutoCloseable {
           sslFactory,
           retryAttempts);
     }
+  }
+
+  // Visible for testing
+  D2Client resolveD2Client(String d2ZkHosts, Optional<SSLFactory> sslFactory) {
+    return externalD2Client != null ? externalD2Client : D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
   }
 
   private Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
