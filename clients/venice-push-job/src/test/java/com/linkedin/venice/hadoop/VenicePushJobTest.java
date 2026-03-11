@@ -62,6 +62,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -110,6 +111,7 @@ import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -1913,5 +1915,18 @@ public class VenicePushJobTest {
             "Version kafka-topic was rolled back after ingestion completed due to validation failure");
       }
     }
+  }
+
+  @Test
+  public void testResolveD2ClientWithExternalD2Client() {
+    D2Client mockD2Client = mock(D2Client.class);
+
+    Properties baseProps = TestWriteUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE, Collections.emptyMap());
+    baseProps.put(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
+
+    // When an external D2Client is provided, resolveD2Client should return it directly
+    VenicePushJob pushJob = new VenicePushJob(TEST_PUSH, baseProps, mockD2Client);
+    D2Client resolved = pushJob.resolveD2Client("someZkHost", Optional.empty());
+    assertEquals(resolved, mockD2Client);
   }
 }
