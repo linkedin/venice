@@ -132,6 +132,52 @@ public class PubSubMessageDeserializerTest {
     assertEquals(message.getPosition(), position);
   }
 
+  @Test
+  public void testDeserializerFallsBackToProducerTimestampWhenBrokerTimestampIsZero() {
+    KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
+    KafkaMessageEnvelope value = getDummyValue();
+    long producerTimestamp = 1700000000000L;
+    value.producerMetadata.messageTimestamp = producerTimestamp;
+
+    // When broker timestamp is 0, should fall back to producer timestamp
+    DefaultPubSubMessage message = messageDeserializer.deserialize(
+        topicPartition,
+        keySerializer.serialize("test", key),
+        valueSerializer.serialize("test", value),
+        new PubSubMessageHeaders(),
+        position,
+        0L);
+    assertEquals(message.getPubSubMessageTime(), producerTimestamp);
+
+    // When broker timestamp is valid, should use broker timestamp
+    long brokerTimestamp = 1700000001000L;
+    message = messageDeserializer.deserialize(
+        topicPartition,
+        keySerializer.serialize("test", key),
+        valueSerializer.serialize("test", value),
+        new PubSubMessageHeaders(),
+        position,
+        brokerTimestamp);
+    assertEquals(message.getPubSubMessageTime(), brokerTimestamp);
+  }
+
+  @Test
+  public void testDeserializerFallsBackToProducerTimestampWhenBrokerTimestampIsNull() {
+    KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
+    KafkaMessageEnvelope value = getDummyValue();
+    long producerTimestamp = 1700000000000L;
+    value.producerMetadata.messageTimestamp = producerTimestamp;
+
+    DefaultPubSubMessage message = messageDeserializer.deserialize(
+        topicPartition,
+        keySerializer.serialize("test", key),
+        valueSerializer.serialize("test", value),
+        new PubSubMessageHeaders(),
+        position,
+        null);
+    assertEquals(message.getPubSubMessageTime(), producerTimestamp);
+  }
+
   private KafkaMessageEnvelope getDummyValue() {
     KafkaMessageEnvelope value = new KafkaMessageEnvelope();
     value.producerMetadata = new ProducerMetadata();
