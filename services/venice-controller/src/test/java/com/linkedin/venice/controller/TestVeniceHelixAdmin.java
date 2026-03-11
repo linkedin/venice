@@ -305,9 +305,8 @@ public class TestVeniceHelixAdmin {
         anyBoolean(),
         any(Optional.class));
 
-    // Case 2: Real-time topic does not exist, unclean leader election config is set to false
+    // Case 2: Real-time topic does not exist
     VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
-    when(clusterConfig.getUncleanLeaderElectionEnableRealTimeTopics()).thenReturn(Optional.of(false));
     when(veniceHelixAdmin.getControllerConfig(clusterName)).thenReturn(clusterConfig);
     when(topicManager.containsTopic(pubSubTopic)).thenReturn(false);
     veniceHelixAdmin.createOrUpdateRealTimeTopic(clusterName, store, version, pubSubTopic);
@@ -320,30 +319,43 @@ public class TestVeniceHelixAdmin {
         any(Optional.class),
         anyBoolean(),
         anyBoolean(),
+        any(Optional.class));
+
+    // Case 3: Unclean leader election config is set to false
+    reset(topicManager);
+    when(clusterConfig.getUncleanLeaderElectionEnableRealTimeTopics()).thenReturn(Optional.of(false));
+    when(topicManager.containsTopic(pubSubTopic)).thenReturn(false);
+    veniceHelixAdmin.createOrUpdateRealTimeTopic(clusterName, store, version, pubSubTopic);
+    verify(topicManager, times(1)).createTopic(
+        eq(pubSubTopic),
+        eq(partitionCount),
+        anyInt(),
+        anyLong(),
+        anyBoolean(),
+        any(Optional.class),
+        anyBoolean(),
+        anyBoolean(),
         eq(Optional.of(false)));
-  }
 
-  @Test
-  public void testCreateOrUpdateRealTimeTopicWithUncleanLeaderElectionUnset() {
-    int partitionCount = 10;
-    Store store = mock(Store.class, RETURNS_DEEP_STUBS);
-    when(store.getName()).thenReturn(storeName);
-    Version version = mock(Version.class);
-    when(version.getStoreName()).thenReturn(storeName);
-    when(version.getPartitionCount()).thenReturn(partitionCount);
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(storeName + "_rt");
-    TopicManager topicManager = mock(TopicManager.class);
-    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    when(veniceHelixAdmin.getTopicManager()).thenReturn(topicManager);
-    doCallRealMethod().when(veniceHelixAdmin)
-        .createOrUpdateRealTimeTopic(eq(clusterName), eq(store), eq(version), any(PubSubTopic.class));
-    when(veniceHelixAdmin.getPubSubTopicRepository()).thenReturn(pubSubTopicRepository);
+    // Case 4: Unclean leader election config is set to true
+    reset(topicManager);
+    when(clusterConfig.getUncleanLeaderElectionEnableRealTimeTopics()).thenReturn(Optional.of(true));
+    when(topicManager.containsTopic(pubSubTopic)).thenReturn(false);
+    veniceHelixAdmin.createOrUpdateRealTimeTopic(clusterName, store, version, pubSubTopic);
+    verify(topicManager, times(1)).createTopic(
+        eq(pubSubTopic),
+        eq(partitionCount),
+        anyInt(),
+        anyLong(),
+        anyBoolean(),
+        any(Optional.class),
+        anyBoolean(),
+        anyBoolean(),
+        eq(Optional.of(true)));
 
-    // When unclean leader election config is not set, Optional.empty() should be passed
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    // Case 5: Unclean leader election config is not set (empty)
+    reset(topicManager);
     when(clusterConfig.getUncleanLeaderElectionEnableRealTimeTopics()).thenReturn(Optional.empty());
-    when(veniceHelixAdmin.getControllerConfig(clusterName)).thenReturn(clusterConfig);
     when(topicManager.containsTopic(pubSubTopic)).thenReturn(false);
     veniceHelixAdmin.createOrUpdateRealTimeTopic(clusterName, store, version, pubSubTopic);
     verify(topicManager, times(1)).createTopic(
