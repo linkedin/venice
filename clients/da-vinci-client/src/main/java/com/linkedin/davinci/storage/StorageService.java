@@ -396,8 +396,7 @@ public class StorageService extends AbstractVeniceService {
     PersistenceType persistenceType = factory.getPersistenceType();
     boolean replicationMetadataEnabled = isReplicationMetadataEnabled(topicName, persistenceType);
     boolean mergedCfEnabled = isMergedValueRmdColumnFamilyEnabled(topicName, persistenceType);
-    StorageEngine newEngine =
-        factory.getStorageEngine(storeConfig, replicationMetadataEnabled, mergedCfEnabled);
+    StorageEngine newEngine = factory.getStorageEngine(storeConfig, replicationMetadataEnabled, mergedCfEnabled);
     newEngine.updateStoreVersionStateCache(initialStoreVersionStateSupplier.get());
 
     // Let's check if a previous incarnation of the storage engine existed earlier
