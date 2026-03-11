@@ -95,6 +95,7 @@ public class SystemStoreRepairTask implements Runnable {
           unhealthySystemStoreSet.size() - configLimit);
     }
     Map<String, Integer> systemStoreToRepairJobVersionMap = new HashMap<>();
+    Set<String> attemptedStores = new HashSet<>();
     int repairCount = 0;
     for (String systemStoreName: unhealthySystemStoreSet) {
       if (!unlimited && repairCount >= configLimit) {
@@ -103,6 +104,7 @@ public class SystemStoreRepairTask implements Runnable {
       if (!shouldContinue(clusterName)) {
         return;
       }
+      attemptedStores.add(systemStoreName);
       String pushJobId = SYSTEM_STORE_REPAIR_JOB_PREFIX + System.currentTimeMillis();
       try {
         Version version = getNewSystemStoreVersion(clusterName, systemStoreName, pushJobId);
@@ -125,7 +127,11 @@ public class SystemStoreRepairTask implements Runnable {
         getRepairJobCheckTimeoutInSeconds());
     // After repairing system stores, update stats again.
     updateBadSystemStoreCount(clusterName, unhealthySystemStoreSet);
-    updateNotRepairableSystemStoreCount(clusterName, unhealthySystemStoreSet);
+    // Only count stores that were actually attempted but remain unhealthy as "not repairable".
+    // Stores deferred due to maxRepairPerRound are not counted since they were never attempted.
+    Set<String> notRepairableStores = new HashSet<>(attemptedStores);
+    notRepairableStores.retainAll(unhealthySystemStoreSet);
+    updateNotRepairableSystemStoreCount(clusterName, notRepairableStores);
   }
 
   /**
