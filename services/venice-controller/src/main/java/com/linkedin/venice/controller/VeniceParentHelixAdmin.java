@@ -310,6 +310,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -2370,22 +2371,30 @@ public class VeniceParentHelixAdmin implements Admin {
           "Sending roll forward command to future version {} for store {} to child controllers",
           futureVersionBeforeRollForward,
           storeName);
-      Set<String> failedRegions = new HashSet<>();
       Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+      List<CompletableFuture<Void>> regionFutures = new ArrayList<>();
       for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+        String region = entry.getKey();
         ControllerClient controllerClient = entry.getValue();
-        RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-          failedRegions.remove(entry.getKey());
-          ControllerResponse response =
-              controllerClient.rollForwardToFutureVersion(storeName, regionFilter, ROLL_FORWARD_REQUEST_TIMEOUT);
-          if (response.isError()) {
-            LOGGER.info("Roll forward in region {} failed with error: {}", entry.getKey(), response.getError());
-            failedRegions.add(entry.getKey());
-            throw new VeniceException(
-                "Roll forward failed in the following regions: " + failedRegions
-                    + " Please try the roll forward action again");
-          }
-        }, 5, Duration.ofMillis(100), Duration.ofMillis(500), Duration.ofSeconds(10), RETRY_FAILURE_TYPES);
+        regionFutures.add(CompletableFuture.runAsync(() -> {
+          RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+            ControllerResponse response = controllerClient.rollForwardToFutureVersion(storeName, regionFilter);
+            if (response.isError()) {
+              LOGGER.info("Roll forward in region {} failed with error: {}", region, response.getError());
+              throw new VeniceException(
+                  "Roll forward failed in region: " + region + " with error: " + response.getError());
+            }
+          }, 5, Duration.ofMillis(100), Duration.ofMillis(500), Duration.ofSeconds(10), RETRY_FAILURE_TYPES);
+        }));
+      }
+      try {
+        CompletableFuture.allOf(regionFutures.toArray(new CompletableFuture[0]))
+            .get(ROLL_FORWARD_REQUEST_TIMEOUT, TimeUnit.MILLISECONDS);
+      } catch (Exception e) {
+        for (CompletableFuture<Void> future: regionFutures) {
+          future.cancel(true);
+        }
+        throw new VeniceException("Roll forward failed. Please try the roll forward action again", e);
       }
 
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
