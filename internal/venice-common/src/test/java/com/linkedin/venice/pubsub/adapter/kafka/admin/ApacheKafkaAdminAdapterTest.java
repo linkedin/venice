@@ -598,14 +598,15 @@ public class ApacheKafkaAdminAdapterTest {
   }
 
   @Test
-  public void testSetTopicConfigWithUncleanLeaderElectionSet() {
-    for (boolean enabled: new boolean[] { false, true }) {
-      // Reset mock state between iterations
+  public void testSetTopicConfigUncleanLeaderElection() {
+    // Test all three cases: false, true, and absent (Optional.empty)
+    Optional<Boolean>[] cases = new Optional[] { Optional.of(false), Optional.of(true), Optional.empty() };
+    for (Optional<Boolean> uncleanSetting: cases) {
       reset(internalKafkaAdminClientMock);
 
       PubSubTopicConfiguration topicConfiguration =
           new PubSubTopicConfiguration(Optional.of(1111L), true, Optional.of(222), 333L, Optional.empty());
-      topicConfiguration.setUncleanLeaderElectionEnable(Optional.of(enabled));
+      topicConfiguration.setUncleanLeaderElectionEnable(uncleanSetting);
 
       AlterConfigsResult alterConfigsResultMock = mock(AlterConfigsResult.class);
       KafkaFuture<Void> alterConfigsKafkaFutureMock = mock(KafkaFuture.class);
@@ -622,34 +623,15 @@ public class ApacheKafkaAdminAdapterTest {
       assertEquals(resourceConfigMap.size(), 1);
       for (Map.Entry<ConfigResource, Config> entry: resourceConfigMap.entrySet()) {
         Config config = entry.getValue();
-        assertEquals(config.get(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG).value(), Boolean.toString(enabled));
+        if (uncleanSetting.isPresent()) {
+          assertEquals(
+              config.get(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG).value(),
+              Boolean.toString(uncleanSetting.get()));
+        } else {
+          // When unset, the property should not be present
+          assertTrue(config.get(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG) == null);
+        }
       }
-    }
-  }
-
-  @Test
-  public void testSetTopicConfigWithUncleanLeaderElectionEmpty() {
-    PubSubTopicConfiguration topicConfiguration =
-        new PubSubTopicConfiguration(Optional.of(1111L), true, Optional.of(222), 333L, Optional.empty());
-    // uncleanLeaderElectionEnable defaults to Optional.empty()
-
-    AlterConfigsResult alterConfigsResultMock = mock(AlterConfigsResult.class);
-    KafkaFuture<Void> alterConfigsKafkaFutureMock = mock(KafkaFuture.class);
-
-    Map<ConfigResource, Config> resourceConfigMap = new HashMap<>();
-    when(internalKafkaAdminClientMock.alterConfigs(any())).thenAnswer(invocation -> {
-      resourceConfigMap.putAll(invocation.getArgument(0));
-      return alterConfigsResultMock;
-    });
-    when(alterConfigsResultMock.all()).thenReturn(alterConfigsKafkaFutureMock);
-
-    kafkaAdminAdapter.setTopicConfig(testPubSubTopic, topicConfiguration);
-
-    assertEquals(resourceConfigMap.size(), 1);
-    for (Map.Entry<ConfigResource, Config> entry: resourceConfigMap.entrySet()) {
-      Config config = entry.getValue();
-      // When unset, the property should not be present
-      assertTrue(config.get(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG) == null);
     }
   }
 
