@@ -636,51 +636,40 @@ public class ApacheKafkaAdminAdapterTest {
   }
 
   @Test
-  public void testGetTopicConfigReadsUncleanLeaderElection() throws Exception {
-    DescribeConfigsResult describeConfigsResultMock = mock(DescribeConfigsResult.class);
-    KafkaFuture<Map<ConfigResource, Config>> describeConfigsKafkaFutureMock = mock(KafkaFuture.class);
+  public void testGetTopicConfigUncleanLeaderElection() throws Exception {
+    // Test with and without unclean.leader.election.enable in the topic config
+    for (Optional<String> uncleanValue: new Optional[] { Optional.of("false"), Optional.empty() }) {
+      reset(internalKafkaAdminClientMock);
 
-    List<ConfigEntry> configEntries = Arrays.asList(
-        new ConfigEntry("cleanup.policy", "compact"),
-        new ConfigEntry("retention.ms", "1111"),
-        new ConfigEntry("min.compaction.lag.ms", "2222"),
-        new ConfigEntry("min.insync.replicas", "3333"),
-        new ConfigEntry("unclean.leader.election.enable", "false"));
-    Config config = new Config(configEntries);
-    Map<ConfigResource, Config> configMap = new HashMap<>();
-    configMap.put(new ConfigResource(ConfigResource.Type.TOPIC, testPubSubTopic.getName()), config);
+      DescribeConfigsResult describeConfigsResultMock = mock(DescribeConfigsResult.class);
+      KafkaFuture<Map<ConfigResource, Config>> describeConfigsKafkaFutureMock = mock(KafkaFuture.class);
 
-    when(internalKafkaAdminClientMock.describeConfigs(any())).thenReturn(describeConfigsResultMock);
-    when(describeConfigsResultMock.all()).thenReturn(describeConfigsKafkaFutureMock);
-    when(describeConfigsKafkaFutureMock.get()).thenReturn(configMap);
+      List<ConfigEntry> configEntries = new ArrayList<>(
+          Arrays.asList(
+              new ConfigEntry("cleanup.policy", "compact"),
+              new ConfigEntry("retention.ms", "1111"),
+              new ConfigEntry("min.compaction.lag.ms", "2222"),
+              new ConfigEntry("min.insync.replicas", "3333")));
+      uncleanValue.ifPresent(v -> configEntries.add(new ConfigEntry("unclean.leader.election.enable", v)));
+      Config config = new Config(configEntries);
+      Map<ConfigResource, Config> configMap = new HashMap<>();
+      configMap.put(new ConfigResource(ConfigResource.Type.TOPIC, testPubSubTopic.getName()), config);
 
-    PubSubTopicConfiguration topicConfiguration = kafkaAdminAdapter.getTopicConfig(testPubSubTopic);
+      when(internalKafkaAdminClientMock.describeConfigs(any())).thenReturn(describeConfigsResultMock);
+      when(describeConfigsResultMock.all()).thenReturn(describeConfigsKafkaFutureMock);
+      when(describeConfigsKafkaFutureMock.get()).thenReturn(configMap);
 
-    assertTrue(topicConfiguration.getUncleanLeaderElectionEnable().isPresent());
-    assertFalse(topicConfiguration.getUncleanLeaderElectionEnable().get());
-  }
+      PubSubTopicConfiguration topicConfiguration = kafkaAdminAdapter.getTopicConfig(testPubSubTopic);
 
-  @Test
-  public void testGetTopicConfigWithoutUncleanLeaderElection() throws Exception {
-    DescribeConfigsResult describeConfigsResultMock = mock(DescribeConfigsResult.class);
-    KafkaFuture<Map<ConfigResource, Config>> describeConfigsKafkaFutureMock = mock(KafkaFuture.class);
-
-    List<ConfigEntry> configEntries = Arrays.asList(
-        new ConfigEntry("cleanup.policy", "compact"),
-        new ConfigEntry("retention.ms", "1111"),
-        new ConfigEntry("min.compaction.lag.ms", "2222"),
-        new ConfigEntry("min.insync.replicas", "3333"));
-    Config config = new Config(configEntries);
-    Map<ConfigResource, Config> configMap = new HashMap<>();
-    configMap.put(new ConfigResource(ConfigResource.Type.TOPIC, testPubSubTopic.getName()), config);
-
-    when(internalKafkaAdminClientMock.describeConfigs(any())).thenReturn(describeConfigsResultMock);
-    when(describeConfigsResultMock.all()).thenReturn(describeConfigsKafkaFutureMock);
-    when(describeConfigsKafkaFutureMock.get()).thenReturn(configMap);
-
-    PubSubTopicConfiguration topicConfiguration = kafkaAdminAdapter.getTopicConfig(testPubSubTopic);
-
-    assertFalse(topicConfiguration.getUncleanLeaderElectionEnable().isPresent());
+      if (uncleanValue.isPresent()) {
+        assertTrue(topicConfiguration.getUncleanLeaderElectionEnable().isPresent());
+        assertEquals(
+            topicConfiguration.getUncleanLeaderElectionEnable().get(),
+            (Boolean) Boolean.parseBoolean(uncleanValue.get()));
+      } else {
+        assertFalse(topicConfiguration.getUncleanLeaderElectionEnable().isPresent());
+      }
+    }
   }
 
   @Test
