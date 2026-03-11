@@ -389,6 +389,7 @@ public class TestTargetedRegionPushWithNativeReplication extends AbstractMultiRe
               Optional.of("dc-1"),
               false,
               -1,
+              -1,
               false,
               null,
               1,
