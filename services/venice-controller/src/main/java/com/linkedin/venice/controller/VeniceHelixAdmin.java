@@ -5561,6 +5561,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void setReplicationFactor(String clusterName, String storeName, int replicaFactor) {
+    if (replicaFactor < 1) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "replicationFactor: " + replicaFactor + " must be at least 1.",
+          ErrorType.INVALID_CONFIG);
+    }
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       store.setReplicationFactor(replicaFactor);
 
@@ -5569,6 +5575,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void setBatchGetLimit(String clusterName, String storeName, int batchGetLimit) {
+    if (batchGetLimit < 1) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "batchGetLimit: " + batchGetLimit + " must be at least 1.",
+          ErrorType.INVALID_CONFIG);
+    }
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       store.setBatchGetLimit(batchGetLimit);
 
@@ -5577,6 +5589,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void setNumVersionsToPreserve(String clusterName, String storeName, int numVersionsToPreserve) {
+    if (numVersionsToPreserve < 0) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "numVersionsToPreserve: " + numVersionsToPreserve
+              + " must be non-negative. Use 0 to defer to cluster-level config.",
+          ErrorType.INVALID_CONFIG);
+    }
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       store.setNumVersionsToPreserve(numVersionsToPreserve);
 
@@ -5620,6 +5639,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   void setBootstrapToOnlineTimeoutInHours(String clusterName, String storeName, int bootstrapToOnlineTimeoutInHours) {
+    if (bootstrapToOnlineTimeoutInHours < 1) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "bootstrapToOnlineTimeoutInHours: " + bootstrapToOnlineTimeoutInHours + " must be at least 1.",
+          ErrorType.INVALID_CONFIG);
+    }
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       store.setBootstrapToOnlineTimeoutInHours(bootstrapToOnlineTimeoutInHours);
       return store;
@@ -5682,6 +5707,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void setBackupVersionRetentionMs(String clusterName, String storeName, long backupVersionRetentionMs) {
+    if (backupVersionRetentionMs >= 0 && backupVersionRetentionMs < Store.MIN_BACKUP_VERSION_RETENTION_MS) {
+      throw new VeniceHttpException(
+          HttpStatus.SC_BAD_REQUEST,
+          "Backup version retention time: " + backupVersionRetentionMs + "ms is below the minimum allowed value of "
+              + Store.MIN_BACKUP_VERSION_RETENTION_MS + "ms (1 day). Set to -1 to use the cluster default retention.",
+          ErrorType.INVALID_CONFIG);
+    }
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       store.setBackupVersionRetentionMs(backupVersionRetentionMs);
       return store;
@@ -6230,10 +6262,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
       }
 
-      maxRecordSizeBytes.ifPresent(aInt -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-        store.setMaxRecordSizeBytes(aInt);
-        return store;
-      }));
+      if (maxRecordSizeBytes.isPresent()) {
+        int recordSizeBytes = maxRecordSizeBytes.get();
+        if (recordSizeBytes != -1 && recordSizeBytes < 1) {
+          throw new VeniceHttpException(
+              HttpStatus.SC_BAD_REQUEST,
+              "maxRecordSizeBytes: " + recordSizeBytes + " must be -1 (disabled) or at least 1.",
+              ErrorType.INVALID_CONFIG);
+        }
+        storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+          store.setMaxRecordSizeBytes(recordSizeBytes);
+          return store;
+        });
+      }
 
       maxNearlineRecordSizeBytes.ifPresent(aInt -> storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
         store.setMaxNearlineRecordSizeBytes(aInt);
