@@ -5,13 +5,19 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BAT
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_ERROR_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_RECORD_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BATCH_PROCESSING_REQUEST_TIME;
-import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.CONSUMER_IDLE_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.BYTES_CONSUMED_AS_UNCOMPRESSED_SIZE;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.CHECKSUM_VERIFICATION_FAILURE_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.CONSUMER_ACTION_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.CONSUMER_QUEUE_PUT_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_EVENT_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_LOOKUP_CACHE_HIT_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_LOOKUP_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_MERGE_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DCR_TOTAL_COUNT;
-import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DISK_QUOTA_USED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DUPLICATE_KEY_UPDATE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_CONSUMED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_PRODUCED;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_FAILURE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_PREPROCESSING_INTERNAL_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_PREPROCESSING_LEADER_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_PRODUCER_CALLBACK_TIME;
@@ -19,18 +25,37 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.ING
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_RECORDS_CONSUMED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_RECORDS_PRODUCED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_SUBSCRIBE_PREP_TIME;
-import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TASK_ERROR_COUNT;
-import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TASK_PUSH_TIMEOUT_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_TIME_BETWEEN_COMPONENTS;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.LONG_RUNNING_TASK_CHECK_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_CACHE_HIT_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_COMPRESS_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_ENQUEUE_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PRODUCER_SYNCHRONIZE_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RECORD_ASSEMBLED_SIZE;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RECORD_ASSEMBLED_SIZE_RATIO;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RECORD_KEY_SIZE;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RECORD_VALUE_SIZE;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RESUBSCRIPTION_FAILURE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RT_BYTES_CONSUMED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.RT_RECORDS_CONSUMED;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORAGE_ENGINE_DELETE_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORAGE_ENGINE_PUT_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STORE_METADATA_INCONSISTENT_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNEXPECTED_MESSAGE_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_EVENT;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_OPERATION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DESTINATION_REGION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_DESTINATION_COMPONENT;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_FAILURE_REASON;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_INGESTION_SOURCE_COMPONENT;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PARTIAL_UPDATE_OPERATION_PHASE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RECORD_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_LOCALITY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_SOURCE_REGION;
@@ -39,7 +64,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateObservableCounterValue;
-import static com.linkedin.venice.utils.Utils.setOf;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -52,20 +76,23 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
+import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
+import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
-import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricType;
-import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Map;
-import java.util.Set;
+import java.util.function.BiConsumer;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -82,18 +109,34 @@ public class IngestionOtelStatsTest {
   private static final String REMOTE_REGION = "dc-2";
 
   private InMemoryMetricReader inMemoryMetricReader;
+  private VeniceMetricsRepository metricsRepository;
   private IngestionOtelStats ingestionOtelStats;
+
+  private static VeniceMetricsRepository createOtelEnabledRepo(InMemoryMetricReader reader) {
+    return new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setMetricPrefix(TEST_PREFIX)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(reader)
+            .build());
+  }
+
+  private static IngestionOtelStats createStats(VeniceMetricsRepository repo) {
+    return new IngestionOtelStats(repo, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+  }
 
   @BeforeMethod
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
-    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setMetricPrefix(TEST_PREFIX)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .build());
-    ingestionOtelStats = new IngestionOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
+    metricsRepository = createOtelEnabledRepo(inMemoryMetricReader);
+    ingestionOtelStats = createStats(metricsRepository);
+  }
+
+  @AfterMethod
+  public void tearDown() {
+    if (metricsRepository != null) {
+      metricsRepository.close();
+    }
   }
 
   @Test
@@ -102,22 +145,36 @@ public class IngestionOtelStatsTest {
   }
 
   @Test
-  public void testConstructorWithOtelDisabled() {
-    VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
+  public void testConstructorWithGlobalOtelDisabled() {
+    try (VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(false)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .build());
+            .build())) {
+      IngestionOtelStats stats =
+          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+      assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when global OTel is off");
+    }
+  }
 
-    IngestionOtelStats stats =
-        new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
-    assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled");
+  @Test
+  public void testConstructorWithIngestionOtelOverrideDisabled() {
+    try (VeniceMetricsRepository enabledMetricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setMetricPrefix(TEST_PREFIX)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .build())) {
+      IngestionOtelStats stats =
+          new IngestionOtelStats(enabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, false);
+      assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled when ingestion override is off");
+    }
   }
 
   @Test
   public void testConstructorWithNonVeniceMetricsRepository() {
     MetricsRepository regularRepository = new MetricsRepository();
-    IngestionOtelStats stats = new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
+    IngestionOtelStats stats = new IngestionOtelStats(regularRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
     assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled for non-Venice repository");
 
     // RT recording methods should not throw when baseDimensionsMap is null
@@ -143,6 +200,19 @@ public class IngestionOtelStatsTest {
   public void testClassifyVersion(VersionRole expectedRole, int version) {
     ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
     assertSame(IngestionOtelStats.classifyVersion(version, ingestionOtelStats.getVersionInfo()), expectedRole);
+  }
+
+  @Test
+  public void testClassifyVersionWhenCurrentEqualsFuture() {
+    // Edge case: when currentVersion == futureVersion, the version should be classified as CURRENT
+    // since the CURRENT check happens first in OtelVersionedStatsUtils.classifyVersion
+    int sameVersion = 5;
+    ingestionOtelStats.updateVersionInfo(sameVersion, sameVersion);
+    assertSame(
+        IngestionOtelStats.classifyVersion(sameVersion, ingestionOtelStats.getVersionInfo()),
+        VersionRole.CURRENT);
+    // Other versions should still be BACKUP
+    assertSame(IngestionOtelStats.classifyVersion(1, ingestionOtelStats.getVersionInfo()), VersionRole.BACKUP);
   }
 
   @Test
@@ -468,24 +538,347 @@ public class IngestionOtelStatsTest {
         TEST_PREFIX);
   }
 
+  // HostLevelIngestionStats OTel metrics tests
+
+  @Test
+  public void testRecordConsumerQueuePutTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordConsumerQueuePutTime(CURRENT_VERSION, 15.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        15.0,
+        15.0,
+        1,
+        15.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        CONSUMER_QUEUE_PUT_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordStorageEnginePutTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordStorageEnginePutTime(CURRENT_VERSION, 8.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        8.0,
+        8.0,
+        1,
+        8.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        STORAGE_ENGINE_PUT_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordPartialUpdateTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordPartialUpdateTime(CURRENT_VERSION, VenicePartialUpdateOperation.QUERY, 12.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        12.0,
+        12.0,
+        1,
+        12.0,
+        buildAttributesWithVersionRoleAndSecondEnum(
+            VersionRole.CURRENT,
+            VENICE_PARTIAL_UPDATE_OPERATION_PHASE,
+            VenicePartialUpdateOperation.QUERY),
+        PARTIAL_UPDATE_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordUnexpectedMessageCount() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordUnexpectedMessageCount(CURRENT_VERSION, 1);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        UNEXPECTED_MESSAGE_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordIngestionFailureCount() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordIngestionFailureCount(CURRENT_VERSION, VeniceIngestionFailureReason.GENERAL, 1);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRoleAndSecondEnum(
+            VersionRole.CURRENT,
+            VENICE_INGESTION_FAILURE_REASON,
+            VeniceIngestionFailureReason.GENERAL),
+        INGESTION_FAILURE_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordKeySize() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordKeySize(CURRENT_VERSION, 256);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        256.0,
+        256.0,
+        1,
+        256.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        RECORD_KEY_SIZE.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordAssembledSizeConsolidated() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordAssembledSize(CURRENT_VERSION, VeniceRecordType.DATA, 1024);
+    ingestionOtelStats.recordAssembledSize(CURRENT_VERSION, VeniceRecordType.REPLICATION_METADATA, 512);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        1024.0,
+        1024.0,
+        1,
+        1024.0,
+        buildAttributesWithVersionRoleAndSecondEnum(VersionRole.CURRENT, VENICE_RECORD_TYPE, VeniceRecordType.DATA),
+        RECORD_ASSEMBLED_SIZE.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        512.0,
+        512.0,
+        1,
+        512.0,
+        buildAttributesWithVersionRoleAndSecondEnum(
+            VersionRole.CURRENT,
+            VENICE_RECORD_TYPE,
+            VeniceRecordType.REPLICATION_METADATA),
+        RECORD_ASSEMBLED_SIZE.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @DataProvider(name = "simpleHistogramMetrics", parallel = true)
+  public static Object[][] simpleHistogramMetrics() {
+    return new Object[][] {
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordStorageEngineDeleteTime(CURRENT_VERSION, v), 5.0,
+            STORAGE_ENGINE_DELETE_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordConsumerActionTime(CURRENT_VERSION, v), 20.0,
+            CONSUMER_ACTION_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordLongRunningTaskCheckTime(CURRENT_VERSION, v), 7.0,
+            LONG_RUNNING_TASK_CHECK_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordViewWriterProduceTime(CURRENT_VERSION, v), 18.0,
+            VIEW_WRITER_PRODUCE_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordViewWriterAckTime(CURRENT_VERSION, v), 25.0,
+            VIEW_WRITER_ACK_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordProducerEnqueueTime(CURRENT_VERSION, v), 3.0,
+            PRODUCER_ENQUEUE_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordProducerCompressTime(CURRENT_VERSION, v), 6.0,
+            PRODUCER_COMPRESS_TIME },
+        { (BiConsumer<IngestionOtelStats, Double>) (s, v) -> s.recordProducerSynchronizeTime(CURRENT_VERSION, v), 14.0,
+            PRODUCER_SYNCHRONIZE_TIME }, };
+  }
+
+  @Test(dataProvider = "simpleHistogramMetrics")
+  public void testSimpleHistogramMetric(
+      BiConsumer<IngestionOtelStats, Double> recorder,
+      double value,
+      IngestionOtelMetricEntity entity) {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository localRepo = createOtelEnabledRepo(reader)) {
+      IngestionOtelStats stats = createStats(localRepo);
+      stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+      recorder.accept(stats, value);
+      validateHistogramPointData(
+          reader,
+          value,
+          value,
+          1,
+          value,
+          buildAttributesWithVersionRole(VersionRole.CURRENT),
+          entity.getMetricEntity().getMetricName(),
+          TEST_PREFIX);
+    }
+  }
+
+  @Test
+  public void testRecordDcrLookupTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordDcrLookupTime(CURRENT_VERSION, VeniceRecordType.DATA, 9.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        9.0,
+        9.0,
+        1,
+        9.0,
+        buildAttributesWithVersionRoleAndSecondEnum(VersionRole.CURRENT, VENICE_RECORD_TYPE, VeniceRecordType.DATA),
+        DCR_LOOKUP_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordDcrMergeTime() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordDcrMergeTime(CURRENT_VERSION, VeniceDCROperation.PUT, 11.0);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        11.0,
+        11.0,
+        1,
+        11.0,
+        buildAttributesWithVersionRoleAndSecondEnum(VersionRole.CURRENT, VENICE_DCR_OPERATION, VeniceDCROperation.PUT),
+        DCR_MERGE_TIME.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @DataProvider(name = "simpleCounterMetrics", parallel = true)
+  public static Object[][] simpleCounterMetrics() {
+    return new Object[][] { {
+        (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordStoreMetadataInconsistentCount(CURRENT_VERSION, v),
+        1, STORE_METADATA_INCONSISTENT_COUNT },
+        { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordResubscriptionFailureCount(CURRENT_VERSION, v), 1,
+            RESUBSCRIPTION_FAILURE_COUNT },
+        { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s.recordPartialUpdateCacheHitCount(CURRENT_VERSION, v), 1,
+            PARTIAL_UPDATE_CACHE_HIT_COUNT },
+        { (BiConsumer<IngestionOtelStats, Integer>) (s, v) -> s
+            .recordChecksumVerificationFailureCount(CURRENT_VERSION, v), 1, CHECKSUM_VERIFICATION_FAILURE_COUNT }, };
+  }
+
+  @Test(dataProvider = "simpleCounterMetrics")
+  public void testSimpleCounterMetric(
+      BiConsumer<IngestionOtelStats, Integer> recorder,
+      int value,
+      IngestionOtelMetricEntity entity) {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository localRepo = createOtelEnabledRepo(reader)) {
+      IngestionOtelStats stats = createStats(localRepo);
+      stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+      recorder.accept(stats, value);
+      validateLongPointDataFromCounter(
+          reader,
+          value,
+          buildAttributesWithVersionRole(VersionRole.CURRENT),
+          entity.getMetricEntity().getMetricName(),
+          TEST_PREFIX);
+    }
+  }
+
+  @Test
+  public void testRecordDcrLookupCacheHitCount() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordDcrLookupCacheHitCount(CURRENT_VERSION, VeniceRecordType.REPLICATION_METADATA, 1);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        1,
+        buildAttributesWithVersionRoleAndSecondEnum(
+            VersionRole.CURRENT,
+            VENICE_RECORD_TYPE,
+            VeniceRecordType.REPLICATION_METADATA),
+        DCR_LOOKUP_CACHE_HIT_COUNT.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordBytesConsumedAsUncompressedSize() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordBytesConsumedAsUncompressedSize(CURRENT_VERSION, 2048);
+    validateObservableCounterValue(
+        inMemoryMetricReader,
+        2048,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        BYTES_CONSUMED_AS_UNCOMPRESSED_SIZE.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordValueSize() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordValueSize(CURRENT_VERSION, 512);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        512.0,
+        512.0,
+        1,
+        512.0,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        RECORD_VALUE_SIZE.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testRecordAssembledSizeRatio() {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    ingestionOtelStats.recordAssembledSizeRatio(CURRENT_VERSION, 0.75);
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        0.75,
+        0.75,
+        1,
+        0.75,
+        buildAttributesWithVersionRole(VersionRole.CURRENT),
+        RECORD_ASSEMBLED_SIZE_RATIO.getMetricEntity().getMetricName(),
+        TEST_PREFIX);
+  }
+
+  @Test
+  public void testGetTaskCountForRoleCallback() throws Exception {
+    ingestionOtelStats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    Method method = IngestionOtelStats.class.getDeclaredMethod("getTaskCountForRole", VersionRole.class);
+    method.setAccessible(true);
+
+    // No tasks registered — all roles should return 0
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 0L);
+
+    // Register task for current version
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    ingestionOtelStats.setIngestionTask(CURRENT_VERSION, mockTask);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 1L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
+
+    // Register task for future version
+    ingestionOtelStats.setIngestionTask(FUTURE_VERSION, mockTask);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 1L);
+
+    // Register a backup task
+    ingestionOtelStats.setIngestionTask(BACKUP_VERSION, mockTask);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 1L);
+
+    // Remove current task
+    ingestionOtelStats.removeIngestionTask(CURRENT_VERSION);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.CURRENT), 0L);
+
+    // Remove all
+    ingestionOtelStats.removeIngestionTask(FUTURE_VERSION);
+    ingestionOtelStats.removeIngestionTask(BACKUP_VERSION);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.FUTURE), 0L);
+    assertEquals((long) method.invoke(ingestionOtelStats, VersionRole.BACKUP), 0L);
+  }
+
   // OTel disabled
 
   @Test
   public void testNoMetricsRecordedWhenOtelDisabled() {
     InMemoryMetricReader disabledMetricReader = InMemoryMetricReader.create();
-    VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
+    try (VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(false)
             .setOtelAdditionalMetricsReader(disabledMetricReader)
-            .build());
-    IngestionOtelStats stats =
-        new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION);
-    stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
-    stats.recordRecordsConsumed(CURRENT_VERSION, ReplicaType.LEADER, 10);
-    stats.recordIngestionTime(CURRENT_VERSION, 50.0);
-    stats.recordRtRecordsConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 5);
-    stats.recordRtBytesConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 1024);
-    assertEquals(disabledMetricReader.collectAllMetrics().size(), 0, "No metrics when OTel disabled");
+            .build())) {
+      IngestionOtelStats stats =
+          new IngestionOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME, LOCAL_REGION, true);
+      stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+      stats.recordRecordsConsumed(CURRENT_VERSION, ReplicaType.LEADER, 10);
+      stats.recordIngestionTime(CURRENT_VERSION, 50.0);
+      stats.recordRtRecordsConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 5);
+      stats.recordRtBytesConsumed(CURRENT_VERSION, REMOTE_REGION, VeniceRegionLocality.REMOTE, 1024);
+      // New metrics should also not record when disabled
+      stats.recordConsumerQueuePutTime(CURRENT_VERSION, 10.0);
+      stats.recordUnexpectedMessageCount(CURRENT_VERSION, 1);
+      stats.recordKeySize(CURRENT_VERSION, 100);
+      assertEquals(disabledMetricReader.collectAllMetrics().size(), 0, "No metrics when OTel disabled");
+    }
   }
 
   // ASYNC_GAUGE state management
@@ -820,230 +1213,6 @@ public class IngestionOtelStatsTest {
         TEST_PREFIX);
   }
 
-  // Metric entity definition validation
-
-  @Test
-  public void testMetricEntityDefinitions() {
-    Set<VeniceMetricsDimensions> storeClusterVersion =
-        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE);
-    Set<VeniceMetricsDimensions> storeClusterVersionReplica =
-        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_REPLICA_TYPE);
-    Set<VeniceMetricsDimensions> storeClusterVersionDcr =
-        setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE, VENICE_DCR_EVENT);
-    Set<VeniceMetricsDimensions> storeClusterVersionComponents = setOf(
-        VENICE_STORE_NAME,
-        VENICE_CLUSTER_NAME,
-        VENICE_VERSION_ROLE,
-        VENICE_INGESTION_SOURCE_COMPONENT,
-        VENICE_INGESTION_DESTINATION_COMPONENT);
-    Set<VeniceMetricsDimensions> storeClusterVersionRegion = setOf(
-        VENICE_STORE_NAME,
-        VENICE_CLUSTER_NAME,
-        VENICE_VERSION_ROLE,
-        VENICE_SOURCE_REGION,
-        VENICE_DESTINATION_REGION,
-        VENICE_REGION_LOCALITY);
-
-    // ASYNC_GAUGE metrics
-    assertMetricEntity(
-        INGESTION_TASK_ERROR_COUNT.getMetricEntity(),
-        "ingestion.task.error_count",
-        MetricType.ASYNC_GAUGE,
-        MetricUnit.NUMBER,
-        "Count of ingestion tasks in error state",
-        storeClusterVersion);
-    assertMetricEntity(
-        INGESTION_TASK_PUSH_TIMEOUT_COUNT.getMetricEntity(),
-        "ingestion.task.push_timeout_count",
-        MetricType.ASYNC_GAUGE,
-        MetricUnit.NUMBER,
-        "Count of ingestion tasks timed out during push operation",
-        storeClusterVersion);
-    assertMetricEntity(
-        DISK_QUOTA_USED.getMetricEntity(),
-        "ingestion.disk_quota.used",
-        MetricType.ASYNC_GAUGE,
-        MetricUnit.RATIO,
-        "Disk quota used for the store version",
-        storeClusterVersion);
-    assertMetricEntity(
-        CONSUMER_IDLE_TIME.getMetricEntity(),
-        "ingestion.consumer.idle_time",
-        MetricType.ASYNC_GAUGE,
-        MetricUnit.MILLISECOND,
-        "Time the ingestion consumer has been idle without polling records",
-        storeClusterVersion);
-
-    // ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics with VersionRole + ReplicaType
-    assertMetricEntity(
-        INGESTION_RECORDS_CONSUMED.getMetricEntity(),
-        "ingestion.records.consumed",
-        MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
-        MetricUnit.NUMBER,
-        "Records consumed from remote/local topic",
-        storeClusterVersionReplica);
-    assertMetricEntity(
-        INGESTION_RECORDS_PRODUCED.getMetricEntity(),
-        "ingestion.records.produced",
-        MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
-        MetricUnit.NUMBER,
-        "Records produced to local topic",
-        storeClusterVersionReplica);
-    assertMetricEntity(
-        INGESTION_BYTES_CONSUMED.getMetricEntity(),
-        "ingestion.bytes.consumed",
-        MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
-        MetricUnit.BYTES,
-        "Bytes consumed from remote/local topic that are successfully processed excluding control/DIV messages",
-        storeClusterVersionReplica);
-    assertMetricEntity(
-        INGESTION_BYTES_PRODUCED.getMetricEntity(),
-        "ingestion.bytes.produced",
-        MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
-        MetricUnit.BYTES,
-        "Bytes produced to local topic",
-        storeClusterVersionReplica);
-
-    // MIN_MAX_COUNT_SUM_AGGREGATIONS metrics with VersionRole only
-    assertMetricEntity(
-        INGESTION_SUBSCRIBE_PREP_TIME.getMetricEntity(),
-        "ingestion.subscribe.prep.time",
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-        MetricUnit.MILLISECOND,
-        "Subscription preparation latency",
-        storeClusterVersion);
-    assertMetricEntity(
-        INGESTION_TIME.getMetricEntity(),
-        "ingestion.time",
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-        MetricUnit.MILLISECOND,
-        "End-to-end processing time from topic poll to storage write",
-        storeClusterVersion);
-    assertMetricEntity(
-        INGESTION_PREPROCESSING_LEADER_TIME.getMetricEntity(),
-        "ingestion.preprocessing.leader.time",
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-        MetricUnit.MILLISECOND,
-        "Leader-side preprocessing latency during ingestion",
-        storeClusterVersion);
-    assertMetricEntity(
-        INGESTION_PREPROCESSING_INTERNAL_TIME.getMetricEntity(),
-        "ingestion.preprocessing.internal.time",
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-        MetricUnit.MILLISECOND,
-        "Internal preprocessing latency during ingestion",
-        storeClusterVersion);
-    assertMetricEntity(
-        INGESTION_PRODUCER_TIME.getMetricEntity(),
-        "ingestion.producer.time",
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-        MetricUnit.MILLISECOND,
-        "Latency from leader producing to producer completion",
-        storeClusterVersion);
-    assertMetricEntity(
-        BATCH_PROCESSING_REQUEST_TIME.getMetricEntity(),
-        "ingestion.batch_processing.request.time",
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-        MetricUnit.MILLISECOND,
-        "Batch processing latency",
-        storeClusterVersion);
-
-    // MIN_MAX_COUNT_SUM_AGGREGATIONS metric with VersionRole + ReplicaType
-    assertMetricEntity(
-        INGESTION_PRODUCER_CALLBACK_TIME.getMetricEntity(),
-        "ingestion.producer.callback.time",
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-        MetricUnit.MILLISECOND,
-        "Producer callback latency (ack wait time)",
-        storeClusterVersionReplica);
-
-    // MIN_MAX_COUNT_SUM_AGGREGATIONS metric with VersionRole + components
-    assertMetricEntity(
-        INGESTION_TIME_BETWEEN_COMPONENTS.getMetricEntity(),
-        "ingestion.time_between_components",
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-        MetricUnit.MILLISECOND,
-        "Ingestion latency between different components of the flow",
-        storeClusterVersionComponents);
-
-    // ASYNC_COUNTER_FOR_HIGH_PERF_CASES metrics with VersionRole only
-    assertMetricEntity(
-        BATCH_PROCESSING_REQUEST_COUNT.getMetricEntity(),
-        "ingestion.batch_processing.request.count",
-        MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
-        MetricUnit.NUMBER,
-        "Count of batch processing requests during ingestion",
-        storeClusterVersion);
-    assertMetricEntity(
-        BATCH_PROCESSING_REQUEST_RECORD_COUNT.getMetricEntity(),
-        "ingestion.batch_processing.request.record.count",
-        MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
-        MetricUnit.NUMBER,
-        "Total records across batch-processing requests",
-        storeClusterVersion);
-    assertMetricEntity(
-        BATCH_PROCESSING_REQUEST_ERROR_COUNT.getMetricEntity(),
-        "ingestion.batch_processing.request.error_count",
-        MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
-        MetricUnit.NUMBER,
-        "Count of failed batch processing requests during ingestion",
-        storeClusterVersion);
-    assertMetricEntity(
-        DCR_EVENT_COUNT.getMetricEntity(),
-        "ingestion.dcr.event_count",
-        MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
-        MetricUnit.NUMBER,
-        "Count of DCR outcomes per event type (e.g., PUT, DELETE, UPDATE)",
-        storeClusterVersionDcr);
-    assertMetricEntity(
-        DCR_TOTAL_COUNT.getMetricEntity(),
-        "ingestion.dcr.total_count",
-        MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
-        MetricUnit.NUMBER,
-        "Deterministic Conflict Resolution (DCR) total count",
-        storeClusterVersion);
-    assertMetricEntity(
-        DUPLICATE_KEY_UPDATE_COUNT.getMetricEntity(),
-        "ingestion.key.update.duplicate_count",
-        MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
-        MetricUnit.NUMBER,
-        "Count of duplicate-key updates during ingestion",
-        storeClusterVersion);
-
-    // COUNTER metrics with region dimensions
-    assertMetricEntity(
-        RT_RECORDS_CONSUMED.getMetricEntity(),
-        "ingestion.records.consumed_from_real_time_topic",
-        MetricType.COUNTER,
-        MetricUnit.NUMBER,
-        "Records consumed from local/remote region real-time topics",
-        storeClusterVersionRegion);
-    assertMetricEntity(
-        RT_BYTES_CONSUMED.getMetricEntity(),
-        "ingestion.bytes.consumed_from_real_time_topic",
-        MetricType.COUNTER,
-        MetricUnit.BYTES,
-        "Bytes consumed from local/remote region real-time topics",
-        storeClusterVersionRegion);
-
-    // Verify total count
-    assertEquals(IngestionOtelMetricEntity.values().length, 24, "Expected 24 metric entities");
-  }
-
-  private static void assertMetricEntity(
-      MetricEntity entity,
-      String expectedName,
-      MetricType expectedType,
-      MetricUnit expectedUnit,
-      String expectedDescription,
-      Set<VeniceMetricsDimensions> expectedDimensions) {
-    assertEquals(entity.getMetricName(), expectedName, "metric name mismatch");
-    assertEquals(entity.getMetricType(), expectedType, expectedName + " metric type mismatch");
-    assertEquals(entity.getUnit(), expectedUnit, expectedName + " unit mismatch");
-    assertEquals(entity.getDescription(), expectedDescription, expectedName + " description mismatch");
-    assertEquals(entity.getDimensionsList(), expectedDimensions, expectedName + " dimensions mismatch");
-  }
-
   // Attribute builders
 
   private Attributes buildAttributesWithVersionRole(VersionRole versionRole) {
@@ -1099,6 +1268,18 @@ public class IngestionOtelStatsTest {
         .put(VENICE_DESTINATION_REGION.getDimensionNameInDefaultFormat(), destRegion)
         .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), versionRole.getDimensionValue())
         .put(VENICE_REGION_LOCALITY.getDimensionNameInDefaultFormat(), regionLocality.getDimensionValue())
+        .build();
+  }
+
+  private Attributes buildAttributesWithVersionRoleAndSecondEnum(
+      VersionRole versionRole,
+      VeniceMetricsDimensions dimension,
+      VeniceDimensionInterface dimensionValue) {
+    return Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), CLUSTER_NAME)
+        .put(VENICE_VERSION_ROLE.getDimensionNameInDefaultFormat(), versionRole.getDimensionValue())
+        .put(dimension.getDimensionNameInDefaultFormat(), dimensionValue.getDimensionValue())
         .build();
   }
 

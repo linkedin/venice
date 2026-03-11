@@ -1,0 +1,64 @@
+name: 'Run Integration Test Shard'
+description: 'Sets up build environment and runs an integration test shard'
+inputs:
+  shard:
+    description: 'Shard number (e.g., 1, 2, 99)'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: ./.github/actions/gradle-test-setup
+    - name: Run Integration Tests
+      shell: bash
+      run: ./gradlew --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTests_${{ inputs.shard }}
+    - name: Package Build Artifacts
+      if: always()
+      shell: bash
+      run: |
+        mkdir ${{ github.job }}-artifacts
+        find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+        find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
+        rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+        tar -zcvf ${{ github.job }}-jdk17-logs.tar.gz ${{ github.job }}-artifacts
+    - name: Upload Build Artifacts
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ github.job }}
+        path: ${{ github.job }}-jdk17-logs.tar.gz
+        retention-days: 30
+    - name: Upload Test Timing Data
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: test-timing-${{ github.job }}
+        path: internal/venice-test-common/build/test-timings/
+        retention-days: 30
+        if-no-files-found: ignore
+    - name: Summarize Test Failures
+      if: failure()
+      shell: bash
+      run: |
+        echo "## Failed Tests" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Test Class | Test Method | Duration |" >> $GITHUB_STEP_SUMMARY
+        echo "|------------|-------------|----------|" >> $GITHUB_STEP_SUMMARY
+        FAILURES=$(find . -path "**/build/test-results/integrationTest*/TEST-*.xml" -exec grep -lE 'failures="[1-9][0-9]*"|errors="[1-9][0-9]*"' {} \; 2>/dev/null | while read -r f; do
+          python3 - "$f" <<'PY' 2>/dev/null
+        import xml.etree.ElementTree as ET, sys
+        tree = ET.parse(sys.argv[1])
+        root = tree.getroot()
+        for tc in root.iter('testcase'):
+            if tc.find('failure') is not None or tc.find('error') is not None:
+                cls = tc.get('classname','').replace('|', '\\|')
+                name = tc.get('name','').replace('|', '\\|')
+                time = tc.get('time','')
+                print(f'| {cls} | {name} | {time}s |')
+        PY
+        done | sort -u)
+        if [ -n "$FAILURES" ]; then
+          echo "$FAILURES" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| _(no test failures found in XML reports)_ | | |" >> $GITHUB_STEP_SUMMARY
+        fi

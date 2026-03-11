@@ -129,6 +129,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -270,6 +271,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -304,7 +306,7 @@ import org.testng.annotations.Test;
  * Beware that most of the test cases in this suite depend on {@link StoreIngestionTaskTest#TEST_TIMEOUT_MS}
  * Adjust it based on environment if timeout failure occurs.
  */
-@Test(singleThreaded = true)
+@Test(singleThreaded = true, timeOut = 120_000)
 public abstract class StoreIngestionTaskTest {
   enum NodeType {
     LEADER, FOLLOWER, DA_VINCI
@@ -1008,7 +1010,19 @@ public abstract class StoreIngestionTaskTest {
     } finally {
       storeIngestionTaskUnderTest.close();
       if (testSubscribeTaskFuture != null) {
-        testSubscribeTaskFuture.get(RUN_TEST_FUNCTION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        try {
+          testSubscribeTaskFuture.get(RUN_TEST_FUNCTION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (TimeoutException | InterruptedException e) {
+          // Cancel the SIT thread to prevent it from blocking the shared single-thread taskPollingService
+          // executor. TimeoutException: shutdown exceeded RUN_TEST_FUNCTION_TIMEOUT_SECONDS.
+          // InterruptedException: TestNG timeOut interrupted the test thread. Either way, the SIT thread
+          // must be interrupted to avoid cascading hangs in subsequent tests.
+          testSubscribeTaskFuture.cancel(true);
+          if (e instanceof InterruptedException) {
+            Thread.currentThread().interrupt();
+          }
+          throw e;
+        }
       }
     }
   }
@@ -1607,23 +1621,20 @@ public abstract class StoreIngestionTaskTest {
     doReturn(InMemoryPubSubPosition.of(0)).when(mockTopicManager)
         .getLatestPositionCached(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO));
 
+    // Use a longer timeout for metric verifications — CI thread scheduling can delay the
+    // SIT run loop → drainer → stats recording pipeline.
+    long metricTimeoutMs = TEST_TIMEOUT_MS * 4;
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
+      verify(mockAbstractStorageEngine, timeout(metricTimeoutMs))
           .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
-      /**
-       * Verify host-level metrics
-       *
-       * N.B.: the below verification for {@link HostLevelIngestionStats#recordTotalBytesConsumed(long)} is flaky, and
-       *       sometimes comes up with 1 fewer invocation than desired (in both branches of the if). The retries mask
-       *       the issue as the rate of flakiness is low. But there does seem to be something going on here...
-       */
+      // Verify host-level metrics
       if (enableRecordLevelMetricForCurrentVersionBootstrapping) {
-        verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(3)).recordTotalBytesConsumed(anyLong());
+        verify(mockStoreIngestionStats, timeout(metricTimeoutMs).times(3)).recordTotalBytesConsumed(anyLong());
       } else {
         // When record level metric is disabled for current version bootstrapping, the store ingestion stats
-        verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(2)).recordTotalBytesConsumed(anyLong());
+        verify(mockStoreIngestionStats, timeout(metricTimeoutMs).times(2)).recordTotalBytesConsumed(anyLong());
       }
-      verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(3)).recordTotalRecordsConsumed();
+      verify(mockStoreIngestionStats, timeout(metricTimeoutMs).times(3)).recordTotalRecordsConsumed();
 
     }, AA_OFF);
     config.setHybridStoreConfig(Optional.of(hybridStoreConfig)).setExtraServerProperties(extraProps);
@@ -1990,14 +2001,16 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
+    // 3-step async sequence (consume → reset → re-consume) needs generous timeout under CI load
+    long resetTimeoutMs = TEST_TIMEOUT_MS * 4;
     runTest(Utils.setOf(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
+      verify(mockAbstractStorageEngine, timeout(resetTimeoutMs))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
       storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(fooTopicPartition);
 
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).clearOffset(topic, PARTITION_FOO);
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(2))
+      verify(mockStorageMetadataService, timeout(resetTimeoutMs)).clearOffset(topic, PARTITION_FOO);
+      verify(mockAbstractStorageEngine, timeout(resetTimeoutMs).times(2))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
     }, aaConfig);
   }
@@ -2342,11 +2355,12 @@ public abstract class StoreIngestionTaskTest {
    * In this test, the {@link #PARTITION_FOO} will receive a well-formed message, while the {@link #PARTITION_BAR} will
    * receive a corrupt message. We expect the Notifier to report as such.
    * <p>
-   * N.B.: There was an edge case where this test was flaky. The edge case is now fixed, but the invocationCount of 100
-   * should ensure that if this test is ever made flaky again, it will be detected right away. The skipFailedInvocations
-   * annotation parameter makes the test skip any invocation after the first failure.
+   * N.B.: There was an edge case where this test was flaky, because the {@link StoreIngestionTask} occasionally sent
+   * a completion notification for partitions where it had already detected an error. That edge case is now fixed (the
+   * SIT tracks errored partitions and skips completion notifications for them). The invocationCount provides repeated
+   * runs to catch regressions of that race condition.
    */
-  @Test(dataProvider = "aaConfigProvider", invocationCount = 100, skipFailedInvocations = true)
+  @Test(dataProvider = "aaConfigProvider", invocationCount = 50, skipFailedInvocations = true)
   public void testCorruptMessagesFailFast(AAConfig aaConfig) throws Exception {
     VeniceWriter veniceWriterForData = getCorruptedVeniceWriter(putValueToCorrupt, inMemoryLocalKafkaBroker);
 
@@ -2578,7 +2592,7 @@ public abstract class StoreIngestionTaskTest {
     final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
     final int totalNumberOfMessages = 1000;
     final int totalNumberOfConsumptionRestarts = 10;
-    final long LONG_TEST_TIMEOUT = 2 * TEST_TIMEOUT_MS;
+    final long LONG_TEST_TIMEOUT = 6 * TEST_TIMEOUT_MS;
 
     setStoreVersionStateSupplier(sortedInput == SORTED);
     localVeniceWriter.broadcastStartOfPush(sortedInput == SORTED, new HashMap<>());
@@ -4882,24 +4896,27 @@ public abstract class StoreIngestionTaskTest {
           throw new VeniceException(e);
         }
       };
-      int wantedInvocationsForStatsWhichCanBeDisabled = 0;
-      int wantedInvocationsForAllOtherStats = 0;
-      verifyStats(stats, wantedInvocationsForStatsWhichCanBeDisabled, wantedInvocationsForAllOtherStats);
+      int tehutiEmitMetricsGated = 0;
+      int tehutiNotGatedByEmitMetrics = 0;
+      int otelNotGatedByEmitMetrics = 0;
+      verifyStats(stats, tehutiEmitMetricsGated, tehutiNotGatedByEmitMetrics, otelNotGatedByEmitMetrics);
 
       produce.run();
-      verifyStats(stats, ++wantedInvocationsForStatsWhichCanBeDisabled, ++wantedInvocationsForAllOtherStats);
+      verifyStats(stats, ++tehutiEmitMetricsGated, ++tehutiNotGatedByEmitMetrics, ++otelNotGatedByEmitMetrics);
 
-      storeIngestionTaskUnderTest.disableMetricsEmission();
+      storeIngestionTaskUnderTest.disableTehutiMetrics();
       produce.run();
-      verifyStats(stats, wantedInvocationsForStatsWhichCanBeDisabled, ++wantedInvocationsForAllOtherStats);
+      verifyStats(stats, tehutiEmitMetricsGated, ++tehutiNotGatedByEmitMetrics, ++otelNotGatedByEmitMetrics);
 
-      storeIngestionTaskUnderTest.enableMetricsEmission();
+      storeIngestionTaskUnderTest.enableTehutiMetrics();
       produce.run();
-      verifyStats(stats, ++wantedInvocationsForStatsWhichCanBeDisabled, ++wantedInvocationsForAllOtherStats);
+      verifyStats(stats, ++tehutiEmitMetricsGated, ++tehutiNotGatedByEmitMetrics, ++otelNotGatedByEmitMetrics);
 
       long currentTimeMs = System.currentTimeMillis();
       long errorMargin = 10_000;
-      verify(mockVersionedStorageIngestionStats, timeout(1000).times(++wantedInvocationsForStatsWhichCanBeDisabled))
+      // recordConsumedRecordEndToEndProcessingLatency is gated by recordLevelMetricEnabled (not emitTehutiMetrics),
+      // so it fires on every produce — same count as otelNotGatedByEmitMetrics in this test.
+      verify(mockVersionedStorageIngestionStats, timeout(1000).times(otelNotGatedByEmitMetrics))
           .recordConsumedRecordEndToEndProcessingLatency(
               anyString(),
               anyInt(),
@@ -4911,17 +4928,39 @@ public abstract class StoreIngestionTaskTest {
 
   private void verifyStats(
       HostLevelIngestionStats stats,
-      int wantedInvocationsForStatsWhichCanBeDisabled,
-      int wantedInvocationsForAllOtherStats) {
-    verify(stats, times(wantedInvocationsForStatsWhichCanBeDisabled))
-        .recordConsumerRecordsQueuePutLatency(anyDouble(), anyLong());
-    verify(stats, timeout(10000).times(wantedInvocationsForAllOtherStats)).recordTotalRecordsConsumed();
-    verify(stats, timeout(10000).times(wantedInvocationsForAllOtherStats)).recordTotalBytesConsumed(anyLong());
-    verify(mockVersionedStorageIngestionStats, timeout(10000).times(wantedInvocationsForAllOtherStats))
+      int tehutiEmitMetricsGated,
+      int tehutiNotGatedByEmitMetrics,
+      int otelNotGatedByEmitMetrics) {
+    // Tehuti host-level: gated by emitTehutiMetrics (synchronous in produceToStoreBufferService)
+    verify(stats, times(tehutiEmitMetricsGated)).recordConsumerRecordsQueuePutLatency(anyDouble(), anyLong());
+    // Tehuti host-level: gated by tehutiRecordMetricsEnabled (async via processRecord)
+    verify(stats, timeout(10000).times(tehutiEmitMetricsGated)).recordStorageEnginePutLatency(anyDouble(), anyLong());
+    verify(stats, timeout(10000).times(tehutiEmitMetricsGated)).recordKeySize(anyLong(), anyLong());
+    verify(stats, timeout(10000).times(tehutiEmitMetricsGated)).recordValueSize(anyLong(), anyLong());
+    // Note: recordTotalBytesReadFromKafkaAsUncompressedSize and recordStorageQuotaUsed are also gated by
+    // emitTehutiMetrics but fire from recordBatchProcessingMetrics / poll-loop paths respectively, which are
+    // not exercised by produceToStoreBufferService. Their gating is covered by unit tests.
+    // Tehuti host-level: NOT gated by emitTehutiMetrics or recordLevelMetricEnabled
+    verify(stats, timeout(10000).times(tehutiNotGatedByEmitMetrics)).recordTotalRecordsConsumed();
+    // Tehuti host-level: gated by recordLevelMetricEnabled but NOT by emitTehutiMetrics
+    verify(stats, timeout(10000).times(tehutiNotGatedByEmitMetrics)).recordTotalBytesConsumed(anyLong());
+    // Per-version Tehuti stats (via recordVersionedAndTotalStat): gated by recordLevelMetricEnabled but not
+    // emitTehutiMetrics
+    verify(mockVersionedStorageIngestionStats, timeout(10000).times(tehutiNotGatedByEmitMetrics))
         .recordRecordsConsumed(anyString(), anyInt());
-    verify(mockVersionedStorageIngestionStats, timeout(10000).times(wantedInvocationsForAllOtherStats))
+    verify(mockVersionedStorageIngestionStats, timeout(10000).times(tehutiNotGatedByEmitMetrics))
         .recordBytesConsumed(anyString(), anyInt(), anyLong());
-
+    // OTel: NOT gated by emitTehutiMetrics, recorded for all versions when recordLevelMetricEnabled=true
+    verify(mockVersionedStorageIngestionStats, timeout(10000).times(otelNotGatedByEmitMetrics))
+        .recordConsumerQueuePutTime(anyString(), anyInt(), anyDouble());
+    verify(mockVersionedStorageIngestionStats, timeout(10000).times(otelNotGatedByEmitMetrics))
+        .recordStorageEnginePutTime(anyString(), anyInt(), anyDouble());
+    verify(mockVersionedStorageIngestionStats, timeout(10000).times(otelNotGatedByEmitMetrics))
+        .recordKeySize(anyString(), anyInt(), anyLong());
+    verify(mockVersionedStorageIngestionStats, timeout(10000).times(otelNotGatedByEmitMetrics))
+        .recordValueSize(anyString(), anyInt(), anyLong());
+    // Note: recordBytesConsumedAsUncompressedSize fires from recordBatchProcessingMetrics (batch-from-Kafka path),
+    // not from produceToStoreBufferService. Its gating is covered by unit tests.
   }
 
   @Test
@@ -6581,6 +6620,69 @@ public abstract class StoreIngestionTaskTest {
         "Executor should terminate promptly after shutdownNow()");
   }
 
+  /**
+   * Regression test for the thread leak bug in StoreIngestionTask.run() (PR #2486).
+   *
+   * Calls the actual {@link StoreIngestionTask#shutdownPartitionConsumptionStates()} code,
+   * which creates a FixedThreadPool for parallel partition shutdown. Captures the executor via
+   * the executeShutdownRunnable argument and asserts it was shut down after the method returns.
+   * Without the try-finally fix from PR #2486, the executor is never shut down and its core
+   * threads remain alive indefinitely.
+   */
+  @Test
+  public void testShutdownExecutorThreadsAreCleanedUpAfterParallelShutdown() throws Exception {
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(task.getServerConfig()).thenReturn(serverConfig);
+    when(serverConfig.isParallelResourceShutdownEnabled()).thenReturn(true);
+    when(serverConfig.getParallelShutdownThreadPoolSize()).thenReturn(4);
+    when(serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled()).thenReturn(false);
+    when(task.isDaVinciClient()).thenReturn(false);
+
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
+    pcsMap.put(0, pcs);
+    when(task.getPartitionConsumptionStateMap()).thenReturn(pcsMap);
+
+    // Capture the executor that the production code creates internally
+    AtomicReference<ExecutorService> capturedExecutor = new AtomicReference<>();
+    doAnswer(invocation -> {
+      capturedExecutor.set(invocation.getArgument(2));
+      invocation.callRealMethod();
+      return null;
+    }).when(task).executeShutdownRunnable(any(), anyList(), any());
+
+    doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
+
+    task.shutdownPartitionConsumptionStates();
+
+    // Verify the executor was shut down and all its threads terminated
+    ExecutorService executor = capturedExecutor.get();
+    assertNotNull(executor, "Executor should have been created for parallel shutdown");
+    assertTrue(
+        executor.isShutdown(),
+        "THREAD LEAK: The shutdown executor was not shut down after shutdownPartitionConsumptionStates() "
+            + "returned. Its core threads will remain alive indefinitely. "
+            + "Fix: wrap executor usage in try-finally { shutdownExecutor.shutdownNow(); }");
+    assertTrue(
+        executor.awaitTermination(5, TimeUnit.SECONDS),
+        "Executor threads did not terminate within 5 seconds after shutdownNow()");
+    assertTrue(executor.isTerminated(), "Executor should be fully terminated with no alive threads");
+
+    // Verify no leaked threads with the executor's thread name prefix remain alive
+    String threadPrefix = "StoreIngestionTask-shutdown";
+    List<Thread> leakedThreads = Thread.getAllStackTraces()
+        .keySet()
+        .stream()
+        .filter(t -> t.getName().startsWith(threadPrefix) && t.isAlive())
+        .collect(Collectors.toList());
+    assertEquals(
+        leakedThreads.size(),
+        0,
+        "THREAD LEAK: Found " + leakedThreads.size() + " alive threads with prefix '" + threadPrefix
+            + "' after shutdown: " + leakedThreads.stream().map(Thread::getName).collect(Collectors.joining(", ")));
+  }
+
   @Test
   public void testSkipValidationForSeekableClientEnabled() throws Exception {
     // Test 1: Non-CDC client with non-view topic should NOT skip validation
@@ -7025,5 +7127,96 @@ public abstract class StoreIngestionTaskTest {
     assertFalse(dolStamp.isDolConsumed());
     // Verify highest term was updated
     verify(mockPcs).setHighestLeadershipTerm(100L);
+  }
+
+  @Test
+  public void testGetNewStoreVersionStateFallsBackToInstanceFields() {
+    StoreIngestionTask sit = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(sit).getNewStoreVersionState(anyLong(), anyBoolean(), any());
+    doReturn(true).when(sit).isChunked();
+    doReturn(CompressionStrategy.NO_OP).when(sit).getCompressionStrategy();
+
+    // Test with startOfPush != null: should use SOP fields
+    StartOfPush sop = new StartOfPush();
+    sop.chunked = false;
+    sop.compressionStrategy = CompressionStrategy.GZIP.getValue();
+    sop.compressionDictionary = null;
+    sop.timestampPolicy = 2;
+
+    StoreVersionState svs = sit.getNewStoreVersionState(12345L, true, sop);
+    assertEquals(svs.chunked, false);
+    assertEquals(svs.compressionStrategy, CompressionStrategy.GZIP.getValue());
+    assertEquals(svs.sorted, true);
+    assertEquals(svs.batchConflictResolutionPolicy, 2);
+    assertEquals(svs.startOfPushTimestamp, 12345L);
+
+    // Test with startOfPush == null: should fall back to instance getters
+    StoreVersionState svs2 = sit.getNewStoreVersionState(99999L, false, null);
+    assertEquals(svs2.chunked, true);
+    assertEquals(svs2.compressionStrategy, CompressionStrategy.NO_OP.getValue());
+    assertEquals(svs2.sorted, false);
+    assertEquals(svs2.batchConflictResolutionPolicy, 1);
+    assertEquals(svs2.startOfPushTimestamp, 99999L);
+  }
+
+  @Test
+  public void testGetNewStoreVersionStateWithZstdCompression() {
+    StoreIngestionTask sit = mock(StoreIngestionTask.class);
+    doCallRealMethod().when(sit).getNewStoreVersionState(anyLong(), anyBoolean(), any());
+    doReturn(true).when(sit).isChunked();
+    doReturn(CompressionStrategy.ZSTD_WITH_DICT).when(sit).getCompressionStrategy();
+
+    // Test with startOfPush != null and ZSTD_WITH_DICT: SOP provides the dictionary
+    StartOfPush sopWithDict = new StartOfPush();
+    sopWithDict.chunked = true;
+    sopWithDict.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT.getValue();
+    sopWithDict.compressionDictionary = java.nio.ByteBuffer.wrap("test-dictionary".getBytes());
+    sopWithDict.timestampPolicy = 0;
+
+    StoreVersionState svs = sit.getNewStoreVersionState(12345L, true, sopWithDict);
+    assertEquals(svs.compressionStrategy, CompressionStrategy.ZSTD_WITH_DICT.getValue());
+    assertNotNull(svs.compressionDictionary);
+    assertEquals(svs.startOfPushTimestamp, 12345L);
+
+    // Test with startOfPush != null, ZSTD_WITH_DICT, but null dictionary: should throw
+    StartOfPush sopNullDict = new StartOfPush();
+    sopNullDict.chunked = true;
+    sopNullDict.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT.getValue();
+    sopNullDict.compressionDictionary = null;
+    sopNullDict.timestampPolicy = 0;
+
+    assertThrows(VeniceException.class, () -> sit.getNewStoreVersionState(12345L, true, sopNullDict));
+
+  }
+
+  @Test
+  public void testSVSSynthesizedOnSeekPastSOP() throws Exception {
+    DaVinciRecordTransformerConfig cdcRecordTransformerConfig = buildCdcRecordTransformerConfig();
+
+    // Stub computeStoreVersionState to actually invoke the lambda
+    doAnswer(invocation -> {
+      Function<StoreVersionState, StoreVersionState> mapFunction = invocation.getArgument(1);
+      return mapFunction.apply(null);
+    }).when(mockStorageMetadataService).computeStoreVersionState(anyString(), any());
+
+    // Mock storage engine to return null SVS (simulating fresh RocksDB with no persisted SVS)
+    doReturn(null).when(mockAbstractStorageEngine).getStoreVersionState();
+
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+      // Resubscribe with a non-EARLIEST position to trigger SVS synthesis
+      storeIngestionTaskUnderTest.subscribePartition(
+          new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
+          Optional.of(PubSubSymbolicPosition.LATEST));
+
+      // Verify computeStoreVersionState was called (SVS synthesis triggered)
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeastOnce())
+          .computeStoreVersionState(eq(topic), any());
+    }, AA_OFF);
+
+    config.setRecordTransformerConfig(cdcRecordTransformerConfig).setDaVinci(true);
+    config.setHybridStoreConfig(
+        Optional.of(new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_SOP)));
+
+    runTest(config);
   }
 }

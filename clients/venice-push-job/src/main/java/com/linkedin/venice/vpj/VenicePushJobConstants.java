@@ -352,6 +352,14 @@ public final class VenicePushJobConstants {
   /**
    * Config to control the TTL behaviors in repush.
    */
+  /**
+   * When enabled, KIF repush will use the store's latest value schema ID as a fallback if per-record
+   * schema IDs are not embedded in the source version topic (put.getSchemaId() returns -1). By default
+   * this is disabled and the job will fail if per-record schema IDs are missing, to avoid silently
+   * re-writing records with a potentially incorrect schema.
+   */
+  public static final String REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID = "repush.use.fallback.value.schema.id";
+
   public static final String REPUSH_TTL_ENABLE = "repush.ttl.enable";
   public static final String REPUSH_TTL_POLICY = "repush.ttl.policy";
   public static final String REPUSH_TTL_SECONDS = "repush.ttl.seconds";
@@ -441,6 +449,7 @@ public final class VenicePushJobConstants {
   public static final String DATA_WRITER_COMPUTE_JOB_CLASS = "data.writer.compute.job.class";
 
   public static final String PUSH_TO_SEPARATE_REALTIME_TOPIC = "push.to.separate.realtime.topic";
+
   /**
    * Currently regular batch pushes are not compatible with TTL re-push enabled stores. This is because a regular batch
    * push does not provide any RMD to be used for TTL. You can use the TIMESTAMP_FIELD_PROP to provide record level
@@ -456,4 +465,29 @@ public final class VenicePushJobConstants {
    * propagated to all {@link VenicePushJob} components.
    */
   public static final String NEWER_KME_SCHEMAS_PREFIX = "newer.kme.schemas.prefix.";
+
+  /**
+   * Write quota in records per second for incremental pushes.
+   * Any value {@code <= 0} disables throttling (unlimited writes). The recommended sentinel for
+   * explicitly configuring "unlimited" is {@code -1}.
+   * This quota is enforced per partition-writer task. The effective aggregate write rate across the entire
+   * job is {@code recordsPerSecond * numberOfTasks}.
+   */
+  public static final String INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND =
+      "incremental.push.write.quota.records.per.second";
+
+  /**
+   * Time window in milliseconds over which throttling is measured. Defaults to 1 second.
+   * This parameter is only applicable when using TOKEN_BUCKET_INCREMENTAL_REFILL or
+   * TOKEN_BUCKET_GREEDY_REFILL rate limiter types.
+   */
+  public static final String INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS =
+      "incremental.push.write.quota.time.window.ms";
+
+  /**
+   * Rate limiter implementation for incremental push throttling. Supported values are
+   * defined by {@link com.linkedin.venice.throttle.VeniceRateLimiter.RateLimiterType}.
+   * Defaults to GUAVA_RATE_LIMITER.
+   */
+  public static final String INCREMENTAL_PUSH_RATE_LIMITER_TYPE = "incremental.push.rate.limiter.type";
 }

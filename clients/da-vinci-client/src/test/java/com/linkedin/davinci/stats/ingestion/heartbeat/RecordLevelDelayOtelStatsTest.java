@@ -10,7 +10,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
-import static com.linkedin.venice.utils.Utils.setOf;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -21,14 +20,10 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
-import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricType;
-import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Set;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -42,18 +37,26 @@ public class RecordLevelDelayOtelStatsTest {
   private static final String TEST_PREFIX = "test_prefix";
 
   private InMemoryMetricReader inMemoryMetricReader;
+  private VeniceMetricsRepository metricsRepository;
   private RecordLevelDelayOtelStats recordLevelDelayOtelStats;
 
   @BeforeMethod
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
-    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
+    metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setMetricPrefix(TEST_PREFIX)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build());
     recordLevelDelayOtelStats = new RecordLevelDelayOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME);
+  }
+
+  @AfterMethod
+  public void tearDown() {
+    if (metricsRepository != null) {
+      metricsRepository.close();
+    }
   }
 
   @Test
@@ -65,17 +68,17 @@ public class RecordLevelDelayOtelStatsTest {
   @Test
   public void testConstructorWithOtelDisabled() {
     // Create with OTel disabled
-    VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
+    try (VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(false)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .build());
+            .build())) {
+      RecordLevelDelayOtelStats stats =
+          new RecordLevelDelayOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
 
-    RecordLevelDelayOtelStats stats =
-        new RecordLevelDelayOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
-
-    // Verify OTel metrics are disabled
-    assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled");
+      // Verify OTel metrics are disabled
+      assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled");
+    }
   }
 
   @Test
@@ -192,21 +195,24 @@ public class RecordLevelDelayOtelStatsTest {
   @Test
   public void testRecordRecordDelayOtelMetricsWhenOtelDisabled() {
     // Create stats with OTel disabled
-    VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES).setEmitOtelMetrics(false).build());
-    RecordLevelDelayOtelStats stats =
-        new RecordLevelDelayOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
-    stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+    try (VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
+            .setEmitOtelMetrics(false)
+            .build())) {
+      RecordLevelDelayOtelStats stats =
+          new RecordLevelDelayOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
+      stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
-    // Record metrics - should be no-op
-    stats.recordRecordDelayOtelMetrics(
-        CURRENT_VERSION,
-        REGION_US_WEST,
-        ReplicaType.LEADER,
-        ReplicaState.READY_TO_SERVE,
-        100L);
+      // Record metrics - should be no-op
+      stats.recordRecordDelayOtelMetrics(
+          CURRENT_VERSION,
+          REGION_US_WEST,
+          ReplicaType.LEADER,
+          ReplicaState.READY_TO_SERVE,
+          100L);
 
-    // No validation needed - metrics should not be recorded
+      // No validation needed - metrics should not be recorded
+    }
   }
 
   /**
@@ -260,25 +266,6 @@ public class RecordLevelDelayOtelStatsTest {
         expectedAttributes,
         INGESTION_RECORD_DELAY.getMetricEntity().getMetricName(),
         TEST_PREFIX);
-  }
-
-  @Test
-  public void testMetricEntityDefinitions() {
-    MetricEntity entity = INGESTION_RECORD_DELAY.getMetricEntity();
-    assertEquals(entity.getMetricName(), "ingestion.replication.record.delay");
-    assertEquals(entity.getMetricType(), MetricType.HISTOGRAM);
-    assertEquals(entity.getUnit(), MetricUnit.MILLISECOND);
-    assertEquals(entity.getDescription(), "Nearline ingestion record-level replication lag");
-    Set<VeniceMetricsDimensions> expectedDimensions = setOf(
-        VENICE_STORE_NAME,
-        VENICE_CLUSTER_NAME,
-        VENICE_REGION_NAME,
-        VENICE_VERSION_ROLE,
-        VENICE_REPLICA_TYPE,
-        VENICE_REPLICA_STATE);
-    assertEquals(entity.getDimensionsList(), expectedDimensions);
-
-    assertEquals(RecordLevelDelayOtelMetricEntity.values().length, 1, "Expected 1 metric entity");
   }
 
   // ==================================================================================

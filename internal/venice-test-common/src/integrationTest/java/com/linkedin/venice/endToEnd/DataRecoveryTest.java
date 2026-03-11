@@ -16,10 +16,12 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -76,16 +78,24 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
     super.setUp();
     clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
 
-    try (ControllerClient controllerClient =
-        new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
-      // Verify the participant store is up and running in dest region.
-      // Participant store is needed for checking kill record existence and dest region readiness for data recovery.
-      String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(participantStoreName, 1),
-          controllerClient,
-          2,
-          TimeUnit.MINUTES);
+    // Verify the participant store is up and running in all regions before tests create user stores.
+    // Participant store is needed for checking kill record existence and dest region readiness for data recovery.
+    IntegrationTestUtils.waitForParticipantStorePushInAllRegions(clusterName, childDatacenters);
+  }
+
+  /**
+   * Meta system store and DaVinci push status store are auto-materialized on store creation.
+   * Their pushes must complete in every child DC before we issue the user store push, because
+   * the admin message pipeline processes messages sequentially and the auto-creation validation
+   * messages block until each system store push finishes.
+   */
+  private void waitForSystemStorePushes(String storeName, ControllerClient... dcClients) {
+    String metaStoreTopic = Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetaStoreName(storeName), 1);
+    String pushStatusStoreTopic =
+        Version.composeKafkaTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName), 1);
+    for (ControllerClient dcClient: dcClients) {
+      TestUtils.waitForNonDeterministicPushCompletion(metaStoreTopic, dcClient, 2, TimeUnit.MINUTES);
+      TestUtils.waitForNonDeterministicPushCompletion(pushStatusStoreTopic, dcClient, 2, TimeUnit.MINUTES);
     }
   }
 
@@ -101,6 +111,7 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
             new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
       TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerClient, dcControllerClientList);
+      waitForSystemStorePushes(storeName, dc0Client, dc1Client);
       Assert.assertFalse(
           parentControllerClient
               .updateStore(
@@ -116,7 +127,7 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
-          30,
+          60,
           TimeUnit.SECONDS);
       ReadyForDataRecoveryResponse response =
           parentControllerClient.isStoreVersionReadyForDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty());
@@ -130,9 +141,13 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
             parentControllerClient.isStoreVersionReadyForDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty());
         Assert.assertTrue(readinessResponse.isReady(), readinessResponse.getReason());
       });
-      // Initiate data recovery
-      Assert.assertFalse(
-          parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty()).isError());
+      // Initiate data recovery. The readiness check queries the parent controller, but dataRecovery()
+      // also verifies readiness on the child controller, which may lag behind briefly.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        ControllerResponse dr =
+            parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty());
+        Assert.assertFalse(dr.isError(), dr.getError());
+      });
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         Admin dc1Admin = childDatacenters.get(1).getLeaderController(clusterName).getVeniceAdmin();
         Assert.assertTrue(dc1Admin.getStore(clusterName, storeName).containsVersion(1));
@@ -156,10 +171,13 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
       Assert.assertFalse(
           parentControllerClient.prepareDataRecovery(src, dest, storeName, VERSION_ID_UNSET, Optional.empty())
               .isError());
-      // Initiate data recovery, a new version will be created in dest fabric.
-      Assert.assertFalse(
-          parentControllerClient.dataRecovery(src, dest, storeName, VERSION_ID_UNSET, false, true, Optional.empty())
-              .isError());
+      // Initiate data recovery, a new version will be created in dest fabric. Retry briefly in case
+      // the child controller hasn't fully cleaned up the previous version's artifacts yet.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        ControllerResponse dr =
+            parentControllerClient.dataRecovery(src, dest, storeName, VERSION_ID_UNSET, false, true, Optional.empty());
+        Assert.assertFalse(dr.isError(), dr.getError());
+      });
       int finalVersion = version;
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         Assert.assertEquals(destColoClient.getStore(storeName).getStore().getCurrentVersion(), finalVersion);
@@ -167,11 +185,13 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
               .setVeniceURL(childDatacenters.get(1).getClusters().get(clusterName).getRandomRouterURL()))) {
-        for (int i = 0; i < 10; i++) {
-          Object v = client.get(String.valueOf(i)).get();
-          Assert.assertNotNull(v, "Batch data should be consumed already in data center " + dest);
-          Assert.assertEquals(v.toString(), String.valueOf(i));
-        }
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          for (int i = 0; i < 10; i++) {
+            Object v = client.get(String.valueOf(i)).get();
+            Assert.assertNotNull(v, "Batch data should be consumed already in data center " + dest);
+            Assert.assertEquals(v.toString(), String.valueOf(i));
+          }
+        });
       }
     }
   }
@@ -187,6 +207,7 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
             new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
       TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerClient, dcControllerClientList);
+      waitForSystemStorePushes(storeName, dc0Client, dc1Client);
       Assert.assertFalse(
           parentControllerClient
               .updateStore(
@@ -262,6 +283,7 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
             new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
       TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerClient, dcControllerClientList);
+      waitForSystemStorePushes(storeName, dc0Client, dc1Client);
       Assert.assertFalse(
           parentControllerClient
               .updateStore(
@@ -293,9 +315,13 @@ public class DataRecoveryTest extends AbstractMultiRegionTest {
             parentControllerClient.isStoreVersionReadyForDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty());
         Assert.assertTrue(readinessResponse.isReady(), readinessResponse.getReason());
       });
-      // Initiate data recovery
-      Assert.assertFalse(
-          parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty()).isError());
+      // Initiate data recovery. The parent readiness check above queries the parent controller, but
+      // dataRecovery() also verifies readiness on the child controller, which may lag behind briefly.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        ControllerResponse response =
+            parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty());
+        Assert.assertFalse(response.isError(), response.getError());
+      });
       TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient, 60, TimeUnit.SECONDS);
 
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(

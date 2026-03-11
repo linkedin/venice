@@ -12,10 +12,12 @@ public class ServerConnectionStats extends AbstractVeniceStats {
   public static final String ROUTER_CONNECTION_COUNT_GAUGE = "router_connection_count";
   public static final String CLIENT_CONNECTION_REQUEST = "client_connection_request";
   public static final String CLIENT_CONNECTION_COUNT_GAUGE = "client_connection_count";
+  public static final String NEW_CONNECTION_SETUP_LATENCY = "new_connection_setup_latency";
 
   private final Sensor routerConnectionRequestSensor;
   private final Sensor clientConnectionRequestSensor;
   private final Sensor connectionRequestSensor;
+  private final Sensor newConnectionSetupLatencySensor;
 
   private final AtomicLong routerConnectionCount = new AtomicLong();
   private final AtomicLong clientConnectionCount = new AtomicLong();
@@ -29,6 +31,9 @@ public class ServerConnectionStats extends AbstractVeniceStats {
         new AsyncGauge((ignored, ignored2) -> clientConnectionCount.get(), CLIENT_CONNECTION_COUNT_GAUGE));
     clientConnectionRequestSensor = registerSensorIfAbsent(CLIENT_CONNECTION_REQUEST, new OccurrenceRate());
     connectionRequestSensor = registerSensorIfAbsent("connection_request", new OccurrenceRate());
+    newConnectionSetupLatencySensor = registerSensorIfAbsent(
+        NEW_CONNECTION_SETUP_LATENCY,
+        TehutiUtils.getPercentileStatWithAvgAndMax(getName(), NEW_CONNECTION_SETUP_LATENCY));
   }
 
   public void incrementRouterConnectionCount() {
@@ -51,5 +56,12 @@ public class ServerConnectionStats extends AbstractVeniceStats {
 
   public void newConnectionRequest() {
     connectionRequestSensor.record();
+  }
+
+  /**
+   * Record the latency from the start of channel initialization to SSL handshake completion.
+   */
+  public void recordNewConnectionSetupLatency(double latencyMs) {
+    newConnectionSetupLatencySensor.record(latencyMs);
   }
 }

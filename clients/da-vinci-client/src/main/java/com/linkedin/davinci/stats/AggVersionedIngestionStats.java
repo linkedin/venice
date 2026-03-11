@@ -8,8 +8,12 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
 import com.linkedin.venice.stats.dimensions.VeniceDCREvent;
+import com.linkedin.venice.stats.dimensions.VeniceDCROperation;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionDestinationComponent;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.stats.dimensions.VeniceIngestionSourceComponent;
+import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
+import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -108,7 +112,8 @@ public class AggVersionedIngestionStats
     int currentVersion = getCurrentVersion(storeName);
     int futureVersion = getFutureVersion(storeName);
     return otelStatsMap.computeIfAbsent(storeName, k -> {
-      IngestionOtelStats stats = new IngestionOtelStats(getMetricsRepository(), k, clusterName, localRegionName);
+      IngestionOtelStats stats =
+          new IngestionOtelStats(getMetricsRepository(), k, clusterName, localRegionName, emitOtelIngestionStats);
       stats.updateVersionInfo(currentVersion, futureVersion);
       return stats;
     });
@@ -397,11 +402,11 @@ public class AggVersionedIngestionStats
         stat -> stat.recordNearlineProducerToLocalBrokerLatency(value, timestamp));
   }
 
-  public void recordMaxIdleTime(String storeName, int version, long idleTimeMs) {
-    // Tehuti metrics
-    getStats(storeName, version).recordIdleTime(idleTimeMs);
-    // OTel metrics
+  public void recordMaxIdleTime(String storeName, int version, long idleTimeMs, boolean emitTehuti) {
     getIngestionOtelStats(storeName).recordIdleTime(version, idleTimeMs);
+    if (emitTehuti) {
+      getStats(storeName, version).recordIdleTime(idleTimeMs);
+    }
   }
 
   public void recordBatchProcessingRequest(String storeName, int version, int size, long timestamp) {
@@ -428,5 +433,121 @@ public class AggVersionedIngestionStats
         stat -> stat.recordBatchProcessingRequestLatency(latency, timestamp));
     // OTel metrics
     getIngestionOtelStats(storeName).recordBatchProcessingRequestTime(version, latency);
+  }
+
+  // --- OTel-only metrics (no Tehuti counterpart in this class) ---
+
+  // Simple latency methods
+
+  public void recordConsumerQueuePutTime(String storeName, int version, double latencyMs) {
+    getIngestionOtelStats(storeName).recordConsumerQueuePutTime(version, latencyMs);
+  }
+
+  public void recordStorageEnginePutTime(String storeName, int version, double latencyMs) {
+    getIngestionOtelStats(storeName).recordStorageEnginePutTime(version, latencyMs);
+  }
+
+  public void recordStorageEngineDeleteTime(String storeName, int version, double latencyMs) {
+    getIngestionOtelStats(storeName).recordStorageEngineDeleteTime(version, latencyMs);
+  }
+
+  public void recordConsumerActionTime(String storeName, int version, double latencyMs) {
+    getIngestionOtelStats(storeName).recordConsumerActionTime(version, latencyMs);
+  }
+
+  public void recordLongRunningTaskCheckTime(String storeName, int version, double latencyMs) {
+    getIngestionOtelStats(storeName).recordLongRunningTaskCheckTime(version, latencyMs);
+  }
+
+  public void recordViewWriterProduceTime(String storeName, int version, double latencyMs) {
+    getIngestionOtelStats(storeName).recordViewWriterProduceTime(version, latencyMs);
+  }
+
+  public void recordViewWriterAckTime(String storeName, int version, double latencyMs) {
+    getIngestionOtelStats(storeName).recordViewWriterAckTime(version, latencyMs);
+  }
+
+  public void recordProducerEnqueueTime(String storeName, int version, double latencyMs) {
+    getIngestionOtelStats(storeName).recordProducerEnqueueTime(version, latencyMs);
+  }
+
+  public void recordProducerCompressTime(String storeName, int version, double latencyMs) {
+    getIngestionOtelStats(storeName).recordProducerCompressTime(version, latencyMs);
+  }
+
+  public void recordProducerSynchronizeTime(String storeName, int version, double latencyMs) {
+    getIngestionOtelStats(storeName).recordProducerSynchronizeTime(version, latencyMs);
+  }
+
+  // Latency methods with 2nd enum dimension
+
+  public void recordPartialUpdateTime(
+      String storeName,
+      int version,
+      VenicePartialUpdateOperation op,
+      double latencyMs) {
+    getIngestionOtelStats(storeName).recordPartialUpdateTime(version, op, latencyMs);
+  }
+
+  public void recordDcrLookupTime(String storeName, int version, VeniceRecordType recordType, double latencyMs) {
+    getIngestionOtelStats(storeName).recordDcrLookupTime(version, recordType, latencyMs);
+  }
+
+  public void recordDcrMergeTime(String storeName, int version, VeniceDCROperation op, double latencyMs) {
+    getIngestionOtelStats(storeName).recordDcrMergeTime(version, op, latencyMs);
+  }
+
+  // Simple count methods
+
+  public void recordUnexpectedMessageCount(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordUnexpectedMessageCount(version, 1);
+  }
+
+  public void recordStoreMetadataInconsistentCount(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordStoreMetadataInconsistentCount(version, 1);
+  }
+
+  public void recordResubscriptionFailureCount(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordResubscriptionFailureCount(version, 1);
+  }
+
+  public void recordPartialUpdateCacheHitCount(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordPartialUpdateCacheHitCount(version, 1);
+  }
+
+  public void recordChecksumVerificationFailureCount(String storeName, int version) {
+    getIngestionOtelStats(storeName).recordChecksumVerificationFailureCount(version, 1);
+  }
+
+  // Count methods with 2nd enum dimension
+
+  public void recordIngestionFailureCount(String storeName, int version, VeniceIngestionFailureReason reason) {
+    getIngestionOtelStats(storeName).recordIngestionFailureCount(version, reason, 1);
+  }
+
+  public void recordDcrLookupCacheHitCount(String storeName, int version, VeniceRecordType recordType) {
+    getIngestionOtelStats(storeName).recordDcrLookupCacheHitCount(version, recordType, 1);
+  }
+
+  // Size/rate methods
+
+  public void recordBytesConsumedAsUncompressedSize(String storeName, int version, long bytes) {
+    getIngestionOtelStats(storeName).recordBytesConsumedAsUncompressedSize(version, bytes);
+  }
+
+  public void recordKeySize(String storeName, int version, long bytes) {
+    getIngestionOtelStats(storeName).recordKeySize(version, bytes);
+  }
+
+  public void recordValueSize(String storeName, int version, long bytes) {
+    getIngestionOtelStats(storeName).recordValueSize(version, bytes);
+  }
+
+  public void recordAssembledSize(String storeName, int version, VeniceRecordType recordType, long bytes) {
+    getIngestionOtelStats(storeName).recordAssembledSize(version, recordType, bytes);
+  }
+
+  public void recordAssembledSizeRatio(String storeName, int version, double ratio) {
+    getIngestionOtelStats(storeName).recordAssembledSizeRatio(version, ratio);
   }
 }

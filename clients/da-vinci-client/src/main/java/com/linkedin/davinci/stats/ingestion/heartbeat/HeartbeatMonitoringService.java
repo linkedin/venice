@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.dimensions.VeniceHeartbeatComponent;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -133,7 +134,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     String storeName = version.getStoreName();
     int versionNum = version.getNumber();
     long currentTime = System.currentTimeMillis();
-    if (version.isActiveActiveReplicationEnabled()) {
+    if (version.isActiveActiveReplicationEnabled() && !isFollower) {
       for (String region: regionNames) {
         if (Utils.isSeparateTopicRegion(region) && !version.isSeparateRealTimeTopicEnabled()) {
           continue;
@@ -877,13 +878,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         } catch (InterruptedException e) {
           // We've received an interrupt which is to be expected, so we'll just leave the loop and log
           break;
-        } catch (Exception e) {
+        } catch (Throwable t) {
           exceptionThrown = true;
-          LOGGER.error("Received exception from Ingestion-Heartbeat-Reporter-Service-Thread", e);
-          heartbeatMonitoringServiceStats.recordHeartbeatExceptionCount();
-        } catch (Throwable throwable) {
-          exceptionThrown = true;
-          LOGGER.error("Received exception from Ingestion-Heartbeat-Reporter-Service-Thread", throwable);
+          LOGGER.error("Received exception from Ingestion-Heartbeat-Reporter-Service-Thread", t);
+          heartbeatMonitoringServiceStats.recordHeartbeatExceptionCount(VeniceHeartbeatComponent.REPORTER);
         }
       }
       LOGGER.info("Heartbeat lag metric reporting thread stopped. Shutting down...");
@@ -916,14 +914,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         } catch (InterruptedException e) {
           // We've received an interrupt which is to be expected, so we'll just leave the loop and log
           break;
-        } catch (Exception e) {
+        } catch (Throwable t) {
           exceptionThrown = true;
-          LOGGER.error("Received exception from Ingestion-Heartbeat-Lag-Logging-Service-Thread", e);
-          heartbeatMonitoringServiceStats.recordHeartbeatExceptionCount();
-        } catch (Throwable throwable) {
-          exceptionThrown = true;
-          LOGGER
-              .error("Received non-exception throwable from Ingestion-Heartbeat-Lag-Logging-Service-Thread", throwable);
+          LOGGER.error("Received exception from Ingestion-Heartbeat-Lag-Logging-Service-Thread", t);
+          heartbeatMonitoringServiceStats.recordHeartbeatExceptionCount(VeniceHeartbeatComponent.LOGGER);
         }
       }
       LOGGER.info("Heartbeat lag logging thread stopped. Shutting down...");

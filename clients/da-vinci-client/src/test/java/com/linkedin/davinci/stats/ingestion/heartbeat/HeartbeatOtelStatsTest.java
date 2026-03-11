@@ -10,7 +10,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
-import static com.linkedin.venice.utils.Utils.setOf;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
@@ -22,14 +21,10 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.ReplicaState;
 import com.linkedin.venice.stats.dimensions.ReplicaType;
-import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.metrics.MetricEntity;
-import com.linkedin.venice.stats.metrics.MetricType;
-import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Set;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -46,18 +41,26 @@ public class HeartbeatOtelStatsTest {
   private static final String TEST_PREFIX = "test_prefix";
 
   private InMemoryMetricReader inMemoryMetricReader;
+  private VeniceMetricsRepository metricsRepository;
   private HeartbeatOtelStats heartbeatOtelStats;
 
   @BeforeMethod
   public void setUp() {
     inMemoryMetricReader = InMemoryMetricReader.create();
-    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
+    metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setMetricPrefix(TEST_PREFIX)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .build());
     heartbeatOtelStats = new HeartbeatOtelStats(metricsRepository, STORE_NAME, CLUSTER_NAME);
+  }
+
+  @AfterMethod
+  public void tearDown() {
+    if (metricsRepository != null) {
+      metricsRepository.close();
+    }
   }
 
   @Test
@@ -69,16 +72,16 @@ public class HeartbeatOtelStatsTest {
   @Test
   public void testConstructorWithOtelDisabled() {
     // Create with OTel disabled
-    VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
+    try (VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(false)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .build());
+            .build())) {
+      HeartbeatOtelStats stats = new HeartbeatOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
 
-    HeartbeatOtelStats stats = new HeartbeatOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
-
-    // Verify OTel metrics are disabled
-    assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled");
+      // Verify OTel metrics are disabled
+      assertFalse(stats.emitOtelMetrics(), "OTel metrics should be disabled");
+    }
   }
 
   @Test
@@ -380,28 +383,29 @@ public class HeartbeatOtelStatsTest {
   @Test
   public void testNoMetricsRecordedWhenOtelDisabled() {
     // Create stats with OTel disabled
-    VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
+    try (VeniceMetricsRepository disabledMetricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(false)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .build());
-    HeartbeatOtelStats stats = new HeartbeatOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
+            .build())) {
+      HeartbeatOtelStats stats = new HeartbeatOtelStats(disabledMetricsRepository, STORE_NAME, CLUSTER_NAME);
 
-    stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
+      stats.updateVersionInfo(CURRENT_VERSION, FUTURE_VERSION);
 
-    // Try to record - should be no-op
-    stats.recordHeartbeatDelayOtelMetrics(
-        CURRENT_VERSION,
-        REGION_US_WEST,
-        ReplicaType.LEADER,
-        ReplicaState.READY_TO_SERVE,
-        100L);
+      // Try to record - should be no-op
+      stats.recordHeartbeatDelayOtelMetrics(
+          CURRENT_VERSION,
+          REGION_US_WEST,
+          ReplicaType.LEADER,
+          ReplicaState.READY_TO_SERVE,
+          100L);
 
-    // Verify no metrics were recorded
-    assertEquals(
-        inMemoryMetricReader.collectAllMetrics().size(),
-        0,
-        "No metrics should be recorded when OTel disabled");
+      // Verify no metrics were recorded
+      assertEquals(
+          inMemoryMetricReader.collectAllMetrics().size(),
+          0,
+          "No metrics should be recorded when OTel disabled");
+    }
   }
 
   @Test
@@ -591,22 +595,4 @@ public class HeartbeatOtelStatsTest {
         TEST_PREFIX);
   }
 
-  @Test
-  public void testMetricEntityDefinitions() {
-    MetricEntity entity = INGESTION_HEARTBEAT_DELAY.getMetricEntity();
-    assertEquals(entity.getMetricName(), "ingestion.replication.heartbeat.delay");
-    assertEquals(entity.getMetricType(), MetricType.HISTOGRAM);
-    assertEquals(entity.getUnit(), MetricUnit.MILLISECOND);
-    assertEquals(entity.getDescription(), "Nearline ingestion replication lag measured via heartbeat messages");
-    Set<VeniceMetricsDimensions> expectedDimensions = setOf(
-        VENICE_STORE_NAME,
-        VENICE_CLUSTER_NAME,
-        VENICE_REGION_NAME,
-        VENICE_VERSION_ROLE,
-        VENICE_REPLICA_TYPE,
-        VENICE_REPLICA_STATE);
-    assertEquals(entity.getDimensionsList(), expectedDimensions);
-
-    assertEquals(HeartbeatOtelMetricEntity.values().length, 1, "Expected 1 metric entity");
-  }
 }

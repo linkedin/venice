@@ -16,6 +16,7 @@ import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslS
 import com.linkedin.venice.controller.grpc.server.interceptor.ParentControllerRegionValidationInterceptor;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
+import com.linkedin.venice.controller.lingeringjob.HeartbeatCheckerOtelMetricEntity;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
@@ -25,6 +26,7 @@ import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.ErrorPartitionStats;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
+import com.linkedin.venice.controller.stats.PartitionHealthStats;
 import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controller.stats.SparkServerStats;
@@ -47,6 +49,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.AsyncRetryingServiceDiscoveryAnnouncer;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.stats.ThreadPoolOtelMetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
@@ -61,6 +64,7 @@ import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import io.grpc.ServerInterceptor;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -79,21 +83,33 @@ public class VeniceController {
   private static final String CONTROLLER_GRPC_SERVER_THREAD_NAME = "ControllerGrpcServer";
   public static final String CONTROLLER_SERVICE_NAME = "venice-controller";
   public static final String CONTROLLER_SERVICE_METRIC_PREFIX = "controller";
+
+  /**
+   * Returns the enum classes that compose {@link #CONTROLLER_SERVICE_METRIC_ENTITIES}. This is the
+   * single source of truth used by both production aggregation and tests.
+   */
+  public static List<Class<? extends ModuleMetricEntityInterface>> getMetricEntityEnumClasses() {
+    return Arrays.asList(
+        SparkServerStats.SparkServerOtelMetricEntity.class,
+        LogCompactionStats.LogCompactionOtelMetricEntity.class,
+        PushJobStatusStats.PushJobOtelMetricEntity.class,
+        StoreBackupVersionCleanupServiceStats.BackupVersionCleanupOtelMetricEntity.class,
+        TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.class,
+        VeniceAdminStats.VeniceAdminOtelMetricEntity.class,
+        AdminConsumptionStats.AdminConsumptionOtelMetricEntity.class,
+        AddVersionLatencyStats.AddVersionLatencyOtelMetricEntity.class,
+        DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.class,
+        DisabledPartitionStats.DisabledPartitionOtelMetricEntity.class,
+        ErrorPartitionStats.ErrorPartitionOtelMetricEntity.class,
+        SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.class,
+        ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity.class,
+        PartitionHealthStats.PartitionHealthOtelMetricEntity.class,
+        HeartbeatCheckerOtelMetricEntity.class,
+        ThreadPoolOtelMetricEntity.class);
+  }
+
   public static final Collection<MetricEntity> CONTROLLER_SERVICE_METRIC_ENTITIES =
-      ModuleMetricEntityInterface.getUniqueMetricEntities(
-          SparkServerStats.SparkServerOtelMetricEntity.class,
-          LogCompactionStats.LogCompactionOtelMetricEntity.class,
-          PushJobStatusStats.PushJobOtelMetricEntity.class,
-          StoreBackupVersionCleanupServiceStats.BackupVersionCleanupOtelMetricEntity.class,
-          TopicCleanupServiceStats.TopicCleanupOtelMetricEntity.class,
-          VeniceAdminStats.VeniceAdminOtelMetricEntity.class,
-          AdminConsumptionStats.AdminConsumptionOtelMetricEntity.class,
-          AddVersionLatencyStats.AddVersionLatencyOtelMetricEntity.class,
-          DeferredVersionSwapStats.DeferredVersionSwapOtelMetricEntity.class,
-          DisabledPartitionStats.DisabledPartitionOtelMetricEntity.class,
-          ErrorPartitionStats.ErrorPartitionOtelMetricEntity.class,
-          SystemStoreHealthCheckStats.SystemStoreHealthCheckOtelMetricEntity.class,
-          ProtocolVersionAutoDetectionStats.ProtocolVersionAutoDetectionOtelMetricEntity.class);
+      ModuleMetricEntityInterface.getUniqueMetricEntities(getMetricEntityEnumClasses());
 
   // services
   private final VeniceControllerService controllerService;

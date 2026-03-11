@@ -574,7 +574,7 @@ public class BlobP2PTransferAmongServersTest {
 
       // Create initial version V1
       Properties props = defaultVPJProps(cluster, inputDirPath, storeName);
-      IntegrationTestPushUtils.runVPJ(props);
+      IntegrationTestPushUtils.runVPJ(props, 1, controllerClient);
 
       VeniceServerWrapper server1 = cluster.getVeniceServerByPort(server1Port);
       VeniceServerWrapper server2 = cluster.getVeniceServerByPort(server2Port);
@@ -688,7 +688,7 @@ public class BlobP2PTransferAmongServersTest {
 
       // Create initial version V1
       Properties props = defaultVPJProps(cluster, inputDirPath, storeName);
-      IntegrationTestPushUtils.runVPJ(props);
+      IntegrationTestPushUtils.runVPJ(props, 1, controllerClient);
 
       VeniceServerWrapper server1 = cluster.getVeniceServerByPort(server1Port);
       cluster.getVeniceServerByPort(server2Port);

@@ -212,7 +212,7 @@ public class PartitionTracker {
   /**
    * Clone the vtSegments and LCVP to the destination PartitionTracker. May be called concurrently.
    */
-  public void cloneVtProducerStates(PartitionTracker destProducerTracker, long maxAgeInMs) {
+  public void cloneVtProducerStates(PartitionTracker destProducerTracker, long maxAgeInMs, boolean emitLog) {
     long earliestAllowableTimestamp = maxAgeInMs == DISABLED ? DISABLED : System.currentTimeMillis() - maxAgeInMs;
     List<GUID> staleGuids = new ArrayList<>();
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
@@ -229,7 +229,7 @@ public class PartitionTracker {
         removedCount++;
       }
     }
-    if (removedCount > 0 && !REDUNDANT_LOGGING_FILTER.isRedundantException(topicName + "-cloneVtProducerStates")) {
+    if (emitLog && removedCount > 0 && !REDUNDANT_LOGGING_FILTER.isRedundantException(topicName + "-cloneVtStates")) {
       logger.info("event=globalRtDiv Removed {} stale VT producer state(s) for store {}", removedCount, topicName);
     }
     destProducerTracker.updateLatestConsumedVtPosition(latestConsumedVtPosition.get());
@@ -274,7 +274,7 @@ public class PartitionTracker {
     for (String broker: brokersToRemove) {
       rtSegments.remove(broker);
     }
-    if (removedCount > 0 && !REDUNDANT_LOGGING_FILTER.isRedundantException(topicName + "-cloneRtProducerStates")) {
+    if (removedCount > 0 && !REDUNDANT_LOGGING_FILTER.isRedundantException(topicName + "-cloneRtStates")) {
       logger.info("event=globalRtDiv Removed {} stale RT producer state(s) for store {}", removedCount, topicName);
     }
   }

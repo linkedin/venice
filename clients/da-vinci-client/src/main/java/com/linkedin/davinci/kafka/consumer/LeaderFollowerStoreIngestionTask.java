@@ -89,6 +89,8 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
+import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
@@ -113,7 +115,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -307,7 +308,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
     this.localRegionName = serverConfig.getRegionName();
-    this.localRegionKafkaClusterId = computeLocalKafkaClusterId(kafkaClusterIdToAliasMap, localRegionName);
+    this.localRegionKafkaClusterId = RegionUtils.getLocalKafkaClusterId(kafkaClusterIdToAliasMap, localRegionName);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()
         && !store.isFlinkVeniceViewsEnabled()) {
       viewWriters = builder.getVeniceViewWriterFactory().buildStoreViewWriters(store, version.getNumber());
@@ -544,6 +545,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState.setSkipKafkaMessage(false);
           partitionConsumptionState.setLeaderFollowerState(STANDBY);
           updateLeaderTopicOnFollower(partitionConsumptionState);
+          // Persist updated leaderTopic so blob transfer copies correct state
+          storageMetadataService.put(kafkaVersionTopic, partition, partitionConsumptionState.getOffsetRecord());
           // subscribe back to local VT/partition
           PubSubPosition subscribePosition = getLocalVtSubscribePosition(partitionConsumptionState);
           if (isGlobalRtDivEnabled()) {
@@ -570,6 +573,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         } else {
           partitionConsumptionState.setLeaderFollowerState(STANDBY);
           updateLeaderTopicOnFollower(partitionConsumptionState);
+          // Persist updated leaderTopic so blob transfer copies correct state
+          storageMetadataService.put(kafkaVersionTopic, partition, partitionConsumptionState.getOffsetRecord());
         }
         // Make sure we stop consuming from leader upstream before we switch heartbeat monitoring.
         getHeartbeatMonitoringService().updateLagMonitor(
@@ -777,9 +782,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           break;
       }
     }
-    if (isMetricsEmissionEnabled()) {
-      hostLevelIngestionStats
-          .recordCheckLongRunningTasksLatency(LatencyUtils.getElapsedTimeFromNSToMS(checkStartTimeInNS));
+    double checkLatency = LatencyUtils.getElapsedTimeFromNSToMS(checkStartTimeInNS);
+    versionedIngestionStats.recordLongRunningTaskCheckTime(storeName, versionNumber, checkLatency);
+    if (isEmitTehutiMetricsEnabled()) {
+      hostLevelIngestionStats.recordCheckLongRunningTasksLatency(checkLatency);
     }
 
     if (pushTimeout) {
@@ -795,6 +801,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // For current / backup version, a replica's re-bootstrap timeout should not incur whole SIT closure.
         for (int partition: timeoutPartitions) {
           reportError(errorMsg, partition, ex);
+        }
+        versionedIngestionStats.recordIngestionFailureCount(
+            getStoreName(),
+            getVersionNumber(),
+            VeniceIngestionFailureReason.SERVING_VERSION_BOOTSTRAP_TIMEOUT);
+        if (isEmitTehutiMetricsEnabled()) {
+          hostLevelIngestionStats.recordIngestionFailure();
         }
       } else {
         throw ex;
@@ -1402,9 +1415,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private boolean isConsumingFromRemoteVersionTopic(PartitionConsumptionState partitionConsumptionState) {
-    return !partitionConsumptionState.isEndOfPushReceived() && !isCurrentVersion.getAsBoolean()
-    // Do not enable remote consumption for the source fabric leader. Otherwise, it will produce extra messages.
-        && !Objects.equals(nativeReplicationSourceVersionTopicKafkaURL, localKafkaServer);
+    if (partitionConsumptionState.isEndOfPushReceived() || isCurrentVersion.getAsBoolean()) {
+      return false;
+    }
+    /**
+     * Resolve the NR source URL through the cluster URL resolver before comparing with localKafkaServer.
+     * The parent controller may set pushStreamSourceAddress using a different protocol address (e.g. plaintext)
+     * than the server's resolved local Kafka URL (e.g. SSL), causing a false mismatch.
+     */
+    String resolvedSourceUrl = kafkaClusterUrlResolver != null
+        ? kafkaClusterUrlResolver.apply(nativeReplicationSourceVersionTopicKafkaURL)
+        : nativeReplicationSourceVersionTopicKafkaURL;
+    return !Objects.equals(resolvedSourceUrl, localKafkaServer);
   }
 
   private boolean isLeaderConsumingRemoteRealTimeTopic(PartitionConsumptionState partitionConsumptionState) {
@@ -1966,8 +1988,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     long beforeProduceTimestampNS = System.nanoTime();
     produceFunction.accept(callback, leaderMetadataWrapper);
-    getHostLevelIngestionStats()
-        .recordLeaderProduceLatency(LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS));
+    double enqueueLatency = LatencyUtils.getElapsedTimeFromNSToMS(beforeProduceTimestampNS);
+    getHostLevelIngestionStats().recordLeaderProduceLatency(enqueueLatency);
+    getVersionIngestionStats().recordProducerEnqueueTime(storeName, versionNumber, enqueueLatency);
 
     try {
       if (shouldSendGlobalRtDiv(consumerRecord, partitionConsumptionState, kafkaUrl)) {
@@ -2157,6 +2180,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (partitionConsumptionState.consumeRemotely()
             && currentLeaderTopic.isVersionTopicOrStreamReprocessingTopic()) {
           if (partitionConsumptionState.skipKafkaMessage()) {
+            /**
+             * Regional system stores (meta_store, push_status_store) have their NR source set to
+             * a remote region. After consuming EOP from the remote VT, skipKafkaMessage is set to
+             * filter out subsequent messages. The TopicSwitch on the remote VT points to the remote
+             * region's RT, but each region must consume its own local RT. By skipping all post-EOP
+             * messages (including the remote TopicSwitch), the leader falls through to
+             * checkLongRunningTaskState() which switches to the local VT where the local
+             * controller's TopicSwitch correctly points to the local RT.
+             */
             String msg = "Skipping messages after EOP in remote version topic. Replica: "
                 + partitionConsumptionState.getReplicaId();
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
@@ -2313,6 +2345,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  /**
+   * Records leader/follower throughput breakdown. These Tehuti host-level calls are intentionally NOT gated by
+   * {@link #emitTehutiMetrics} — they are throughput rate counters (same as {@code recordTotalRecordsConsumed} and
+   * {@code recordTotalBytesConsumed}) that must aggregate across all versions to provide accurate host-level rates.
+   */
   @Override
   protected void recordProcessedRecordStats(
       PartitionConsumptionState partitionConsumptionState,
@@ -2349,10 +2386,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return (double) recordSize / getMaxRecordSizeBytes();
   }
 
+  /** Records the ratio of assembled record size to the configured maximum. */
   @Override
   protected final void recordAssembledRecordSizeRatio(double ratio, long currentTimeMs) {
     if (getMaxRecordSizeBytes() != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE && ratio > 0) {
-      hostLevelIngestionStats.recordAssembledRecordSizeRatio(ratio, currentTimeMs);
+      versionedIngestionStats.recordAssembledSizeRatio(storeName, versionNumber, ratio);
+      if (isEmitTehutiMetricsEnabled()) {
+        hostLevelIngestionStats.recordAssembledRecordSizeRatio(ratio, currentTimeMs);
+      }
     }
   }
 
@@ -2372,25 +2413,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           regionLocality);
       hostLevelIngestionStats.recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize, currentTimeMs);
     }
-  }
-
-  /**
-   * Finds the Kafka cluster ID for the local region. Each region has exactly one primary Kafka
-   * cluster whose alias matches the region name. Separate RT topic clusters for incremental pushes
-   * use a "{region}_sep" alias convention and are treated as distinct regions, so they won't match.
-   *
-   * @return the local cluster ID, or -1 if not found
-   */
-  static int computeLocalKafkaClusterId(Int2ObjectMap<String> clusterIdToAlias, String localRegionName) {
-    if (localRegionName == null || localRegionName.isEmpty()) {
-      return -1;
-    }
-    for (Int2ObjectMap.Entry<String> entry: clusterIdToAlias.int2ObjectEntrySet()) {
-      if (localRegionName.equals(entry.getValue())) {
-        return entry.getIntKey();
-      }
-    }
-    return -1;
   }
 
   @Override
@@ -2939,7 +2961,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     .asyncSendControlMessage(
                         controlMessage,
                         versionTopicPartitionToBeProduced,
-                        new HashMap<>(),
+                        Collections.emptyMap(),
                         callback,
                         leaderMetadataWrapper),
                 partition,
@@ -2971,7 +2993,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     .asyncSendControlMessage(
                         controlMessage,
                         consumerRecord.getTopicPartition().getPartitionNumber(),
-                        new HashMap<>(),
+                        Collections.emptyMap(),
                         callback,
                         DEFAULT_LEADER_METADATA_WRAPPER),
                 partition,
@@ -2989,7 +3011,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     .asyncSendControlMessage(
                         controlMessage,
                         consumerRecord.getTopicPartition().getPartitionNumber(),
-                        new HashMap<>(),
+                        Collections.emptyMap(),
                         callback,
                         DEFAULT_LEADER_METADATA_WRAPPER),
                 partition,
@@ -3052,7 +3074,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     try {
-      PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed VT position
+      // VT DIV contains the latest consumed VT position (LCVP)
+      PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true);
       CompletableFuture<Void> lastFuture = pcs.getLastQueuedRecordPersistedFuture();
       storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
       // Reset consumer-side VT bytes so the size-based condition in shouldSyncOffsetFromSnapshot does not keep
@@ -3148,8 +3171,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (lastFuture != null) {
           long synchronizeStartTimeInNS = System.nanoTime();
           lastFuture.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
-          hostLevelIngestionStats
-              .recordLeaderProducerSynchronizeLatency(LatencyUtils.getElapsedTimeFromNSToMS(synchronizeStartTimeInNS));
+          double syncLatency = LatencyUtils.getElapsedTimeFromNSToMS(synchronizeStartTimeInNS);
+          hostLevelIngestionStats.recordLeaderProducerSynchronizeLatency(syncLatency);
+          versionedIngestionStats.recordProducerSynchronizeTime(storeName, versionNumber, syncLatency);
         }
       } catch (InterruptedException e) {
         LOGGER.warn(
@@ -3316,7 +3340,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         long startTimeInNS = System.nanoTime();
         // We need to expand the front of the returned bytebuffer to make room for schema header insertion
         ByteBuffer result = compressor.get().compress(data, ByteUtils.SIZE_OF_INT);
-        hostLevelIngestionStats.recordLeaderCompressLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
+        double compressLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
+        hostLevelIngestionStats.recordLeaderCompressLatency(compressLatency);
+        versionedIngestionStats.recordProducerCompressTime(storeName, versionNumber, compressLatency);
         return result;
       } catch (IOException e) {
         // throw a loud exception if something goes wrong here
@@ -3459,8 +3485,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               update.updateSchemaId,
               readerUpdateProtocolVersion);
           updatedValueBytes = compressor.get().compress(writeComputeResult.getUpdatedValueBytes());
-          hostLevelIngestionStats
-              .recordWriteComputeUpdateLatency(LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS));
+          double wcUpdateLatency = LatencyUtils.getElapsedTimeFromNSToMS(writeComputeStartTimeInNS);
+          hostLevelIngestionStats.recordWriteComputeUpdateLatency(wcUpdateLatency);
+          versionedIngestionStats
+              .recordPartialUpdateTime(storeName, versionNumber, VenicePartialUpdateOperation.UPDATE, wcUpdateLatency);
         } catch (Exception e) {
           setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
           throw new RuntimeException(e);
@@ -3757,7 +3785,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
 
     // Snapshot the RT DIV (single broker URL) in preparation to be produced
-    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition); // has latest consumed vt position (LCVP)
+    // VT DIV contains the latest consumed VT position (LCVP)
+    PartitionTracker vtDiv = consumerDiv.cloneVtProducerStates(partition, true);
     PartitionTracker rtDiv = consumerDiv.cloneRtProducerStates(partition, brokerUrl);
     Map<CharSequence, ProducerPartitionState> rtDivPartitionStates = rtDiv.getPartitionStates(realTimeTopicType);
 
@@ -3958,6 +3987,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition topicPartition,
       ChunkedValueManifestContainer manifestContainer) {
     final GenericRecord currValue;
+    hostLevelIngestionStats.recordWriteComputeLookupCount();
     PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
     if (transientRecord == null) {
       try {
@@ -3975,14 +4005,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 storeDeserializerCache,
                 compressor.get(),
                 manifestContainer));
-        hostLevelIngestionStats
-            .recordWriteComputeLookUpLatency(LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS));
+        double wcLookupLatency = LatencyUtils.getElapsedTimeFromNSToMS(lookupStartTimeInNS);
+        hostLevelIngestionStats.recordWriteComputeLookUpLatency(wcLookupLatency);
+        versionedIngestionStats
+            .recordPartialUpdateTime(storeName, versionNumber, VenicePartialUpdateOperation.QUERY, wcLookupLatency);
       } catch (Exception e) {
         setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code);
         throw e;
       }
     } else {
       hostLevelIngestionStats.recordWriteComputeCacheHitCount();
+      versionedIngestionStats.recordPartialUpdateCacheHitCount(storeName, versionNumber);
       // construct currValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
         try {
@@ -4482,9 +4515,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
       viewWriterFutures[index++] = viewWriterRecordProcessor.apply(writer, viewPartitionSet);
     }
-    hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+    double viewProduceLatency = LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime);
+    hostLevelIngestionStats.recordViewProducerLatency(viewProduceLatency);
+    versionedIngestionStats.recordViewWriterProduceTime(storeName, versionNumber, viewProduceLatency);
     CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
-      hostLevelIngestionStats.recordViewProducerAckLatency(LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime));
+      double viewAckLatency = LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime);
       if (exception == null) {
         versionTopicWrite.run();
         currentVersionTopicWrite.complete(null);
@@ -4493,6 +4528,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
         currentVersionTopicWrite.completeExceptionally(veniceException);
       }
+      hostLevelIngestionStats.recordViewProducerAckLatency(viewAckLatency);
+      versionedIngestionStats.recordViewWriterAckTime(storeName, versionNumber, viewAckLatency);
     });
 
     partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);

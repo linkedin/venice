@@ -9,7 +9,6 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.AdminTool;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -18,11 +17,11 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -83,17 +82,7 @@ public class StoreMetadataRecoveryTest {
     parentKafkaUrl = twoLayerClusterWrapper.getParentKafkaBrokerWrapper().getAddress();
     childControllerUrl = multiClusterWrapper.getControllerConnectString();
 
-    for (String cluster: clusterNames) {
-      try (ControllerClient controllerClient = new ControllerClient(cluster, childControllerUrl)) {
-        // Verify the participant store is up and running in child region
-        String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster);
-        TestUtils.waitForNonDeterministicPushCompletion(
-            Version.composeKafkaTopic(participantStoreName, 1),
-            controllerClient,
-            5,
-            TimeUnit.MINUTES);
-      }
-    }
+    IntegrationTestUtils.waitForParticipantStorePush(clusterNames, childControllerUrl);
   }
 
   @AfterClass(alwaysRun = true)

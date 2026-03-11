@@ -14,7 +14,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -22,6 +21,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
@@ -105,23 +105,7 @@ public class TestStoreMigrationMultiRegion {
     multiClusterWrapper1 = twoLayerMultiRegionMultiClusterWrapper.getChildRegions().get(1);
     childControllerUrl1 = multiClusterWrapper1.getControllerConnectString();
 
-    for (String cluster: clusterNames) {
-      try (ControllerClient controllerClient0 = new ControllerClient(cluster, childControllerUrl0);
-          ControllerClient controllerClient1 = new ControllerClient(cluster, childControllerUrl1)) {
-        // Verify the participant store is up and running in child region
-        String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster);
-        TestUtils.waitForNonDeterministicPushCompletion(
-            Version.composeKafkaTopic(participantStoreName, 1),
-            controllerClient0,
-            3,
-            TimeUnit.MINUTES);
-        TestUtils.waitForNonDeterministicPushCompletion(
-            Version.composeKafkaTopic(participantStoreName, 1),
-            controllerClient1,
-            3,
-            TimeUnit.MINUTES);
-      }
-    }
+    IntegrationTestUtils.waitForParticipantStorePush(clusterNames, childControllerUrl0, childControllerUrl1);
   }
 
   @AfterClass(alwaysRun = true)

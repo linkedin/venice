@@ -516,100 +516,105 @@ public class RetriableAvroGenericStoreClientTest {
     double expectedKeyCount = (batchGet || computeRequest) ? 2.0 : 1.0;
 
     String finalMetricsPrefix = metricsPrefix;
+    // All metric assertions must be inside waitForNonDeterministicAssertion because metrics are
+    // recorded asynchronously in completion callbacks. The request future resolves before all
+    // metrics are fully recorded, causing race conditions with synchronous assertions.
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
       assertTrue(metrics.get(finalMetricsPrefix + "request.OccurrenceRate").value() > 0);
-    });
-    assertEquals(metrics.get(metricsPrefix + "request_key_count.Max").value(), expectedKeyCount);
+      assertEquals(metrics.get(finalMetricsPrefix + "request_key_count.Max").value(), expectedKeyCount);
 
-    if (noReplicaFound) {
-      assertTrue(metrics.get(metricsPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
-    } else if (errorRetry || longTailRetry) {
-      assertFalse(metrics.get(metricsPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
-      if (errorRetry) {
-        assertTrue(metrics.get(metricsPrefix + "error_retry_request.OccurrenceRate").value() > 0);
+      if (noReplicaFound) {
+        assertTrue(metrics.get(metricsPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
+      } else if (errorRetry || longTailRetry) {
+        assertFalse(metrics.get(metricsPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
+        if (errorRetry) {
+          assertTrue(metrics.get(metricsPrefix + "error_retry_request.OccurrenceRate").value() > 0);
+          assertFalse(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
+        } else {
+          assertFalse(metrics.get(metricsPrefix + "error_retry_request.OccurrenceRate").value() > 0);
+          assertTrue(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
+        }
+        assertTrue(metrics.get(metricsPrefix + "retry_request_key_count.Rate").value() > 0);
+        assertEquals(metrics.get(metricsPrefix + "retry_request_key_count.Max").value(), expectedKeyCount);
+      } else {
+        assertFalse(metrics.get(metricsPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
         assertFalse(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
-      } else {
         assertFalse(metrics.get(metricsPrefix + "error_retry_request.OccurrenceRate").value() > 0);
-        assertTrue(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
+        assertFalse(metrics.get(metricsPrefix + "retry_request_key_count.Rate").value() > 0);
+        assertFalse(metrics.get(metricsPrefix + "retry_request_key_count.Max").value() > 0);
       }
-      assertTrue(metrics.get(metricsPrefix + "retry_request_key_count.Rate").value() > 0);
-      assertEquals(metrics.get(metricsPrefix + "retry_request_key_count.Max").value(), expectedKeyCount);
-    } else {
-      assertFalse(metrics.get(metricsPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
-      assertFalse(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
-      assertFalse(metrics.get(metricsPrefix + "error_retry_request.OccurrenceRate").value() > 0);
-      assertFalse(metrics.get(metricsPrefix + "retry_request_key_count.Rate").value() > 0);
-      assertFalse(metrics.get(metricsPrefix + "retry_request_key_count.Max").value() > 0);
-    }
 
-    // errorRetry is only for single gets
-    if (singleGet) {
-      if (errorRetry) {
-        assertTrue(metrics.get(metricsPrefix + "error_retry_request.OccurrenceRate").value() > 0);
-        assertTrue(getRequestContext.retryContext.errorRetryRequestTriggered);
-      } else {
-        assertFalse(metrics.get(metricsPrefix + "error_retry_request.OccurrenceRate").value() > 0);
-        assertTrue(
-            getRequestContext.retryContext == null || !getRequestContext.retryContext.errorRetryRequestTriggered);
-      }
-    }
-
-    // longTailRetry is for both single get, batch gets and compute
-    if (longTailRetry) {
-      assertTrue(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
-      if (batchGet) {
-        assertNotNull(batchGetRequestContext.retryContext.retryRequestContext);
-        assertEquals(batchGetRequestContext.retryContext.retryRequestContext.numKeysInRequest, (int) expectedKeyCount);
-
-        // Check retry budget metrics
-        String batchGetRetryBudgetMetricName =
-            "." + RetriableAvroGenericStoreClient.MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName()
-                + "--retry_limit_per_seconds.Gauge";
-        // Batch get retry manager is always initialized now
-        assertNotNull(metrics.get(batchGetRetryBudgetMetricName), "Retry limit per second metric should not be null");
-      } else if (singleGet) {
-        assertTrue(getRequestContext.retryContext.longTailRetryRequestTriggered);
-        // Check retry budget metrics
-        String singleGetRetryBudgetMetricName =
-            "." + RetriableAvroGenericStoreClient.SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName()
-                + "--retry_limit_per_seconds.Gauge";
-        if (isRetryBudgetEnabled()) {
-          assertNotNull(
-              metrics.get(singleGetRetryBudgetMetricName),
-              "Retry limit per second metric should not be null");
-        }
-      }
-    } else {
-      assertFalse(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
-      if (batchGet) {
-        assertNull(batchGetRequestContext.retryContext.retryRequestContext);
-      } else if (singleGet) {
-        assertTrue(
-            getRequestContext.retryContext == null || !getRequestContext.retryContext.longTailRetryRequestTriggered);
-      }
-    }
-
-    if (!noReplicaFound) {
-      if (retryWin) {
-        assertTrue(metrics.get(metricsPrefix + "retry_request_win.OccurrenceRate").value() > 0);
-        assertEquals(metrics.get(metricsPrefix + "retry_request_success_key_count.Max").value(), expectedKeyCount);
-        if (batchGet) {
-          assertTrue(batchGetRequestContext.retryContext.retryRequestContext.numKeysCompleted.get() > 0);
-        } else if (singleGet) {
-          assertTrue(getRequestContext.retryContext.retryWin);
-        }
-      } else {
-        assertFalse(metrics.get(metricsPrefix + "retry_request_win.OccurrenceRate").value() > 0);
-        assertFalse(metrics.get(metricsPrefix + "retry_request_success_key_count.Max").value() > 0);
-        if (batchGet) {
+      // errorRetry is only for single gets
+      if (singleGet) {
+        if (errorRetry) {
+          assertTrue(metrics.get(metricsPrefix + "error_retry_request.OccurrenceRate").value() > 0);
+          assertTrue(getRequestContext.retryContext.errorRetryRequestTriggered);
+        } else {
+          assertFalse(metrics.get(metricsPrefix + "error_retry_request.OccurrenceRate").value() > 0);
           assertTrue(
-              batchGetRequestContext.retryContext.retryRequestContext == null
-                  || batchGetRequestContext.retryContext.retryRequestContext.numKeysCompleted.get() == 0);
-        } else if (singleGet) {
-          assertTrue(getRequestContext.retryContext == null || !getRequestContext.retryContext.retryWin);
+              getRequestContext.retryContext == null || !getRequestContext.retryContext.errorRetryRequestTriggered);
         }
       }
-    }
+
+      // longTailRetry is for both single get, batch gets and compute
+      if (longTailRetry) {
+        assertTrue(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
+        if (batchGet) {
+          assertNotNull(batchGetRequestContext.retryContext.retryRequestContext);
+          assertEquals(
+              batchGetRequestContext.retryContext.retryRequestContext.numKeysInRequest,
+              (int) expectedKeyCount);
+
+          // Check retry budget metrics
+          String batchGetRetryBudgetMetricName =
+              "." + RetriableAvroGenericStoreClient.MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName()
+                  + "--retry_limit_per_seconds.Gauge";
+          // Batch get retry manager is always initialized now
+          assertNotNull(metrics.get(batchGetRetryBudgetMetricName), "Retry limit per second metric should not be null");
+        } else if (singleGet) {
+          assertTrue(getRequestContext.retryContext.longTailRetryRequestTriggered);
+          // Check retry budget metrics
+          String singleGetRetryBudgetMetricName =
+              "." + RetriableAvroGenericStoreClient.SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX
+                  + clientConfig.getStoreName() + "--retry_limit_per_seconds.Gauge";
+          if (isRetryBudgetEnabled()) {
+            assertNotNull(
+                metrics.get(singleGetRetryBudgetMetricName),
+                "Retry limit per second metric should not be null");
+          }
+        }
+      } else {
+        assertFalse(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
+        if (batchGet) {
+          assertNull(batchGetRequestContext.retryContext.retryRequestContext);
+        } else if (singleGet) {
+          assertTrue(
+              getRequestContext.retryContext == null || !getRequestContext.retryContext.longTailRetryRequestTriggered);
+        }
+      }
+
+      if (!noReplicaFound) {
+        if (retryWin) {
+          assertTrue(metrics.get(metricsPrefix + "retry_request_win.OccurrenceRate").value() > 0);
+          assertEquals(metrics.get(metricsPrefix + "retry_request_success_key_count.Max").value(), expectedKeyCount);
+          if (batchGet) {
+            assertTrue(batchGetRequestContext.retryContext.retryRequestContext.numKeysCompleted.get() > 0);
+          } else if (singleGet) {
+            assertTrue(getRequestContext.retryContext.retryWin);
+          }
+        } else {
+          assertFalse(metrics.get(metricsPrefix + "retry_request_win.OccurrenceRate").value() > 0);
+          assertFalse(metrics.get(metricsPrefix + "retry_request_success_key_count.Max").value() > 0);
+          if (batchGet) {
+            assertTrue(
+                batchGetRequestContext.retryContext.retryRequestContext == null
+                    || batchGetRequestContext.retryContext.retryRequestContext.numKeysCompleted.get() == 0);
+          } else if (singleGet) {
+            assertTrue(getRequestContext.retryContext == null || !getRequestContext.retryContext.retryWin);
+          }
+        }
+      }
+    });
   }
 
   /**

@@ -83,7 +83,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     String keySchemaStr = "\"string\"";
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
-    storeParms.setTargetRegionSwapWaitTime(1);
+    storeParms.setTargetRegionSwapWaitTime(60);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
@@ -99,14 +99,14 @@ public class TestDeferredVersionSwapWithFailingRegions {
       }
 
       // Wait for job to fail
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         JobStatusQueryResponse jobStatusQueryResponse = assertCommand(
             parentControllerClient.queryOverallJobStatus(Version.composeKafkaTopic(storeName, 1), Optional.empty()));
         ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
         assertEquals(executionStatus, ExecutionStatus.ERROR);
       });
 
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
@@ -115,8 +115,9 @@ public class TestDeferredVersionSwapWithFailingRegions {
         });
       });
 
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+        Assert.assertTrue(parentStore.getVersion(1).isPresent(), "Version 1 should exist");
         Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.KILLED);
       });
 
@@ -138,7 +139,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testDvcDelayedIngestionWithFailingPushInTargetRegion() throws Exception {
     setUpCluster();
 
@@ -167,7 +168,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
           TimeUnit.SECONDS);
 
       // Version should only be swapped in all regions
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
@@ -190,7 +191,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
         .build();
     DaVinciClient<Object, Object> client1 =
         ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster1, new DaVinciConfig(), backendConfig);
-    client1.subscribeAll().get();
+    client1.subscribeAll().get(60, TimeUnit.SECONDS);
 
     // Check that v1 is ingested
     for (int i = 1; i <= keyCount; i++) {
@@ -217,7 +218,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
       }
 
       // Version shouldn't be swapped in any region
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
         Map<String, Integer> coloVersions =
             parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
@@ -227,20 +228,21 @@ public class TestDeferredVersionSwapWithFailingRegions {
       });
 
       // Version status should be ERROR
-      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, true, () -> {
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+        Assert.assertTrue(parentStore.getVersion(2).isPresent(), "Version 2 should exist");
         Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.KILLED);
       });
 
       // verify that dvc client did not ingest the version
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         for (int i = 101; i <= keyCount2; i++) {
           assertNull(client1.get(i).get());
         }
       });
 
       // Wait for push completion
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         String kafkaTopicName = Version.composeKafkaTopic(storeName, 2);
         JobStatusQueryResponse response =
             parentControllerClient.queryOverallJobStatus(kafkaTopicName, Optional.empty());
@@ -277,26 +279,28 @@ public class TestDeferredVersionSwapWithFailingRegions {
   private void verifyThatPushStatusStoreIsOnline(String storeName) {
     for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
       String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
-      ControllerClient childControllerClient =
-          new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = childControllerClient.getStore(pushStatusStoreName);
-        Assert.assertFalse(storeResponse.isError());
-        Assert.assertTrue(storeResponse.getStore().getCurrentVersion() > 0, pushStatusStoreName + " is not ready");
-      });
+      try (ControllerClient childControllerClient =
+          new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString())) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(pushStatusStoreName);
+          Assert.assertFalse(storeResponse.isError());
+          Assert.assertTrue(storeResponse.getStore().getCurrentVersion() > 0, pushStatusStoreName + " is not ready");
+        });
+      }
     }
   }
 
   private void verifyThatMetaStoreIsOnline(String storeName) {
     for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
       String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-      ControllerClient childControllerClient =
-          new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = childControllerClient.getStore(metaStoreName);
-        Assert.assertFalse(storeResponse.isError());
-        Assert.assertTrue(storeResponse.getStore().getCurrentVersion() > 0, metaStoreName + " is not ready");
-      });
+      try (ControllerClient childControllerClient =
+          new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString())) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(metaStoreName);
+          Assert.assertFalse(storeResponse.isError());
+          Assert.assertTrue(storeResponse.getStore().getCurrentVersion() > 0, metaStoreName + " is not ready");
+        });
+      }
     }
   }
 }

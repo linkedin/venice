@@ -62,9 +62,11 @@ public class TestStaleDataVisibility extends AbstractMultiRegionTest {
           Version.composeKafkaTopic(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName), 1);
       String metaStoreVersionName =
           Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
+      // Use retryOnThrowable=true because the controller may return HTTP 500 (NPE on
+      // Version.getStatus()) while system store version metadata is still propagating.
       TestUtils
-          .waitForNonDeterministicPushCompletion(pushStatusStoreVersionName, controllerClient, 1, TimeUnit.MINUTES);
-      TestUtils.waitForNonDeterministicPushCompletion(metaStoreVersionName, controllerClient, 1, TimeUnit.MINUTES);
+          .waitForNonDeterministicPushCompletion(pushStatusStoreVersionName, controllerClient, 2, TimeUnit.MINUTES);
+      TestUtils.waitForNonDeterministicPushCompletion(metaStoreVersionName, controllerClient, 2, TimeUnit.MINUTES);
     }
 
     try (VenicePushJob job = new VenicePushJob("Test push job", props)) {

@@ -238,7 +238,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
         .handle((inputStream, throwable) -> {
           updateBlobTransferResponseStats(throwable, storeName, versionNumber);
           if (throwable != null) {
-            LOGGER.error(
+            LOGGER.warn(
                 "Failed to bootstrap replica {} via blob transfer due to exception {}; will start Kafka ingestion unless cancelled.",
                 replicaId,
                 throwable);
@@ -528,6 +528,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
   @Override
   public void shutdownIngestionTask(String topicName) {
     getStoreIngestionService().shutdownStoreIngestionTask(topicName);
+    // Clean up per-replica state to prevent stale RUNNING state from blocking re-subscription on restart
+    String replicaPrefix = topicName + "-";
+    replicaContexts.keySet().removeIf(replicaId -> replicaId.startsWith(replicaPrefix));
+    consumptionLocks.keySet().removeIf(replicaId -> replicaId.startsWith(replicaPrefix));
   }
 
   @Override
@@ -667,10 +671,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
     return context == null ? ReplicaIntendedState.NOT_EXIST : context.state;
   }
 
-  void removeReplicaConsumptionContext(String replicaId) {
-    replicaContexts.remove(replicaId);
-  }
-
   /**
    * This method is used to sync the store version config with on the store metadata obtained from ZK.
    * VeniceStoreVersionConfig was introduced to allow store-version level configs be configurable via a config file.
@@ -736,8 +736,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
 
     // For DaVinci clients, use the store's blob transfer enabled flag
     if (isDaVinciClient) {
+      if (storeIngestionService.isBlobTransferDisabledForStore(store.getName())) {
+        LOGGER.debug("Blob transfer disabled for store {} (version-specific or stateless client)", store.getName());
+        return false;
+      }
       boolean blobTransferEnabledForDVC = store.isBlobTransferEnabled();
-      LOGGER.info("DaVinci client detected. Blob transfer enabled {}", blobTransferEnabledForDVC);
+      LOGGER.debug("DaVinci client detected. Blob transfer enabled {}", blobTransferEnabledForDVC);
       return blobTransferEnabledForDVC;
     }
 

@@ -62,6 +62,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_RE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
@@ -238,12 +239,18 @@ public class VenicePushJob implements AutoCloseable {
   private VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter;
   /** TODO: refactor to use {@link Lazy} */
 
+  // Externally provided D2Client for controller discovery (optional).
+  // When non-null, VPJ uses this instead of creating one via D2ClientFactory.
+  // The caller is responsible for managing the D2Client lifecycle.
+  private final D2Client externalD2Client;
+
   // Mutable state
   private ControllerClient controllerClient;
   private ControllerClient kmeSchemaSystemStoreControllerClient;
   private ControllerClient livenessHeartbeatStoreControllerClient;
 
   private DataWriterComputeJob dataWriterComputeJob = null;
+  private long incrementalPushThrottledTimeMs = 0;
 
   private InputDataInfoProvider inputDataInfoProvider;
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
@@ -272,7 +279,17 @@ public class VenicePushJob implements AutoCloseable {
    * @param vanillaProps  Property bag for the job
    */
   public VenicePushJob(String jobId, Properties vanillaProps) {
+    this(jobId, vanillaProps, null);
+  }
+
+  /**
+   * @param jobId  id of the job
+   * @param vanillaProps  Property bag for the job
+   * @param d2Client  externally managed D2Client for controller discovery, or null to use D2ClientFactory
+   */
+  public VenicePushJob(String jobId, Properties vanillaProps, D2Client d2Client) {
     this.jobId = jobId;
+    this.externalD2Client = d2Client;
     this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
     this.timeoutExecutor = Executors
         .newSingleThreadScheduledExecutor(new DaemonThreadFactory(this.getClass().getName() + "-VPJTimeoutExecutor"));
@@ -392,6 +409,8 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
+    pushJobSettingToReturn.repushUseFallbackValueSchemaId =
+        props.getBoolean(REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID, false);
     pushJobSettingToReturn.isCompliancePush = props.getBoolean(COMPLIANCE_PUSH, false);
     pushJobSettingToReturn.allowRegularPushWithTTLRepush = props.getBoolean(ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH, false);
     pushJobSettingToReturn.enableUncompressedRecordSizeLimit =
@@ -704,6 +723,33 @@ public class VenicePushJob implements AutoCloseable {
 
       if (pushJobSetting.isSourceKafka) {
         initKIFRepushDetails();
+        if (pushJobSetting.repushUseFallbackValueSchemaId) {
+          // Retrieve the latest value schema ID from the controller to use as a global fallback
+          // when per-record schema IDs are not embedded in the source version topic
+          // (put.getSchemaId() returns -1). This is opt-in because using the latest schema as
+          // the writer schema can produce incorrect data if the source records were written with
+          // an older, incompatible schema.
+          MultiSchemaResponse allSchemas = ControllerClient.retryableRequest(
+              controllerClient,
+              pushJobSetting.controllerRetries,
+              c -> c.getAllValueSchema(pushJobSetting.storeName));
+          if (allSchemas.isError()) {
+            throw new VeniceException(
+                "Failed to retrieve value schemas for store " + pushJobSetting.storeName + ": "
+                    + allSchemas.getError());
+          }
+          MultiSchemaResponse.Schema[] schemas = allSchemas.getSchemas();
+          if (schemas == null || schemas.length == 0) {
+            throw new VeniceException(
+                "No value schemas are registered for store " + pushJobSetting.storeName
+                    + "; cannot determine value schema ID for KIF repush.");
+          }
+          pushJobSetting.valueSchemaId = schemas[schemas.length - 1].getId();
+          LOGGER.info(
+              "Set fallback value schema ID to {} for KIF repush of store {}",
+              pushJobSetting.valueSchemaId,
+              pushJobSetting.storeName);
+        }
       }
 
       if (pushJobSetting.targetRegionPushWithDeferredSwapWaitTime > -1) {
@@ -1273,8 +1319,16 @@ public class VenicePushJob implements AutoCloseable {
       }
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATA_WRITER_JOB_COMPLETED);
     } finally {
+      if (dataWriterComputeJob != null && dataWriterComputeJob.getTaskTracker() != null) {
+        incrementalPushThrottledTimeMs = dataWriterComputeJob.getTaskTracker().getIncrementalPushThrottledTimeMs();
+      }
       Utils.closeQuietlyWithErrorLogged(dataWriterComputeJob);
     }
+  }
+
+  @VisibleForTesting
+  public long getIncrementalPushThrottledTimeMs() {
+    return incrementalPushThrottledTimeMs;
   }
 
   @VisibleForTesting
@@ -1469,8 +1523,7 @@ public class VenicePushJob implements AutoCloseable {
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
     if (useD2ControllerClient) {
-      // TODO: we probably need to provide more for constructing d2Client here.
-      D2Client d2Client = D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
+      D2Client d2Client = resolveD2Client(d2ZkHosts, sslFactory);
       return D2ControllerClientFactory
           .discoverAndConstructControllerClient(storeName, controllerD2ServiceName, retryAttempts, d2Client);
     } else {
@@ -1480,6 +1533,11 @@ public class VenicePushJob implements AutoCloseable {
           sslFactory,
           retryAttempts);
     }
+  }
+
+  // Visible for testing
+  D2Client resolveD2Client(String d2ZkHosts, Optional<SSLFactory> sslFactory) {
+    return externalD2Client != null ? externalD2Client : D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
   }
 
   private Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
@@ -1711,6 +1769,11 @@ public class VenicePushJob implements AutoCloseable {
         } else {
           summaryLogLines.add("Zstd Dictionary creation Failed");
         }
+      }
+
+      long taskIncrementalPushThrottledTimeMs = taskTracker.getIncrementalPushThrottledTimeMs();
+      if (taskIncrementalPushThrottledTimeMs > 0) {
+        summaryLogLines.add("Incremental push total throttle time: " + taskIncrementalPushThrottledTimeMs + " ms");
       }
 
       LOGGER.info("Data writer job summary: \n\t{}", StringUtils.join(summaryLogLines, "\n\t"));

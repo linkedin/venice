@@ -6,6 +6,7 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.stats.dimensions.VeniceIngestionFailureReason;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Map;
 import java.util.Optional;
@@ -99,6 +100,11 @@ public interface StoreIngestionService {
   void recordIngestionFailure(String storeName);
 
   /**
+   * Records an ingestion failure with version-level OTel metrics including the failure reason dimension.
+   */
+  void recordIngestionFailure(String storeName, int version, VeniceIngestionFailureReason reason);
+
+  /**
    * Get AggVersionedStorageIngestionStats
    * @return an instance of {@link AggVersionedIngestionStats}
    */
@@ -115,4 +121,14 @@ public interface StoreIngestionService {
       int partitionId,
       Map<Integer, Long> timestampMap,
       Map<Integer, PubSubPosition> pubSubPosition);
+
+  default void registerBlobTransferDisabled(String storeName) {
+  }
+
+  default void unregisterBlobTransferDisabled(String storeName) {
+  }
+
+  default boolean isBlobTransferDisabledForStore(String storeName) {
+    return false;
+  }
 }

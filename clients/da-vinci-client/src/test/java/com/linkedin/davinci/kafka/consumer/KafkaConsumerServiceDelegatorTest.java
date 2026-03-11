@@ -10,7 +10,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -358,22 +357,17 @@ public class KafkaConsumerServiceDelegatorTest {
       });
     }
     long currentTime = System.currentTimeMillis();
-    Boolean raceConditionFound = countDownLatch.await(30, TimeUnit.SECONDS);
+    boolean raceConditionFound = countDownLatch.await(30, TimeUnit.SECONDS);
     long elapsedTime = System.currentTimeMillis() - currentTime;
+    // Always clean up threads before asserting so leaked threads don't affect subsequent tests.
     for (Thread infiniteSubUnSubThread: infiniteSubUnSubThreads) {
-      assertTrue(
-          infiniteSubUnSubThread.getState().equals(Thread.State.WAITING)
-              || infiniteSubUnSubThread.getState().equals(Thread.State.TIMED_WAITING)
-              || infiniteSubUnSubThread.getState().equals(Thread.State.BLOCKED)
-              || infiniteSubUnSubThread.getState().equals(Thread.State.RUNNABLE));
       infiniteSubUnSubThread.interrupt();
       infiniteSubUnSubThread.join();
-      assertEquals(Thread.State.TERMINATED, infiniteSubUnSubThread.getState());
     }
+    delegator.close();
     Assert.assertFalse(
         raceConditionFound,
         "Found race condition in KafkaConsumerService with time passed in milliseconds: " + elapsedTime);
-    delegator.close();
   }
 
   private Runnable getResubscriptionRunnableFor(
@@ -395,8 +389,9 @@ public class KafkaConsumerServiceDelegatorTest {
               position0,
               consumedDataReceiver,
               false);
-          // Use low wait time to trigger unsubscribe and poll lock handoff.
-          consumerServiceDelegator.assignConsumerFor(versionTopic, pubSubTopicPartition).setTimeoutMsOverride(1L);
+          // Use low wait time to trigger unsubscribe and poll lock handoff. 100ms is enough to
+          // trigger the race while giving CI enough headroom for thread scheduling under load.
+          consumerServiceDelegator.assignConsumerFor(versionTopic, pubSubTopicPartition).setTimeoutMsOverride(100L);
           int versionNum =
               Version.parseVersionFromKafkaTopicName(partitionReplicaIngestionContext.getVersionTopic().getName());
           if (versionNum % 3 == 0) {

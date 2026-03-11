@@ -21,6 +21,9 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_FAU
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
@@ -48,6 +51,7 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.PushJobCheckpoints;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -552,5 +556,77 @@ public class TestVeniceControllerClusterConfig {
 
     VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
     assertEquals(clusterConfig.getControllerHelixParticipantDeregistrationTimeoutMs(), 60000L);
+  }
+
+  @Test
+  public void testShouldUseAlternativePubSubBackend_AllDisabledByDefault() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName("MY_STORE");
+    String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("MY_STORE");
+
+    // All topic types should default to false
+    assertFalse(config.shouldUseAlternativePubSubBackend(metaStoreName, false));
+    assertFalse(config.shouldUseAlternativePubSubBackend(metaStoreName, true));
+    assertFalse(config.shouldUseAlternativePubSubBackend(pushStatusStoreName, false));
+    assertFalse(config.shouldUseAlternativePubSubBackend(pushStatusStoreName, true));
+    assertFalse(config.shouldUseAlternativePubSubBackend("userStore", false));
+    assertFalse(config.shouldUseAlternativePubSubBackend("userStore", true));
+  }
+
+  @Test
+  public void testShouldUseAlternativePubSubBackend_MetaStoreVT() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT, "true");
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+
+    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName("MY_STORE");
+
+    // Meta store VT should be enabled
+    assertTrue(config.shouldUseAlternativePubSubBackend(metaStoreName, false));
+    // Meta store RT should NOT be enabled (only VT flag is set)
+    assertFalse(config.shouldUseAlternativePubSubBackend(metaStoreName, true));
+    // User store should not be affected
+    assertFalse(config.shouldUseAlternativePubSubBackend("userStore", false));
+  }
+
+  @Test
+  public void testShouldUseAlternativePubSubBackend_UserStoreRT() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT, "true");
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+
+    // User store RT should be enabled
+    assertTrue(config.shouldUseAlternativePubSubBackend("userStore", true));
+    // User store VT should NOT be enabled
+    assertFalse(config.shouldUseAlternativePubSubBackend("userStore", false));
+  }
+
+  @Test
+  public void testShouldUseAlternativePubSubBackend_ExclusionList() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_USER_STORE_RT, "true");
+    baseProps.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "excludedStore,anotherExcluded");
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+
+    // Excluded store should return false even though user store RT is enabled
+    assertFalse(config.shouldUseAlternativePubSubBackend("excludedStore", true));
+    // Non-excluded store should still work
+    assertTrue(config.shouldUseAlternativePubSubBackend("notExcluded", true));
+
+    // Excluding a user store should NOT affect its system stores
+    Properties baseProps2 = getBaseSingleRegionProperties(false);
+    baseProps2.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT, "true");
+    baseProps2.put(CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_EXCLUSION_LIST, "excludedStore");
+    VeniceControllerClusterConfig config2 = new VeniceControllerClusterConfig(new VeniceProperties(baseProps2));
+
+    String metaStoreOfExcluded = VeniceSystemStoreType.META_STORE.getSystemStoreName("excludedStore");
+    String metaStoreOfAllowed = VeniceSystemStoreType.META_STORE.getSystemStoreName("allowedStore");
+    // System store is not in the exclusion list, so it should still use alternative backend
+    assertTrue(config2.shouldUseAlternativePubSubBackend(metaStoreOfExcluded, false));
+    assertTrue(config2.shouldUseAlternativePubSubBackend(metaStoreOfAllowed, false));
+    // The user store itself should be excluded
+    assertFalse(config2.shouldUseAlternativePubSubBackend("excludedStore", false));
   }
 }

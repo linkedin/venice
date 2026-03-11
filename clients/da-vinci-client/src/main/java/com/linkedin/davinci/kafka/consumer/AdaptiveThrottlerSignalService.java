@@ -63,12 +63,12 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
     this.updateService =
         Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("AdaptiveThrottlerSignalService"));
     this.heartbeatMonitoringService = heartbeatMonitoringService;
-    this.adaptiveThrottlingServiceStats = new AdaptiveThrottlingServiceStats(metricsRepository);
+    this.adaptiveThrottlingServiceStats =
+        new AdaptiveThrottlingServiceStats(metricsRepository, veniceServerConfig.getClusterName());
   }
 
   public void registerThrottler(VeniceAdaptiveThrottler adaptiveIngestionThrottler) {
     throttlerList.add(adaptiveIngestionThrottler);
-    adaptiveThrottlingServiceStats.registerSensorForThrottler(adaptiveIngestionThrottler);
   }
 
   public AdaptiveThrottlingServiceStats getAdaptiveThrottlingServiceStats() {

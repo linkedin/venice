@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_MEMTABLE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
@@ -9,6 +10,8 @@ import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
@@ -120,12 +123,26 @@ public class DaVinciClientDiskFullTest {
   /**
    * Calculate the data size and threshold needed to trigger disk full during the large push.
    *
-   * DiskUsage has a reserve mechanism: reserveSpaceBytes = 0.001 * freeSpaceBytesRequired
+   * DiskUsage has a reserve mechanism: reserveSpaceBytes = 0.001 * freeSpaceBytesRequired.
    * The actual disk check only happens after writing reserveSpaceBytes worth of data.
-   * So we need: dataSize > reserveSpaceBytes
+   * When the reserve is exhausted, DiskUsage calls {@code disk.getUsableSpace()} and compares
+   * it against {@code freeSpaceBytesRequired}. The disk is "full" when
+   * {@code getUsableSpace() < freeSpaceBytesRequired}.
    *
-   * Since freeSpaceBytesRequired ≈ usableSpaceBytes, we need: dataSize > 0.001 * usableSpaceBytes
-   * We use 0.3% of usable space (3x the minimum) for safety margin.
+   * Key insight: the marginBytes (= usableSpaceBytes - freeSpaceBytesRequired) must be LESS
+   * than reserveSpaceBytes. Otherwise, after writing reserveSpaceBytes of data, the actual
+   * disk free space may not have decreased by marginBytes yet, and the disk won't be detected
+   * as "full". In particular, with RocksDB memtable buffering, actual disk usage lags behind
+   * logical bytes written, so the margin must be conservative.
+   *
+   * We set marginBytes = max(50MB, 1/10 of reserve). The 50MB minimum absorbs disk space
+   * fluctuations on CI (temp files, log rotation, concurrent tests). After the reserve is
+   * exhausted (~0.1% of usableSpaceBytes written and flushed via 2MB sync cycles), the
+   * margin is easily bridged.
+   *
+   * Data size is set to 0.5% of usableSpaceBytes (5x the reserve) to ensure the reserve
+   * is exhausted well before all records are consumed, giving the disk check ample opportunity
+   * to detect the full condition.
    *
    * This method sets {@link #largePushRecordCount} and {@link #largePushRecordMinSize},
    * and returns the threshold.
@@ -135,34 +152,51 @@ public class DaVinciClientDiskFullTest {
     long totalSpaceBytes = disk.getTotalSpace();
     long usableSpaceBytes = disk.getUsableSpace();
 
-    // Calculate minimum data size needed to exceed DiskUsage reserve (0.1% of freeSpaceBytesRequired)
-    // Use 0.3% of usable space for safety margin (3x the reserve)
-    long minRequiredDataSize = (long) (usableSpaceBytes * 0.003);
-    // Use at least MIN_DATA_SIZE_BYTES, but scale up if disk is very large
-    long dataSizeBytes = Math.max(MIN_DATA_SIZE_BYTES, minRequiredDataSize);
+    // reserve = 0.001 * freeSpaceBytesRequired ~= 0.001 * usableSpaceBytes
+    long estimatedReserve = (long) (usableSpaceBytes * 0.001);
+
+    // Data size must be significantly larger than the reserve so the reserve is exhausted
+    // during ingestion (not after all records are consumed). Use 5x reserve, at least 100MB.
+    long dataSizeBytes = Math.max(MIN_DATA_SIZE_BYTES, estimatedReserve * 5);
 
     // Calculate record count and size, respecting MAX_RECORD_SIZE limit
-    // Use MAX_RECORD_SIZE and calculate how many records we need
     largePushRecordMinSize = MAX_RECORD_SIZE;
     largePushRecordCount = (int) Math.max(1, dataSizeBytes / largePushRecordMinSize);
     long actualDataSize = (long) largePushRecordMinSize * largePushRecordCount;
 
-    // Set threshold so disk becomes "full" after writing half the data
-    long marginBytes = actualDataSize / 2;
+    // marginBytes is the gap between usableSpaceBytes and freeSpaceBytesRequired.
+    // After the reserve is exhausted (~reserve bytes written), we need the actual disk free
+    // space to have decreased below freeSpaceBytesRequired. With a 2MB sync interval (configured
+    // in getDaVinciBackendConfig), RocksDB flushes every 2MB, so after writing ~reserve bytes
+    // almost all data is on disk. We set marginBytes to 1/10 of the reserve so that the actual
+    // disk usage easily exceeds the threshold. The 50MB minimum handles noise from disk space
+    // fluctuations on CI runners (temp files, log rotation, concurrent test cleanup) between
+    // when we measure usableSpaceBytes at test start and when DiskUsage checks during ingestion.
+    long marginBytes = Math.max(50 * 1024 * 1024L, estimatedReserve / 10);
+
     // freeSpaceBytesRequired = (1 - threshold) * totalSpaceBytes = usableSpaceBytes - marginBytes
     // threshold = 1 - (usableSpaceBytes - marginBytes) / totalSpaceBytes
     double diskFullThreshold = 1.0 - (double) (usableSpaceBytes - marginBytes) / totalSpaceBytes;
     diskFullThreshold = Math.max(0.01, Math.min(0.99, diskFullThreshold));
 
+    // Recompute what DiskUsage will actually derive from this threshold for logging
+    long computedFreeSpaceBytesRequired = (long) ((1 - diskFullThreshold) * totalSpaceBytes);
+    long computedReserve = (long) (computedFreeSpaceBytesRequired * 0.001);
+
     LOGGER.info(
-        "Disk: totalSpace={}, usableSpace={}, minRequiredDataSize={}, actualDataSize={}, recordCount={}, recordSize={}, threshold={}",
+        "Disk full test calculation: totalSpace={}, usableSpace={}, estimatedReserve={}, "
+            + "marginBytes={}, actualDataSize={}, recordCount={}, recordSize={}, threshold={}, "
+            + "computedFreeSpaceBytesRequired={}, computedReserve={}",
         totalSpaceBytes,
         usableSpaceBytes,
-        minRequiredDataSize,
+        estimatedReserve,
+        marginBytes,
         actualDataSize,
         largePushRecordCount,
         largePushRecordMinSize,
-        diskFullThreshold);
+        diskFullThreshold,
+        computedFreeSpaceBytesRequired,
+        computedReserve);
     return diskFullThreshold;
   }
 
@@ -179,6 +213,12 @@ public class DaVinciClientDiskFullTest {
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(D2_ZK_HOSTS_ADDRESS, venice.getZk().getAddress())
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+        // Use small memtable and sync interval so RocksDB flushes data to disk frequently.
+        // This ensures disk.getUsableSpace() reflects the ingested data promptly when
+        // DiskUsage.isDiskFull() checks actual disk usage after its reserve is exhausted.
+        .put(ROCKSDB_MEMTABLE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+        .put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 2 * 1024 * 1024L)
+        .put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 2 * 1024 * 1024L)
         .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .put(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, useDaVinciSpecificExecutionStatusForError)
         .put(SERVER_DISK_FULL_THRESHOLD, calculateDataSizeAndThreshold());

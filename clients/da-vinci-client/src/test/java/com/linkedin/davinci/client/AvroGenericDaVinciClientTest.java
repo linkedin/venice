@@ -19,6 +19,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -63,6 +64,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -520,6 +522,7 @@ public class AvroGenericDaVinciClientTest {
     doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
         .seekToCheckpoint(any(DaVinciSeekCheckpointInfo.class), eq(Optional.empty()));
     doReturn(true).when(dvcClient).isReady();
+    doReturn(3).when(dvcClient).getPartitionCount();
     when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
     // Test
     CompletableFuture<Void> future = dvcClient.seekToTail();
@@ -537,6 +540,46 @@ public class AvroGenericDaVinciClientTest {
   }
 
   @Test
+  public void testSeekToBeginningOfPush() throws Exception {
+    // Setup
+    ClientConfig clientConfig = new ClientConfig(storeName);
+    AvroGenericSeekableDaVinciClient<Integer, String> dvcClient =
+        (AvroGenericSeekableDaVinciClient<Integer, String>) setUpSeekableClient(clientConfig, true);
+
+    // Mock backend
+    StoreBackend mockStoreBackend = mock(StoreBackend.class);
+    // Mock the seek method
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBackend)
+        .seekToCheckpoint(any(DaVinciSeekCheckpointInfo.class), eq(Optional.empty()));
+    doReturn(true).when(dvcClient).isReady();
+    when(dvcClient.getStoreBackend()).thenReturn(mockStoreBackend);
+    // Test
+    CompletableFuture<Void> future = dvcClient.seekToBeginningOfPush(Collections.singleton(1));
+    future.get(); // Wait for completion
+    // Verify the checkpoint info contains partition->EARLIEST mapping
+    ArgumentCaptor<DaVinciSeekCheckpointInfo> captor = ArgumentCaptor.forClass(DaVinciSeekCheckpointInfo.class);
+    verify(mockStoreBackend).seekToCheckpoint(captor.capture(), eq(Optional.empty()));
+    DaVinciSeekCheckpointInfo capturedInfo = captor.getValue();
+    assertEquals(capturedInfo.getSeekMode(), DaVinciSeekCheckpointInfo.SeekMode.POSITION_MAP);
+    assertEquals(
+        capturedInfo.getPositionMap(),
+        Collections.singletonMap(1, com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST));
+    assertTrue(capturedInfo.getPartitions().contains(1));
+    assertFalse(capturedInfo.getPartitions().contains(0));
+  }
+
+  @Test
+  public void testSeekToBeginningOfPushWhenNotReady() throws Exception {
+    // Setup
+    ClientConfig clientConfig = new ClientConfig(storeName);
+    AvroGenericSeekableDaVinciClient<Integer, String> dvcClient =
+        (AvroGenericSeekableDaVinciClient<Integer, String>) setUpSeekableClient(clientConfig, true);
+
+    // Test and verify exception
+    assertThrows(VeniceClientException.class, () -> dvcClient.seekToBeginningOfPush(Collections.emptySet()));
+  }
+
+  @Test
   public void testSeekToTailWhenNotReady() throws Exception {
     // Setup
     ClientConfig clientConfig = new ClientConfig(storeName);
@@ -544,12 +587,7 @@ public class AvroGenericDaVinciClientTest {
         (AvroGenericSeekableDaVinciClient<Integer, String>) setUpSeekableClient(clientConfig, true);
 
     // Test and verify exception
-    try {
-      CompletableFuture<Void> future = dvcClient.seekToTail(Collections.emptySet());
-      future.get();
-      fail("Expected VeniceClientException to be thrown when client is not ready");
-    } catch (VeniceClientException e) {
-    }
+    assertThrows(VeniceClientException.class, () -> dvcClient.seekToTail(Collections.emptySet()));
   }
 
   @Test
@@ -578,5 +616,43 @@ public class AvroGenericDaVinciClientTest {
       fail("Expected exception to be thrown");
     } catch (VeniceClientException e) {
     }
+  }
+
+  @Test
+  public void testDaVinciSeekCheckpointInfoForPositionsWithEarliest() {
+    Map<Integer, com.linkedin.venice.pubsub.api.PubSubPosition> positionMap = new HashMap<>();
+    positionMap.put(0, com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST);
+    positionMap.put(1, com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST);
+    DaVinciSeekCheckpointInfo info = DaVinciSeekCheckpointInfo.forPositions(positionMap);
+    assertEquals(info.getSeekMode(), DaVinciSeekCheckpointInfo.SeekMode.POSITION_MAP);
+    assertTrue(info.getPartitions().contains(0));
+    assertTrue(info.getPartitions().contains(1));
+    assertFalse(info.getPartitions().contains(2));
+    assertEquals(info.getPositionMap(), positionMap);
+  }
+
+  @Test
+  public void testDaVinciSeekCheckpointInfoForTimestamps() {
+    Map<Integer, Long> timestamps = new HashMap<>();
+    timestamps.put(0, 1000L);
+    timestamps.put(1, 2000L);
+    DaVinciSeekCheckpointInfo info = DaVinciSeekCheckpointInfo.forTimestamps(timestamps);
+    assertEquals(info.getSeekMode(), DaVinciSeekCheckpointInfo.SeekMode.TIMESTAMPS_MAP);
+    assertTrue(info.getPartitions().contains(0));
+    assertTrue(info.getPartitions().contains(1));
+    assertFalse(info.getPartitions().contains(2));
+    assertEquals(info.getTimestampsMap(), timestamps);
+  }
+
+  @Test
+  public void testDaVinciSeekCheckpointInfoForPositionsWithLatest() {
+    Map<Integer, com.linkedin.venice.pubsub.api.PubSubPosition> positionMap = new HashMap<>();
+    positionMap.put(0, com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.LATEST);
+    positionMap.put(1, com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.LATEST);
+    DaVinciSeekCheckpointInfo info = DaVinciSeekCheckpointInfo.forPositions(positionMap);
+    assertEquals(info.getSeekMode(), DaVinciSeekCheckpointInfo.SeekMode.POSITION_MAP);
+    assertTrue(info.getPartitions().contains(0));
+    assertTrue(info.getPartitions().contains(1));
+    assertFalse(info.getPartitions().contains(2));
   }
 }

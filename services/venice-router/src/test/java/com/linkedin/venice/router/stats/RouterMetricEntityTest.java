@@ -1,174 +1,158 @@
 package com.linkedin.venice.router.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_MESSAGE_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.assertNoDuplicateMetricNamesAcrossEnums;
+import static com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.metricEntitiesEqual;
+import static com.linkedin.venice.utils.Utils.setOf;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.router.RouterServer;
-import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityTestFixture.MetricEntityExpectation;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import org.testng.annotations.Test;
 
 
 public class RouterMetricEntityTest {
-  @Test
-  public void testRouterMetricEntities() {
-    Map<RouterMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
-    expectedMetrics.put(
+  private static Map<RouterMetricEntity, MetricEntityExpectation> expectedDefinitions() {
+    Map<RouterMetricEntity, MetricEntityExpectation> map = new HashMap<>();
+    map.put(
         RouterMetricEntity.CALL_COUNT,
-        new MetricEntity(
+        new MetricEntityExpectation(
             "call_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of all requests during response handling along with response codes",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
-    expectedMetrics.put(
+            setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                HTTP_RESPONSE_STATUS_CODE,
+                HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    map.put(
         RouterMetricEntity.CALL_TIME,
-        new MetricEntity(
+        new MetricEntityExpectation(
             "call_time",
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Latency based on all responses",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
-    expectedMetrics.put(
+            setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                HTTP_RESPONSE_STATUS_CODE,
+                HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    map.put(
         RouterMetricEntity.CALL_SIZE,
-        new MetricEntity(
+        new MetricEntityExpectation(
             "call_size",
             MetricType.HISTOGRAM,
             MetricUnit.BYTES,
             "Size of request and response in bytes",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
-                VeniceMetricsDimensions.VENICE_MESSAGE_TYPE)));
-    expectedMetrics.put(
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)));
+    map.put(
         RouterMetricEntity.KEY_SIZE,
-        new MetricEntity(
+        new MetricEntityExpectation(
             "key_size",
             MetricType.HISTOGRAM,
             MetricUnit.BYTES,
             "Size of keys in bytes",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
-    expectedMetrics.put(
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
+    map.put(
         RouterMetricEntity.KEY_COUNT,
-        new MetricEntity(
+        new MetricEntityExpectation(
             "key_count",
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Count of keys during response handling along with response codes",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE,
-                VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
-    expectedMetrics.put(
+            setOf(
+                VENICE_STORE_NAME,
+                VENICE_CLUSTER_NAME,
+                VENICE_REQUEST_METHOD,
+                HTTP_RESPONSE_STATUS_CODE,
+                HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    map.put(
         RouterMetricEntity.RETRY_COUNT,
-        new MetricEntity(
+        new MetricEntityExpectation(
             "retry_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of retries triggered",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
-                VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE)));
-    expectedMetrics.put(
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)));
+    map.put(
         RouterMetricEntity.ALLOWED_RETRY_COUNT,
-        new MetricEntity(
+        new MetricEntityExpectation(
             "allowed_retry_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of allowed retry requests",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
-    expectedMetrics.put(
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
+    map.put(
         RouterMetricEntity.DISALLOWED_RETRY_COUNT,
-        new MetricEntity(
+        new MetricEntityExpectation(
             "disallowed_retry_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of disallowed retry requests",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
-    expectedMetrics.put(
-        RouterMetricEntity.RETRY_DELAY,
-        new MetricEntity(
-            "retry_delay",
-            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
-            MetricUnit.MILLISECOND,
-            "Retry delay time",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
-    expectedMetrics.put(
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
+    map.put(
         RouterMetricEntity.ABORTED_RETRY_COUNT,
-        new MetricEntity(
+        new MetricEntityExpectation(
             "aborted_retry_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of aborted retry requests",
-            Utils.setOf(
-                VeniceMetricsDimensions.VENICE_STORE_NAME,
-                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
-                VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
-                VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON)));
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_ABORT_REASON)));
+    map.put(
+        RouterMetricEntity.RETRY_DELAY,
+        new MetricEntityExpectation(
+            "retry_delay",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.MILLISECOND,
+            "Retry delay time",
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
+    return map;
+  }
 
-    for (RouterMetricEntity metric: RouterMetricEntity.values()) {
-      MetricEntity actual = metric.getMetricEntity();
-      MetricEntity expected = expectedMetrics.get(metric);
+  @Test
+  public void testMetricEntities() {
+    new ModuleMetricEntityTestFixture<>(RouterMetricEntity.class, expectedDefinitions()).assertAll();
+  }
 
-      assertNotNull(expected, "No expected definition for " + metric.name());
-      assertNotNull(actual.getMetricName(), "Metric name should not be null for " + metric.name());
-      assertEquals(actual.getMetricName(), expected.getMetricName(), "Unexpected metric name for " + metric.name());
-      assertNotNull(actual.getMetricType(), "Metric type should not be null for " + metric.name());
-      assertEquals(actual.getMetricType(), expected.getMetricType(), "Unexpected metric type for " + metric.name());
-      assertNotNull(actual.getUnit(), "Metric unit should not be null for " + metric.name());
-      assertEquals(actual.getUnit(), expected.getUnit(), "Unexpected metric unit for " + metric.name());
-      assertNotNull(actual.getDescription(), "Metric description should not be null for " + metric.name());
-      assertEquals(
-          actual.getDescription(),
-          expected.getDescription(),
-          "Unexpected metric description for " + metric.name());
-      assertNotNull(actual.getDimensionsList(), "Metric dimensions should not be null for " + metric.name());
-      assertEquals(
-          actual.getDimensionsList(),
-          expected.getDimensionsList(),
-          "Unexpected metric dimensions for " + metric.name());
-    }
+  /**
+   * Verifies that no two enum constants across all router metric entity enums share the same
+   * metric name. Uses {@link RouterServer#getMetricEntityEnumClasses()} as the single source of
+   * truth. Scans raw enum constants to catch silent deduplication by
+   * {@link ModuleMetricEntityInterface#getUniqueMetricEntities}.
+   */
+  @Test
+  public void testNoDuplicateMetricNamesAcrossRouterEnums() {
+    assertNoDuplicateMetricNamesAcrossEnums(RouterServer.getMetricEntityEnumClasses());
+  }
 
-    // Convert expectedMetrics to a Collection for comparison
-    Collection<MetricEntity> expectedMetricEntities = expectedMetrics.values();
+  @Test
+  public void testRouterServiceMetricEntitiesRegistration() {
+    // Build the full expected set from the same source of truth as production
+    Collection<MetricEntity> expectedMetricEntities =
+        ModuleMetricEntityInterface.getUniqueMetricEntities(RouterServer.getMetricEntityEnumClasses());
 
     // Assert size
     assertEquals(
@@ -189,10 +173,4 @@ public class RouterMetricEntityTest {
     }
   }
 
-  private boolean metricEntitiesEqual(MetricEntity actual, MetricEntity expected) {
-    return Objects.equals(actual.getMetricName(), expected.getMetricName())
-        && actual.getMetricType() == expected.getMetricType() && actual.getUnit() == expected.getUnit()
-        && Objects.equals(actual.getDescription(), expected.getDescription())
-        && Objects.equals(actual.getDimensionsList(), expected.getDimensionsList());
-  }
 }

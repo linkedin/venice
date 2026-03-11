@@ -105,7 +105,34 @@ public enum VeniceMetricsDimensions {
   VENICE_ADMIN_MESSAGE_PROCESSING_COMPONENT("venice.admin_message.processing.component"),
 
   /** AdminMessageType */
-  VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type");
+  VENICE_ADMIN_MESSAGE_TYPE("venice.admin_message.type"),
+
+  /** Thread pool name for ThreadPoolStats */
+  VENICE_THREAD_POOL_NAME("venice.thread_pool.name"),
+
+  /** {@link VeniceDCROperation} DCR merge operation type (put, update, delete) */
+  VENICE_DCR_OPERATION("venice.dcr.operation"),
+
+  /** {@link VenicePartialUpdateOperation} Phase of a partial update (write compute) operation: query or update */
+  VENICE_PARTIAL_UPDATE_OPERATION_PHASE("venice.partial_update.operation_phase"),
+
+  /** {@link VeniceRecordType} Record type (data, replication_metadata) */
+  VENICE_RECORD_TYPE("venice.record.type"),
+
+  /** {@link VeniceIngestionFailureReason} Categorized reason for ingestion failure */
+  VENICE_INGESTION_FAILURE_REASON("venice.ingestion.failure.reason"),
+
+  /** {@link VeniceChunkingStatus} */
+  VENICE_CHUNKING_STATUS("venice.chunking.status"),
+
+  /** {@link VeniceComputeOperationType} Type of read-compute operation: dot_product, cosine_similarity, etc. */
+  VENICE_READ_COMPUTE_OPERATION_TYPE("venice.read_compute.operation_type"),
+
+  /** {@link VeniceAdaptiveThrottlerType} Type of adaptive throttler: pubsub_consumption_records_count, pubsub_consumption_bandwidth, etc. */
+  VENICE_ADAPTIVE_THROTTLER_TYPE("venice.adaptive_throttler.type"),
+
+  /** {@link VeniceHeartbeatComponent} Heartbeat monitoring thread: reporter or logger. */
+  VENICE_HEARTBEAT_COMPONENT("venice.heartbeat.component");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

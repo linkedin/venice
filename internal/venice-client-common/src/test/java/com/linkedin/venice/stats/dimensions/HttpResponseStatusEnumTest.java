@@ -2,21 +2,13 @@ package com.linkedin.venice.stats.dimensions;
 
 import com.linkedin.venice.utils.CollectionUtils;
 import java.util.Map;
+import org.testng.annotations.Test;
 
 
-public class HttpResponseStatusEnumTest extends VeniceDimensionInterfaceTest<HttpResponseStatusEnum> {
-  protected HttpResponseStatusEnumTest() {
-    super(HttpResponseStatusEnum.class);
-  }
-
-  @Override
-  protected VeniceMetricsDimensions expectedDimensionName() {
-    return VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
-  }
-
-  @Override
-  protected Map<HttpResponseStatusEnum, String> expectedDimensionValueMapping() {
-    return CollectionUtils.<HttpResponseStatusEnum, String>mapBuilder()
+public class HttpResponseStatusEnumTest {
+  @Test
+  public void testDimensionInterface() {
+    Map<HttpResponseStatusEnum, String> expectedValues = CollectionUtils.<HttpResponseStatusEnum, String>mapBuilder()
         .put(HttpResponseStatusEnum.CONTINUE, "100")
         .put(HttpResponseStatusEnum.SWITCHING_PROTOCOLS, "101")
         .put(HttpResponseStatusEnum.PROCESSING, "102")
@@ -75,5 +67,9 @@ public class HttpResponseStatusEnumTest extends VeniceDimensionInterfaceTest<Htt
         .put(HttpResponseStatusEnum.NETWORK_AUTHENTICATION_REQUIRED, "511")
         .put(HttpResponseStatusEnum.UNKNOWN, "0")
         .build();
+    new VeniceDimensionTestFixture<>(
+        HttpResponseStatusEnum.class,
+        VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE,
+        expectedValues).assertAll();
   }
 }

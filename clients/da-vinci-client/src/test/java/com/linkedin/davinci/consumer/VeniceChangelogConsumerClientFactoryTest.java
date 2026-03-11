@@ -1,6 +1,7 @@
 package com.linkedin.davinci.consumer;
 
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
@@ -234,6 +235,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
     consumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
     consumerProperties.put(ZOOKEEPER_ADDRESS, TEST_ZOOKEEPER_ADDRESS);
+    consumerProperties.put(DATA_BASE_PATH, TEST_BOOTSTRAP_FILE_SYSTEM_PATH);
 
     SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
     Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
@@ -242,7 +244,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
     ChangelogClientConfig globalChangelogClientConfig =
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
             .setSchemaReader(mockSchemaReader)
-            .setBootstrapFileSystemPath(TEST_BOOTSTRAP_FILE_SYSTEM_PATH)
             .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());
@@ -315,6 +316,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
     consumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
     consumerProperties.put(ZOOKEEPER_ADDRESS, TEST_ZOOKEEPER_ADDRESS);
+    consumerProperties.put(DATA_BASE_PATH, TEST_BOOTSTRAP_FILE_SYSTEM_PATH);
 
     SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
     Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
@@ -323,7 +325,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
     ChangelogClientConfig globalChangelogClientConfig =
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
             .setSchemaReader(mockSchemaReader)
-            .setBootstrapFileSystemPath(TEST_BOOTSTRAP_FILE_SYSTEM_PATH)
             .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());

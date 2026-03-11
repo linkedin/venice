@@ -1,18 +1,14 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.*;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
-import static com.linkedin.venice.stats.ClientType.*;
-import static com.linkedin.venice.stats.VeniceMetricsRepository.*;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.createAndVerifyStoreInAllRegions;
 import static com.linkedin.venice.utils.TestUtils.updateStoreToHybrid;
 import static com.linkedin.venice.utils.TestWriteUtils.*;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
 import static org.testng.Assert.*;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -24,6 +20,7 @@ import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.consumer.ChangelogConsumerTestUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -482,20 +479,23 @@ public class TestActiveActiveVersionSwapMessage {
 
   private ChangelogClientConfig getDefaultVersionSwapEnabledChangelogClientConfig(
       VeniceMultiClusterWrapper localRegion) {
-    Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localRegion.getPubSubBrokerWrapper().getAddress());
-    ChangelogClientConfig changelogClientConfig = new ChangelogClientConfig().setConsumerProperties(consumerProperties)
-        .setControllerD2ServiceName(D2_SERVICE_NAME)
-        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-        .setLocalD2ZkHosts(localRegion.getZkServerWrapper().getAddress())
-        .setD2Client(IntegrationTestPushUtils.getD2Client(localRegion.getZkServerWrapper().getAddress()))
-        .setVersionSwapDetectionIntervalTimeInSeconds(3L)
-        .setControllerRequestRetryCount(3)
-        .setBootstrapFileSystemPath(getTempDataDirectory().getAbsolutePath())
-        .setVersionSwapByControlMessageEnabled(true)
-        .setClientRegionName(localRegion.getRegionName())
-        .setTotalRegionCount(childDatacenters.size());
+    Properties regionConsumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(
+        multiRegionMultiClusterWrapper,
+        localRegion.getPubSubBrokerWrapper(),
+        CLUSTER_NAMES[0],
+        localRegion.getZkServerWrapper());
+    ChangelogClientConfig changelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(regionConsumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setLocalD2ZkHosts(localRegion.getZkServerWrapper().getAddress())
+            .setD2Client(IntegrationTestPushUtils.getD2Client(localRegion.getZkServerWrapper().getAddress()))
+            .setVersionSwapDetectionIntervalTimeInSeconds(3L)
+            .setControllerRequestRetryCount(3)
+            .setBootstrapFileSystemPath(getTempDataDirectory().getAbsolutePath())
+            .setVersionSwapByControlMessageEnabled(true)
+            .setClientRegionName(localRegion.getRegionName())
+            .setTotalRegionCount(childDatacenters.size());
     return changelogClientConfig;
   }
 

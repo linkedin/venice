@@ -28,6 +28,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OV
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
@@ -61,6 +62,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -109,6 +111,7 @@ import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -420,6 +423,80 @@ public class VenicePushJobTest {
       Assert.assertFalse(pushJobSetting.repushTTLEnabled);
       Assert.assertEquals(pushJobSetting.repushTTLStartTimeMs, -1);
       Assert.assertTrue(Version.isPushIdRePush(pushJob.getPushJobDetails().getPushId().toString()));
+    }
+  }
+
+  /**
+   * When repush.use.fallback.value.schema.id is enabled, the latest value schema ID should be
+   * retrieved from the controller as a global fallback for records missing per-record schema IDs.
+   */
+  @Test
+  public void testKifRepushRetrievesValueSchemaIdWhenFallbackEnabled() throws Exception {
+    Properties repushProps = new Properties();
+    repushProps.setProperty(SOURCE_KAFKA, "true");
+    repushProps.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, REPUSH_VERSION));
+    repushProps.setProperty(KAFKA_INPUT_BROKER_URL, "localhost");
+    repushProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    repushProps.setProperty(REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID, "true");
+
+    ControllerClient client = getClient(storeInfo -> {
+      Map<String, Integer> coloVersions = new HashMap<>();
+      coloVersions.put("dc-0", REPUSH_VERSION);
+      coloVersions.put("dc-1", REPUSH_VERSION);
+      storeInfo.setColoToCurrentVersions(coloVersions);
+    });
+
+    MultiSchemaResponse valueSchemaResponse = new MultiSchemaResponse();
+    MultiSchemaResponse.Schema schema1 = new MultiSchemaResponse.Schema();
+    schema1.setId(1);
+    schema1.setSchemaStr(VALUE_SCHEMA_STR);
+    MultiSchemaResponse.Schema schema2 = new MultiSchemaResponse.Schema();
+    schema2.setId(2);
+    schema2.setSchemaStr(VALUE_SCHEMA_STR);
+    valueSchemaResponse.setSchemas(new MultiSchemaResponse.Schema[] { schema1, schema2 });
+    doReturn(valueSchemaResponse).when(client).getAllValueSchema(eq(TEST_STORE));
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(repushProps, client)) {
+      skipVPJValidation(pushJob);
+      doNothing().when(pushJob).pollStatusUntilComplete(any(), any(), any(), any(), anyBoolean(), anyBoolean());
+      pushJob.run();
+
+      assertEquals(
+          pushJob.getPushJobSetting().valueSchemaId,
+          2,
+          "KIF repush should retrieve the latest value schema ID from the controller when fallback is enabled");
+    }
+  }
+
+  /**
+   * By default (repush.use.fallback.value.schema.id=false), the value schema ID should NOT be
+   * retrieved from the controller. The job will fail later if per-record schema IDs are missing.
+   */
+  @Test
+  public void testKifRepushDoesNotRetrieveValueSchemaIdByDefault() throws Exception {
+    Properties repushProps = new Properties();
+    repushProps.setProperty(SOURCE_KAFKA, "true");
+    repushProps.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, REPUSH_VERSION));
+    repushProps.setProperty(KAFKA_INPUT_BROKER_URL, "localhost");
+    repushProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    // No REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID set — defaults to false
+
+    ControllerClient client = getClient(storeInfo -> {
+      Map<String, Integer> coloVersions = new HashMap<>();
+      coloVersions.put("dc-0", REPUSH_VERSION);
+      coloVersions.put("dc-1", REPUSH_VERSION);
+      storeInfo.setColoToCurrentVersions(coloVersions);
+    });
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(repushProps, client)) {
+      skipVPJValidation(pushJob);
+      doNothing().when(pushJob).pollStatusUntilComplete(any(), any(), any(), any(), anyBoolean(), anyBoolean());
+      pushJob.run();
+
+      assertEquals(
+          pushJob.getPushJobSetting().valueSchemaId,
+          0,
+          "KIF repush should NOT retrieve value schema ID when fallback is disabled (default)");
     }
   }
 
@@ -1916,5 +1993,18 @@ public class VenicePushJobTest {
       assertEquals(dataWriterKilledLatch.getCount(), 0, "Data writer job should have been killed");
       verify(dataWriterJob, times(1)).kill();
     }
+  }
+
+  @Test
+  public void testResolveD2ClientWithExternalD2Client() {
+    D2Client mockD2Client = mock(D2Client.class);
+
+    Properties baseProps = TestWriteUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE, Collections.emptyMap());
+    baseProps.put(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
+
+    // When an external D2Client is provided, resolveD2Client should return it directly
+    VenicePushJob pushJob = new VenicePushJob(TEST_PUSH, baseProps, mockD2Client);
+    D2Client resolved = pushJob.resolveD2Client("someZkHost", Optional.empty());
+    assertEquals(resolved, mockD2Client);
   }
 }

@@ -109,6 +109,33 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_ADMIN_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.admin_message.type");
           break;
+        case VENICE_THREAD_POOL_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.thread_pool.name");
+          break;
+        case VENICE_DCR_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "venice.dcr.operation");
+          break;
+        case VENICE_PARTIAL_UPDATE_OPERATION_PHASE:
+          assertEquals(dimension.getDimensionName(format), "venice.partial_update.operation_phase");
+          break;
+        case VENICE_RECORD_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.record.type");
+          break;
+        case VENICE_INGESTION_FAILURE_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.ingestion.failure.reason");
+          break;
+        case VENICE_CHUNKING_STATUS:
+          assertEquals(dimension.getDimensionName(format), "venice.chunking.status");
+          break;
+        case VENICE_READ_COMPUTE_OPERATION_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.read_compute.operation_type");
+          break;
+        case VENICE_ADAPTIVE_THROTTLER_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.adaptive_throttler.type");
+          break;
+        case VENICE_HEARTBEAT_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.heartbeat.component");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -216,6 +243,33 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_ADMIN_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.adminMessage.type");
           break;
+        case VENICE_THREAD_POOL_NAME:
+          assertEquals(dimension.getDimensionName(format), "venice.threadPool.name");
+          break;
+        case VENICE_DCR_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "venice.dcr.operation");
+          break;
+        case VENICE_PARTIAL_UPDATE_OPERATION_PHASE:
+          assertEquals(dimension.getDimensionName(format), "venice.partialUpdate.operationPhase");
+          break;
+        case VENICE_RECORD_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.record.type");
+          break;
+        case VENICE_INGESTION_FAILURE_REASON:
+          assertEquals(dimension.getDimensionName(format), "venice.ingestion.failure.reason");
+          break;
+        case VENICE_CHUNKING_STATUS:
+          assertEquals(dimension.getDimensionName(format), "venice.chunking.status");
+          break;
+        case VENICE_READ_COMPUTE_OPERATION_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.readCompute.operationType");
+          break;
+        case VENICE_ADAPTIVE_THROTTLER_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.adaptiveThrottler.type");
+          break;
+        case VENICE_HEARTBEAT_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "venice.heartbeat.component");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -322,6 +376,33 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_ADMIN_MESSAGE_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.AdminMessage.Type");
+          break;
+        case VENICE_THREAD_POOL_NAME:
+          assertEquals(dimension.getDimensionName(format), "Venice.ThreadPool.Name");
+          break;
+        case VENICE_DCR_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "Venice.Dcr.Operation");
+          break;
+        case VENICE_PARTIAL_UPDATE_OPERATION_PHASE:
+          assertEquals(dimension.getDimensionName(format), "Venice.PartialUpdate.OperationPhase");
+          break;
+        case VENICE_RECORD_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.Record.Type");
+          break;
+        case VENICE_INGESTION_FAILURE_REASON:
+          assertEquals(dimension.getDimensionName(format), "Venice.Ingestion.Failure.Reason");
+          break;
+        case VENICE_CHUNKING_STATUS:
+          assertEquals(dimension.getDimensionName(format), "Venice.Chunking.Status");
+          break;
+        case VENICE_READ_COMPUTE_OPERATION_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.ReadCompute.OperationType");
+          break;
+        case VENICE_ADAPTIVE_THROTTLER_TYPE:
+          assertEquals(dimension.getDimensionName(format), "Venice.AdaptiveThrottler.Type");
+          break;
+        case VENICE_HEARTBEAT_COMPONENT:
+          assertEquals(dimension.getDimensionName(format), "Venice.Heartbeat.Component");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

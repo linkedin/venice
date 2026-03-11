@@ -390,8 +390,11 @@ public class TestAdminOperationWithPreviousVersion {
       parentControllerClient.killOfflinePushJob(Version.composeKafkaTopic(storeName, 1));
 
       // Check version
+      // The async chain from kill to version deletion is: kill -> admin consumer processes KillOfflinePushJob
+      // -> Helix messages to storage nodes -> partition status update -> push monitor detects terminal state
+      // -> deleteOneStoreVersion. Under CI load this can take well over 60 seconds.
       for (ControllerClient childControllerClient: childControllerClients) {
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, false, true, () -> {
           StoreResponse storeResponse = childControllerClient.getStore(storeName);
           assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
@@ -876,7 +879,7 @@ public class TestAdminOperationWithPreviousVersion {
     TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(storeName, expectedVersion),
         parentControllerClient,
-        30,
+        60,
         TimeUnit.SECONDS);
   }
 

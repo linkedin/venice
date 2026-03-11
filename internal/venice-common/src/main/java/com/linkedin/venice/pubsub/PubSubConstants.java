@@ -124,4 +124,5 @@ public class PubSubConstants {
   public static final long BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN = 2 * Time.MS_PER_DAY;
 
   public static final int DEFAULT_KAFKA_REPLICATION_FACTOR = 3;
+
 }

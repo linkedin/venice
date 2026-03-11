@@ -3415,6 +3415,44 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testRollForwardNotAllRegionsServingFutureVersionSkipsParentUpdate() {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+
+    Map<String, String> future = new HashMap<>();
+    future.put("r1", "5");
+    future.put("r2", "5");
+    doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
+    doReturn(true).when(adminSpy).truncateKafkaTopic(anyString());
+
+    // r1 rolled forward to version 5, but r2 is still on version 4
+    Map<String, Integer> currentVersions = new HashMap<>();
+    currentVersions.put("r1", 5);
+    currentVersions.put("r2", 4);
+    doReturn(currentVersions).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
+
+    Version version = mock(Version.class);
+    doReturn(true).when(version).isVersionSwapDeferred();
+    doReturn(version).when(store).getVersion(5);
+    doReturn(store).when(adminSpy).getStore(anyString(), anyString());
+
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      ControllerResponse response = new ControllerResponse();
+      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any(), anyInt());
+    }
+    adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
+
+    // Parent store should NOT be updated to ONLINE since not all regions are serving the future version
+    verify(store, never()).updateVersionStatus(anyInt(), eq(VersionStatus.ONLINE));
+    verify(store, never()).setCurrentVersion(anyInt());
+  }
+
+  @Test
   public void testUpdateStoreETLConfig() {
     String storeName = Utils.getUniqueString("testUpdatedStoreETLConfigs");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());

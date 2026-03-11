@@ -63,6 +63,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerContext;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.init.SystemStoreInitializationHelper;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.d2.D2Server;
@@ -81,6 +82,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -155,6 +157,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(VeniceControllerCreateOptions options) {
+    // Reduce retry delay for system store initialization from 10s to 1s in integration tests.
+    // The production default (10s) causes participant store setup to take up to 150s under load,
+    // frequently exceeding test timeouts.
+    SystemStoreInitializationHelper.setDelayBetweenStoreUpdateRetries(Duration.ofSeconds(1));
+
     return (serviceName, dataDirectory) -> {
       int adminPort = TestUtils.getFreePort();
       int adminSecurePort = TestUtils.getFreePort();

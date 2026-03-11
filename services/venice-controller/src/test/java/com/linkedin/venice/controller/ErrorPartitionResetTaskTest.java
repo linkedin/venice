@@ -39,7 +39,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -49,12 +49,13 @@ public class ErrorPartitionResetTaskTest {
   private static long PROCESSING_CYCLE_DELAY = 100;
   private static int ERROR_PARTITION_RESET_LIMIT = 1;
   private static int PARTITION_COUNT = 3;
-  private static long VERIFY_TIMEOUT = PROCESSING_CYCLE_DELAY * 3;
+  private static long VERIFY_TIMEOUT = PROCESSING_CYCLE_DELAY * 10;
 
-  private final ExecutorService errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
   private final Instance[] instances = { new Instance("a", "a", 1), new Instance("b", "b", 2),
       new Instance("c", "c", 3), new Instance("d", "d", 4), new Instance("e", "e", 5) };
 
+  private ExecutorService errorPartitionResetExecutorService;
+  private ErrorPartitionResetTask errorPartitionResetTask;
   private HelixAdminClient helixAdminClient;
   private CachedReadOnlyStoreRepository readOnlyStoreRepository;
   private HelixExternalViewRepository routingDataRepository;
@@ -64,6 +65,7 @@ public class ErrorPartitionResetTaskTest {
 
   @BeforeMethod
   public void setUp() {
+    errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
     helixAdminClient = mock(HelixAdminClient.class);
     readOnlyStoreRepository = mock(CachedReadOnlyStoreRepository.class);
     routingDataRepository = mock(HelixExternalViewRepository.class);
@@ -77,8 +79,11 @@ public class ErrorPartitionResetTaskTest {
             .build());
   }
 
-  @AfterClass
-  public void cleanUp() throws InterruptedException {
+  @AfterMethod
+  public void tearDown() throws InterruptedException {
+    if (errorPartitionResetTask != null) {
+      errorPartitionResetTask.close();
+    }
     TestUtils.shutdownExecutor(errorPartitionResetExecutorService);
   }
 
@@ -117,7 +122,7 @@ public class ErrorPartitionResetTaskTest {
     when(routingDataRepository.getPartitionAssignments(resourceName)).thenReturn(partitionAssignment1)
         .thenReturn(partitionAssignment2);
     when(pushMonitor.getOfflinePushOrThrow(resourceName)).thenReturn(offlinePushStatus);
-    ErrorPartitionResetTask errorPartitionResetTask = getErrorPartitionResetTask(clusterName);
+    errorPartitionResetTask = getErrorPartitionResetTask(clusterName);
     errorPartitionResetExecutorService.submit(errorPartitionResetTask);
 
     // Verify the reset is called for the error partitions
@@ -185,8 +190,6 @@ public class ErrorPartitionResetTaskTest {
         ErrorPartitionStats.ErrorPartitionOtelMetricEntity.ERROR_PARTITION_RESET_UNRECOVERABLE_PARTITION_COUNT
             .getMetricName(),
         TEST_METRIC_PREFIX);
-
-    errorPartitionResetTask.close();
   }
 
   @Test
@@ -218,7 +221,7 @@ public class ErrorPartitionResetTaskTest {
     doReturn(Arrays.asList(store)).when(readOnlyStoreRepository).getAllStores();
     when(routingDataRepository.getPartitionAssignments(resourceName)).thenReturn(partitionAssignment1)
         .thenReturn(partitionAssignment2);
-    ErrorPartitionResetTask errorPartitionResetTask = getErrorPartitionResetTask(clusterName);
+    errorPartitionResetTask = getErrorPartitionResetTask(clusterName);
     errorPartitionResetExecutorService.submit(errorPartitionResetTask);
 
     // Verify the reset is called for the two error replicas.
@@ -238,7 +241,6 @@ public class ErrorPartitionResetTaskTest {
         .resetPartition(eq(clusterName), eq(instances[3].getNodeId()), eq(resourceName), anyList());
     verify(helixAdminClient, never())
         .resetPartition(eq(clusterName), eq(instances[4].getNodeId()), eq(resourceName), anyList());
-    errorPartitionResetTask.close();
   }
 
   private ErrorPartitionResetTask getErrorPartitionResetTask(String clusterName) {

@@ -736,6 +736,18 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
+  public PubSubPosition advancePosition(PubSubTopicPartition tp, PubSubPosition startInclusive, long n) {
+    Objects.requireNonNull(tp, "tp");
+    Objects.requireNonNull(startInclusive, "startInclusive");
+    if (n < 0) {
+      throw new IllegalArgumentException("n must be >= 0");
+    }
+    long startOffset = startInclusive.getNumericOffset();
+    long targetOffset = Math.addExact(startOffset, n);
+    return PubSubUtil.fromKafkaOffset(targetOffset);
+  }
+
+  @Override
   public PubSubPosition decodePosition(PubSubTopicPartition partition, int positionTypeId, ByteBuffer buffer) {
     if (buffer == null || buffer.remaining() == 0) {
       throw new VeniceException("Buffer cannot be null or empty for partition: " + partition);

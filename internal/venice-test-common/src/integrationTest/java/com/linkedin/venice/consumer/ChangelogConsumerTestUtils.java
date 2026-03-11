@@ -1,7 +1,11 @@
 package com.linkedin.venice.consumer;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 
@@ -24,6 +28,7 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.Logger;
@@ -42,11 +47,55 @@ public class ChangelogConsumerTestUtils {
       PubSubBrokerWrapper localKafka,
       String clusterName,
       ZkServerWrapper localZkServer) {
+    return buildConsumerProperties(
+        multiRegionWrapper.getPubSubClientProperties(),
+        localKafka.getAddress(),
+        clusterName,
+        localZkServer.getAddress());
+  }
+
+  public static Properties buildConsumerProperties(
+      VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionWrapper,
+      PubSubBrokerWrapper localKafka,
+      String clusterName,
+      ZkServerWrapper localZkServer,
+      String dataBasePath) {
+    Properties consumerProperties = buildConsumerProperties(
+        multiRegionWrapper.getPubSubClientProperties(),
+        localKafka.getAddress(),
+        clusterName,
+        localZkServer.getAddress());
+    consumerProperties.put(DATA_BASE_PATH, dataBasePath);
+    return consumerProperties;
+  }
+
+  public static Properties buildConsumerProperties(VeniceClusterWrapper clusterWrapper) {
+    return buildConsumerProperties(
+        clusterWrapper.getPubSubClientProperties(),
+        clusterWrapper.getPubSubBrokerWrapper().getAddress(),
+        clusterWrapper.getClusterName(),
+        clusterWrapper.getZk().getAddress());
+  }
+
+  public static Properties buildConsumerProperties(VeniceClusterWrapper clusterWrapper, String dataBasePath) {
+    Properties consumerProperties = buildConsumerProperties(clusterWrapper);
+    consumerProperties.put(DATA_BASE_PATH, dataBasePath);
+    return consumerProperties;
+  }
+
+  private static Properties buildConsumerProperties(
+      Map<String, String> pubSubClientProperties,
+      String kafkaBootstrapServers,
+      String clusterName,
+      String zkAddress) {
     Properties consumerProperties = new Properties();
-    consumerProperties.putAll(multiRegionWrapper.getPubSubClientProperties());
-    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafka.getAddress());
+    consumerProperties.putAll(pubSubClientProperties);
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     consumerProperties.put(CLUSTER_NAME, clusterName);
-    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
+    consumerProperties.put(PERSISTENCE_TYPE, "ROCKS_DB");
+    consumerProperties.put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0);
+    consumerProperties.put(PUSH_STATUS_STORE_ENABLED, true);
     return consumerProperties;
   }
 

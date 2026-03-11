@@ -16,11 +16,11 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.time.Clock;
-import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -32,6 +32,7 @@ public class NativeMetadataRepositoryTest {
   private VeniceProperties backendConfigThinClient;
   private VeniceProperties backendConfigRequestBased;
 
+  private AsyncGauge.AsyncGaugeExecutor gaugeExecutor;
   private MetricsRepository metricsRepository;
   private Clock clock;
   private static final String STORE_NAME = "hardware_store";
@@ -50,10 +51,18 @@ public class NativeMetadataRepositoryTest {
     doReturn(true).when(backendConfigRequestBased)
         .getBoolean(eq(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY), anyBoolean());
 
-    metricsRepository = new MetricsRepository();
+    // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
+    gaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    metricsRepository = new MetricsRepository(new MetricConfig(gaugeExecutor));
     doReturn(metricsRepository).when(clientConfig).getMetricsRepository();
     clock = mock(Clock.class);
     doReturn(0L).when(clock).millis();
+  }
+
+  @org.testng.annotations.AfterMethod
+  public void tearDown() throws Exception {
+    metricsRepository.close();
+    gaugeExecutor.close();
   }
 
   @Test

@@ -51,6 +51,7 @@ import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -126,7 +127,7 @@ public class TestStoreMigration {
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
     parentControllerProperties
         .setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
-    parentControllerProperties.setProperty(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
+    parentControllerProperties.setProperty(OFFLINE_JOB_START_TIMEOUT_MS, "300000");
     parentControllerProperties.put(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, true);
     parentControllerProperties.put(ConfigKeys.STORE_MIGRATION_TASK_SCHEDULING_INTERVAL_SECONDS, 2);
 
@@ -162,17 +163,7 @@ public class TestStoreMigration {
 
     r2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_HTTPCLIENT5);
 
-    for (String cluster: clusterNames) {
-      try (ControllerClient controllerClient = new ControllerClient(cluster, childControllerUrl0)) {
-        // Verify the participant store is up and running in child region
-        String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster);
-        TestUtils.waitForNonDeterministicPushCompletion(
-            Version.composeKafkaTopic(participantStoreName, 1),
-            controllerClient,
-            5,
-            TimeUnit.MINUTES);
-      }
-    }
+    IntegrationTestUtils.waitForParticipantStorePush(clusterNames, childControllerUrl0);
   }
 
   @AfterClass(alwaysRun = true)
@@ -197,7 +188,7 @@ public class TestStoreMigration {
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
       StoreMigrationTestUtil
           .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
         // StoreConfig in router might not be up-to-date. Keep reading from the store. Finally, router will find that
         // cluster discovery changes and redirect the request to dest store. Client's d2ServiceName will be updated.
         readFromStore(client);
@@ -539,7 +530,7 @@ public class TestStoreMigration {
       StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
       StoreMigrationTestUtil
           .completeMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, FABRIC0);
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
         // StoreConfig in router might not be up-to-date. Keep reading from the store. Finally, router will find that
         // cluster discovery changes and redirect the request to dest store. Client's d2ServiceName will be updated.
         readFromStore(client);

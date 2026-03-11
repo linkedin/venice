@@ -21,6 +21,10 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.EXTENDED_SCHEMA_VAL
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
@@ -29,6 +33,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SC
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.MAP_REDUCE_PARTITIONER_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REDUCER_SPECULATIVE_EXECUTION_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
@@ -51,6 +56,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CRE
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.JobClientWrapper;
@@ -72,6 +78,7 @@ import com.linkedin.venice.hadoop.mapreduce.datawriter.partition.VeniceMRPartiti
 import com.linkedin.venice.hadoop.mapreduce.datawriter.reduce.VeniceReducer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.CounterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -89,6 +96,7 @@ import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Partitioner;
 import org.apache.hadoop.mapred.RunningJob;
+import org.apache.hadoop.mapreduce.Cluster;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -178,6 +186,21 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       conf.setInt(DERIVED_SCHEMA_ID_PROP, pushJobSetting.derivedSchemaId);
     }
     conf.setBoolean(ENABLE_WRITE_COMPUTE, pushJobSetting.enableWriteCompute);
+
+    // Incremental push throttling configs - pass through to mapper/reducer
+    conf.setBoolean(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);
+    conf.setBoolean(PUSH_TO_SEPARATE_REALTIME_TOPIC, pushJobSetting.pushToSeparateRealtimeTopicEnabled);
+    conf.set(
+        INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND,
+        props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND, "-1"));
+    if (props.containsKey(INCREMENTAL_PUSH_RATE_LIMITER_TYPE)) {
+      conf.set(INCREMENTAL_PUSH_RATE_LIMITER_TYPE, props.getString(INCREMENTAL_PUSH_RATE_LIMITER_TYPE));
+    }
+    if (props.containsKey(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS)) {
+      conf.set(
+          INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS,
+          props.getString(INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS));
+    }
 
     if (!props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
       // If the push job plug-in doesn't specify the request timeout config, default will be infinite
@@ -310,7 +333,6 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     }
   }
 
-  // Visible for testing
   public void setJobClientWrapper(JobClientWrapper jobClientWrapper) {
     this.jobClientWrapper = jobClientWrapper;
   }
@@ -373,8 +395,56 @@ public class DataWriterMRJob extends DataWriterComputeJob {
 
   @Override
   public void close() throws IOException {
-    if (runningJob != null && !runningJob.isComplete()) {
-      runningJob.killJob();
+    try {
+      if (runningJob != null && !runningJob.isComplete()) {
+        runningJob.killJob();
+      }
+    } finally {
+      cleanUpMRStagingDir();
     }
+  }
+
+  /**
+   * Clean up the MR job's staging directory in HDFS. When a MapReduce job is submitted, Hadoop copies
+   * the job jar and configuration to a staging directory (e.g., {@code /user/<username>/.staging/<job_id>}).
+   * This directory should be cleaned up by the framework after job completion, but it may not always happen
+   * (e.g., on client crashes or AM failures), leading to accumulation over time.
+   */
+  private void cleanUpMRStagingDir() {
+    if (runningJob == null || jobConf == null) {
+      return;
+    }
+    Cluster cluster = null;
+    try {
+      cluster = createCluster(jobConf);
+      Path stagingAreaDir = cluster.getStagingAreaDir();
+      Path jobStagingDir = new Path(stagingAreaDir, runningJob.getID().toString());
+      HadoopUtils.cleanUpHDFSPath(jobStagingDir.toString(), true);
+    } catch (Exception e) {
+      LOGGER.warn("Failed to resolve MR staging directory for job {}", runningJob.getID(), e);
+    } finally {
+      if (cluster != null) {
+        try {
+          cluster.close();
+        } catch (IOException e) {
+          LOGGER.warn("Failed to close Cluster object", e);
+        }
+      }
+    }
+  }
+
+  @VisibleForTesting
+  void setRunningJob(RunningJob runningJob) {
+    this.runningJob = runningJob;
+  }
+
+  @VisibleForTesting
+  void setJobConf(JobConf jobConf) {
+    this.jobConf = jobConf;
+  }
+
+  @VisibleForTesting
+  Cluster createCluster(JobConf conf) throws IOException {
+    return new Cluster(conf);
   }
 }

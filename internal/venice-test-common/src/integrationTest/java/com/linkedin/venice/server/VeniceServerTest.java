@@ -17,6 +17,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -92,6 +93,7 @@ import org.testng.annotations.Test;
 
 public class VeniceServerTest {
   static final long TOTAL_TIMEOUT_FOR_LONG_TEST_MS = 70 * Time.MS_PER_SECOND;
+  static final long TOTAL_TIMEOUT_FOR_VERY_LONG_TEST_MS = 120 * Time.MS_PER_SECOND;
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerTest.class);
 
   @Test
@@ -399,15 +401,25 @@ public class VeniceServerTest {
         d2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
       }
 
-      URI requestUri =
-          URI.create("d2://" + d2ServiceName + "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName);
-      RestRequest request = new RestRequestBuilder(requestUri).setMethod("GET").build();
-      Assert.assertThrows(ExecutionException.class, () -> d2Client.restRequest(request).get());
-      cluster.useControllerClient(
-          controllerClient -> controllerClient
-              .updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
-      RestResponse response = d2Client.restRequest(request).get();
-      Assert.assertEquals(response.getStatus(), HttpStatus.SC_OK);
+      try {
+        URI requestUri =
+            URI.create("d2://" + d2ServiceName + "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName);
+        RestRequest request = new RestRequestBuilder(requestUri).setMethod("GET").build();
+        Assert.assertThrows(ExecutionException.class, () -> d2Client.restRequest(request).get());
+        cluster.useControllerClient(
+            controllerClient -> controllerClient
+                .updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
+        // The store config update propagates asynchronously via ZK to the server's store repository,
+        // so the server may still return 403 for a brief window after updateStore returns.
+        // Use retryOnThrowable=true because the D2 request throws ExecutionException (not AssertionError)
+        // when the server returns 403 before it has received the config update.
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
+          RestResponse response = d2Client.restRequest(request).get();
+          Assert.assertEquals(response.getStatus(), HttpStatus.SC_OK);
+        });
+      } finally {
+        D2ClientUtils.shutdownClient(d2Client);
+      }
     }
   }
 
@@ -463,15 +475,16 @@ public class VeniceServerTest {
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         // All partitions should have been dropped asynchronously due to instance being disabled
+        Object engine = storageService.getStorageEngine(storeVersionName);
         Assert.assertNull(
-            storageService.getStorageEngine(storeVersionName),
-            "Storage engine: " + storeVersionName + " should have been dropped");
+            engine,
+            "Storage engine: " + storeVersionName + " should have been dropped but found [" + engine + "]");
         Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 0);
       });
     }
   }
 
-  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_VERY_LONG_TEST_MS)
   public void testDropStorePartitionSynchronously() {
     VeniceClusterCreateOptions options =
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(0).build();
@@ -495,14 +508,13 @@ public class VeniceServerTest {
       Assert.assertEquals(storageService.getStorageEngine(storeVersionName).getPartitionIds().size(), 3);
 
       cluster.useControllerClient(controllerClient -> {
-        controllerClient.disableAndDeleteStore(storeName);
+        TestUtils.assertCommand(controllerClient.disableAndDeleteStore(storeName));
       });
 
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        // All partitions should have been dropped synchronously
-        Assert.assertNull(
-            storageService.getStorageEngine(storeVersionName),
-            "Storage engine: " + storeVersionName + " should have been dropped");
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        // All partitions should have been dropped after the store is deleted
+        Object engine = storageService.getStorageEngine(storeVersionName);
+        Assert.assertNull(engine, "Storage engine should have been dropped expected [null] but found [" + engine + "]");
       });
     }
   }

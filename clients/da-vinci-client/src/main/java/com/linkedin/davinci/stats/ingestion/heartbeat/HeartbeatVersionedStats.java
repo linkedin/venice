@@ -245,21 +245,19 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
 
   /**
    * Emits a per-record OTel metric for leader record delay (called per record, not aggregated).
-   * Uses {@code get()} instead of {@code getOrCreate} to avoid synchronization on this hot path.
-   * Returns early if stats haven't been initialized yet for this store.
+   * Uses {@code get()} as a fast path; falls back to {@code getOrCreate} on first call per store.
    */
   public void emitPerRecordLeaderOtelMetric(String storeName, int version, String region, long delay) {
-    RecordLevelDelayOtelStats otelStats = recordLevelDelayOtelStatsMap.get(storeName);
+    RecordLevelDelayOtelStats otelStats = getOrLazilyCreateRecordLevelDelayOtelStats(storeName);
     if (otelStats == null || !otelStats.emitOtelMetrics()) {
-      return; // Fast path exit: stats not initialized or OTel disabled
+      return;
     }
     otelStats.recordRecordDelayOtelMetrics(version, region, ReplicaType.LEADER, ReplicaState.READY_TO_SERVE, delay);
   }
 
   /**
    * Emits a per-record OTel metric for follower record delay (called per record, not aggregated).
-   * Uses {@code get()} instead of {@code getOrCreate} to avoid synchronization on this hot path.
-   * Returns early if stats haven't been initialized yet for this store.
+   * Uses {@code get()} as a fast path; falls back to {@code getOrCreate} on first call per store.
    */
   public void emitPerRecordFollowerOtelMetric(
       String storeName,
@@ -267,12 +265,27 @@ public class HeartbeatVersionedStats extends AbstractVeniceAggVersionedStats<Hea
       String region,
       long delay,
       boolean isReadyToServe) {
-    RecordLevelDelayOtelStats otelStats = recordLevelDelayOtelStatsMap.get(storeName);
+    RecordLevelDelayOtelStats otelStats = getOrLazilyCreateRecordLevelDelayOtelStats(storeName);
     if (otelStats == null || !otelStats.emitOtelMetrics()) {
-      return; // Fast path exit: stats not initialized or OTel disabled
+      return;
     }
     ReplicaState replicaState = isReadyToServe ? ReplicaState.READY_TO_SERVE : ReplicaState.CATCHING_UP;
     otelStats.recordRecordDelayOtelMetrics(version, region, ReplicaType.FOLLOWER, replicaState, delay);
+  }
+
+  /**
+   * Fast-path lookup with lazy initialization fallback.
+   * Returns null if the store is not found in the metadata repository (e.g., store was deleted).
+   */
+  private RecordLevelDelayOtelStats getOrLazilyCreateRecordLevelDelayOtelStats(String storeName) {
+    RecordLevelDelayOtelStats existing = recordLevelDelayOtelStatsMap.get(storeName);
+    if (existing != null) {
+      return existing;
+    }
+    if (!metadataRepository.hasStore(storeName)) {
+      return null;
+    }
+    return getOrCreateRecordLevelDelayOtelStats(storeName);
   }
 
   @VisibleForTesting
