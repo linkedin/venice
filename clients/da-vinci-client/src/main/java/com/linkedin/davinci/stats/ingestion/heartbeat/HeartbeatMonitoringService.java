@@ -581,7 +581,17 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       boolean isReadyToServe,
       boolean retainHighestTimeStamp,
       boolean isHeartbeatMessage) {
-    heartbeatTimestamps.computeIfPresent(key, (k, currentEntry) -> {
+    heartbeatTimestamps.compute(key, (k, currentEntry) -> {
+      if (currentEntry == null) {
+        if (isHeartbeatMessage) {
+          // Heartbeat control messages only update existing entries. For hybrid stores, entries are
+          // pre-created by initializeEntry. Batch stores don't receive heartbeats on VT.
+          return null;
+        }
+        // Lazy initialization for batch stores — only create entry for regions
+        // that actually receive data records, avoiding infinite lag on unused regions
+        return new IngestionTimestampEntry(timestamp, timestamp, isReadyToServe, true);
+      }
       // If we are retaining only the highest timestamp for a given heartbeat, if the current held heartbeat
       // is of a higher value AND was an entry was consumed (not a placeholder value by the process) then
       // we will No-Op in favor of retaining that higher timestamp. This behavior is specific to follower

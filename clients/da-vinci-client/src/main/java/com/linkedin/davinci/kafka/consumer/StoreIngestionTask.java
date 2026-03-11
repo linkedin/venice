@@ -3006,6 +3006,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
+  /**
+   * Hook for cleaning up batch record tracking entries at EOP.
+   * Override in subclasses that support record-level timestamp tracking.
+   */
+  protected void cleanupBatchRecordTracking(PartitionConsumptionState partitionConsumptionState) {
+    // No Op
+  }
+
   boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String brokerUrl) {
     if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage()) {
       return false;
@@ -3499,6 +3507,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (isDataRecovery && partitionConsumptionState.isBatchOnly()) {
       partitionConsumptionState.setDataRecoveryCompleted(true);
       ingestionNotificationDispatcher.reportDataRecoveryCompleted(partitionConsumptionState);
+    }
+
+    if (partitionConsumptionState.isBatchOnly()) {
+      cleanupBatchRecordTracking(partitionConsumptionState);
     }
   }
 

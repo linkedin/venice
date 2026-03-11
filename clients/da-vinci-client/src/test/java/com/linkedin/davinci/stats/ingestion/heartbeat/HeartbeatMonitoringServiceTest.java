@@ -1443,4 +1443,153 @@ public class HeartbeatMonitoringServiceTest {
         .distinct()
         .count();
   }
+
+  @Test
+  public void testLazyEntryCreationForBatchStore() {
+    // Setup a batch-only store (no hybrid config) with record-level timestamp enabled
+    Version version = new VersionImpl(TEST_STORE, 1, "1");
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(TEST_STORE);
+    when(mockStore.getVersion(1)).thenReturn(version);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    when(mockReadOnlyRepository.waitVersion(eq(TEST_STORE), eq(1), any(), anyLong()))
+        .thenReturn(new StoreVersionInfo(mockStore, version));
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+    regions.add(REMOTE_FABRIC);
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getRegionNames()).thenReturn(regions);
+    when(serverConfig.getRegionName()).thenReturn(LOCAL_FABRIC);
+    when(serverConfig.getServerMaxWaitForVersionInfo()).thenReturn(Duration.ofSeconds(5));
+    when(serverConfig.getListenerHostname()).thenReturn("localhost");
+    when(serverConfig.getListenerPort()).thenReturn(123);
+    when(serverConfig.getLagMonitorCleanupCycle()).thenReturn(5);
+    when(serverConfig.isRecordLevelTimestampEnabled()).thenReturn(true);
+
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> mockCVRepositoryFuture = new CompletableFuture<>();
+
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        null,
+        mockCVRepositoryFuture);
+
+    // Add leader lag monitor — since it's batch-only (no hybrid config), initializeEntry should skip
+    String versionTopic = Version.composeKafkaTopic(TEST_STORE, 1);
+    heartbeatMonitoringService.updateLagMonitor(versionTopic, 0, HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
+
+    // Verify no entries were created by initializeEntry for either leader or follower
+    Assert.assertFalse(
+        hasEntry(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1, 0),
+        "Batch-only store should not have leader entries from initializeEntry");
+    Assert.assertFalse(
+        hasEntry(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1, 0),
+        "Batch-only store should not have follower entries from initializeEntry");
+
+    // --- Leader path ---
+
+    HeartbeatKey leaderKey = new HeartbeatKey(TEST_STORE, 1, 0, LOCAL_FABRIC);
+    heartbeatMonitoringService.recordLeaderRecordTimestamp(leaderKey, 1500L, false);
+
+    IngestionTimestampEntry leaderEntry =
+        getEntry(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1, 0, LOCAL_FABRIC);
+    Assert.assertNotNull(leaderEntry, "Leader entry should be lazily created for batch store");
+    Assert.assertEquals(leaderEntry.recordTimestamp, 1500L);
+    Assert.assertTrue(leaderEntry.consumedFromUpstream);
+    Assert.assertFalse(leaderEntry.readyToServe, "readyToServe should be false before EOP");
+
+    // Only local region entry should exist, not remote
+    Assert.assertNull(
+        getEntry(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1, 0, REMOTE_FABRIC),
+        "Remote region should not have an entry since no records were consumed from it");
+
+    // Record more timestamps — should update the existing entry with max
+    heartbeatMonitoringService.recordLeaderRecordTimestamp(leaderKey, 1200L, false);
+    heartbeatMonitoringService.recordLeaderRecordTimestamp(leaderKey, 1800L, true);
+
+    leaderEntry = getEntry(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1, 0, LOCAL_FABRIC);
+    Assert.assertEquals(leaderEntry.recordTimestamp, 1800L, "Record timestamp should be max of all records");
+    Assert.assertTrue(leaderEntry.readyToServe, "readyToServe should be updated to true");
+
+    // --- Follower path ---
+
+    HeartbeatKey followerKey = new HeartbeatKey(TEST_STORE, 1, 0, LOCAL_FABRIC);
+    heartbeatMonitoringService.recordFollowerRecordTimestamp(followerKey, 2000L, false);
+
+    IngestionTimestampEntry followerEntry =
+        getEntry(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1, 0, LOCAL_FABRIC);
+    Assert.assertNotNull(followerEntry, "Follower entry should be lazily created for batch store");
+    Assert.assertEquals(followerEntry.recordTimestamp, 2000L);
+    Assert.assertTrue(followerEntry.consumedFromUpstream);
+
+    // --- Cleanup ---
+
+    heartbeatMonitoringService.removeLagMonitor(version, 0);
+    Assert.assertFalse(
+        hasEntry(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1, 0),
+        "Leader entries should be removed after removeLagMonitor");
+    Assert.assertFalse(
+        hasEntry(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1, 0),
+        "Follower entries should be removed after removeLagMonitor");
+  }
+
+  @Test
+  public void testHeartbeatDoesNotLazilyCreateEntry() {
+    // Verify that heartbeat control messages do NOT lazily create entries — only data records do
+    Version version = new VersionImpl(TEST_STORE, 1, "1");
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getName()).thenReturn(TEST_STORE);
+    when(mockStore.getVersion(1)).thenReturn(version);
+
+    MetricsRepository mockMetricsRepository = new MetricsRepository();
+    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
+    when(mockReadOnlyRepository.waitVersion(eq(TEST_STORE), eq(1), any(), anyLong()))
+        .thenReturn(new StoreVersionInfo(mockStore, version));
+
+    Set<String> regions = new HashSet<>();
+    regions.add(LOCAL_FABRIC);
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getRegionNames()).thenReturn(regions);
+    when(serverConfig.getRegionName()).thenReturn(LOCAL_FABRIC);
+    when(serverConfig.getServerMaxWaitForVersionInfo()).thenReturn(Duration.ofSeconds(5));
+    when(serverConfig.getListenerHostname()).thenReturn("localhost");
+    when(serverConfig.getListenerPort()).thenReturn(123);
+    when(serverConfig.getLagMonitorCleanupCycle()).thenReturn(5);
+    when(serverConfig.isRecordLevelTimestampEnabled()).thenReturn(true);
+
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> mockCVRepositoryFuture = new CompletableFuture<>();
+
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        mockMetricsRepository,
+        mockReadOnlyRepository,
+        serverConfig,
+        null,
+        mockCVRepositoryFuture);
+
+    // Record a leader heartbeat — should NOT lazily create an entry
+    HeartbeatKey recordKey = new HeartbeatKey(TEST_STORE, 1, 0, LOCAL_FABRIC);
+    heartbeatMonitoringService.recordLeaderHeartbeat(recordKey, 3000L, true);
+
+    Assert.assertFalse(
+        hasEntry(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1, 0),
+        "Heartbeat messages should not lazily create entries");
+
+    // But a data record SHOULD lazily create an entry
+    heartbeatMonitoringService.recordLeaderRecordTimestamp(recordKey, 3000L, true);
+
+    IngestionTimestampEntry entry =
+        getEntry(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1, 0, LOCAL_FABRIC);
+    Assert.assertNotNull(entry, "Data records should lazily create entries");
+    Assert.assertEquals(entry.recordTimestamp, 3000L);
+  }
 }

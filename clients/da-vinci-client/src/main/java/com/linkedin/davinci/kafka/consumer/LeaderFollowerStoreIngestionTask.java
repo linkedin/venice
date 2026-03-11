@@ -63,6 +63,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -2597,6 +2598,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     } else {
       hbService.recordFollowerRecordTimestamp(cachedKey, messageTimestamp, isComplete);
     }
+  }
+
+  @Override
+  protected void cleanupBatchRecordTracking(PartitionConsumptionState partitionConsumptionState) {
+    HeartbeatMonitoringService hbService = getHeartbeatMonitoringService();
+    if (hbService == null) {
+      return;
+    }
+    int partition = partitionConsumptionState.getPartition();
+    Version version = new VersionImpl(storeName, versionNumber, "");
+    hbService.removeLagMonitor(version, partition);
+    LOGGER.info("Removed lag monitor for replica: {} after EOP", partitionConsumptionState.getReplicaId());
+    partitionConsumptionState.clearCachedHeartbeatKeys();
   }
 
   @Override
