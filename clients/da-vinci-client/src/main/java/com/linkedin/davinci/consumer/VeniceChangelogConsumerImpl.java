@@ -1017,7 +1017,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             put.getSchemaId(),
             keyBytes,
             put.getPutValue(),
-            put.getReplicationMetadataPayload(),
             message.getPosition(),
             compressor);
 

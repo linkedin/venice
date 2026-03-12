@@ -144,6 +144,11 @@ public abstract class ChunkAssembler {
             System.arraycopy(rawRecord, ValueRecord.SCHEMA_HEADER_LENGTH, assembledRmdBytes, offset, dataLength);
             offset += dataLength;
           }
+          if (offset != rmdManifest.getSize()) {
+            throw new VeniceException(
+                "RMD assembly size mismatch for topic: " + pubSubTopicPartition.getPubSubTopic().getName()
+                    + ". Expected " + rmdManifest.getSize() + " bytes but got " + offset + " bytes.");
+          }
           assembledRmd = ByteBuffer.wrap(assembledRmdBytes);
         }
 
