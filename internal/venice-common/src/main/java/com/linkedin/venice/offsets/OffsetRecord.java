@@ -317,7 +317,7 @@ public class OffsetRecord {
     try {
       numericOffset = leaderPosition.getNumericOffset();
     } catch (UnsupportedOperationException e) {
-      // Position type does not support numeric offsets (e.g. Northguard NGRangePosition).
+      // Position type does not support numeric offsets.
       // Store -1 as legacy fallback; the wire-format bytes above are the authoritative position.
       numericOffset = -1;
     }

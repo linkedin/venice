@@ -186,18 +186,19 @@ public class TestOffsetRecord {
         .getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty(), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
 
     // Create a position that throws UnsupportedOperationException on getNumericOffset(),
-    // simulating Northguard NGRangePosition behavior.
-    PubSubPosition ngPosition = mock(PubSubPosition.class);
-    when(ngPosition.getNumericOffset()).thenThrow(new UnsupportedOperationException("NGRangePosition"));
+    // simulating a pub sub system whose positions do not support numeric offsets.
+    PubSubPosition nonNumericPosition = mock(PubSubPosition.class);
+    when(nonNumericPosition.getNumericOffset())
+        .thenThrow(new UnsupportedOperationException("non-numeric position"));
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.type = 99;
     wireFormat.rawBytes = ByteBuffer.wrap(new byte[] { 0x01, 0x02 });
-    when(ngPosition.getPositionWireFormat()).thenReturn(wireFormat);
-    when(ngPosition.toWireFormatBuffer())
+    when(nonNumericPosition.getPositionWireFormat()).thenReturn(wireFormat);
+    when(nonNumericPosition.toWireFormatBuffer())
         .thenReturn(PubSubPosition.PUBSUB_POSITION_WIRE_FORMAT_SERIALIZER.serialize(wireFormat));
 
     // Should not throw — the fix stores -1 as legacy fallback
-    offsetRecord.checkpointRtPosition(TEST_KAFKA_URL1, ngPosition);
+    offsetRecord.checkpointRtPosition(TEST_KAFKA_URL1, nonNumericPosition);
 
     // Verify the legacy offset map got -1 as fallback
     assertEquals(offsetRecord.getPartitionState().upstreamOffsetMap.get(TEST_KAFKA_URL1), Long.valueOf(-1L));

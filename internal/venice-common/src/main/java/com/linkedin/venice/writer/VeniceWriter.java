@@ -2285,8 +2285,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     LeaderMetadata leaderMetadataFooter = new LeaderMetadata();
     leaderMetadataFooter.hostName = writerId;
     // Heartbeat upstreamOffset is never read by consumers (DIV is skipped, followers only use
-    // messageTimestamp and LeaderCompleteState header). Use -1 as default for non-Kafka positions
-    // (e.g. Northguard NGRangePosition) which do not support numeric offsets.
+    // messageTimestamp and LeaderCompleteState header). Use -1 as default for positions from
+    // pub sub systems that do not support numeric offsets.
     leaderMetadataFooter.upstreamOffset = getNumericOffsetOrDefault(leaderMetadataWrapper.getUpstreamPosition());
     leaderMetadataFooter.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
     leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
@@ -2303,7 +2303,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   /**
    * Extract the numeric offset from a PubSubPosition, returning -1 if the position type
-   * does not support numeric offsets (e.g. Northguard's NGRangePosition).
+   * does not support numeric offsets.
    */
   static long getNumericOffsetOrDefault(PubSubPosition position) {
     try {

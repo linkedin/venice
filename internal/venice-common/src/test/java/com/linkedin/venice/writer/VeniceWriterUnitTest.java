@@ -878,8 +878,9 @@ public class VeniceWriterUnitTest {
 
   @Test
   public void testGetNumericOffsetOrDefaultWithUnsupportedPosition() {
-    PubSubPosition ngPosition = mock(PubSubPosition.class);
-    when(ngPosition.getNumericOffset()).thenThrow(new UnsupportedOperationException("NGRangePosition"));
-    assertEquals(VeniceWriter.getNumericOffsetOrDefault(ngPosition), -1L);
+    PubSubPosition nonNumericPosition = mock(PubSubPosition.class);
+    when(nonNumericPosition.getNumericOffset())
+        .thenThrow(new UnsupportedOperationException("non-numeric position"));
+    assertEquals(VeniceWriter.getNumericOffsetOrDefault(nonNumericPosition), -1L);
   }
 }

@@ -625,17 +625,19 @@ public class PubSubUtilTest {
 
   @Test
   public void testDeserializePositionWithOffsetFallbackNonNumericPosition() {
-    // Simulate a position type that does not support numeric offsets (e.g. Northguard NGRangePosition).
+    // Simulate a position type that does not support numeric offsets.
     // The deserialized position should be returned as-is without attempting offset comparison.
-    PubSubPosition ngPosition = mock(PubSubPosition.class);
-    when(ngPosition.getNumericOffset()).thenThrow(new UnsupportedOperationException("NGRangePosition"));
+    PubSubPosition nonNumericPosition = mock(PubSubPosition.class);
+    when(nonNumericPosition.getNumericOffset())
+        .thenThrow(new UnsupportedOperationException("non-numeric position"));
 
-    // Use a mock deserializer that returns our mock NG position for any ByteBuffer input
-    PubSubPositionDeserializer ngDeserializer = mock(PubSubPositionDeserializer.class);
+    // Use a mock deserializer that returns our non-numeric position for any ByteBuffer input
+    PubSubPositionDeserializer nonNumericDeserializer = mock(PubSubPositionDeserializer.class);
     ByteBuffer dummyBuffer = ByteBuffer.wrap(new byte[] { 0x01 });
-    when(ngDeserializer.toPosition(dummyBuffer)).thenReturn(ngPosition);
+    when(nonNumericDeserializer.toPosition(dummyBuffer)).thenReturn(nonNumericPosition);
 
-    PubSubPosition result = PubSubUtil.deserializePositionWithOffsetFallback(dummyBuffer, 100L, ngDeserializer);
-    assertEquals(result, ngPosition, "Non-numeric position should be returned as-is");
+    PubSubPosition result =
+        PubSubUtil.deserializePositionWithOffsetFallback(dummyBuffer, 100L, nonNumericDeserializer);
+    assertEquals(result, nonNumericPosition, "Non-numeric position should be returned as-is");
   }
 }

@@ -379,10 +379,10 @@ public final class PubSubUtil {
       if (position == PubSubSymbolicPosition.EARLIEST || position == PubSubSymbolicPosition.LATEST) {
         return position;
       }
-      // For position types that support numeric offsets (e.g. Kafka), compare against the
-      // caller-provided offset to guard against regressions. For position types that do not
-      // support numeric offsets (e.g. Northguard NGRangePosition), trust the deserialized
-      // position as-is since offset-based comparison is not meaningful.
+      // For position types that support numeric offsets, compare against the caller-provided
+      // offset to guard against regressions. For position types that do not support numeric
+      // offsets, trust the deserialized position as-is since offset-based comparison is not
+      // meaningful.
       try {
         long numericOffset = position.getNumericOffset();
         if (numericOffset >= offset) {
@@ -393,7 +393,7 @@ public final class PubSubUtil {
             numericOffset,
             offset);
       } catch (UnsupportedOperationException e) {
-        // Position type does not support numeric offsets (e.g. NGRangePosition).
+        // Position type does not support numeric offsets.
         // Return the deserialized position directly — offset comparison is not applicable.
         return position;
       }

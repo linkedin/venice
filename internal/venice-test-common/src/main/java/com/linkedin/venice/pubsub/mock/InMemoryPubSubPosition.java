@@ -26,7 +26,7 @@ public class InMemoryPubSubPosition implements PubSubPosition {
   public long getNumericOffset() {
     if (!numericOffsetSupported) {
       throw new UnsupportedOperationException(
-          "Numeric offset not supported for this position (simulating non-Kafka position type like NGRangePosition)");
+          "Numeric offset not supported for this position (simulating a pub sub system that does not support numeric offsets)");
     }
     return internalOffset;
   }
@@ -48,10 +48,9 @@ public class InMemoryPubSubPosition implements PubSubPosition {
   }
 
   /**
-   * Creates a position that behaves like a non-Kafka position (e.g. Northguard NGRangePosition).
+   * Creates a position that simulates a pub sub system whose positions do not support numeric offsets.
    * The internal offset is still used for mock broker indexing, but {@link #getNumericOffset()}
-   * throws {@link UnsupportedOperationException}, simulating position types that don't support
-   * numeric offsets.
+   * throws {@link UnsupportedOperationException}.
    */
   public static InMemoryPubSubPosition ofNonNumeric(long offset) {
     return new InMemoryPubSubPosition(offset, false);
