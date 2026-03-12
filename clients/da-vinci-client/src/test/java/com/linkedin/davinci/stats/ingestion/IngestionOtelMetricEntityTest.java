@@ -486,14 +486,14 @@ public class IngestionOtelMetricEntityTest {
             "Whether an active ingestion task exists for this store version (0 or 1)",
             storeClusterVersion));
 
-    // Write-compute amplification alert counter
+    // Partial-update amplification alert counter
     map.put(
-        IngestionOtelMetricEntity.WRITE_COMPUTE_AMPLIFICATION_ALERT_COUNT,
+        IngestionOtelMetricEntity.PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT,
         new MetricEntityExpectation(
-            "ingestion.write_compute.amplification_alert_count",
+            "ingestion.partial_update.amplification_alert_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Count of reporting windows where write-compute amplification was detected (large result values)",
+            "Count of reporting windows where partial-update amplification was detected (large result values)",
             storeClusterVersion));
 
     return map;

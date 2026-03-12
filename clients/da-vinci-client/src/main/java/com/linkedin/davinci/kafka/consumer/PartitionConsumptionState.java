@@ -332,8 +332,8 @@ public class PartitionConsumptionState {
    */
   private final Map<String, HeartbeatKey> cachedHeartbeatKeys;
 
-  /** Lazily allocated per-partition detector for write-compute amplification. */
-  private volatile WriteComputeAmplificationDetector writeComputeAmplificationDetector;
+  /** Lazily allocated per-partition detector for partial-update amplification. */
+  private volatile PartialUpdateAmplificationDetector partialUpdateAmplificationDetector;
 
   public PartitionConsumptionState(
       PubSubTopicPartition partitionReplica,
@@ -1267,17 +1267,17 @@ public class PartitionConsumptionState {
   }
 
   /**
-   * Get or create the per-partition write-compute amplification detector. Lazily allocated using
-   * double-checked locking — only partitions that actually receive write-compute events will allocate.
+   * Get or create the per-partition partial-update amplification detector. Lazily allocated using
+   * double-checked locking — only partitions that actually receive partial-update events will allocate.
    */
-  public WriteComputeAmplificationDetector getOrCreateWriteComputeAmplificationDetector(long reportIntervalMs) {
-    if (writeComputeAmplificationDetector == null) {
+  public PartialUpdateAmplificationDetector getOrCreatePartialUpdateAmplificationDetector(long reportIntervalMs) {
+    if (partialUpdateAmplificationDetector == null) {
       synchronized (this) {
-        if (writeComputeAmplificationDetector == null) {
-          writeComputeAmplificationDetector = new WriteComputeAmplificationDetector(reportIntervalMs);
+        if (partialUpdateAmplificationDetector == null) {
+          partialUpdateAmplificationDetector = new PartialUpdateAmplificationDetector(reportIntervalMs);
         }
       }
     }
-    return writeComputeAmplificationDetector;
+    return partialUpdateAmplificationDetector;
   }
 }

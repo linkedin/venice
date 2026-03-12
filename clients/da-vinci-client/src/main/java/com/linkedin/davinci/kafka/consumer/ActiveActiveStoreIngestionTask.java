@@ -578,22 +578,22 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           mergeConflictResult.getNewValue(),
           partitionConsumptionState);
 
-      // Write-compute amplification detection (AA path)
+      // Partial-update amplification detection (AA path)
       if (msgType == MessageType.UPDATE && updatedValueBytes != null) {
-        int largeResultThreshold = serverConfig.getWriteComputeLargeResultLogThresholdBytes();
-        WriteComputeAmplificationDetector amplificationDetector = partitionConsumptionState
-            .getOrCreateWriteComputeAmplificationDetector(serverConfig.getWriteComputeAmplificationReportIntervalMs());
+        int largeResultThreshold = serverConfig.getPartialUpdateLargeResultLogThresholdBytes();
+        PartialUpdateAmplificationDetector amplificationDetector = partitionConsumptionState
+            .getOrCreatePartialUpdateAmplificationDetector(serverConfig.getPartialUpdateAmplificationReportIntervalMs());
         amplificationDetector
             .record(keyBytes, incomingUpdatePayloadSize, updatedValueBytes.remaining(), largeResultThreshold);
-        WriteComputeAmplificationDetector.AmplificationReport ampReport =
+        PartialUpdateAmplificationDetector.AmplificationReport ampReport =
             amplificationDetector.tryBuildReportAndReset(System.currentTimeMillis(), largeResultThreshold);
         if (ampReport != null) {
           LOGGER.warn(
-              "Write-compute amplification report for {} [Partition {}]\n{}",
+              "Partial-update amplification report for {} [Partition {}]\n{}",
               partitionConsumptionState.getReplicaId(),
               consumerRecord.getTopicPartition().getPartitionNumber(),
               ampReport);
-          aggVersionedIngestionStats.recordWriteComputeAmplificationAlertCount(storeName, versionNumber);
+          aggVersionedIngestionStats.recordPartialUpdateAmplificationAlertCount(storeName, versionNumber);
         }
       }
 

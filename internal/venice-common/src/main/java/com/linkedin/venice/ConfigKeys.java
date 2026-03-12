@@ -3366,16 +3366,16 @@ public class ConfigKeys {
   public static final String VENICE_LOG_CONTEXT_COMPONENT = "venice.log.context.component";
 
   /**
-   * Write-compute results larger than this threshold (in bytes) are tracked in the per-partition heavy-key map
+   * Partial-update results larger than this threshold (in bytes) are tracked in the per-partition heavy-key map
    * for amplification detection. Default: 100 KB.
    */
-  public static final String WRITE_COMPUTE_LARGE_RESULT_LOG_THRESHOLD_BYTES =
-      "write.compute.large.result.log.threshold.bytes";
+  public static final String PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES =
+      "partial.update.large.result.log.threshold.bytes";
 
   /**
-   * How often (in ms) to emit a per-partition summary report of write-compute amplification.
+   * How often (in ms) to emit a per-partition summary report of partial-update amplification.
    * Only partitions with large results are reported. Default: 60,000 ms (1 minute).
    */
-  public static final String WRITE_COMPUTE_AMPLIFICATION_REPORT_INTERVAL_MS =
-      "write.compute.amplification.report.interval.ms";
+  public static final String PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS =
+      "partial.update.amplification.report.interval.ms";
 }

@@ -329,9 +329,9 @@ public enum IngestionOtelMetricEntity implements ModuleMetricEntityInterface {
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   ),
 
-  WRITE_COMPUTE_AMPLIFICATION_ALERT_COUNT(
-      "ingestion.write_compute.amplification_alert_count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of reporting windows where write-compute amplification was detected (large result values)",
+  PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT(
+      "ingestion.partial_update.amplification_alert_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of reporting windows where partial-update amplification was detected (large result values)",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_VERSION_ROLE)
   );
 

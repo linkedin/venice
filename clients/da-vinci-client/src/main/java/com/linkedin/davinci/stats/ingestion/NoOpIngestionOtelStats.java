@@ -246,6 +246,6 @@ public class NoOpIngestionOtelStats extends IngestionOtelStats {
   }
 
   @Override
-  public void recordWriteComputeAmplificationAlertCount(int version, long value) {
+  public void recordPartialUpdateAmplificationAlertCount(int version, long value) {
   }
 }
