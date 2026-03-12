@@ -879,8 +879,7 @@ public class VeniceWriterUnitTest {
   @Test
   public void testGetNumericOffsetOrDefaultWithUnsupportedPosition() {
     PubSubPosition nonNumericPosition = mock(PubSubPosition.class);
-    when(nonNumericPosition.getNumericOffset())
-        .thenThrow(new UnsupportedOperationException("non-numeric position"));
+    when(nonNumericPosition.getNumericOffset()).thenThrow(new UnsupportedOperationException("non-numeric position"));
     assertEquals(VeniceWriter.getNumericOffsetOrDefault(nonNumericPosition), -1L);
   }
 }

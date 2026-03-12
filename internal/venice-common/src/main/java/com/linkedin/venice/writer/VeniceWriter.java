@@ -2420,7 +2420,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     } else {
       kafkaValue.leaderMetadataFooter = new LeaderMetadata();
       kafkaValue.leaderMetadataFooter.hostName = writerId;
-      kafkaValue.leaderMetadataFooter.upstreamOffset = getNumericOffsetOrDefault(leaderMetadataWrapper.getUpstreamPosition());
+      kafkaValue.leaderMetadataFooter.upstreamOffset =
+          getNumericOffsetOrDefault(leaderMetadataWrapper.getUpstreamPosition());
       kafkaValue.leaderMetadataFooter.upstreamPubSubPosition =
           leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
       kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();

@@ -628,8 +628,7 @@ public class PubSubUtilTest {
     // Simulate a position type that does not support numeric offsets.
     // The deserialized position should be returned as-is without attempting offset comparison.
     PubSubPosition nonNumericPosition = mock(PubSubPosition.class);
-    when(nonNumericPosition.getNumericOffset())
-        .thenThrow(new UnsupportedOperationException("non-numeric position"));
+    when(nonNumericPosition.getNumericOffset()).thenThrow(new UnsupportedOperationException("non-numeric position"));
 
     // Use a mock deserializer that returns our non-numeric position for any ByteBuffer input
     PubSubPositionDeserializer nonNumericDeserializer = mock(PubSubPositionDeserializer.class);

@@ -1,15 +1,14 @@
 package com.linkedin.venice.offsets;
 
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
@@ -188,8 +187,7 @@ public class TestOffsetRecord {
     // Create a position that throws UnsupportedOperationException on getNumericOffset(),
     // simulating a pub sub system whose positions do not support numeric offsets.
     PubSubPosition nonNumericPosition = mock(PubSubPosition.class);
-    when(nonNumericPosition.getNumericOffset())
-        .thenThrow(new UnsupportedOperationException("non-numeric position"));
+    when(nonNumericPosition.getNumericOffset()).thenThrow(new UnsupportedOperationException("non-numeric position"));
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.type = 99;
     wireFormat.rawBytes = ByteBuffer.wrap(new byte[] { 0x01, 0x02 });
