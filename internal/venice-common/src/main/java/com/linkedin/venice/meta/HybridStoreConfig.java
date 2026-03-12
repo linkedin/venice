@@ -30,5 +30,9 @@ public interface HybridStoreConfig extends DataModelBackedStructure<StoreHybridC
 
   void setRealTimeTopicName(String realTimeTopicName);
 
+  long getRewindEpochTimeInSecondsOverride();
+
+  void setRewindEpochTimeInSecondsOverride(long rewindEpochTimeInSecondsOverride);
+
   HybridStoreConfig clone();
 }

@@ -1113,6 +1113,7 @@ public class TestParentControllerWithMultiDataCenter {
             Optional.ofNullable(multiRegionMultiClusterWrapper.getChildRegions().get(0).getRegionName()),
             false,
             -1,
+            -1,
             false,
             null,
             0,
