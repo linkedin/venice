@@ -16,6 +16,7 @@ import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.security.SSLConfig;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import io.tehuti.metrics.MetricsRepository;
@@ -51,7 +52,9 @@ public class ListenerServiceTest {
     readMetadataRetriever = mock(ReadMetadataRetriever.class);
     serverConfig = mock(VeniceServerConfig.class);
     metricsRepository = new MetricsRepository();
-    sslFactory = Optional.of(mock(SSLFactory.class));
+    SSLFactory mockSslFactory = mock(SSLFactory.class);
+    doReturn(new SSLConfig()).when(mockSslFactory).getSSLConfig();
+    sslFactory = Optional.of(mockSslFactory);
     routerAccessController = Optional.of(mock(StaticAccessController.class));
     storeAccessController = Optional.of(mock(DynamicAccessController.class));
     diskHealthService = mock(DiskHealthCheckService.class);
