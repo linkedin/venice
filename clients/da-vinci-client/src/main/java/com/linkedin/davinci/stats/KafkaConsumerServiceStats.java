@@ -70,11 +70,14 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final MetricEntityStateBase pollBytesOtel;
   private final MetricEntityStateBase pollRecordCountOtel;
 
-  // All remaining metrics are created on every instance (matching original Tehuti pattern).
-  // Callers (AggKafkaConsumerServiceStats.recordTotal*) control which instance gets recorded to.
+  // ASYNC_COUNTER metrics: OTel callback only on total instance (per-store would register
+  // redundant ObservableCounter callbacks that always report zero). Tehuti sensors on all instances.
   private final MetricEntityStateBase pollCountOtel;
-  private final MetricEntityStateBase pollTimeOtel;
   private final MetricEntityStateBase pollNonEmptyCountOtel;
+
+  // Remaining total-only metrics: Tehuti sensors on all instances, OTel on all instances.
+  // Non-async types have no callback overhead — they only emit when .record() is called.
+  private final MetricEntityStateBase pollTimeOtel;
   private final MetricEntityStateBase pollErrorCountOtel;
   private final MetricEntityStateBase produceToWriteBufferTimeOtel;
   private final MetricEntityStateBase topicDeletedCountOtel;
@@ -134,11 +137,14 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes);
 
-    // All remaining metrics are created unconditionally (matching original Tehuti pattern).
-    // Callers (AggKafkaConsumerServiceStats.recordTotal*) control which instance gets recorded to.
+    // ASYNC_COUNTER metrics: OTel callback only on total instance to avoid registering
+    // redundant per-store ObservableCounter callbacks that would always report zero.
+    // Tehuti sensors are still created on every instance (matching original pattern).
+    VeniceOpenTelemetryMetricsRepository totalOnlyOtelRepo = totalStats == null ? otelRepository : null;
+
     pollCountOtel = MetricEntityStateBase.create(
         POLL_COUNT.getMetricEntity(),
-        otelRepository,
+        totalOnlyOtelRepo,
         this::registerSensorIfAbsent,
         TehutiMetricName.CONSUMER_POLL_REQUEST,
         Collections.singletonList(new LongAdderRateGauge(time)),
@@ -147,7 +153,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
     pollNonEmptyCountOtel = MetricEntityStateBase.create(
         POLL_NON_EMPTY_COUNT.getMetricEntity(),
-        otelRepository,
+        totalOnlyOtelRepo,
         this::registerSensorIfAbsent,
         TehutiMetricName.CONSUMER_POLL_NON_ZERO_RESULT_NUM,
         Collections.singletonList(new LongAdderRateGauge(time)),
