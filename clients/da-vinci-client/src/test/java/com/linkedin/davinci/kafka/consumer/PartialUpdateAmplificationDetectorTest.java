@@ -238,7 +238,7 @@ public class PartialUpdateAmplificationDetectorTest {
     assertNotNull(report);
 
     String output = report.toString();
-    assertTrue(output.contains("WC total: 1"));
+    assertTrue(output.contains("PU total: 1"));
     assertTrue(output.contains("Large (>"));
     assertTrue(output.contains("KB): 1"));
     assertTrue(output.contains("Top keys by total result bytes:"));
