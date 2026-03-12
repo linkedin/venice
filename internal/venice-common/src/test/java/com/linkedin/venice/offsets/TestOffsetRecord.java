@@ -7,8 +7,12 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
@@ -174,5 +178,28 @@ public class TestOffsetRecord {
     } else {
       assertEquals(result, PubSubSymbolicPosition.LATEST, name + ": expected LATEST");
     }
+  }
+
+  @Test
+  public void testCheckpointRtPositionWithNonNumericPosition() {
+    OffsetRecord offsetRecord = TestUtils
+        .getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty(), DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING);
+
+    // Create a position that throws UnsupportedOperationException on getNumericOffset(),
+    // simulating Northguard NGRangePosition behavior.
+    PubSubPosition ngPosition = mock(PubSubPosition.class);
+    when(ngPosition.getNumericOffset()).thenThrow(new UnsupportedOperationException("NGRangePosition"));
+    PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
+    wireFormat.type = 99;
+    wireFormat.rawBytes = ByteBuffer.wrap(new byte[] { 0x01, 0x02 });
+    when(ngPosition.getPositionWireFormat()).thenReturn(wireFormat);
+    when(ngPosition.toWireFormatBuffer())
+        .thenReturn(PubSubPosition.PUBSUB_POSITION_WIRE_FORMAT_SERIALIZER.serialize(wireFormat));
+
+    // Should not throw — the fix stores -1 as legacy fallback
+    offsetRecord.checkpointRtPosition(TEST_KAFKA_URL1, ngPosition);
+
+    // Verify the legacy offset map got -1 as fallback
+    assertEquals(offsetRecord.getPartitionState().upstreamOffsetMap.get(TEST_KAFKA_URL1), Long.valueOf(-1L));
   }
 }

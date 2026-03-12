@@ -376,15 +376,27 @@ public final class PubSubUtil {
       PubSubPosition position = pubSubPositionDeserializer.toPosition(wireFormatBytes);
       // Guard against regressions: honor the caller-provided minimum offset.
       // This applies to both symbolic and concrete positions.
-      if (position == PubSubSymbolicPosition.EARLIEST || position == PubSubSymbolicPosition.LATEST
-          || position.getNumericOffset() >= offset) {
-        // If position is ahead of or equal to offset, return it as-is (including symbolic positions like LATEST)
+      if (position == PubSubSymbolicPosition.EARLIEST || position == PubSubSymbolicPosition.LATEST) {
         return position;
       }
-      LOGGER.info(
-          "Deserialized position: {} is behind the provided offset: {}. Using offset-based position.",
-          position.getNumericOffset(),
-          offset);
+      // For position types that support numeric offsets (e.g. Kafka), compare against the
+      // caller-provided offset to guard against regressions. For position types that do not
+      // support numeric offsets (e.g. Northguard NGRangePosition), trust the deserialized
+      // position as-is since offset-based comparison is not meaningful.
+      try {
+        long numericOffset = position.getNumericOffset();
+        if (numericOffset >= offset) {
+          return position;
+        }
+        LOGGER.info(
+            "Deserialized position: {} is behind the provided offset: {}. Using offset-based position.",
+            numericOffset,
+            offset);
+      } catch (UnsupportedOperationException e) {
+        // Position type does not support numeric offsets (e.g. NGRangePosition).
+        // Return the deserialized position directly — offset comparison is not applicable.
+        return position;
+      }
     } catch (RuntimeException e) {
       LOGGER.warn(
           "Failed to deserialize PubSubPosition. Using offset-based position (offset={}, bufferRem={}, bufferCap={}).",

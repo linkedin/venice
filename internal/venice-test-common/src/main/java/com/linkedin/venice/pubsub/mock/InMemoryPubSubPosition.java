@@ -11,13 +11,23 @@ public class InMemoryPubSubPosition implements PubSubPosition {
   public static final int INMEMORY_PUBSUB_POSITION_TYPE_ID = -42;
 
   private final long internalOffset;
+  private final boolean numericOffsetSupported;
 
   private InMemoryPubSubPosition(long offset) {
+    this(offset, true);
+  }
+
+  private InMemoryPubSubPosition(long offset, boolean numericOffsetSupported) {
     this.internalOffset = offset;
+    this.numericOffsetSupported = numericOffsetSupported;
   }
 
   @Override
   public long getNumericOffset() {
+    if (!numericOffsetSupported) {
+      throw new UnsupportedOperationException(
+          "Numeric offset not supported for this position (simulating non-Kafka position type like NGRangePosition)");
+    }
     return internalOffset;
   }
 
@@ -35,6 +45,16 @@ public class InMemoryPubSubPosition implements PubSubPosition {
 
   public static InMemoryPubSubPosition of(long offset) {
     return new InMemoryPubSubPosition(offset);
+  }
+
+  /**
+   * Creates a position that behaves like a non-Kafka position (e.g. Northguard NGRangePosition).
+   * The internal offset is still used for mock broker indexing, but {@link #getNumericOffset()}
+   * throws {@link UnsupportedOperationException}, simulating position types that don't support
+   * numeric offsets.
+   */
+  public static InMemoryPubSubPosition ofNonNumeric(long offset) {
+    return new InMemoryPubSubPosition(offset, false);
   }
 
   public static InMemoryPubSubPosition of(ByteBuffer buffer) {
@@ -70,14 +90,14 @@ public class InMemoryPubSubPosition implements PubSubPosition {
    * @return a new {@link InMemoryPubSubPosition} with the internal offset incremented by 1
    */
   public InMemoryPubSubPosition getNextPosition() {
-    return InMemoryPubSubPosition.of(internalOffset + 1);
+    return new InMemoryPubSubPosition(internalOffset + 1, numericOffsetSupported);
   }
 
   public InMemoryPubSubPosition getPreviousPosition() {
     if (internalOffset < -1) {
       throw new IllegalStateException("Cannot get previous position for offset: " + internalOffset);
     }
-    return InMemoryPubSubPosition.of(internalOffset - 1);
+    return new InMemoryPubSubPosition(internalOffset - 1, numericOffsetSupported);
   }
 
   /**
@@ -86,7 +106,7 @@ public class InMemoryPubSubPosition implements PubSubPosition {
    * @return a new {@link InMemoryPubSubPosition} with the internal offset incremented by n
    */
   public InMemoryPubSubPosition getPositionAfterNRecords(long n) {
-    return InMemoryPubSubPosition.of(internalOffset + n);
+    return new InMemoryPubSubPosition(internalOffset + n, numericOffsetSupported);
   }
 
   @Override

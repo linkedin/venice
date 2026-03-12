@@ -289,7 +289,10 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
     if (n < 0) {
       throw new IllegalArgumentException("n must be >= 0");
     }
-    long targetOffset = Math.addExact(startInclusive.getNumericOffset(), n);
+    long startOffset = (startInclusive instanceof InMemoryPubSubPosition)
+        ? ((InMemoryPubSubPosition) startInclusive).getInternalOffset()
+        : startInclusive.getNumericOffset();
+    long targetOffset = Math.addExact(startOffset, n);
     return InMemoryPubSubPosition.of(targetOffset);
   }
 

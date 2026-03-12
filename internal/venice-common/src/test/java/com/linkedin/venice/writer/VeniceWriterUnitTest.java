@@ -868,4 +868,18 @@ public class VeniceWriterUnitTest {
             .longValue(),
         executionId);
   }
+
+  @Test
+  public void testGetNumericOffsetOrDefaultWithKafkaPosition() {
+    PubSubPosition kafkaPosition = mock(PubSubPosition.class);
+    when(kafkaPosition.getNumericOffset()).thenReturn(42L);
+    assertEquals(VeniceWriter.getNumericOffsetOrDefault(kafkaPosition), 42L);
+  }
+
+  @Test
+  public void testGetNumericOffsetOrDefaultWithUnsupportedPosition() {
+    PubSubPosition ngPosition = mock(PubSubPosition.class);
+    when(ngPosition.getNumericOffset()).thenThrow(new UnsupportedOperationException("NGRangePosition"));
+    assertEquals(VeniceWriter.getNumericOffsetOrDefault(ngPosition), -1L);
+  }
 }

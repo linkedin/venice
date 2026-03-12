@@ -1179,7 +1179,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       KafkaMessageEnvelope kafkaMessageEnvelope,
       LeaderMetadataWrapper leaderMetadataWrapper) {
     LeaderMetadata leaderMetadata = new LeaderMetadata();
-    leaderMetadata.upstreamOffset = leaderMetadataWrapper.getUpstreamPosition().getNumericOffset();
+    leaderMetadata.upstreamOffset = getNumericOffsetOrDefault(leaderMetadataWrapper.getUpstreamPosition());
     leaderMetadata.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
     leaderMetadata.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
     leaderMetadata.termId = leaderMetadataWrapper.getTermId();
@@ -2284,7 +2284,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     LeaderMetadata leaderMetadataFooter = new LeaderMetadata();
     leaderMetadataFooter.hostName = writerId;
-    leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamPosition().getNumericOffset();
+    // Heartbeat upstreamOffset is never read by consumers (DIV is skipped, followers only use
+    // messageTimestamp and LeaderCompleteState header). Use -1 as default for non-Kafka positions
+    // (e.g. Northguard NGRangePosition) which do not support numeric offsets.
+    leaderMetadataFooter.upstreamOffset = getNumericOffsetOrDefault(leaderMetadataWrapper.getUpstreamPosition());
     leaderMetadataFooter.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
     leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
     leaderMetadataFooter.termId = leaderMetadataWrapper.getTermId();
@@ -2296,6 +2299,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     kafkaMessageEnvelope.payloadUnion = heartBeatMessage;
 
     return kafkaMessageEnvelope;
+  }
+
+  /**
+   * Extract the numeric offset from a PubSubPosition, returning -1 if the position type
+   * does not support numeric offsets (e.g. Northguard's NGRangePosition).
+   */
+  static long getNumericOffsetOrDefault(PubSubPosition position) {
+    try {
+      return position.getNumericOffset();
+    } catch (UnsupportedOperationException e) {
+      return -1;
+    }
   }
 
   public CompletableFuture<PubSubProduceResult> sendHeartbeat(
@@ -2405,7 +2420,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     } else {
       kafkaValue.leaderMetadataFooter = new LeaderMetadata();
       kafkaValue.leaderMetadataFooter.hostName = writerId;
-      kafkaValue.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamPosition().getNumericOffset();
+      kafkaValue.leaderMetadataFooter.upstreamOffset = getNumericOffsetOrDefault(leaderMetadataWrapper.getUpstreamPosition());
       kafkaValue.leaderMetadataFooter.upstreamPubSubPosition =
           leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
       kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
