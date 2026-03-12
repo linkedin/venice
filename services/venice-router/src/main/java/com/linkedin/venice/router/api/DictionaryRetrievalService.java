@@ -38,8 +38,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -82,6 +84,9 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   // Shared queue between producer and consumer where topics whose dictionaries have to be downloaded are put in.
   private final BlockingQueue<String> dictionaryDownloadCandidates = new LinkedBlockingQueue<>();
   private final VeniceConcurrentHashMap<String, Long> fetchDelayTimeinMsMap = new VeniceConcurrentHashMap<>();
+  // Tracks topics currently in a failed retry loop. Added on first retry schedule, removed on
+  // successful download or version retirement. Exposed as a gauge for monitoring.
+  private final Set<String> topicsInRetry = ConcurrentHashMap.newKeySet();
 
   // This map is used as a collection of futures that were created to download dictionaries for each store version.
   // The future's status also acts as an indicator of which dictionaries are currently active in memory.
@@ -248,7 +253,8 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         "dictionary_retrieval_service",
         () -> dictionaryDownloadCandidates.size(),
         () -> downloadingDictionaryFutures.size(),
-        () -> dictionaryRetrieverThread.isAlive());
+        () -> dictionaryRetrieverThread.isAlive(),
+        () -> topicsInRetry.size());
   }
 
   private CompletableFuture<byte[]> getDictionary(String store, int version) {
@@ -486,6 +492,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
     CompressionStrategy compressionStrategy = version.getCompressionStrategy();
     compressorFactory.createVersionSpecificCompressorIfNotExist(compressionStrategy, kafkaTopic, dictionary);
+    topicsInRetry.remove(kafkaTopic);
 
     // Log with status to help identify STARTED→PUSHED race conditions
     if (currentStatus == VersionStatus.PUSHED) {
@@ -508,6 +515,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     long nextDelayTimeMs = Math.min(currDelayTimeMs * 2, MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS);
     fetchDelayTimeinMsMap.put(kafkaTopic, nextDelayTimeMs);
     stats.recordDownloadFailure();
+    topicsInRetry.add(kafkaTopic);
     scheduledDictionaryFetchFutures.put(
         kafkaTopic,
         executor.schedule(() -> dictionaryDownloadCandidates.add(kafkaTopic), currDelayTimeMs, TimeUnit.MILLISECONDS));
@@ -526,6 +534,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     }
     dictionaryDownloadCandidates.remove(kafkaTopic);
     fetchDelayTimeinMsMap.remove(kafkaTopic);
+    topicsInRetry.remove(kafkaTopic);
     compressorFactory.removeVersionSpecificCompressor(kafkaTopic);
   }
 

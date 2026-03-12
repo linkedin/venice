@@ -21,7 +21,8 @@ public class DictionaryRetrievalServiceStats extends AbstractVeniceStats {
       String name,
       Supplier<Integer> pendingCandidatesSupplier,
       Supplier<Integer> downloadingFuturesCountSupplier,
-      Supplier<Boolean> retrieverThreadAliveSupplier) {
+      Supplier<Boolean> retrieverThreadAliveSupplier,
+      Supplier<Integer> failedDownloadTopicCountSupplier) {
     super(metricsRepository, name);
 
     // Gauges
@@ -37,6 +38,11 @@ public class DictionaryRetrievalServiceStats extends AbstractVeniceStats {
         new AsyncGauge(
             (ignored1, ignored2) -> retrieverThreadAliveSupplier.get() ? 1 : 0,
             "dictionary_retriever_thread_alive"));
+
+    registerSensorIfAbsent(
+        new AsyncGauge(
+            (ignored1, ignored2) -> failedDownloadTopicCountSupplier.get(),
+            "dictionary_download_retry_count"));
 
     // Count sensors
     downloadSuccessSensor = registerSensorIfAbsent("dictionary_download_success", new Count());
