@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -42,6 +43,7 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.DelegatingStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
@@ -2249,5 +2251,101 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
     when(mockVeniceServerConfig.getBlobTransferReceiverServerPolicy()).thenReturn(ActivationState.NOT_SPECIFIED);
     assertTrue(leaderFollowerStoreIngestionTask.blobTransferHelper.shouldEnableBlobTransfer(mockStore, false));
+  }
+
+  /**
+   * Helper to set up common mocks needed by completeBlobTransferAndSubscribe tests.
+   */
+  private void setUpCompleteBlobTransferMocks() {
+    // Mock blobTransferManager methods used by the helper
+    BlobTransferStatusTrackingManager mockTrackingManager = mock(BlobTransferStatusTrackingManager.class);
+    when(mockBlobTransferManager.getTransferStatusTrackingManager()).thenReturn(mockTrackingManager);
+    when(mockBlobTransferManager.getAggVersionedBlobTransferStats()).thenReturn(null);
+
+    // Mock serverConfig methods needed by helper and checkConsumptionStateWhenStart
+    when(mockVeniceServerConfig.getRocksDBPath()).thenReturn("/tmp/test-rocksdb");
+    VeniceProperties mockClusterProps = mock(VeniceProperties.class);
+    when(mockClusterProps.getPropertiesCopy()).thenReturn(new Properties());
+    when(mockVeniceServerConfig.getClusterProperties()).thenReturn(mockClusterProps);
+
+    // The storageEngine was already set as a mock DelegatingStorageEngine during setup.
+    // Configure it to return the version topic name for adjustStoragePartition.
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    StorageEngine storageEngine = leaderFollowerStoreIngestionTask.getStorageEngine();
+    when(storageEngine.getStoreVersionName()).thenReturn(versionTopic.getName());
+
+    // Mock the DataIntegrityValidator
+    DataIntegrityValidator mockDiv = mock(DataIntegrityValidator.class);
+    doReturn(mockDiv).when(leaderFollowerStoreIngestionTask).getDataIntegrityValidator();
+
+    // Stub consumerSubscribe to avoid deep Kafka consumer creation
+    doNothing().when(leaderFollowerStoreIngestionTask)
+        .consumerSubscribe(any(PubSubTopic.class), any(PartitionConsumptionState.class), any(), anyString());
+  }
+
+  @Test
+  public void testCompleteBlobTransferAndSubscribeSuccess() throws Exception {
+    setUpWithBlobTransfer(false);
+    setUpCompleteBlobTransferMocks();
+
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
+
+    // Create a PCS with a successfully completed blob transfer future
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getPartition()).thenReturn(0);
+    when(pcs.getReplicaId()).thenReturn(versionTopic.getName() + "-0");
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+    CompletableFuture<Void> succeededFuture = CompletableFuture.completedFuture(null);
+    when(pcs.getPendingBlobTransfer()).thenReturn(succeededFuture);
+    when(pcs.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.STANDBY);
+    when(pcs.getDolState()).thenReturn(null);
+
+    // Set isCurrentVersion to return true so the latch branch is covered
+    when(mockBooleanSupplier.getAsBoolean()).thenReturn(true);
+
+    leaderFollowerStoreIngestionTask.completeBlobTransferAndSubscribe(pcs);
+
+    // Verify tracking status was cleared
+    BlobTransferStatusTrackingManager trackingManager = mockBlobTransferManager.getTransferStatusTrackingManager();
+    verify(trackingManager).clearTransferStatusEnum(versionTopic.getName() + "-0");
+
+    // Verify storage partition was adjusted
+    StorageEngine storageEngine = leaderFollowerStoreIngestionTask.getStorageEngine();
+    verify(storageEngine).adjustStoragePartition(eq(0), any(), any());
+  }
+
+  @Test
+  public void testCompleteBlobTransferAndSubscribeFailure() throws Exception {
+    setUpWithBlobTransfer(false);
+    setUpCompleteBlobTransferMocks();
+
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
+
+    // Create a PCS with a failed blob transfer future
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    when(pcs.getPartition()).thenReturn(0);
+    when(pcs.getReplicaId()).thenReturn(versionTopic.getName() + "-0");
+    when(pcs.getReplicaTopicPartition()).thenReturn(topicPartition);
+    CompletableFuture<Void> failedFuture = new CompletableFuture<>();
+    failedFuture.completeExceptionally(new RuntimeException("transfer failed"));
+    when(pcs.getPendingBlobTransfer()).thenReturn(failedFuture);
+    when(pcs.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.LEADER);
+    DolStamp mockDolStamp = mock(DolStamp.class);
+    when(pcs.getDolState()).thenReturn(mockDolStamp);
+
+    // Not current version, so latch branch is not taken
+    when(mockBooleanSupplier.getAsBoolean()).thenReturn(false);
+
+    leaderFollowerStoreIngestionTask.completeBlobTransferAndSubscribe(pcs);
+
+    // Verify tracking status was cleared
+    BlobTransferStatusTrackingManager trackingManager = mockBlobTransferManager.getTransferStatusTrackingManager();
+    verify(trackingManager).clearTransferStatusEnum(versionTopic.getName() + "-0");
+
+    // Verify storage partition was adjusted (happens for both success and failure)
+    StorageEngine storageEngine = leaderFollowerStoreIngestionTask.getStorageEngine();
+    verify(storageEngine).adjustStoragePartition(eq(0), any(), any());
   }
 }
