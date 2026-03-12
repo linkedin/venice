@@ -3495,23 +3495,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           throw new RuntimeException(e);
         }
 
-        // Write-compute amplification detection (outside WC try-catch to avoid masking failures as WC errors)
+        // Partial-update amplification detection (outside WC try-catch to avoid masking failures as WC errors)
         if (updatedValueBytes != null) {
-          int largeResultThreshold = serverConfig.getWriteComputeLargeResultLogThresholdBytes();
-          WriteComputeAmplificationDetector amplificationDetector =
-              partitionConsumptionState.getOrCreateWriteComputeAmplificationDetector(
-                  serverConfig.getWriteComputeAmplificationReportIntervalMs());
+          int largeResultThreshold = serverConfig.getPartialUpdateLargeResultLogThresholdBytes();
+          PartialUpdateAmplificationDetector amplificationDetector =
+              partitionConsumptionState.getOrCreatePartialUpdateAmplificationDetector(
+                  serverConfig.getPartialUpdateAmplificationReportIntervalMs());
           amplificationDetector
               .record(keyBytes, incomingUpdatePayloadSize, updatedValueBytes.length, largeResultThreshold);
-          WriteComputeAmplificationDetector.AmplificationReport ampReport =
+          PartialUpdateAmplificationDetector.AmplificationReport ampReport =
               amplificationDetector.tryBuildReportAndReset(System.currentTimeMillis(), largeResultThreshold);
           if (ampReport != null) {
             LOGGER.warn(
-                "Write-compute amplification report for {} [Partition {}]\n{}",
+                "Partial-update amplification report for {} [Partition {}]\n{}",
                 partitionConsumptionState.getReplicaId(),
                 consumerRecord.getTopicPartition().getPartitionNumber(),
                 ampReport);
-            versionedIngestionStats.recordWriteComputeAmplificationAlertCount(storeName, versionNumber);
+            versionedIngestionStats.recordPartialUpdateAmplificationAlertCount(storeName, versionNumber);
           }
         }
 

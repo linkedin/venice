@@ -12,55 +12,55 @@ import java.util.stream.Collectors;
 
 
 /**
- * Per-partition detector for write-compute amplification. Tracks partition-level aggregates and a bounded set of the
+ * Per-partition detector for partial-update amplification. Tracks partition-level aggregates and a bounded set of the
  * heaviest keys (by total result bytes) within a configurable reporting window.
  *
  * <h3>Two-Level Design</h3>
  * <ul>
- *   <li><b>Level 1 (always on):</b> O(1) per-event partition aggregates — total write-compute count, total result
+ *   <li><b>Level 1 (always on):</b> O(1) per-event partition aggregates — total partial-update count, total result
  *       bytes, and count of large results exceeding the threshold.</li>
  *   <li><b>Level 2 (large results only):</b> Bounded {@code HashMap} of up to {@link #MAX_TRACKED_KEYS} keys,
- *       tracking per-key count, total request/result bytes, and max result size. Only activated when a write-compute
+ *       tracking per-key count, total request/result bytes, and max result size. Only activated when a partial-update
  *       result exceeds the configured threshold.</li>
  * </ul>
  *
  * <h3>Reporting</h3>
- * Reporting is piggy-backed on the write-compute path: after each {@link #record} call, the caller calls
+ * Reporting is piggy-backed on the partial-update path: after each {@link #record} call, the caller calls
  * {@link #tryBuildReportAndReset} which atomically checks whether the window has elapsed and, if so, builds a
  * snapshot and resets the window. This produces at most one summary log per partition per window — not per key,
  * not per event.
  *
  * <h3>Threading</h3>
- * All public methods are {@code synchronized}. Write-compute processing may be parallel when
+ * All public methods are {@code synchronized}. Partial-update processing may be parallel when
  * {@code isAAWCWorkloadParallelProcessingEnabled} is true, but contention is negligible since only large-result
- * events (a small fraction of total write-computes) touch the Level 2 map.
+ * events (a small fraction of total partial updates) touch the Level 2 map.
  *
  * <h3>Memory</h3>
  * ~1.5 KB per partition with active large results (Level 1: 40 bytes, Level 2: 20 entries × ~70 bytes).
  * Level 2 is lazily allocated only when the first large result is detected.
  */
-public class WriteComputeAmplificationDetector {
+public class PartialUpdateAmplificationDetector {
   static final int MAX_TRACKED_KEYS = 20;
   static final int TOP_KEYS_TO_REPORT = 5;
 
   private final long reportIntervalMs;
 
   // Level 1: partition aggregates
-  private int writeComputeCount;
-  private long writeComputeTotalResultBytes;
+  private int partialUpdateCount;
+  private long partialUpdateTotalResultBytes;
   private int largeResultCount;
   private long windowStartMs;
 
   // Level 2: top keys by total result bytes (only for large results, lazily allocated)
   private HashMap<ByteArrayKey, KeyAmplificationStats> heavyKeys;
 
-  public WriteComputeAmplificationDetector(long reportIntervalMs) {
+  public PartialUpdateAmplificationDetector(long reportIntervalMs) {
     this.reportIntervalMs = reportIntervalMs;
     this.windowStartMs = System.currentTimeMillis();
   }
 
   /**
-   * Record a write-compute event. If the result size exceeds the threshold, the key is tracked in the heavy key map.
+   * Record a partial-update event. If the result size exceeds the threshold, the key is tracked in the heavy key map.
    *
    * @param keyBytes the key bytes of the record
    * @param requestSizeBytes the size of the incoming UPDATE payload (partial update request)
@@ -72,8 +72,8 @@ public class WriteComputeAmplificationDetector {
       int requestSizeBytes,
       int resultSizeBytes,
       int largeResultThreshold) {
-    writeComputeCount++;
-    writeComputeTotalResultBytes += resultSizeBytes;
+    partialUpdateCount++;
+    partialUpdateTotalResultBytes += resultSizeBytes;
 
     if (resultSizeBytes > largeResultThreshold) {
       largeResultCount++;
@@ -98,15 +98,15 @@ public class WriteComputeAmplificationDetector {
     }
     AmplificationReport report = new AmplificationReport(
         currentTimeMs - windowStartMs,
-        writeComputeCount,
-        writeComputeTotalResultBytes,
+        partialUpdateCount,
+        partialUpdateTotalResultBytes,
         largeResultCount,
         largeResultThreshold,
         getTopKeys(TOP_KEYS_TO_REPORT));
 
     // Reset for next window
-    writeComputeCount = 0;
-    writeComputeTotalResultBytes = 0;
+    partialUpdateCount = 0;
+    partialUpdateTotalResultBytes = 0;
     largeResultCount = 0;
     windowStartMs = currentTimeMs;
     if (heavyKeys != null) {
@@ -173,7 +173,7 @@ public class WriteComputeAmplificationDetector {
   /** Immutable snapshot of one reporting window's amplification data. */
   static class AmplificationReport {
     final long windowDurationMs;
-    final int totalWriteComputeCount;
+    final int totalPartialUpdateCount;
     final long totalResultBytes;
     final int largeResultCount;
     final int largeResultThreshold;
@@ -181,13 +181,13 @@ public class WriteComputeAmplificationDetector {
 
     AmplificationReport(
         long windowDurationMs,
-        int totalWriteComputeCount,
+        int totalPartialUpdateCount,
         long totalResultBytes,
         int largeResultCount,
         int largeResultThreshold,
         List<Map.Entry<ByteArrayKey, KeyAmplificationStats>> topKeys) {
       this.windowDurationMs = windowDurationMs;
-      this.totalWriteComputeCount = totalWriteComputeCount;
+      this.totalPartialUpdateCount = totalPartialUpdateCount;
       this.totalResultBytes = totalResultBytes;
       this.largeResultCount = largeResultCount;
       this.largeResultThreshold = largeResultThreshold;
@@ -196,13 +196,13 @@ public class WriteComputeAmplificationDetector {
 
     @Override
     public String toString() {
-      double largeResultPct = totalWriteComputeCount > 0 ? 100.0 * largeResultCount / totalWriteComputeCount : 0;
+      double largeResultPct = totalPartialUpdateCount > 0 ? 100.0 * largeResultCount / totalPartialUpdateCount : 0;
       StringBuilder sb = new StringBuilder();
       sb.append(
           String.format(
-              "  Window: %ds | WC total: %d | Large (>%s): %d (%.1f%%) | Total result: %s%n",
+              "  Window: %ds | PU total: %d | Large (>%s): %d (%.1f%%) | Total result: %s%n",
               windowDurationMs / 1000,
-              totalWriteComputeCount,
+              totalPartialUpdateCount,
               formatBytes(largeResultThreshold),
               largeResultCount,
               largeResultPct,
