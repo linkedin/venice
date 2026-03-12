@@ -144,23 +144,29 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           continue;
         }
         HeartbeatKey key = new HeartbeatKey(storeName, versionNum, partition, region);
-        heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
+        IngestionTimestampEntry previousEntry =
+            heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
+        if (previousEntry == null) {
+          LOGGER.info(
+              "Initialized heartbeat entry for version: {}, partition: {}, region: {}, follower: {}",
+              version,
+              partition,
+              region,
+              isFollower);
+        }
+      }
+    } else {
+      HeartbeatKey key = new HeartbeatKey(storeName, versionNum, partition, localRegionName);
+      IngestionTimestampEntry previousEntry =
+          heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
+      if (previousEntry == null) {
         LOGGER.info(
             "Initialized heartbeat entry for version: {}, partition: {}, region: {}, follower: {}",
             version,
             partition,
-            region,
+            localRegionName,
             isFollower);
       }
-    } else {
-      HeartbeatKey key = new HeartbeatKey(storeName, versionNum, partition, localRegionName);
-      heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
-      LOGGER.info(
-          "Initialized heartbeat entry for version: {}, partition: {}, region: {}, follower: {}",
-          version,
-          partition,
-          localRegionName,
-          isFollower);
     }
   }
 
