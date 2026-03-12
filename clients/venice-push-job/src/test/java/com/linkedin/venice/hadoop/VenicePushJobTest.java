@@ -1933,7 +1933,7 @@ public class VenicePushJobTest {
 
     // Simulate controller returning ERROR status (push was killed)
     JobStatusQueryResponse killResponse = mock(JobStatusQueryResponse.class);
-    doReturn("ERROR").when(killResponse).getStatus();
+    doReturn(ExecutionStatus.ERROR.toString()).when(killResponse).getStatus();
     doReturn(false).when(killResponse).isError();
     doReturn(killResponse).when(client).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
 
@@ -1972,12 +1972,27 @@ public class VenicePushJobTest {
         return null;
       }).when(dataWriterJob).kill();
 
-      // N.B.: skipVPJValidation stubs runJobAndUpdateStatus() (among others), so we must re-override
-      // it afterward to let the real kill-detection flow execute. If skipVPJValidation's stubs change,
-      // this re-override may need updating.
-      skipVPJValidation(pushJob);
-      doCallRealMethod().when(pushJob).runJobWithKillDetection();
-      doCallRealMethod().when(pushJob).runJobAndUpdateStatus();
+      // Stub only the validation methods from skipVPJValidation that this test needs bypassed.
+      // We intentionally avoid skipVPJValidation() because it also stubs runJobAndUpdateStatus(),
+      // which we need to run for kill-detection to work.
+      doAnswer(invocation -> {
+        VeniceProperties properties = pushJob.getJobProperties();
+        PushJobSetting pjs = pushJob.getPushJobSetting();
+        if (!pjs.isSourceKafka) {
+          Schema schema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(SIMPLE_FILE_SCHEMA_STR);
+          pjs.keyField = properties.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
+          pjs.valueField = properties.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
+          pjs.inputDataSchema = schema;
+          pjs.valueSchema = schema.getField(pjs.valueField).schema();
+          pjs.inputDataSchemaString = SIMPLE_FILE_SCHEMA_STR;
+          pjs.keySchema = pjs.inputDataSchema.getField(pjs.keyField).schema();
+          pjs.keySchemaString = pjs.keySchema.toString();
+          pjs.valueSchemaString = pjs.valueSchema.toString();
+        }
+        return getMockInputDataInfoProvider();
+      }).when(pushJob).getInputDataInfoProvider();
+      doNothing().when(pushJob).validateKeySchema(any());
+      doNothing().when(pushJob).validateAndRetrieveValueSchemas(any(), any(), anyBoolean());
 
       try {
         pushJob.run();
@@ -1992,6 +2007,7 @@ public class VenicePushJobTest {
       assertEquals(dataWriterRunningLatch.getCount(), 0, "Data writer job should have started");
       assertEquals(dataWriterKilledLatch.getCount(), 0, "Data writer job should have been killed");
       verify(dataWriterJob, times(1)).kill();
+      verify(client, atLeastOnce()).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
     }
   }
 

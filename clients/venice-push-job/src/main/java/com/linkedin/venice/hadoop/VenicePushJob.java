@@ -83,6 +83,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.PushJobCheckpoints;
@@ -1051,7 +1052,9 @@ public class VenicePushJob implements AutoCloseable {
    * after data writing completes but before the monitor is cancelled. This is correct behavior — if the
    * push was killed, any data written is wasted, and we should still fail the job.
    */
+  @VisibleForTesting
   void runJobWithKillDetection() {
+    pushJobKilledByController = false;
     startPushJobKillCheckMonitor();
     try {
       runJobAndUpdateStatus();
@@ -1066,6 +1069,7 @@ public class VenicePushJob implements AutoCloseable {
    * This runs during the data writing phase to detect early kills (e.g., when a user push supersedes
    * a repush) and abort the data writer job promptly instead of wasting resources.
    */
+  @VisibleForTesting
   void startPushJobKillCheckMonitor() {
     String topicToMonitor = getTopicToMonitor(pushJobSetting);
     long intervalMs = pushJobSetting.pollJobStatusIntervalMs;
@@ -1076,12 +1080,17 @@ public class VenicePushJob implements AutoCloseable {
         intervalMs);
     pushJobKillCheckScheduledFuture = timeoutExecutor.scheduleWithFixedDelay(() -> {
       try {
+        if (pushJobKilledByController) {
+          return;
+        }
         JobStatusQueryResponse response = ControllerClient.retryableRequest(
             controllerClient,
             pushJobSetting.controllerStatusPollRetries,
             client -> client.queryOverallJobStatus(topicToMonitor, Optional.empty(), null, false));
+        // response.isError() indicates an HTTP/transport error (failed to reach the controller),
+        // NOT that the push status is ERROR. Push status is checked separately below via status.isError().
         if (response.isError()) {
-          LOGGER.warn(
+          LOGGER.error(
               "Kill check monitor could not query job status for store: {}, version: {}. Error: {}",
               pushJobSetting.storeName,
               pushJobSetting.version,
@@ -1104,6 +1113,7 @@ public class VenicePushJob implements AutoCloseable {
     }, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
   }
 
+  @VisibleForTesting
   void stopPushJobKillCheckMonitor() {
     if (pushJobKillCheckScheduledFuture != null) {
       pushJobKillCheckScheduledFuture.cancel(false);
