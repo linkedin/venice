@@ -2726,6 +2726,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Record blob transfer stats
     blobTransferHelper.updateBlobTransferResponseStats(storeName, versionNumber, transferSucceeded, future);
 
+    // Clear tracking manager status now that the transfer is fully handled.
+    // This prevents stale state from leaking into subsequent lifecycle operations.
+    blobTransferHelper.clearTransferStatus(replicaId);
+
     if (transferSucceeded) {
       LOGGER.info("Blob transfer completed successfully for replica: {}. Proceeding with Kafka subscribe.", replicaId);
     } else {

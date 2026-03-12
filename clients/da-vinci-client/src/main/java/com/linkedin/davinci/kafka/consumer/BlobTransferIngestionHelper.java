@@ -439,6 +439,16 @@ public class BlobTransferIngestionHelper {
     }
   }
 
+  /**
+   * Clears the tracking manager status for the given replica.
+   * Called after blob transfer is fully handled (success or failure) to prevent stale state.
+   */
+  public void clearTransferStatus(String replicaId) {
+    if (blobTransferManager != null && blobTransferManager.getTransferStatusTrackingManager() != null) {
+      blobTransferManager.getTransferStatusTrackingManager().clearTransferStatusEnum(replicaId);
+    }
+  }
+
   public BlobTransferManager getBlobTransferManager() {
     return blobTransferManager;
   }
