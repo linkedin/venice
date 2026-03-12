@@ -137,6 +137,7 @@ public class BlobTransferIngestionHelper {
       LOGGER.warn("Offset record not found for: {}", replicaId);
       return true;
     }
+    // TODO: Remove offset lag threshold entirely in the future — no offset lag should be allowed.
     long blobTransferDisabledOffsetLagThreshold = serverConfig.getBlobTransferDisabledOffsetLagThreshold();
     if (blobTransferDisabledOffsetLagThreshold < 0) {
       return true;
@@ -150,8 +151,17 @@ public class BlobTransferIngestionHelper {
     }
     int timeLagThresholdMinutes = serverConfig.getBlobTransferDisabledTimeLagThresholdInMinutes();
     if (timeLagThresholdMinutes > 0) {
-      return LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp()) > TimeUnit.MINUTES
-          .toMillis(timeLagThresholdMinutes);
+      long timeLagMs = LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp());
+      long thresholdMs = TimeUnit.MINUTES.toMillis(timeLagThresholdMinutes);
+      boolean isLagged = timeLagMs > thresholdMs;
+      LOGGER.info(
+          "Time lag check for replica {}: timeLagMs={}, thresholdMs={} ({}min), isLagged={}",
+          replicaId,
+          timeLagMs,
+          thresholdMs,
+          timeLagThresholdMinutes,
+          isLagged);
+      return isLagged;
     }
     if (offsetRecord.getOffsetLag() == 0
         && PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
@@ -226,6 +236,10 @@ public class BlobTransferIngestionHelper {
             .thenApply(inputStream -> (Void) null)
             .toCompletableFuture();
 
+    // Set the future on PCS before adding callbacks to avoid race condition where
+    // the transfer completes before setPendingBlobTransfer is called.
+    pcs.setPendingBlobTransfer(blobTransferFuture);
+
     // Track status transitions: TRANSFER_STARTED -> TRANSFER_COMPLETED or TRANSFER_CANCELLED
     blobTransferFuture.whenComplete((result, throwable) -> {
       if (trackingManager != null) {
@@ -236,8 +250,6 @@ public class BlobTransferIngestionHelper {
         }
       }
     });
-
-    pcs.setPendingBlobTransfer(blobTransferFuture);
   }
 
   /**
