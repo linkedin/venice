@@ -21,8 +21,6 @@ import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
-import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import java.util.Collections;
@@ -209,21 +207,6 @@ public class TestKafkaFormatTopicAutoDiscover {
   private StoreResponse getMockStoreResponse(Map<String, Integer> coloToVersionMap, int currentVersion) {
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo storeInfo = mock(StoreInfo.class);
-    when(storeInfo.getColoToCurrentVersions()).thenReturn(coloToVersionMap);
-    when(storeInfo.getCurrentVersion()).thenReturn(currentVersion);
-    when(storeResponse.getStore()).thenReturn(storeInfo);
-    return storeResponse;
-  }
-
-  private StoreResponse getMockHybridStoreResponse(
-      Map<String, Integer> coloToVersionMap,
-      int currentVersion,
-      BufferReplayPolicy bufferReplayPolicy) {
-    StoreResponse storeResponse = mock(StoreResponse.class);
-    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
-    StoreInfo storeInfo = mock(StoreInfo.class);
-    when(hybridStoreConfig.getBufferReplayPolicy()).thenReturn(bufferReplayPolicy);
-    when(storeInfo.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
     when(storeInfo.getColoToCurrentVersions()).thenReturn(coloToVersionMap);
     when(storeInfo.getCurrentVersion()).thenReturn(currentVersion);
     when(storeResponse.getStore()).thenReturn(storeInfo);
