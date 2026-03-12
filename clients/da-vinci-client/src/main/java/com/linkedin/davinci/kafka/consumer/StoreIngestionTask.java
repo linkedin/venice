@@ -616,7 +616,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (internalRecordTransformerConfig != null) {
       this.recordTransformerConfig = internalRecordTransformerConfig.getRecordTransformerConfig();
-      this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
+      this.chunkAssembler =
+          new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName), version.isRmdChunkingEnabled());
 
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
       if (recordTransformerConfig.useSpecificRecordKeyDeserializer()) {
@@ -4310,6 +4311,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               put.getSchemaId(),
               keyBytes,
               put.getPutValue(),
+              put.getReplicationMetadataPayload(),
               consumerRecord.getPosition(),
               compressor.get());
 
@@ -4352,6 +4354,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           DaVinciRecordTransformerResult transformerResult;
           try {
+            // Use assembled RMD when chunked RMD was reassembled, otherwise fall back to the raw payload.
+            ByteBuffer rmdPayload = assembledRecord.replicationMetadataPayload() != null
+                ? assembledRecord.replicationMetadataPayload()
+                : put.getReplicationMetadataPayload();
             DaVinciRecordTransformerRecordMetadata recordTransformerRecordMetadata =
                 recordTransformerConfig.isRecordMetadataEnabled()
                     ? new DaVinciRecordTransformerRecordMetadata(
@@ -4360,7 +4366,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                         consumerRecord.getPosition(),
                         // Calculate payload size after chunk assembly
                         keyLen + assembledRecord.value().limit(),
-                        put.getReplicationMetadataPayload(),
+                        rmdPayload,
                         put.getReplicationMetadataVersionId())
                     : null;
 

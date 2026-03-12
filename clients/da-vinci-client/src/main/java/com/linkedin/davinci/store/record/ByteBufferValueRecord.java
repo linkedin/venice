@@ -11,12 +11,16 @@ package com.linkedin.davinci.store.record;
 public final class ByteBufferValueRecord<T> {
   private final T value;
   private final int writerSchemaId;
+  private final java.nio.ByteBuffer replicationMetadataPayload;
 
-  /**
-   */
   public ByteBufferValueRecord(T value, int writerSchemaId) {
+    this(value, writerSchemaId, null);
+  }
+
+  public ByteBufferValueRecord(T value, int writerSchemaId, java.nio.ByteBuffer replicationMetadataPayload) {
     this.value = value;
     this.writerSchemaId = writerSchemaId;
+    this.replicationMetadataPayload = replicationMetadataPayload;
   }
 
   public T value() {
@@ -25,6 +29,11 @@ public final class ByteBufferValueRecord<T> {
 
   public int writerSchemaId() {
     return writerSchemaId;
+  }
+
+  /** Returns the assembled RMD payload, or null if not applicable. */
+  public java.nio.ByteBuffer replicationMetadataPayload() {
+    return replicationMetadataPayload;
   }
 
   @Override

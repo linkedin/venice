@@ -237,6 +237,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           Version.composeKafkaTopic(storeName, 0),
           rocksDBBufferVeniceProperties,
           PersistenceType.ROCKS_DB);
+      // RMD consumption is not supported in old stateless change log consumer, so we will never buffer RMD chunks.
       this.chunkAssembler = new RocksDBChunkAssembler(
           rocksDBStorageEngineFactory.getStorageEngine(storeVersionConfig),
           changelogClientConfig.shouldSkipFailedToAssembleRecords());
@@ -1016,6 +1017,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             put.getSchemaId(),
             keyBytes,
             put.getPutValue(),
+            put.getReplicationMetadataPayload(),
             message.getPosition(),
             compressor);
 
