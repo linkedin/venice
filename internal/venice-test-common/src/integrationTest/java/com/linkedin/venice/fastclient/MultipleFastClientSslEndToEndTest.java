@@ -5,9 +5,11 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 
+import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
+import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -22,9 +24,10 @@ import org.testng.annotations.Test;
 
 /**
  * Integration test that verifies multiple fast clients can concurrently connect to
- * Venice servers over SSL and successfully read data. This validates that the cached
- * SSL factory in the server's channel initializer correctly handles concurrent
- * SSL connections from different client instances.
+ * Venice servers over SSL and successfully read data. Each fast client gets its own
+ * R2 transport client so that each one establishes a separate SSL connection to the
+ * server, validating that the cached SSL factory in the server's channel initializer
+ * correctly handles multiple concurrent SSL connections.
  */
 public class MultipleFastClientSslEndToEndTest extends AbstractClientEndToEndSetup {
   private static final int NUM_CLIENTS = 5;
@@ -32,13 +35,20 @@ public class MultipleFastClientSslEndToEndTest extends AbstractClientEndToEndSet
   @Test(timeOut = TIME_OUT)
   public void testMultipleFastClientsCanConcurrentlyReadOverSsl() throws Exception {
     List<AvroGenericStoreClient<String, GenericRecord>> clients = new ArrayList<>();
+    List<Client> r2Clients = new ArrayList<>();
 
     try {
-      // Create multiple fast clients, each with its own R2 transport and metrics
+      // Create multiple fast clients, each with its own R2 transport so each establishes
+      // a separate SSL connection to the server (HTTP/2 multiplexes over a single connection
+      // per R2 client, so sharing one R2 client would result in only one SSL connection).
       for (int c = 0; c < NUM_CLIENTS; c++) {
+        Client perClientR2 =
+            ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_HTTPCLIENT5);
+        r2Clients.add(perClientR2);
+
         ClientConfig.ClientConfigBuilder clientConfigBuilder =
             new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-                .setR2Client(r2Client)
+                .setR2Client(perClientR2)
                 .setDualReadEnabled(false)
                 .setStoreMetadataFetchMode(SERVER_BASED_METADATA)
                 .setD2Client(d2Client)
@@ -102,6 +112,9 @@ public class MultipleFastClientSslEndToEndTest extends AbstractClientEndToEndSet
     } finally {
       for (AvroGenericStoreClient<String, GenericRecord> client: clients) {
         client.close();
+      }
+      for (Client r2: r2Clients) {
+        r2.shutdown(null);
       }
     }
   }
