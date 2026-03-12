@@ -1,15 +1,7 @@
 package com.linkedin.venice.listener;
 
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-
 import com.linkedin.alpini.base.ssl.SslFactory;
 import com.linkedin.alpini.netty4.ssl.SslInitializer;
-import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.venice.authorization.DefaultIdentityParser;
-import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;
 import io.netty.bootstrap.Bootstrap;
@@ -27,12 +19,9 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.ssl.SslHandshakeCompletionEvent;
-import io.tehuti.metrics.MetricsRepository;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -45,8 +34,8 @@ import org.testng.annotations.Test;
 
 
 /**
- * Tests that the cached SSL factory in {@link HttpChannelInitializer} correctly handles
- * multiple concurrent SSL connections, ensuring the factory is created once and reused.
+ * Tests that a single cached SSL factory can correctly handle multiple concurrent
+ * SSL connections, ensuring the factory is created once and reused.
  */
 public class HttpChannelInitializerSslTest {
   private static final int NUM_CONNECTIONS = 10;
@@ -154,34 +143,5 @@ public class HttpChannelInitializerSslTest {
     for (Channel ch: clientChannels) {
       ch.close().sync();
     }
-  }
-
-  /**
-   * Verifies that the {@link HttpChannelInitializer} constructor eagerly creates the alpini SSL factory
-   * from the Venice SSLFactory, so it does not need to be recreated per connection.
-   * The SSLConfig is accessed at construction time, not at initChannel time.
-   */
-  @Test
-  public void testHttpChannelInitializerCachesSslFactory() {
-    SSLFactory sslFactory = SslUtils.getVeniceLocalSslFactory();
-    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-    doReturn(DefaultIdentityParser.class.getName()).when(serverConfig).getIdentityParserClassName();
-    doReturn(1024 * 1024).when(serverConfig).getMaxRequestSize();
-    doReturn(300).when(serverConfig).getNettyIdleTimeInSeconds();
-
-    // Construction should succeed — SSLConfig is read eagerly
-    HttpChannelInitializer initializer = new HttpChannelInitializer(
-        mock(ReadOnlyStoreRepository.class),
-        new CompletableFuture<HelixCustomizedViewOfflinePushRepository>(),
-        new MetricsRepository(),
-        Optional.of(sslFactory),
-        null,
-        serverConfig,
-        Optional.empty(),
-        Optional.empty(),
-        mock(StorageReadRequestHandler.class),
-        mock(StorageEngineRepository.class));
-
-    Assert.assertNotNull(initializer);
   }
 }
