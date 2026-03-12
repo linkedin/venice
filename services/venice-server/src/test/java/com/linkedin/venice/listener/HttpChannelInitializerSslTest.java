@@ -28,7 +28,7 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 import io.tehuti.metrics.MetricsRepository;
-import java.net.ServerSocket;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -86,11 +86,9 @@ public class HttpChannelInitializerSslTest {
     // Create a single alpini SSL factory — this is the cached pattern we now use in HttpChannelInitializer
     SslFactory cachedAlpiniSslFactory = SslUtils.toAlpiniSSLFactory(sslFactory);
 
-    try (ServerSocket ss = new ServerSocket(0)) {
-      serverPort = ss.getLocalPort();
-    }
-
-    // Server uses the same cached SSL factory for all connections
+    // Server uses the same cached SSL factory for all connections.
+    // Bind to port 0 to let the OS assign an available port atomically, avoiding
+    // the race condition of closing a temporary ServerSocket and then rebinding.
     ServerBootstrap serverBootstrap = new ServerBootstrap();
     serverBootstrap.group(bossGroup, workerGroup)
         .channel(NioServerSocketChannel.class)
@@ -103,7 +101,8 @@ public class HttpChannelInitializerSslTest {
         .option(ChannelOption.SO_BACKLOG, 128)
         .childOption(ChannelOption.SO_KEEPALIVE, true);
 
-    serverChannel = serverBootstrap.bind(serverPort).sync().channel();
+    serverChannel = serverBootstrap.bind(0).sync().channel();
+    serverPort = ((InetSocketAddress) serverChannel.localAddress()).getPort();
 
     // Connect multiple SSL clients concurrently
     SSLContext clientSslContext = sslFactory.getSSLContext();
