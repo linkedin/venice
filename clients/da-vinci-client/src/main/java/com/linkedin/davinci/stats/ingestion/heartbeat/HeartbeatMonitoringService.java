@@ -120,6 +120,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
     this.perRecordOtelMetricsEnabled = serverConfig.isPerRecordOtelMetricsEnabled();
     this.serverConfig = serverConfig;
+    LOGGER.info(
+        "HeartbeatMonitoringService initialized with localRegionName: {}, regionNames: {}",
+        localRegionName,
+        regionNames);
   }
 
   private synchronized void initializeEntry(
@@ -141,16 +145,23 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         }
         HeartbeatKey key = new HeartbeatKey(storeName, versionNum, partition, region);
         heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
+        LOGGER.info(
+            "Initialized heartbeat entry for version: {}, partition: {}, region: {}, follower: {}",
+            version,
+            partition,
+            region,
+            isFollower);
       }
     } else {
       HeartbeatKey key = new HeartbeatKey(storeName, versionNum, partition, localRegionName);
       heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
+      LOGGER.info(
+          "Initialized heartbeat entry for version: {}, partition: {}, region: {}, follower: {}",
+          version,
+          partition,
+          localRegionName,
+          isFollower);
     }
-    LOGGER.info(
-        "Completed initializing heartbeat timestamps for version: {}, partition: {}, follower: {}",
-        version,
-        partition,
-        isFollower);
   }
 
   private synchronized void removeEntry(
