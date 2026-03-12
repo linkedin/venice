@@ -262,8 +262,8 @@ public class TopicManager implements Closeable {
         minIsr,
         topicManagerContext.getTopicMinLogCompactionLagMs(),
         Optional.empty(),
-        useAlternativeBackend);
-    pubSubTopicConfiguration.setUncleanLeaderElectionEnable(uncleanLeaderElectionEnable);
+        useAlternativeBackend,
+        uncleanLeaderElectionEnable);
     logger.info(
         "Creating topic: {} partitions: {} replication: {}, configuration: {}",
         topicName,

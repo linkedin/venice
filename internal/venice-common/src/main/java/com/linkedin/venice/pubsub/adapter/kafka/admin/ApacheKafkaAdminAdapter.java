@@ -404,14 +404,14 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     Optional<Boolean> uncleanLeaderElectionEnable =
         Optional.ofNullable(properties.getProperty(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG))
             .map(Boolean::parseBoolean);
-    PubSubTopicConfiguration topicConfig = new PubSubTopicConfiguration(
+    return new PubSubTopicConfiguration(
         retentionMs,
         isLogCompacted,
         minInSyncReplicas,
         minLogCompactionLagMs,
-        maxLogCompactionLagMs);
-    topicConfig.setUncleanLeaderElectionEnable(uncleanLeaderElectionEnable);
-    return topicConfig;
+        maxLogCompactionLagMs,
+        false,
+        uncleanLeaderElectionEnable);
   }
 
   private Properties unmarshallProperties(PubSubTopicConfiguration pubSubTopicConfiguration) {

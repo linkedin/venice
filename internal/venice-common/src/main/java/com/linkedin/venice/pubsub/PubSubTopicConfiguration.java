@@ -12,8 +12,8 @@ public class PubSubTopicConfiguration implements Cloneable {
   Long minLogCompactionLagMs;
   Optional<Long> maxLogCompactionLagMs;
   Optional<Integer> minInSyncReplicas;
-  private Optional<Boolean> uncleanLeaderElectionEnable = Optional.empty();
-  private boolean useAlternativeBackend = false;
+  private Optional<Boolean> uncleanLeaderElectionEnable;
+  private boolean useAlternativeBackend;
 
   public PubSubTopicConfiguration(
       Optional<Long> retentionInMs,
@@ -21,11 +21,14 @@ public class PubSubTopicConfiguration implements Cloneable {
       Optional<Integer> minInSyncReplicas,
       Long minLogCompactionLagMs,
       Optional<Long> maxLogCompactionLagMs) {
-    this.retentionInMs = retentionInMs;
-    this.isLogCompacted = isLogCompacted;
-    this.minInSyncReplicas = minInSyncReplicas;
-    this.minLogCompactionLagMs = minLogCompactionLagMs;
-    this.maxLogCompactionLagMs = maxLogCompactionLagMs;
+    this(
+        retentionInMs,
+        isLogCompacted,
+        minInSyncReplicas,
+        minLogCompactionLagMs,
+        maxLogCompactionLagMs,
+        false,
+        Optional.empty());
   }
 
   public PubSubTopicConfiguration(
@@ -35,8 +38,31 @@ public class PubSubTopicConfiguration implements Cloneable {
       Long minLogCompactionLagMs,
       Optional<Long> maxLogCompactionLagMs,
       boolean useAlternativeBackend) {
-    this(retentionInMs, isLogCompacted, minInSyncReplicas, minLogCompactionLagMs, maxLogCompactionLagMs);
+    this(
+        retentionInMs,
+        isLogCompacted,
+        minInSyncReplicas,
+        minLogCompactionLagMs,
+        maxLogCompactionLagMs,
+        useAlternativeBackend,
+        Optional.empty());
+  }
+
+  public PubSubTopicConfiguration(
+      Optional<Long> retentionInMs,
+      boolean isLogCompacted,
+      Optional<Integer> minInSyncReplicas,
+      Long minLogCompactionLagMs,
+      Optional<Long> maxLogCompactionLagMs,
+      boolean useAlternativeBackend,
+      Optional<Boolean> uncleanLeaderElectionEnable) {
+    this.retentionInMs = retentionInMs;
+    this.isLogCompacted = isLogCompacted;
+    this.minInSyncReplicas = minInSyncReplicas;
+    this.minLogCompactionLagMs = minLogCompactionLagMs;
+    this.maxLogCompactionLagMs = maxLogCompactionLagMs;
     this.useAlternativeBackend = useAlternativeBackend;
+    this.uncleanLeaderElectionEnable = uncleanLeaderElectionEnable;
   }
 
   /**
