@@ -51,7 +51,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.STO
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.UNEXPECTED_MESSAGE_COUNT;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_ACK_TIME;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.VIEW_WRITER_PRODUCE_TIME;
-import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.WRITE_COMPUTE_AMPLIFICATION_ALERT_COUNT;
+import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DCR_EVENT;
@@ -1633,13 +1633,13 @@ public class IngestionOtelStatsTest {
         "Whether an active ingestion task exists for this store version (0 or 1)",
         storeClusterVersion);
 
-    // --- Write-compute amplification alert counter ---
+    // --- Partial-update amplification alert counter ---
     assertMetricEntity(
-        WRITE_COMPUTE_AMPLIFICATION_ALERT_COUNT.getMetricEntity(),
-        "ingestion.write_compute.amplification_alert_count",
+        PARTIAL_UPDATE_AMPLIFICATION_ALERT_COUNT.getMetricEntity(),
+        "ingestion.partial_update.amplification_alert_count",
         MetricType.COUNTER,
         MetricUnit.NUMBER,
-        "Count of reporting windows where write-compute amplification was detected (large result values)",
+        "Count of reporting windows where partial-update amplification was detected (large result values)",
         storeClusterVersion);
 
     // Verify total count matches enum size

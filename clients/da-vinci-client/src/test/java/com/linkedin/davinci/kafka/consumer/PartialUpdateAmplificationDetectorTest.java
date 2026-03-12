@@ -12,13 +12,13 @@ import java.util.Map;
 import org.testng.annotations.Test;
 
 
-public class WriteComputeAmplificationDetectorTest {
+public class PartialUpdateAmplificationDetectorTest {
   private static final long REPORT_INTERVAL_MS = 60_000;
   private static final int LARGE_THRESHOLD = 100 * 1024; // 100KB
 
   @Test
   public void testRecordBelowThresholdDoesNotTriggerReport() {
-    WriteComputeAmplificationDetector detector = new WriteComputeAmplificationDetector(REPORT_INTERVAL_MS);
+    PartialUpdateAmplificationDetector detector = new PartialUpdateAmplificationDetector(REPORT_INTERVAL_MS);
     byte[] key = { 0x01, 0x02, 0x03 };
 
     // Record a small result (below threshold)
@@ -31,7 +31,7 @@ public class WriteComputeAmplificationDetectorTest {
 
   @Test
   public void testRecordAboveThresholdTriggersReport() {
-    WriteComputeAmplificationDetector detector = new WriteComputeAmplificationDetector(REPORT_INTERVAL_MS);
+    PartialUpdateAmplificationDetector detector = new PartialUpdateAmplificationDetector(REPORT_INTERVAL_MS);
     byte[] key = { 0x01, 0x02, 0x03 };
 
     // Record a large result (above threshold)
@@ -48,16 +48,16 @@ public class WriteComputeAmplificationDetectorTest {
 
   @Test
   public void testTryBuildReportAndResetClearsState() {
-    WriteComputeAmplificationDetector detector = new WriteComputeAmplificationDetector(REPORT_INTERVAL_MS);
+    PartialUpdateAmplificationDetector detector = new PartialUpdateAmplificationDetector(REPORT_INTERVAL_MS);
     byte[] key = { 0x01 };
 
     detector.record(key, 500, 200_000, LARGE_THRESHOLD);
 
     long futureTime = System.currentTimeMillis() + REPORT_INTERVAL_MS * 2;
-    WriteComputeAmplificationDetector.AmplificationReport report =
+    PartialUpdateAmplificationDetector.AmplificationReport report =
         detector.tryBuildReportAndReset(futureTime, LARGE_THRESHOLD);
     assertNotNull(report);
-    assertEquals(report.totalWriteComputeCount, 1);
+    assertEquals(report.totalPartialUpdateCount, 1);
     assertEquals(report.largeResultCount, 1);
     assertEquals(report.totalResultBytes, 200_000);
 
@@ -67,7 +67,7 @@ public class WriteComputeAmplificationDetectorTest {
 
   @Test
   public void testAtomicTryBuildReportPreventsDoubleReport() {
-    WriteComputeAmplificationDetector detector = new WriteComputeAmplificationDetector(REPORT_INTERVAL_MS);
+    PartialUpdateAmplificationDetector detector = new PartialUpdateAmplificationDetector(REPORT_INTERVAL_MS);
     byte[] key = { 0x01 };
 
     detector.record(key, 500, 200_000, LARGE_THRESHOLD);
@@ -81,7 +81,7 @@ public class WriteComputeAmplificationDetectorTest {
 
   @Test
   public void testTopKeysOrderedByTotalResultBytes() {
-    WriteComputeAmplificationDetector detector = new WriteComputeAmplificationDetector(REPORT_INTERVAL_MS);
+    PartialUpdateAmplificationDetector detector = new PartialUpdateAmplificationDetector(REPORT_INTERVAL_MS);
 
     byte[] keyA = { 0x0A };
     byte[] keyB = { 0x0B };
@@ -95,14 +95,14 @@ public class WriteComputeAmplificationDetectorTest {
     detector.record(keyC, 100, 120_000, LARGE_THRESHOLD);
 
     long futureTime = System.currentTimeMillis() + REPORT_INTERVAL_MS * 2;
-    WriteComputeAmplificationDetector.AmplificationReport report =
+    PartialUpdateAmplificationDetector.AmplificationReport report =
         detector.tryBuildReportAndReset(futureTime, LARGE_THRESHOLD);
     assertNotNull(report);
 
-    assertEquals(report.totalWriteComputeCount, 5);
+    assertEquals(report.totalPartialUpdateCount, 5);
     assertEquals(report.largeResultCount, 5);
 
-    List<Map.Entry<ByteArrayKey, WriteComputeAmplificationDetector.KeyAmplificationStats>> topKeys = report.topKeys;
+    List<Map.Entry<ByteArrayKey, PartialUpdateAmplificationDetector.KeyAmplificationStats>> topKeys = report.topKeys;
     assertEquals(topKeys.size(), 3);
 
     // First key should be keyB (highest total result bytes: 450KB)
@@ -119,10 +119,10 @@ public class WriteComputeAmplificationDetectorTest {
 
   @Test
   public void testMaxTrackedKeysLimit() {
-    WriteComputeAmplificationDetector detector = new WriteComputeAmplificationDetector(REPORT_INTERVAL_MS);
+    PartialUpdateAmplificationDetector detector = new PartialUpdateAmplificationDetector(REPORT_INTERVAL_MS);
 
     // Fill up to MAX_TRACKED_KEYS
-    for (int i = 0; i < WriteComputeAmplificationDetector.MAX_TRACKED_KEYS; i++) {
+    for (int i = 0; i < PartialUpdateAmplificationDetector.MAX_TRACKED_KEYS; i++) {
       byte[] key = { (byte) i };
       detector.record(key, 100, 200_000, LARGE_THRESHOLD);
     }
@@ -132,27 +132,27 @@ public class WriteComputeAmplificationDetectorTest {
     detector.record(extraKey, 100, 500_000, LARGE_THRESHOLD);
 
     long futureTime = System.currentTimeMillis() + REPORT_INTERVAL_MS * 2;
-    WriteComputeAmplificationDetector.AmplificationReport report =
+    PartialUpdateAmplificationDetector.AmplificationReport report =
         detector.tryBuildReportAndReset(futureTime, LARGE_THRESHOLD);
     assertNotNull(report);
 
     // Total count includes the extra key
-    assertEquals(report.largeResultCount, WriteComputeAmplificationDetector.MAX_TRACKED_KEYS + 1);
+    assertEquals(report.largeResultCount, PartialUpdateAmplificationDetector.MAX_TRACKED_KEYS + 1);
 
     // But top keys should only have MAX_TRACKED_KEYS entries (extra key was dropped)
     assertEquals(
         report.topKeys.size(),
         Math.min(
-            WriteComputeAmplificationDetector.TOP_KEYS_TO_REPORT,
-            WriteComputeAmplificationDetector.MAX_TRACKED_KEYS));
+            PartialUpdateAmplificationDetector.TOP_KEYS_TO_REPORT,
+            PartialUpdateAmplificationDetector.MAX_TRACKED_KEYS));
   }
 
   @Test
   public void testExistingKeyUpdatedWhenMapFull() {
-    WriteComputeAmplificationDetector detector = new WriteComputeAmplificationDetector(REPORT_INTERVAL_MS);
+    PartialUpdateAmplificationDetector detector = new PartialUpdateAmplificationDetector(REPORT_INTERVAL_MS);
 
     // Fill up to MAX_TRACKED_KEYS with unique keys
-    for (int i = 0; i < WriteComputeAmplificationDetector.MAX_TRACKED_KEYS; i++) {
+    for (int i = 0; i < PartialUpdateAmplificationDetector.MAX_TRACKED_KEYS; i++) {
       byte[] key = { (byte) i };
       detector.record(key, 100, 200_000, LARGE_THRESHOLD);
     }
@@ -162,12 +162,12 @@ public class WriteComputeAmplificationDetectorTest {
     detector.record(existingKey, 100, 300_000, LARGE_THRESHOLD);
 
     long futureTime = System.currentTimeMillis() + REPORT_INTERVAL_MS * 2;
-    WriteComputeAmplificationDetector.AmplificationReport report =
+    PartialUpdateAmplificationDetector.AmplificationReport report =
         detector.tryBuildReportAndReset(futureTime, LARGE_THRESHOLD);
     assertNotNull(report);
 
     // Find key 0x00 in top keys — it should have count=2 and totalResultBytes=500_000
-    for (Map.Entry<ByteArrayKey, WriteComputeAmplificationDetector.KeyAmplificationStats> entry: report.topKeys) {
+    for (Map.Entry<ByteArrayKey, PartialUpdateAmplificationDetector.KeyAmplificationStats> entry: report.topKeys) {
       if (entry.getKey().getContent()[0] == 0x00) {
         assertEquals(entry.getValue().count, 2);
         assertEquals(entry.getValue().totalResultBytes, 500_000);
@@ -180,7 +180,7 @@ public class WriteComputeAmplificationDetectorTest {
 
   @Test
   public void testMixedBelowAndAboveThreshold() {
-    WriteComputeAmplificationDetector detector = new WriteComputeAmplificationDetector(REPORT_INTERVAL_MS);
+    PartialUpdateAmplificationDetector detector = new PartialUpdateAmplificationDetector(REPORT_INTERVAL_MS);
 
     byte[] key = { 0x01 };
 
@@ -192,12 +192,12 @@ public class WriteComputeAmplificationDetectorTest {
     detector.record(key, 300, 300_000, LARGE_THRESHOLD);
 
     long futureTime = System.currentTimeMillis() + REPORT_INTERVAL_MS * 2;
-    WriteComputeAmplificationDetector.AmplificationReport report =
+    PartialUpdateAmplificationDetector.AmplificationReport report =
         detector.tryBuildReportAndReset(futureTime, LARGE_THRESHOLD);
     assertNotNull(report);
 
     // All 5 events counted in total
-    assertEquals(report.totalWriteComputeCount, 5);
+    assertEquals(report.totalPartialUpdateCount, 5);
     // Only 2 large results
     assertEquals(report.largeResultCount, 2);
     // Total result bytes includes all events
@@ -205,7 +205,7 @@ public class WriteComputeAmplificationDetectorTest {
 
     // Heavy key map only tracks the 2 large-result events
     assertEquals(report.topKeys.size(), 1);
-    WriteComputeAmplificationDetector.KeyAmplificationStats stats = report.topKeys.get(0).getValue();
+    PartialUpdateAmplificationDetector.KeyAmplificationStats stats = report.topKeys.get(0).getValue();
     assertEquals(stats.count, 2);
     assertEquals(stats.totalResultBytes, 500_000);
     assertEquals(stats.totalRequestBytes, 500); // 200 + 300
@@ -214,8 +214,8 @@ public class WriteComputeAmplificationDetectorTest {
 
   @Test
   public void testKeyAmplificationStatsAvgAmplification() {
-    WriteComputeAmplificationDetector.KeyAmplificationStats stats =
-        new WriteComputeAmplificationDetector.KeyAmplificationStats(100, 10_000);
+    PartialUpdateAmplificationDetector.KeyAmplificationStats stats =
+        new PartialUpdateAmplificationDetector.KeyAmplificationStats(100, 10_000);
     assertEquals(stats.getAvgAmplification(), 100.0, 0.01);
 
     stats.update(200, 20_000);
@@ -227,13 +227,13 @@ public class WriteComputeAmplificationDetectorTest {
 
   @Test
   public void testReportToStringFormat() {
-    WriteComputeAmplificationDetector detector = new WriteComputeAmplificationDetector(REPORT_INTERVAL_MS);
+    PartialUpdateAmplificationDetector detector = new PartialUpdateAmplificationDetector(REPORT_INTERVAL_MS);
 
     byte[] key = { 0x0A, 0x0B, 0x0C, 0x0D };
     detector.record(key, 500, 200_000, LARGE_THRESHOLD);
 
     long futureTime = System.currentTimeMillis() + REPORT_INTERVAL_MS * 2;
-    WriteComputeAmplificationDetector.AmplificationReport report =
+    PartialUpdateAmplificationDetector.AmplificationReport report =
         detector.tryBuildReportAndReset(futureTime, LARGE_THRESHOLD);
     assertNotNull(report);
 
@@ -249,13 +249,13 @@ public class WriteComputeAmplificationDetectorTest {
 
   @Test
   public void testReportIncludesThresholdValue() {
-    WriteComputeAmplificationDetector detector = new WriteComputeAmplificationDetector(REPORT_INTERVAL_MS);
+    PartialUpdateAmplificationDetector detector = new PartialUpdateAmplificationDetector(REPORT_INTERVAL_MS);
 
     byte[] key = { 0x01 };
     detector.record(key, 100, 200_000, LARGE_THRESHOLD);
 
     long futureTime = System.currentTimeMillis() + REPORT_INTERVAL_MS * 2;
-    WriteComputeAmplificationDetector.AmplificationReport report =
+    PartialUpdateAmplificationDetector.AmplificationReport report =
         detector.tryBuildReportAndReset(futureTime, LARGE_THRESHOLD);
     assertNotNull(report);
     assertEquals(report.largeResultThreshold, LARGE_THRESHOLD);
@@ -265,7 +265,7 @@ public class WriteComputeAmplificationDetectorTest {
 
   @Test
   public void testWindowDurationInReport() {
-    WriteComputeAmplificationDetector detector = new WriteComputeAmplificationDetector(REPORT_INTERVAL_MS);
+    PartialUpdateAmplificationDetector detector = new PartialUpdateAmplificationDetector(REPORT_INTERVAL_MS);
 
     byte[] key = { 0x01 };
     detector.record(key, 100, 200_000, LARGE_THRESHOLD);
@@ -273,7 +273,7 @@ public class WriteComputeAmplificationDetectorTest {
     // Use a time far enough in the future that minor jitter is irrelevant
     long now = System.currentTimeMillis();
     long reportTime = now + 90_000;
-    WriteComputeAmplificationDetector.AmplificationReport report =
+    PartialUpdateAmplificationDetector.AmplificationReport report =
         detector.tryBuildReportAndReset(reportTime, LARGE_THRESHOLD);
     assertNotNull(report);
 
