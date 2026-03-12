@@ -121,12 +121,13 @@ public class PubSubTopicConfiguration implements Cloneable {
   @Override
   public String toString() {
     return String.format(
-        "TopicConfiguration(retentionInMs = %s, isLogCompacted = %s, minInSyncReplicas = %s, minLogCompactionLagMs = %s, maxLogCompactionLagMs = %s, useAlternativeBackend = %s)",
+        "TopicConfiguration(retentionInMs = %s, isLogCompacted = %s, minInSyncReplicas = %s, minLogCompactionLagMs = %s, maxLogCompactionLagMs = %s, uncleanLeaderElectionEnable = %s, useAlternativeBackend = %s)",
         retentionInMs.isPresent() ? retentionInMs.get() : "not set",
         isLogCompacted,
         minInSyncReplicas.isPresent() ? minInSyncReplicas.get() : "not set",
         minLogCompactionLagMs,
         maxLogCompactionLagMs.isPresent() ? maxLogCompactionLagMs.get() : " not set",
+        uncleanLeaderElectionEnable.isPresent() ? uncleanLeaderElectionEnable.get() : "not set",
         useAlternativeBackend);
   }
 
