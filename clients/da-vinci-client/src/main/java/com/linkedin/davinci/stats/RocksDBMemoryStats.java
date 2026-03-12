@@ -65,7 +65,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
   private static final Set<String> BLOCK_CACHE_METRICS =
       PARTITION_METRIC_DOMAINS.stream().filter(s -> s.contains("rocksdb.block-cache")).collect(Collectors.toSet());
 
-  private Map<String, RocksDBStoragePartition> hostedRocksDBPartitions = new ConcurrentHashMap<>();
+  private final Map<String, RocksDBStoragePartition> hostedRocksDBPartitions = new ConcurrentHashMap<>();
 
   /** OTel repository; null when OTel is disabled or when using a plain {@link MetricsRepository}. */
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
@@ -95,14 +95,14 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
     RMD_BLOCK_CACHE_USAGE("rocksdb.rmd-block-cache-usage"),
     RMD_BLOCK_CACHE_PINNED_USAGE("rocksdb.rmd-block-cache-pinned-usage");
 
-    private static final Map<String, TehutiMetricName> PROPERTY_LOOKUP;
+    private static final Map<String, TehutiMetricName> SENSOR_LOOKUP;
 
     static {
       Map<String, TehutiMetricName> map = new HashMap<>();
       for (TehutiMetricName value: values()) {
         map.put(value.sensorName, value);
       }
-      PROPERTY_LOOKUP = Collections.unmodifiableMap(map);
+      SENSOR_LOOKUP = Collections.unmodifiableMap(map);
     }
 
     private final String sensorName;
@@ -123,7 +123,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
     }
 
     static TehutiMetricName fromSensorName(String sensorName) {
-      TehutiMetricName result = PROPERTY_LOOKUP.get(sensorName);
+      TehutiMetricName result = SENSOR_LOOKUP.get(sensorName);
       if (result == null) {
         throw new IllegalArgumentException("Unknown sensor name: " + sensorName);
       }
