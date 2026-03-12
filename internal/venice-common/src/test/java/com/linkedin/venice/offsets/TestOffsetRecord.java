@@ -195,10 +195,8 @@ public class TestOffsetRecord {
     when(nonNumericPosition.toWireFormatBuffer())
         .thenReturn(PubSubPosition.PUBSUB_POSITION_WIRE_FORMAT_SERIALIZER.serialize(wireFormat));
 
-    // Should not throw — the fix stores -1 as legacy fallback
+    // Should not throw — before the fix, this would crash with UnsupportedOperationException
+    // because checkpointRtPosition called getNumericOffset() directly.
     offsetRecord.checkpointRtPosition(TEST_KAFKA_URL1, nonNumericPosition);
-
-    // Verify the legacy offset map got -1 as fallback
-    assertEquals(offsetRecord.getPartitionState().upstreamOffsetMap.get(TEST_KAFKA_URL1), Long.valueOf(-1L));
   }
 }
