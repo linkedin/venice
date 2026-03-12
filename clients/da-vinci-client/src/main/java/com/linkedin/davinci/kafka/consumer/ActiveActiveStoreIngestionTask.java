@@ -581,8 +581,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // Partial-update amplification detection (AA path)
       if (msgType == MessageType.UPDATE && updatedValueBytes != null) {
         int largeResultThreshold = serverConfig.getPartialUpdateLargeResultLogThresholdBytes();
-        PartialUpdateAmplificationDetector amplificationDetector = partitionConsumptionState
-            .getOrCreatePartialUpdateAmplificationDetector(serverConfig.getPartialUpdateAmplificationReportIntervalMs());
+        PartialUpdateAmplificationDetector amplificationDetector =
+            partitionConsumptionState.getOrCreatePartialUpdateAmplificationDetector(
+                serverConfig.getPartialUpdateAmplificationReportIntervalMs());
         amplificationDetector
             .record(keyBytes, incomingUpdatePayloadSize, updatedValueBytes.remaining(), largeResultThreshold);
         PartialUpdateAmplificationDetector.AmplificationReport ampReport =
