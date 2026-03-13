@@ -972,13 +972,15 @@ public class VeniceWriterUnitTest {
     Thread writerThread = new Thread(() -> writer.put("key", "value", 1, null));
     writerThread.start();
 
-    // Wait for hook to be entered
-    assertTrue(hookEntered.await(5, java.util.concurrent.TimeUnit.SECONDS));
-    // Producer should NOT have been called yet — hook is blocking
-    verify(mockedProducer, times(0)).sendMessage(any(), any(), any(), any(), any(), any());
-
-    // Release the hook
-    hookRelease.countDown();
+    try {
+      // Wait for hook to be entered
+      assertTrue(hookEntered.await(5, java.util.concurrent.TimeUnit.SECONDS));
+      // Producer should NOT have been called yet — hook is blocking
+      verify(mockedProducer, times(0)).sendMessage(any(), any(), any(), any(), any(), any());
+    } finally {
+      // Always release the hook to avoid leaking a blocked thread
+      hookRelease.countDown();
+    }
     writerThread.join(5000);
     assertFalse(writerThread.isAlive());
 

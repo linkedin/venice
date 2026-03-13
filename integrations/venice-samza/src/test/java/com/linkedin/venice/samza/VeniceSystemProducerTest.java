@@ -238,7 +238,6 @@ public class VeniceSystemProducerTest {
             .setPushType(pushType)
             .setSamzaJobId("push-job-id-1")
             .setRunningFabric("dc-0")
-            .setVerifyLatestProtocolPresent(true)
             .setDiscoveryUrl("discoveryUrl")
             .build());
     VeniceSystemProducer mockveniceSystemProducer = spy(producerInDC0);
@@ -441,7 +440,6 @@ public class VeniceSystemProducerTest {
             .setPushType(Version.PushType.STREAM)
             .setSamzaJobId("push-job-id-1")
             .setRunningFabric("dc-0")
-            .setVerifyLatestProtocolPresent(true)
             .setDiscoveryUrl("discoveryUrl")
             .build());
     VeniceSystemProducer producerSpy = spy(producer);
@@ -544,7 +542,6 @@ public class VeniceSystemProducerTest {
             .setPushType(Version.PushType.STREAM)
             .setSamzaJobId("job-id")
             .setRunningFabric("dc-0")
-            .setVerifyLatestProtocolPresent(true)
             .setDiscoveryUrl("http://discovery")
             .build());
     assertNotNull(producer);

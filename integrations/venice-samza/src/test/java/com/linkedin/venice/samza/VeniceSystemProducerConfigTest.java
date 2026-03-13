@@ -127,4 +127,15 @@ public class VeniceSystemProducerConfigTest {
         .setPrimaryControllerColoD2ZKHost("zk:2181")
         .build();
   }
+
+  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*routerUrl.*required.*discoveryUrl.*verifyLatestProtocolPresent.*")
+  public void testBuilderRejectsMissingRouterUrlWithDiscoveryAndProtocolVerification() {
+    new VeniceSystemProducerConfig.Builder().setStoreName("store")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("job-id")
+        .setRunningFabric("dc-0")
+        .setDiscoveryUrl("http://discovery")
+        .setVerifyLatestProtocolPresent(true)
+        .build();
+  }
 }
