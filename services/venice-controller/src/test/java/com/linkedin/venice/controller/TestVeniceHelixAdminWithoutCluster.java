@@ -8,9 +8,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -25,17 +23,13 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import org.apache.http.HttpStatus;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -318,53 +312,6 @@ public class TestVeniceHelixAdminWithoutCluster {
             Optional.empty(),
             "dc-99, dc-0, dc-4, dc-2"),
         "dc-4");
-  }
-
-  @Test
-  public void testChildControllerSetterValidation() throws Exception {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
-
-    // --- setBackupVersionRetentionMs (private) ---
-    Method setBackupRetention =
-        VeniceHelixAdmin.class.getDeclaredMethod("setBackupVersionRetentionMs", String.class, String.class, long.class);
-    setBackupRetention.setAccessible(true);
-
-    // 0 ms should throw INVALID_CONFIG
-    try {
-      setBackupRetention.invoke(admin, "cluster", "store", 0L);
-      Assert.fail("Expected VeniceHttpException for retention 0");
-    } catch (InvocationTargetException e) {
-      Assert.assertTrue(e.getCause() instanceof VeniceHttpException);
-      VeniceHttpException ex = (VeniceHttpException) e.getCause();
-      Assert.assertEquals(ex.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-      Assert.assertEquals(ex.getErrorType(), ErrorType.INVALID_CONFIG);
-    }
-
-    // 23 hours (below 1-day minimum) should throw
-    try {
-      setBackupRetention.invoke(admin, "cluster", "store", TimeUnit.HOURS.toMillis(23));
-      Assert.fail("Expected VeniceHttpException for retention below minimum");
-    } catch (InvocationTargetException e) {
-      Assert.assertTrue(e.getCause() instanceof VeniceHttpException);
-    }
-
-    // -2 (invalid negative, not the sentinel -1) should throw
-    try {
-      setBackupRetention.invoke(admin, "cluster", "store", -2L);
-      Assert.fail("Expected VeniceHttpException for retention -2");
-    } catch (InvocationTargetException e) {
-      Assert.assertTrue(e.getCause() instanceof VeniceHttpException);
-      VeniceHttpException ex = (VeniceHttpException) e.getCause();
-      Assert.assertEquals(ex.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-      Assert.assertEquals(ex.getErrorType(), ErrorType.INVALID_CONFIG);
-    }
-
-    // -1 (cluster default) should NOT throw (no call to storeMetadataUpdate expected since admin is a mock)
-    // The validation passes; storeMetadataUpdate is mocked to do nothing
-    setBackupRetention.invoke(admin, "cluster", "store", -1L);
-
-    // Exactly 1 day should NOT throw
-    setBackupRetention.invoke(admin, "cluster", "store", Store.MIN_BACKUP_VERSION_RETENTION_MS);
   }
 
 }

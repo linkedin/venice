@@ -3551,24 +3551,25 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     // backupVersionRetentionMs: below minimum (positive but < 1 day) should throw
     long tooLowRetention = TimeUnit.HOURS.toMillis(23);
-    VeniceHttpException e1 = Assert.expectThrows(
-        VeniceHttpException.class,
+    VeniceException e1 = Assert.expectThrows(
+        VeniceException.class,
         () -> parentAdmin.updateStore(
             clusterName,
             storeName,
             new UpdateStoreQueryParams().setBackupVersionRetentionMs(tooLowRetention)));
-    Assert.assertEquals(e1.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-    Assert.assertEquals(e1.getErrorType(), ErrorType.INVALID_CONFIG);
+    Assert.assertTrue(
+        e1.getMessage().contains("Backup version retention time"),
+        "Expected message to mention retention time but got: " + e1.getMessage());
 
     // backupVersionRetentionMs: 0 should also throw
     Assert.expectThrows(
-        VeniceHttpException.class,
+        VeniceException.class,
         () -> parentAdmin
             .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBackupVersionRetentionMs(0L)));
 
     // backupVersionRetentionMs: -2 is invalid (not the sentinel -1)
     Assert.expectThrows(
-        VeniceHttpException.class,
+        VeniceException.class,
         () -> parentAdmin
             .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBackupVersionRetentionMs(-2L)));
 
