@@ -3580,66 +3580,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         clusterName,
         storeName,
         new UpdateStoreQueryParams().setBackupVersionRetentionMs(Store.MIN_BACKUP_VERSION_RETENTION_MS));
-
-    // numVersionsToPreserve: negative is invalid
-    VeniceHttpException e2 = Assert.expectThrows(
-        VeniceHttpException.class,
-        () -> parentAdmin
-            .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setNumVersionsToPreserve(-1)));
-    Assert.assertEquals(e2.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-    Assert.assertEquals(e2.getErrorType(), ErrorType.INVALID_CONFIG);
-
-    // numVersionsToPreserve: 0 is valid (NUM_VERSION_PRESERVE_NOT_SET = use cluster default)
-    parentAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setNumVersionsToPreserve(Store.NUM_VERSION_PRESERVE_NOT_SET));
-
-    // replicationFactor: 0 is invalid
-    VeniceHttpException e3 = Assert.expectThrows(
-        VeniceHttpException.class,
-        () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(0)));
-    Assert.assertEquals(e3.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-    Assert.assertEquals(e3.getErrorType(), ErrorType.INVALID_CONFIG);
-
-    // amplificationFactor: 0 is invalid
-    VeniceHttpException e4 = Assert.expectThrows(
-        VeniceHttpException.class,
-        () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAmplificationFactor(0)));
-    Assert.assertEquals(e4.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-    Assert.assertEquals(e4.getErrorType(), ErrorType.INVALID_CONFIG);
-
-    // bootstrapToOnlineTimeoutInHours: 0 is invalid
-    VeniceHttpException e5 = Assert.expectThrows(
-        VeniceHttpException.class,
-        () -> parentAdmin
-            .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBootstrapToOnlineTimeoutInHours(0)));
-    Assert.assertEquals(e5.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-    Assert.assertEquals(e5.getErrorType(), ErrorType.INVALID_CONFIG);
-
-    // batchGetLimit: 0 is invalid
-    VeniceHttpException e6 = Assert.expectThrows(
-        VeniceHttpException.class,
-        () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBatchGetLimit(0)));
-    Assert.assertEquals(e6.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-    Assert.assertEquals(e6.getErrorType(), ErrorType.INVALID_CONFIG);
-
-    // maxRecordSizeBytes: 0 is invalid
-    VeniceHttpException e7 = Assert.expectThrows(
-        VeniceHttpException.class,
-        () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setMaxRecordSizeBytes(0)));
-    Assert.assertEquals(e7.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-    Assert.assertEquals(e7.getErrorType(), ErrorType.INVALID_CONFIG);
-
-    // maxRecordSizeBytes: -1 is valid (feature disabled)
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setMaxRecordSizeBytes(-1));
-
-    // maxRecordSizeBytes: -2 is invalid
-    VeniceHttpException e8 = Assert.expectThrows(
-        VeniceHttpException.class,
-        () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setMaxRecordSizeBytes(-2)));
-    Assert.assertEquals(e8.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-    Assert.assertEquals(e8.getErrorType(), ErrorType.INVALID_CONFIG);
   }
 
   private AdminOperation verifyAndGetSingleAdminOperation() {

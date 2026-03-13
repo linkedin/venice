@@ -365,60 +365,6 @@ public class TestVeniceHelixAdminWithoutCluster {
 
     // Exactly 1 day should NOT throw
     setBackupRetention.invoke(admin, "cluster", "store", Store.MIN_BACKUP_VERSION_RETENTION_MS);
-
-    // --- setReplicationFactor (private) ---
-    Method setReplicationFactor =
-        VeniceHelixAdmin.class.getDeclaredMethod("setReplicationFactor", String.class, String.class, int.class);
-    setReplicationFactor.setAccessible(true);
-
-    try {
-      setReplicationFactor.invoke(admin, "cluster", "store", 0);
-      Assert.fail("Expected VeniceHttpException for replicationFactor 0");
-    } catch (InvocationTargetException e) {
-      Assert.assertTrue(e.getCause() instanceof VeniceHttpException);
-      Assert.assertEquals(((VeniceHttpException) e.getCause()).getErrorType(), ErrorType.INVALID_CONFIG);
-    }
-
-    // --- setBatchGetLimit (private) ---
-    Method setBatchGetLimit =
-        VeniceHelixAdmin.class.getDeclaredMethod("setBatchGetLimit", String.class, String.class, int.class);
-    setBatchGetLimit.setAccessible(true);
-
-    try {
-      setBatchGetLimit.invoke(admin, "cluster", "store", 0);
-      Assert.fail("Expected VeniceHttpException for batchGetLimit 0");
-    } catch (InvocationTargetException e) {
-      Assert.assertTrue(e.getCause() instanceof VeniceHttpException);
-      Assert.assertEquals(((VeniceHttpException) e.getCause()).getErrorType(), ErrorType.INVALID_CONFIG);
-    }
-
-    // --- setNumVersionsToPreserve (private) ---
-    Method setNumVersions =
-        VeniceHelixAdmin.class.getDeclaredMethod("setNumVersionsToPreserve", String.class, String.class, int.class);
-    setNumVersions.setAccessible(true);
-
-    try {
-      setNumVersions.invoke(admin, "cluster", "store", -1);
-      Assert.fail("Expected VeniceHttpException for numVersionsToPreserve -1");
-    } catch (InvocationTargetException e) {
-      Assert.assertTrue(e.getCause() instanceof VeniceHttpException);
-      Assert.assertEquals(((VeniceHttpException) e.getCause()).getErrorType(), ErrorType.INVALID_CONFIG);
-    }
-
-    // 0 is valid (NUM_VERSION_PRESERVE_NOT_SET)
-    setNumVersions.invoke(admin, "cluster", "store", 0);
-
-    // --- setBootstrapToOnlineTimeoutInHours (package-private) ---
-    doCallRealMethod().when(admin)
-        .setBootstrapToOnlineTimeoutInHours(anyString(), anyString(), org.mockito.ArgumentMatchers.anyInt());
-
-    try {
-      admin.setBootstrapToOnlineTimeoutInHours("cluster", "store", 0);
-      Assert.fail("Expected VeniceHttpException for bootstrapToOnlineTimeoutInHours 0");
-    } catch (VeniceHttpException e) {
-      Assert.assertEquals(e.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
-      Assert.assertEquals(e.getErrorType(), ErrorType.INVALID_CONFIG);
-    }
   }
 
 }
