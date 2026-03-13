@@ -412,6 +412,64 @@ public abstract class TestBatch {
         "The dict of repushed version should be different from the source version");
   }
 
+  /**
+   * Tests that when a store with ZSTD_WITH_DICT compression is pushed twice (v1 and v2 with different data),
+   * the router downloads the new dictionary for v2 and the read path returns the correct v2 data.
+   * This validates that DictionaryRetrievalService correctly fetches updated dictionaries on version swap.
+   */
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testNewPushWithNewerDictionaryIsServedCorrectly() throws Exception {
+    // Push v1 with ZSTD_WITH_DICT compression
+    String storeName = testBatchStore(
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
+        properties -> {},
+        (avroClient, vsonClient, metricsRepository) -> {
+          for (int i = 1; i <= 100; i++) {
+            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+          }
+        },
+        new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+
+    // Push v2 with ZSTD_WITH_DICT compression and different data — router must download the new dictionary
+    VPJValidator v2Validator = (avroClient, vsonClient, metricsRepository) -> {
+      // test single get — expect v2 data
+      for (int i = 1; i <= 100; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "alternate_test_name_" + i);
+      }
+
+      // test batch get — expect v2 data
+      for (int i = 0; i < 10; i++) {
+        Set<String> keys = new HashSet<>();
+        for (int j = 1; j <= 10; j++) {
+          keys.add(Integer.toString(i * 10 + j));
+        }
+        Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
+        Assert.assertEquals(values.size(), 10);
+        for (int j = 1; j <= 10; j++) {
+          Assert.assertEquals(
+              values.get(Integer.toString(i * 10 + j)).toString(),
+              "alternate_test_name_" + ((i * 10) + j));
+        }
+      }
+    };
+    testBatchStore(
+        inputDir -> new KeyAndValueSchemas(writeAlternateSimpleAvroFileWithStringToStringSchema(inputDir)),
+        properties -> {},
+        v2Validator,
+        storeName,
+        new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT).setPartitionCount(3));
+
+    // Verify that v1 and v2 have different dictionaries (different data produces different dictionaries)
+    Properties props = new Properties();
+    props.setProperty(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getPubSubBrokerWrapper().getAddress());
+    VeniceProperties veniceProperties = new VeniceProperties(props);
+    ByteBuffer v1Dict =
+        DictionaryUtils.readDictionaryFromKafka(Version.composeKafkaTopic(storeName, 1), veniceProperties);
+    ByteBuffer v2Dict =
+        DictionaryUtils.readDictionaryFromKafka(Version.composeKafkaTopic(storeName, 2), veniceProperties);
+    Assert.assertNotEquals(v2Dict, v1Dict, "v2 dictionary should differ from v1 since data changed");
+  }
+
   @Test(timeOut = TEST_TIMEOUT)
   public void testEarlyDeleteBackupStore() throws Exception {
     String storeName = testBatchStoreMultiVersionPush(
