@@ -313,6 +313,20 @@ public class PartitionConsumptionState {
   private volatile CompletableFuture<Void> pendingBlobTransfer;
 
   /**
+   * Tracks an in-progress record transformer recovery after blob transfer completes.
+   * Set when blob transfer finishes and transformer recovery is submitted to the thread pool.
+   * Cleared when transformer recovery completes and Kafka subscribe proceeds.
+   */
+  private volatile CompletableFuture<Void> pendingTransformerRecovery;
+
+  /**
+   * The action to run on the SIT thread when transformer recovery completes.
+   * For the Kafka path: calls executeKafkaSubscribe.
+   * For the blob transfer path: calls completePostTransformerSubscribe.
+   */
+  private volatile Runnable postTransformerSubscribeAction;
+
+  /**
    * Cached HeartbeatKey references keyed by region, populated during lag monitor setup.
    * Eliminates HeartbeatKey creation and hash computation on the per-record recording path.
    */
@@ -425,6 +439,26 @@ public class PartitionConsumptionState {
 
   public boolean isBlobTransferInProgress() {
     return this.pendingBlobTransfer != null;
+  }
+
+  public CompletableFuture<Void> getPendingTransformerRecovery() {
+    return this.pendingTransformerRecovery;
+  }
+
+  public void setPendingTransformerRecovery(CompletableFuture<Void> pendingTransformerRecovery) {
+    this.pendingTransformerRecovery = pendingTransformerRecovery;
+  }
+
+  public boolean isTransformerRecoveryInProgress() {
+    return this.pendingTransformerRecovery != null;
+  }
+
+  public Runnable getPostTransformerSubscribeAction() {
+    return this.postTransformerSubscribeAction;
+  }
+
+  public void setPostTransformerSubscribeAction(Runnable postTransformerSubscribeAction) {
+    this.postTransformerSubscribeAction = postTransformerSubscribeAction;
   }
 
   public OffsetRecord getOffsetRecord() {

@@ -633,6 +633,35 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         continue;
       }
 
+      // Check if transformer recovery has completed for this partition.
+      // If so, run the stored post-transformer action (Kafka subscribe or post-blob-transfer subscribe).
+      if (partitionConsumptionState.isTransformerRecoveryInProgress()) {
+        CompletableFuture<Void> transformerFuture = partitionConsumptionState.getPendingTransformerRecovery();
+        if (transformerFuture.isDone()) {
+          if (transformerFuture.isCompletedExceptionally()) {
+            try {
+              transformerFuture.get();
+            } catch (ExecutionException e) {
+              LOGGER.error(
+                  "Transformer recovery failed for replica: {}",
+                  partitionConsumptionState.getReplicaId(),
+                  e.getCause());
+              setLastStoreIngestionException(
+                  e.getCause() instanceof Exception ? (Exception) e.getCause() : new VeniceException(e.getCause()));
+              partitionConsumptionState.setPendingTransformerRecovery(null);
+              partitionConsumptionState.setPostTransformerSubscribeAction(null);
+            }
+          } else {
+            partitionConsumptionState.setPendingTransformerRecovery(null);
+            Runnable action = partitionConsumptionState.getPostTransformerSubscribeAction();
+            partitionConsumptionState.setPostTransformerSubscribeAction(null);
+            action.run();
+          }
+        }
+        // Skip other checks while transformer recovery is pending — Kafka subscribe hasn't happened yet.
+        continue;
+      }
+
       /**
        * Check whether the ingestion timeout for bootstrapping replicas.
        * For future version, it should fail the push job.
