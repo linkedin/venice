@@ -104,7 +104,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     // In the standard pattern (ServerHttpRequestStats, etc.), .isTotalStats(true) disables
     // OTel on the total instance because per-store instances emit all metrics and OTel
     // aggregates at query time. This class is different: only 2 metrics (POLL_BYTES,
-    // POLL_RECORD_COUNT) are per-store; the remaining 11 are recorded ONLY on the total
+    // POLL_RECORD_COUNT) are per-store; the remaining 10 OTel metrics are recorded ONLY on the total
     // instance (via AggKafkaConsumerServiceStats.recordTotal*()). Disabling OTel on total
     // would leave those 11 metrics with no OTel representation at all. Instead, we use
     // totalOnlyOtelRepo (null for per-store instances) to suppress OTel on per-store
