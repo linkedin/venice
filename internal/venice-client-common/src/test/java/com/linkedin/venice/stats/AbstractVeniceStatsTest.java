@@ -355,7 +355,6 @@ public class AbstractVeniceStatsTest {
   @Test
   public void testRegisterPerStoreAndTotalWithMetricEntityState() {
     MetricsRepository metricsRepository = new MetricsRepository();
-    MetricConfig metricConfig = new MetricConfig();
 
     AbstractVeniceStats totalStats = new AbstractVeniceStats(metricsRepository, "total");
     AbstractVeniceStats perStoreStats = new AbstractVeniceStats(metricsRepository, "testStore");
@@ -370,7 +369,6 @@ public class AbstractVeniceStatsTest {
     Sensor perStoreSensor = fn.register("perStoreSensor", new Count());
     perStoreSensor.record(1);
 
-    long now = System.currentTimeMillis();
     // Per-store sensor recorded
     assertEquals(metricsRepository.getMetric(".testStore--perStoreSensor.Count").value(), 1.0);
     // Total sensor also recorded via parent propagation
