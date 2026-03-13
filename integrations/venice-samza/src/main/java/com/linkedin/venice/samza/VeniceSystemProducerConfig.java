@@ -21,33 +21,33 @@ import org.apache.samza.config.Config;
  * - Discovery-URL-based: set {@code discoveryUrl}
  */
 public class VeniceSystemProducerConfig {
-  // Required
+  // Required (validated non-null in Builder.build())
   private final String storeName;
   private final Version.PushType pushType;
   private final String samzaJobId;
-  private final String runningFabric;
-  private final boolean verifyLatestProtocolPresent;
-
-  // ZK-based connection
-  private final String veniceChildD2ZkHost;
-  private final String primaryControllerColoD2ZKHost;
-  private final String primaryControllerD2ServiceName;
-
-  // D2Client-based connection
-  private final D2Client providedChildColoD2Client;
-  private final D2Client providedPrimaryControllerColoD2Client;
-
-  // Discovery-URL-based connection
-  private final String discoveryUrl;
+  private final VeniceSystemFactory factory;
 
   // Optional
-  private final VeniceSystemFactory factory;
+  private final String runningFabric;
+  private final boolean verifyLatestProtocolPresent;
   private final Optional<SSLFactory> sslFactory;
   private final Optional<String> partitioners;
   private final Time time;
   private final VeniceWriterHook writerHook;
   private final Config samzaConfig;
   private final String routerUrl;
+
+  // ZK-based connection (mutually exclusive with D2Client and discoveryUrl)
+  private final String veniceChildD2ZkHost;
+  private final String primaryControllerColoD2ZKHost;
+  private final String primaryControllerD2ServiceName;
+
+  // D2Client-based connection (mutually exclusive with ZK and discoveryUrl)
+  private final D2Client providedChildColoD2Client;
+  private final D2Client providedPrimaryControllerColoD2Client;
+
+  // Discovery-URL-based connection (mutually exclusive with ZK and D2Client)
+  private final String discoveryUrl;
 
   private VeniceSystemProducerConfig(Builder builder) {
     this.storeName = builder.storeName;
@@ -246,9 +246,9 @@ public class VeniceSystemProducerConfig {
       return this;
     }
 
-    /** @param time time provider, defaults to {@link SystemTime#INSTANCE} */
+    /** @param time time provider, defaults to {@link SystemTime#INSTANCE}. Must not be null. */
     public Builder setTime(Time time) {
-      this.time = time;
+      this.time = Objects.requireNonNull(time, "time cannot be null");
       return this;
     }
 
@@ -274,6 +274,7 @@ public class VeniceSystemProducerConfig {
       Objects.requireNonNull(storeName, "storeName cannot be null");
       Objects.requireNonNull(pushType, "pushType cannot be null");
       Objects.requireNonNull(samzaJobId, "samzaJobId cannot be null");
+      Objects.requireNonNull(factory, "factory cannot be null");
 
       boolean hasDiscoveryUrl = discoveryUrl != null;
       boolean hasD2Clients = providedChildColoD2Client != null || providedPrimaryControllerColoD2Client != null;

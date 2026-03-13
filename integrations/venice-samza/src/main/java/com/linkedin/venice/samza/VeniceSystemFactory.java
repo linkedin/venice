@@ -247,8 +247,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       LOGGER.info("{}: {}", VENICE_ROUTER_URL, routerUrl);
 
       configBuilder.setDiscoveryUrl(discoveryUrl.get()).setRouterUrl(routerUrl);
-      VeniceSystemProducer producer = createSystemProducer(configBuilder.build());
-      return producer;
+      return createSystemProducer(configBuilder.build());
     }
 
     String veniceParentZKHosts = config.get(VENICE_PARENT_D2_ZK_HOSTS);
@@ -306,6 +305,11 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         primaryControllerD2Service);
 
     configBuilder.setPrimaryControllerD2ServiceName(primaryControllerD2Service);
+    if ((providedChildColoD2Client == null) != (providedPrimaryControllerColoD2Client == null)) {
+      throw new SamzaException(
+          "Both providedChildColoD2Client and providedPrimaryControllerColoD2Client must be provided together, "
+              + "or both must be null.");
+    }
     if (providedChildColoD2Client != null && providedPrimaryControllerColoD2Client != null) {
       LOGGER.info("Using provided D2 clients for child and primary controller colo");
       configBuilder.setProvidedChildColoD2Client(providedChildColoD2Client)

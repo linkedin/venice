@@ -51,6 +51,7 @@ import java.util.List;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.samza.SamzaException;
 import org.apache.samza.config.Config;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
@@ -69,7 +70,7 @@ public class VeniceSystemProducerTest {
             .setPushType(Version.PushType.BATCH)
             .setSamzaJobId("push-job-id-1")
             .setRunningFabric("dc-0")
-            .setVerifyLatestProtocolPresent(true)
+            .setFactory(mock(VeniceSystemFactory.class))
             .setVeniceChildD2ZkHost("zookeeper.com:2181")
             .setPrimaryControllerColoD2ZKHost("zookeeper.com:2181")
             .setPrimaryControllerD2ServiceName("ChildController")
@@ -139,7 +140,7 @@ public class VeniceSystemProducerTest {
             .setPushType(pushType)
             .setSamzaJobId("push-job-id-1")
             .setRunningFabric("dc-0")
-            .setVerifyLatestProtocolPresent(true)
+            .setFactory(mock(VeniceSystemFactory.class))
             .setVeniceChildD2ZkHost("zookeeper.com:2181")
             .setPrimaryControllerColoD2ZKHost("zookeeper.com:2181")
             .setPrimaryControllerD2ServiceName("ChildController")
@@ -187,7 +188,7 @@ public class VeniceSystemProducerTest {
             .setPushType(Version.PushType.BATCH)
             .setSamzaJobId("push-job-id-1")
             .setRunningFabric("dc-0")
-            .setVerifyLatestProtocolPresent(true)
+            .setFactory(mock(VeniceSystemFactory.class))
             .setVeniceChildD2ZkHost("zookeeper.com:2181")
             .setPrimaryControllerColoD2ZKHost("zookeeper.com:2181")
             .setPrimaryControllerD2ServiceName("ChildController")
@@ -238,6 +239,7 @@ public class VeniceSystemProducerTest {
             .setPushType(pushType)
             .setSamzaJobId("push-job-id-1")
             .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
             .setDiscoveryUrl("discoveryUrl")
             .build());
     VeniceSystemProducer mockveniceSystemProducer = spy(producerInDC0);
@@ -365,6 +367,31 @@ public class VeniceSystemProducerTest {
   }
 
   @Test
+  public void testGetProducerRejectsPartialD2Clients() {
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    Config config = mock(Config.class);
+
+    when(config.get(VeniceSystemFactory.DEPLOYMENT_ID)).thenReturn("test-job-id");
+    when(config.get(VeniceSystemFactory.VENICE_CONTROLLER_DISCOVERY_URL)).thenReturn(null);
+    when(config.get(VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS)).thenReturn("parent-zk:2181");
+    when(config.get(VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS)).thenReturn("child-zk:2181");
+    when(config.get(VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE)).thenReturn("ChildController");
+    when(config.get(VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE)).thenReturn("ParentController");
+    when(config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION)).thenReturn("test-fabric");
+    when(config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true)).thenReturn(true);
+    when(config.getBoolean(SSL_ENABLED, true)).thenReturn(false);
+    when(config.get(VENICE_PARTITIONERS)).thenReturn(null);
+
+    D2Client mockD2Client = mock(D2Client.class);
+    Assert.assertThrows(
+        SamzaException.class,
+        () -> factory.getProducer("testSystem", "testStore", false, "STREAM", config, mockD2Client, null));
+    Assert.assertThrows(
+        SamzaException.class,
+        () -> factory.getProducer("testSystem", "testStore", false, "STREAM", config, null, mockD2Client));
+  }
+
+  @Test
   public void testGetProducerWithD2ClientBranch() {
     VeniceSystemFactory factory = spy(new VeniceSystemFactory());
     Config config = mock(Config.class);
@@ -440,6 +467,7 @@ public class VeniceSystemProducerTest {
             .setPushType(Version.PushType.STREAM)
             .setSamzaJobId("push-job-id-1")
             .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
             .setDiscoveryUrl("discoveryUrl")
             .build());
     VeniceSystemProducer producerSpy = spy(producer);
@@ -542,6 +570,7 @@ public class VeniceSystemProducerTest {
             .setPushType(Version.PushType.STREAM)
             .setSamzaJobId("job-id")
             .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
             .setDiscoveryUrl("http://discovery")
             .build());
     assertNotNull(producer);
@@ -554,7 +583,7 @@ public class VeniceSystemProducerTest {
             .setPushType(Version.PushType.STREAM)
             .setSamzaJobId("job-id")
             .setRunningFabric("dc-0")
-            .setVerifyLatestProtocolPresent(true)
+            .setFactory(mock(VeniceSystemFactory.class))
             .setVeniceChildD2ZkHost("zk:2181")
             .setPrimaryControllerColoD2ZKHost("zk:2181")
             .setPrimaryControllerD2ServiceName("ChildController")
@@ -569,7 +598,7 @@ public class VeniceSystemProducerTest {
             .setPushType(Version.PushType.STREAM)
             .setSamzaJobId("job-id")
             .setRunningFabric("dc-0")
-            .setVerifyLatestProtocolPresent(true)
+            .setFactory(mock(VeniceSystemFactory.class))
             .setProvidedChildColoD2Client(mock(D2Client.class))
             .setProvidedPrimaryControllerColoD2Client(mock(D2Client.class))
             .setPrimaryControllerD2ServiceName("ChildController")

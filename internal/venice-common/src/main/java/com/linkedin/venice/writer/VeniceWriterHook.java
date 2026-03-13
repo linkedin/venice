@@ -4,8 +4,9 @@ package com.linkedin.venice.writer;
  * Callback hook invoked by {@link VeniceWriter} before producing each record to the pub-sub system.
  * Set via {@link VeniceWriterOptions.Builder#setWriterHook(VeniceWriterHook)} at construction time.
  *
- * Threading: Called from writer threads without holding partition locks.
- * Implementations must be thread-safe (multiple partitions may call concurrently).
+ * Threading: Called on the caller's thread (the thread invoking {@link VeniceWriter#put},
+ * {@link VeniceWriter#delete}, or {@link VeniceWriter#update}) without holding partition locks.
+ * Implementations must be thread-safe (multiple threads may call concurrently).
  *
  * Exception handling: Exceptions thrown from {@link #onBeforeProduce} will propagate up and
  * fail the write. Implementations should handle their own errors if they do not want to break

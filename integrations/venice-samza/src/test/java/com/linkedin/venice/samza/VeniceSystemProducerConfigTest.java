@@ -41,6 +41,7 @@ public class VeniceSystemProducerConfigTest {
         .setPushType(Version.PushType.STREAM)
         .setSamzaJobId("job-id")
         .setRunningFabric("dc-0")
+        .setFactory(mock(VeniceSystemFactory.class))
         .setVerifyLatestProtocolPresent(true)
         .setDiscoveryUrl("http://discovery")
         .setVeniceChildD2ZkHost("zk:2181")
@@ -53,7 +54,7 @@ public class VeniceSystemProducerConfigTest {
         .setPushType(Version.PushType.STREAM)
         .setSamzaJobId("job-id")
         .setRunningFabric("dc-0")
-        .setVerifyLatestProtocolPresent(true)
+        .setFactory(mock(VeniceSystemFactory.class))
         .setDiscoveryUrl("http://discovery")
         .setProvidedChildColoD2Client(mock(D2Client.class))
         .setProvidedPrimaryControllerColoD2Client(mock(D2Client.class))
@@ -66,7 +67,7 @@ public class VeniceSystemProducerConfigTest {
         .setPushType(Version.PushType.STREAM)
         .setSamzaJobId("job-id")
         .setRunningFabric("dc-0")
-        .setVerifyLatestProtocolPresent(true)
+        .setFactory(mock(VeniceSystemFactory.class))
         .setProvidedChildColoD2Client(mock(D2Client.class))
         .setProvidedPrimaryControllerColoD2Client(mock(D2Client.class))
         .setVeniceChildD2ZkHost("zk:2181")
@@ -79,7 +80,7 @@ public class VeniceSystemProducerConfigTest {
         .setPushType(Version.PushType.STREAM)
         .setSamzaJobId("job-id")
         .setRunningFabric("dc-0")
-        .setVerifyLatestProtocolPresent(true)
+        .setFactory(mock(VeniceSystemFactory.class))
         .setDiscoveryUrl("  ")
         .build();
   }
@@ -90,7 +91,7 @@ public class VeniceSystemProducerConfigTest {
         .setPushType(Version.PushType.STREAM)
         .setSamzaJobId("job-id")
         .setRunningFabric("dc-0")
-        .setVerifyLatestProtocolPresent(true)
+        .setFactory(mock(VeniceSystemFactory.class))
         .setProvidedChildColoD2Client(mock(D2Client.class))
         .build();
   }
@@ -101,6 +102,7 @@ public class VeniceSystemProducerConfigTest {
         .setPushType(Version.PushType.STREAM)
         .setSamzaJobId("testJobId")
         .setRunningFabric("testFabric")
+        .setFactory(mock(VeniceSystemFactory.class))
         .setPrimaryControllerD2ServiceName("primaryServiceName")
         .setProvidedPrimaryControllerColoD2Client(mock(D2Client.class))
         .build();
@@ -112,6 +114,7 @@ public class VeniceSystemProducerConfigTest {
         .setPushType(Version.PushType.STREAM)
         .setSamzaJobId("job-id")
         .setRunningFabric("dc-0")
+        .setFactory(mock(VeniceSystemFactory.class))
         .build();
   }
 
@@ -121,6 +124,7 @@ public class VeniceSystemProducerConfigTest {
         .setPushType(Version.PushType.STREAM)
         .setSamzaJobId("job-id")
         .setRunningFabric("dc-0")
+        .setFactory(mock(VeniceSystemFactory.class))
         .setVeniceChildD2ZkHost("zk:2181")
         .setPrimaryControllerD2ServiceName("ChildController")
         .build();
@@ -132,6 +136,7 @@ public class VeniceSystemProducerConfigTest {
         .setPushType(Version.PushType.STREAM)
         .setSamzaJobId("job-id")
         .setRunningFabric("dc-0")
+        .setFactory(mock(VeniceSystemFactory.class))
         .setVeniceChildD2ZkHost("zk:2181")
         .setPrimaryControllerColoD2ZKHost("zk:2181")
         .build();
@@ -143,8 +148,30 @@ public class VeniceSystemProducerConfigTest {
         .setPushType(Version.PushType.STREAM)
         .setSamzaJobId("job-id")
         .setRunningFabric("dc-0")
+        .setFactory(mock(VeniceSystemFactory.class))
         .setDiscoveryUrl("http://discovery")
         .setVerifyLatestProtocolPresent(true)
+        .build();
+  }
+
+  @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "time cannot be null")
+  public void testBuilderRejectsNullTime() {
+    new VeniceSystemProducerConfig.Builder().setStoreName("store")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("job-id")
+        .setRunningFabric("dc-0")
+        .setDiscoveryUrl("http://discovery")
+        .setTime(null)
+        .build();
+  }
+
+  @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "factory cannot be null")
+  public void testBuilderRejectsNullFactory() {
+    new VeniceSystemProducerConfig.Builder().setStoreName("store")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("job-id")
+        .setRunningFabric("dc-0")
+        .setDiscoveryUrl("http://discovery")
         .build();
   }
 }
