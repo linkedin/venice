@@ -2469,7 +2469,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case SUBSCRIBE:
         PartitionConsumptionState newPartitionConsumptionState =
             initializePartitionConsumptionState(topicPartition, partition, topic);
-        validateDataIntegrityAndConsumptionState(topicPartition, partition, topic, newPartitionConsumptionState);
+        newPartitionConsumptionState =
+            validateDataIntegrityAndConsumptionState(topicPartition, partition, topic, newPartitionConsumptionState);
         executePartitionSubscription(consumerAction, topicPartition, partition, newPartitionConsumptionState);
         break;
       case UNSUBSCRIBE:
@@ -2605,8 +2606,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * check fails, resets the offset to restart ingestion from the beginning. Then validates the consumption
    * state, reports version topic offset catch-up progress, records subscribe preparation latency, and
    * updates the leader topic on follower replicas.
+   *
+   * @return the validated {@link PartitionConsumptionState}, which may be a new instance if the offset was reset
    */
-  protected void validateDataIntegrityAndConsumptionState(
+  protected PartitionConsumptionState validateDataIntegrityAndConsumptionState(
       PubSubTopicPartition topicPartition,
       int partition,
       String topic,
@@ -2630,6 +2633,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         versionNumber,
         LatencyUtils.getElapsedTimeFromMsToMs(consumptionStatePrepTimeStart));
     updateLeaderTopicOnFollower(partitionConsumptionState);
+
+    return partitionConsumptionState;
   }
 
   /**
