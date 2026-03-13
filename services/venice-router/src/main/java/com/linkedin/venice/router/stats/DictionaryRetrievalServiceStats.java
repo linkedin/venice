@@ -42,7 +42,7 @@ public class DictionaryRetrievalServiceStats extends AbstractVeniceStats {
     registerSensorIfAbsent(
         new AsyncGauge(
             (ignored1, ignored2) -> failedDownloadTopicCountSupplier.get(),
-            "dictionary_download_retry_count"));
+            "dictionary_download_retry_queue_size"));
 
     // Count sensors
     downloadSuccessSensor = registerSensorIfAbsent("dictionary_download_success", new Count());

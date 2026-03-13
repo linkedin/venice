@@ -172,14 +172,13 @@ public class VeniceVersionFinder {
           existingVersionDecompressorReady);
     }
 
+    stats.recordStale(metadataCurrentVersionNumber, existingVersionNumber);
     if (existingVersionPartitionResourcesReady) {
-      stats.recordStale(metadataCurrentVersionNumber, existingVersionNumber);
       lastCurrentVersionMap.put(storeName, existingVersionNumber);
       return existingVersionNumber;
     } else {
       // Existing version's Helix resource has been deleted — cannot serve either version.
       // Reset to force re-evaluation on next request.
-      stats.recordStale(metadataCurrentVersionNumber, existingVersionNumber);
       lastCurrentVersionMap.put(storeName, Store.NON_EXISTING_VERSION);
       return Store.NON_EXISTING_VERSION;
     }
