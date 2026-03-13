@@ -267,22 +267,22 @@ public class KafkaConsumerServiceStatsOtelTest {
     totalStats.recordPollRequestLatency(50.0);
     totalStats.recordPollRequestLatency(100.0);
 
-    // OTel: ASYNC_COUNTER_FOR_HIGH_PERF_CASES for poll count
+    // OTel: ASYNC_COUNTER_FOR_HIGH_PERF_CASES for poll count (cluster-only attributes — total-only metric)
     OpenTelemetryDataTestUtils.validateObservableCounterValue(
         inMemoryMetricReader,
         2,
-        buildTotalAttributes(),
+        buildClusterOnlyAttributes(),
         POLL_COUNT.getMetricName(),
         TEST_METRIC_PREFIX);
 
-    // OTel: HISTOGRAM for poll time
+    // OTel: HISTOGRAM for poll time (cluster-only attributes — total-only metric)
     OpenTelemetryDataTestUtils.validateExponentialHistogramPointData(
         inMemoryMetricReader,
         50.0,
         100.0,
         2,
         150.0,
-        buildTotalAttributes(),
+        buildClusterOnlyAttributes(),
         POLL_TIME.getMetricName(),
         TEST_METRIC_PREFIX);
 
@@ -302,11 +302,11 @@ public class KafkaConsumerServiceStatsOtelTest {
     totalStats.recordNonZeroPollResultNum(5);
     totalStats.recordNonZeroPollResultNum(3);
 
-    // OTel: ASYNC_COUNTER_FOR_HIGH_PERF_CASES: 5 + 3 = 8
+    // OTel: ASYNC_COUNTER_FOR_HIGH_PERF_CASES: 5 + 3 = 8 (cluster-only attributes — total-only metric)
     OpenTelemetryDataTestUtils.validateObservableCounterValue(
         inMemoryMetricReader,
         8,
-        buildTotalAttributes(),
+        buildClusterOnlyAttributes(),
         POLL_NON_EMPTY_COUNT.getMetricName(),
         TEST_METRIC_PREFIX);
 
@@ -337,14 +337,14 @@ public class KafkaConsumerServiceStatsOtelTest {
     totalStats.recordConsumerRecordsProducingToWriterBufferLatency(10.0);
     totalStats.recordConsumerRecordsProducingToWriterBufferLatency(30.0);
 
-    // OTel: HISTOGRAM
+    // OTel: HISTOGRAM (cluster-only attributes — total-only metric)
     OpenTelemetryDataTestUtils.validateExponentialHistogramPointData(
         inMemoryMetricReader,
         10.0,
         30.0,
         2,
         40.0,
-        buildTotalAttributes(),
+        buildClusterOnlyAttributes(),
         PRODUCE_TO_WRITE_BUFFER_TIME.getMetricName(),
         TEST_METRIC_PREFIX);
 
@@ -386,8 +386,8 @@ public class KafkaConsumerServiceStatsOtelTest {
   public void testRecordDelegateSubscribeLatency() {
     totalStats.recordDelegateSubscribeLatency(15.0);
 
-    // OTel: HISTOGRAM with SUBSCRIBE dimension
-    Attributes expectedAttributes = buildTotalAttributesWithAction(VeniceConsumerPoolAction.SUBSCRIBE);
+    // OTel: HISTOGRAM with SUBSCRIBE dimension (cluster-only — total-only metric)
+    Attributes expectedAttributes = buildClusterOnlyAttributesWithAction(VeniceConsumerPoolAction.SUBSCRIBE);
     OpenTelemetryDataTestUtils.validateExponentialHistogramPointData(
         inMemoryMetricReader,
         15.0,
@@ -407,8 +407,8 @@ public class KafkaConsumerServiceStatsOtelTest {
   public void testRecordUpdateCurrentAssignmentLatency() {
     totalStats.recordUpdateCurrentAssignmentLatency(25.0);
 
-    // OTel: HISTOGRAM with UPDATE_ASSIGNMENT dimension
-    Attributes expectedAttributes = buildTotalAttributesWithAction(VeniceConsumerPoolAction.UPDATE_ASSIGNMENT);
+    // OTel: HISTOGRAM with UPDATE_ASSIGNMENT dimension (cluster-only — total-only metric)
+    Attributes expectedAttributes = buildClusterOnlyAttributesWithAction(VeniceConsumerPoolAction.UPDATE_ASSIGNMENT);
     OpenTelemetryDataTestUtils.validateExponentialHistogramPointData(
         inMemoryMetricReader,
         25.0,
@@ -437,7 +437,7 @@ public class KafkaConsumerServiceStatsOtelTest {
         20.0,
         2,
         30.0,
-        buildTotalAttributesWithAction(VeniceConsumerPoolAction.SUBSCRIBE),
+        buildClusterOnlyAttributesWithAction(VeniceConsumerPoolAction.SUBSCRIBE),
         POOL_ACTION_TIME.getMetricName(),
         TEST_METRIC_PREFIX);
 
@@ -448,7 +448,7 @@ public class KafkaConsumerServiceStatsOtelTest {
         50.0,
         1,
         50.0,
-        buildTotalAttributesWithAction(VeniceConsumerPoolAction.UPDATE_ASSIGNMENT),
+        buildClusterOnlyAttributesWithAction(VeniceConsumerPoolAction.UPDATE_ASSIGNMENT),
         POOL_ACTION_TIME.getMetricName(),
         TEST_METRIC_PREFIX);
 
@@ -462,14 +462,14 @@ public class KafkaConsumerServiceStatsOtelTest {
     totalStats.recordConsumerIdleTime(500.0);
     totalStats.recordConsumerIdleTime(200.0);
 
-    // OTel: MIN_MAX_COUNT_SUM histogram: min=200, max=500, count=2, sum=700
+    // OTel: MIN_MAX_COUNT_SUM histogram: min=200, max=500, count=2, sum=700 (cluster-only — total-only metric)
     OpenTelemetryDataTestUtils.validateHistogramPointData(
         inMemoryMetricReader,
         200,
         500,
         2,
         700,
-        buildTotalAttributes(),
+        buildClusterOnlyAttributes(),
         POLL_TIME_SINCE_LAST_SUCCESS.getMetricName(),
         TEST_METRIC_PREFIX);
 
@@ -558,13 +558,14 @@ public class KafkaConsumerServiceStatsOtelTest {
     totalStats.recordPartitionAssignmentForOtel(3);
 
     // OTel: MIN_MAX_COUNT_SUM histogram: min=3, max=10, count=3, sum=18
+    // Cluster-only attributes (no VENICE_STORE_NAME — this metric is always total-only)
     OpenTelemetryDataTestUtils.validateHistogramPointData(
         inMemoryMetricReader,
         3,
         10,
         3,
         18,
-        buildTotalAttributes(),
+        buildClusterOnlyAttributes(),
         PARTITION_ASSIGNMENT_COUNT.getMetricName(),
         TEST_METRIC_PREFIX);
   }
@@ -659,8 +660,12 @@ public class KafkaConsumerServiceStatsOtelTest {
     return buildAttributes(TEST_STORE_NAME);
   }
 
-  private Attributes buildTotalAttributesWithAction(VeniceConsumerPoolAction action) {
-    return buildAttributes(TOTAL_STORE_NAME).toBuilder()
+  private Attributes buildClusterOnlyAttributes() {
+    return Attributes.builder().put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME).build();
+  }
+
+  private Attributes buildClusterOnlyAttributesWithAction(VeniceConsumerPoolAction action) {
+    return buildClusterOnlyAttributes().toBuilder()
         .put(VENICE_CONSUMER_POOL_ACTION.getDimensionNameInDefaultFormat(), action.getDimensionValue())
         .build();
   }
@@ -669,7 +674,7 @@ public class KafkaConsumerServiceStatsOtelTest {
     OpenTelemetryDataTestUtils.validateLongPointDataFromCounter(
         inMemoryMetricReader,
         expectedValue,
-        buildTotalAttributes(),
+        buildClusterOnlyAttributes(),
         metricName,
         TEST_METRIC_PREFIX);
   }

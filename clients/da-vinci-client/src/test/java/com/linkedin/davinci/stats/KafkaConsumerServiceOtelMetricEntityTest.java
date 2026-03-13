@@ -57,7 +57,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
             MetricUnit.NUMBER,
             "Total count of poll requests to the PubSub consumer",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME)));
     map.put(
         POLL_TIME,
         new MetricEntityExpectation(
@@ -65,7 +65,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Latency of PubSub consumer poll requests",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME)));
     map.put(
         POLL_NON_EMPTY_COUNT,
         new MetricEntityExpectation(
@@ -73,7 +73,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.ASYNC_COUNTER_FOR_HIGH_PERF_CASES,
             MetricUnit.NUMBER,
             "Count of poll requests that returned at least one record",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME)));
     map.put(
         POLL_ERROR_COUNT,
         new MetricEntityExpectation(
@@ -81,7 +81,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of PubSub consumer poll errors",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME)));
     map.put(
         PRODUCE_TO_WRITE_BUFFER_TIME,
         new MetricEntityExpectation(
@@ -89,7 +89,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Latency of producing consumed records to the write buffer",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME)));
     map.put(
         TOPIC_DETECTED_DELETED_COUNT,
         new MetricEntityExpectation(
@@ -97,7 +97,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of topics detected as deleted",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME)));
     map.put(
         ORPHAN_TOPIC_PARTITION_COUNT,
         new MetricEntityExpectation(
@@ -105,7 +105,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of topic-partitions assigned to consumer with no running ingestion task",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME)));
     map.put(
         POOL_ACTION_TIME,
         new MetricEntityExpectation(
@@ -113,7 +113,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Latency of consumer pool actions (subscribe, update assignment)",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_CONSUMER_POOL_ACTION)));
+            setOf(VENICE_CLUSTER_NAME, VENICE_CONSUMER_POOL_ACTION)));
     map.put(
         POLL_TIME_SINCE_LAST_SUCCESS,
         new MetricEntityExpectation(
@@ -121,7 +121,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.MILLISECOND,
             "Max elapsed time since last successful poll across consumers in the pool",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME)));
     map.put(
         PARTITION_ASSIGNMENT_COUNT,
         new MetricEntityExpectation(
@@ -129,7 +129,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
             MetricUnit.NUMBER,
             "Raw per-consumer partition assignment counts across the consumer pool",
-            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
+            setOf(VENICE_CLUSTER_NAME)));
     return map;
   }
 }

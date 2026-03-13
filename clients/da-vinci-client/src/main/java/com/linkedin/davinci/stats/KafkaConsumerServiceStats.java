@@ -12,6 +12,8 @@ import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.PO
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POOL_ACTION_TIME;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.PRODUCE_TO_WRITE_BUFFER_TIME;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.TOPIC_DETECTED_DELETED_COUNT;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.LongAdderRateGauge;
@@ -36,6 +38,7 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Total;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.function.LongSupplier;
 
@@ -106,7 +109,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     // aggregates at query time. This class is different: only 2 metrics (POLL_BYTES,
     // POLL_RECORD_COUNT) are per-store; the remaining 10 OTel metrics are recorded ONLY on the total
     // instance (via AggKafkaConsumerServiceStats.recordTotal*()). Disabling OTel on total
-    // would leave those 11 metrics with no OTel representation at all. Instead, we use
+    // would leave those 10 metrics with no OTel representation at all. Instead, we use
     // totalOnlyOtelRepo (null for per-store instances) to suppress OTel on per-store
     // instances for total-only metrics.
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
@@ -150,6 +153,19 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     // unused OTel instruments. Total-only metrics are only recorded via aggStats.recordTotal*().
     VeniceOpenTelemetryMetricsRepository totalOnlyOtelRepo = totalStats == null ? otelRepository : null;
 
+    // Total-only metrics use cluster-only dimensions (no VENICE_STORE_NAME) because they are
+    // always recorded on the total instance where storeName is an opaque identifier
+    // (e.g., "total.kafka_consumer_service_for_<region>"), not an actual store name.
+    Map<VeniceMetricsDimensions, String> mutableClusterOnlyMap = new HashMap<>(baseDimensionsMap);
+    mutableClusterOnlyMap.remove(VENICE_STORE_NAME);
+    Map<VeniceMetricsDimensions, String> clusterOnlyDimensionsMap = Collections.unmodifiableMap(mutableClusterOnlyMap);
+    // clusterOnlyAttributes is only needed when OTel is enabled (otelRepository != null).
+    // clusterName must be non-null when OTel is enabled — validateRequiredDimensions will
+    // fail at startup if the metric entity requires VENICE_CLUSTER_NAME but it's absent.
+    Attributes clusterOnlyAttributes = otelRepository != null && clusterName != null
+        ? Attributes.builder().put(otelRepository.getDimensionName(VENICE_CLUSTER_NAME), clusterName).build()
+        : null;
+
     // ASYNC_COUNTER metrics: OTel callback only on total instance to avoid registering
     // redundant per-store ObservableCounter callbacks that would always report zero.
     // Per-store Tehuti shares total's sensor (matching original registerOnlyTotalRate behavior).
@@ -161,8 +177,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         pollCountTehutiReg,
         TehutiMetricName.CONSUMER_POLL_REQUEST,
         Collections.singletonList(new LongAdderRateGauge(time)),
-        baseDimensionsMap,
-        baseAttributes);
+        clusterOnlyDimensionsMap,
+        clusterOnlyAttributes);
 
     TehutiSensorRegistrationFunction pollNonEmptyTehutiReg = totalStats == null
         ? this::registerSensorIfAbsent
@@ -173,8 +189,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         pollNonEmptyTehutiReg,
         TehutiMetricName.CONSUMER_POLL_NON_ZERO_RESULT_NUM,
         Collections.singletonList(new LongAdderRateGauge(time)),
-        baseDimensionsMap,
-        baseAttributes);
+        clusterOnlyDimensionsMap,
+        clusterOnlyAttributes);
 
     pollTimeOtel = MetricEntityStateBase.create(
         POLL_TIME.getMetricEntity(),
@@ -182,8 +198,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         TehutiMetricName.CONSUMER_POLL_REQUEST_LATENCY,
         Arrays.asList(new Avg(), new Max()),
-        baseDimensionsMap,
-        baseAttributes);
+        clusterOnlyDimensionsMap,
+        clusterOnlyAttributes);
 
     pollErrorCountOtel = MetricEntityStateBase.create(
         POLL_ERROR_COUNT.getMetricEntity(),
@@ -191,8 +207,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         TehutiMetricName.CONSUMER_POLL_ERROR,
         Collections.singletonList(new OccurrenceRate()),
-        baseDimensionsMap,
-        baseAttributes);
+        clusterOnlyDimensionsMap,
+        clusterOnlyAttributes);
 
     produceToWriteBufferTimeOtel = MetricEntityStateBase.create(
         PRODUCE_TO_WRITE_BUFFER_TIME.getMetricEntity(),
@@ -200,8 +216,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         TehutiMetricName.CONSUMER_RECORDS_PRODUCING_TO_WRITE_BUFFER_LATENCY,
         Arrays.asList(new Avg(), new Max()),
-        baseDimensionsMap,
-        baseAttributes);
+        clusterOnlyDimensionsMap,
+        clusterOnlyAttributes);
 
     topicDetectedDeletedCountOtel = MetricEntityStateBase.create(
         TOPIC_DETECTED_DELETED_COUNT.getMetricEntity(),
@@ -209,8 +225,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         TehutiMetricName.DETECTED_DELETED_TOPIC_NUM,
         Collections.singletonList(new Total()),
-        baseDimensionsMap,
-        baseAttributes);
+        clusterOnlyDimensionsMap,
+        clusterOnlyAttributes);
 
     orphanTopicPartitionCountOtel = MetricEntityStateBase.create(
         ORPHAN_TOPIC_PARTITION_COUNT.getMetricEntity(),
@@ -218,8 +234,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         TehutiMetricName.DETECTED_NO_RUNNING_INGESTION_TOPIC_PARTITION_NUM,
         Collections.singletonList(new Total()),
-        baseDimensionsMap,
-        baseAttributes);
+        clusterOnlyDimensionsMap,
+        clusterOnlyAttributes);
 
     pollTimeSinceLastSuccessOtel = MetricEntityStateBase.create(
         POLL_TIME_SINCE_LAST_SUCCESS.getMetricEntity(),
@@ -227,8 +243,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         TehutiMetricName.IDLE_TIME,
         Collections.singletonList(new Max()),
-        baseDimensionsMap,
-        baseAttributes);
+        clusterOnlyDimensionsMap,
+        clusterOnlyAttributes);
 
     // Shared OTel instrument for subscribe + update_assignment, each with its own Tehuti sensor
     subscribeActionTimeOtel = MetricEntityStateOneEnum.create(
@@ -237,7 +253,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         TehutiMetricName.DELEGATE_SUBSCRIBE_LATENCY,
         Arrays.asList(new Avg(), new Max()),
-        baseDimensionsMap,
+        clusterOnlyDimensionsMap,
         VeniceConsumerPoolAction.class);
 
     updateAssignmentActionTimeOtel = MetricEntityStateOneEnum.create(
@@ -246,7 +262,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         this::registerSensorIfAbsent,
         TehutiMetricName.UPDATE_CURRENT_ASSIGNMENT_LATENCY,
         Arrays.asList(new Avg(), new Max()),
-        baseDimensionsMap,
+        clusterOnlyDimensionsMap,
         VeniceConsumerPoolAction.class);
 
     // Tehuti-only async gauge: OTel intentionally omitted because this reads from the same source
@@ -260,8 +276,11 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     // OTel-only partition assignment histogram (asymmetric: raw values -> OTel, pre-computed -> Tehuti).
     // Uses totalOnlyOtelRepo: only the total instance needs this instrument — per-store instances
     // never call recordPartitionAssignmentForOtel().
-    partitionAssignmentCountOtel = MetricEntityStateBase
-        .create(PARTITION_ASSIGNMENT_COUNT.getMetricEntity(), totalOnlyOtelRepo, baseDimensionsMap, baseAttributes);
+    partitionAssignmentCountOtel = MetricEntityStateBase.create(
+        PARTITION_ASSIGNMENT_COUNT.getMetricEntity(),
+        totalOnlyOtelRepo,
+        clusterOnlyDimensionsMap,
+        clusterOnlyAttributes);
   }
 
   // Recording methods
