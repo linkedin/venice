@@ -1370,6 +1370,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .stream()
             .map(pubSubTopicRepository::getTopic)
             .collect(Collectors.toList());
+        // Offboard ETL for store versions if ETL is enabled with EXTERNAL_WITH_VENICE_TRIGGER strategy
+        if (externalETLService.isPresent() && !isParent() && store.getEtlStoreConfig() != null
+            && (store.getEtlStoreConfig().isRegularVersionETLEnabled()
+                || store.getEtlStoreConfig().isFutureVersionETLEnabled())
+            && store.getEtlStoreConfig().getETLStrategy() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER) {
+          try {
+            offboardETLForExistingStoreVersion(new ReadOnlyStore(store));
+          } catch (Exception e) {
+            LOGGER.warn(
+                "Failed to offboard ETL for store: {} in cluster: {}, will proceed with store deletion",
+                storeName,
+                clusterName,
+                e);
+          }
+        }
         // Delete All versions and push statues
         deleteAllVersionsInStore(clusterName, storeName);
         resources.getPushMonitor().cleanupStoreStatus(storeName);
@@ -6161,19 +6176,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             onboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
           }
         }
-        if (externalETLService.isPresent() && !isParent() && etlStrategy.isPresent()
-            && etlStrategy.get() == VeniceETLStrategy.EXTERNAL_SERVICE) {
+        if (externalETLService.isPresent() && !isParent()) {
           ETLStoreConfig oldETLStoreConfig = originalStore.getEtlStoreConfig();
-          boolean firstTimeDisablingETLWithVeniceTrigger = oldETLStoreConfig != null
+          boolean oldStrategyIsVeniceTrigger = oldETLStoreConfig != null
               && oldETLStoreConfig.getETLStrategy() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER;
+          boolean oldETLEnabled = oldETLStoreConfig != null
+              && (oldETLStoreConfig.isRegularVersionETLEnabled() || oldETLStoreConfig.isFutureVersionETLEnabled());
+          boolean newStrategyIsVeniceTrigger =
+              etlStoreConfig.getETLStrategy() == VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER;
+          boolean newETLDisabled =
+              !etlStoreConfig.isRegularVersionETLEnabled() && !etlStoreConfig.isFutureVersionETLEnabled();
+          // Offboard when old strategy was EXTERNAL_WITH_VENICE_TRIGGER, and either:
+          // 1. The strategy is changing away from EXTERNAL_WITH_VENICE_TRIGGER, or
+          // 2. ETL is being disabled (both flags set to false) while strategy remains EXTERNAL_WITH_VENICE_TRIGGER
+          boolean shouldOffboard =
+              oldStrategyIsVeniceTrigger && (!newStrategyIsVeniceTrigger || (newETLDisabled && oldETLEnabled));
           boolean isSourceCluster = !originalStore.isMigrating();
           if (!isSourceCluster) {
             isSourceCluster = getHelixVeniceClusterResources(clusterName).isSourceCluster(clusterName, storeName);
           }
-          if (firstTimeDisablingETLWithVeniceTrigger && isSourceCluster) {
-            // This is first time changing ETL strategy from EXTERNAL_WITH_VENICE_TRIGGER to EXTERNAL_SERVICE,
-            // so offboard ETL for all relevant store versions (current and future).
-            offboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
+          if (shouldOffboard && isSourceCluster) {
+            try {
+              offboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
+            } catch (Exception e) {
+              LOGGER.warn("Failed to offboard ETL for store: {} in cluster: {}, skipping", storeName, clusterName, e);
+            }
           }
         }
       }
