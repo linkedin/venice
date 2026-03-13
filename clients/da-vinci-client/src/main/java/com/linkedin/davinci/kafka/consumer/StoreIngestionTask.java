@@ -2467,17 +2467,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ConsumerActionType operation = consumerAction.getType();
     switch (operation) {
       case SUBSCRIBE:
-        // Get the last persisted Offset record from metadata service
-        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
         PartitionConsumptionState newPartitionConsumptionState =
-            initializePartitionConsumptionState(topicPartition, partition, topic, offsetRecord);
-        newPartitionConsumptionState = validateDataIntegrityAndConsumptionState(
+            initializePartitionConsumptionState(topicPartition, partition, topic);
+        validateAndSubscribePartition(
+            consumerAction,
             topicPartition,
             partition,
             topic,
             newPartitionConsumptionState,
-            offsetRecord);
-        executePartitionSubscription(consumerAction, topicPartition, partition, newPartitionConsumptionState);
+            newPartitionConsumptionState.getOffsetRecord());
         break;
       case UNSUBSCRIBE:
         LOGGER.info("{} Unsubscribing to: {}", ingestionTaskName, topicPartition);
@@ -2562,18 +2560,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * Initializes the partition consumption state for a new subscription. Clears previous error tracking,
-   * drains buffered messages from the prior subscription, creates a fresh {@link PartitionConsumptionState}
-   * from the given offset record, sets the Helix state transition latch if needed, and loads the
+   * drains buffered messages from the prior subscription, restores the persisted offset, creates a fresh
+   * {@link PartitionConsumptionState}, sets the Helix state transition latch if needed, and loads the
    * data integrity validator state from the offset record.
    *
-   * @param offsetRecord the persisted offset record retrieved from the metadata service
    * @return the newly created {@link PartitionConsumptionState}
    */
   protected PartitionConsumptionState initializePartitionConsumptionState(
       PubSubTopicPartition topicPartition,
       int partition,
-      String topic,
-      OffsetRecord offsetRecord) throws InterruptedException {
+      String topic) throws InterruptedException {
     // Clear the error partition tracking
     partitionIngestionExceptionList.set(partition, null);
     // Regardless of whether it's Helix action or not, remove the partition from alerts as long as server decides
@@ -2582,6 +2578,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Drain the buffered message by last subscription.
     storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
     subscribedCount++;
+
+    // Get the last persisted Offset record from metadata service
+    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
 
     // Let's try to restore the state retrieved from the OffsetManager
     PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
@@ -2607,15 +2606,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Validates the database integrity for the partition and checks consumption readiness. If the integrity
-   * check fails, resets the offset to restart ingestion from the beginning. Then validates the consumption
-   * state, reports version topic offset catch-up progress, records subscribe preparation latency, and
-   * updates the leader topic on follower replicas.
+   * Validates the database integrity for the partition, checks consumption readiness, and subscribes the
+   * partition to the local version topic. If the integrity check fails, resets the offset to restart
+   * ingestion from the beginning. Then validates the consumption state, reports catch-up progress, updates
+   * the leader topic on follower replicas, determines the subscribe position, issues the Kafka consumer
+   * subscription, logs the ingestion progress, and initializes the storage utilization manager.
    *
    * @param offsetRecord the persisted offset record retrieved from the metadata service
-   * @return the validated {@link PartitionConsumptionState}, which may be a new instance if the offset was reset
    */
-  protected PartitionConsumptionState validateDataIntegrityAndConsumptionState(
+  protected void validateAndSubscribePartition(
+      ConsumerAction consumerAction,
       PubSubTopicPartition topicPartition,
       int partition,
       String topic,
@@ -2640,19 +2640,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         LatencyUtils.getElapsedTimeFromMsToMs(consumptionStatePrepTimeStart));
     updateLeaderTopicOnFollower(partitionConsumptionState);
 
-    return partitionConsumptionState;
-  }
-
-  /**
-   * Subscribes the partition to the local version topic. Determines the subscribe position (either from
-   * a user-provided checkpoint or from the current consumption state), issues the consumer subscription,
-   * logs the ingestion progress, and initializes the storage utilization manager for the partition.
-   */
-  private void executePartitionSubscription(
-      ConsumerAction consumerAction,
-      PubSubTopicPartition topicPartition,
-      int partition,
-      PartitionConsumptionState partitionConsumptionState) {
     // Subscribe to local version topic.
     PubSubPosition subscribePosition;
     if (consumerAction.getPubSubPosition() != null) {
