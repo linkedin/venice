@@ -3074,7 +3074,7 @@ public class VeniceParentHelixAdmin implements Admin {
               + "ms is below the minimum allowed value of " + Store.MIN_BACKUP_VERSION_RETENTION_MS
               + "ms (1 day). Set to -1 to use the cluster default retention.";
           LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
+          throw new VeniceException(errorMessage);
         }
       }
       setStore.backupVersionRetentionMs =

@@ -5684,11 +5684,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private void setBackupVersionRetentionMs(String clusterName, String storeName, long backupVersionRetentionMs) {
     if (backupVersionRetentionMs != -1 && backupVersionRetentionMs < Store.MIN_BACKUP_VERSION_RETENTION_MS) {
-      throw new VeniceHttpException(
-          HttpStatus.SC_BAD_REQUEST,
+      throw new VeniceException(
           "Backup version retention time: " + backupVersionRetentionMs + "ms is below the minimum allowed value of "
-              + Store.MIN_BACKUP_VERSION_RETENTION_MS + "ms (1 day). Set to -1 to use the cluster default retention.",
-          ErrorType.INVALID_CONFIG);
+              + Store.MIN_BACKUP_VERSION_RETENTION_MS + "ms (1 day). Set to -1 to use the cluster default retention.");
     }
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       store.setBackupVersionRetentionMs(backupVersionRetentionMs);
