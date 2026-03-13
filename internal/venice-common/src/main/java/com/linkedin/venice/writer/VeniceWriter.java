@@ -1124,6 +1124,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             oldRmdManifest,
             isGlobalRtDiv);
       } else if (pubSubLargeMessageSupportEnabled) {
+        // Enforce MAX_RECORD_SIZE_BYTES even when delegating to the pubsub layer, to prevent
+        // arbitrarily large records from causing downstream issues (e.g., OOM during reassembly).
+        if (isRecordTooLarge(serializedKey.length + serializedValue.length)) {
+          throw new RecordTooLargeException(
+              "This record exceeds the maximum record size even with pubsub large message support enabled. "
+                  + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
+        }
         // Fall through to the normal non-chunked put path below.
         // The pubsub producer layer (e.g., Xinfra) will handle fragmentation/reassembly.
       } else {
