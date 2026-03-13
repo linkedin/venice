@@ -599,7 +599,7 @@ public class TestGlobalRtDiv {
       assertTrue(producerState.getSegmentNumber() >= 0, "Segment number should be non-negative");
       assertTrue(producerState.getMessageSequenceNumber() >= 0, "Message sequence number should be non-negative");
       assertTrue(producerState.getMessageTimestamp() >= 0, "Message timestamp should be non-negative");
-      assertNotNull(CheckSumType.valueOf(producerState.getChecksumType()), "Checksum validity");
+      CheckSumType.valueOf(producerState.getChecksumType()); // throws VeniceMessageException if invalid
       assertNotNull(producerState.getChecksumState(), "Checksum state should not be null");
       assertNotNull(producerState.getAggregates(), "Aggregates should not be null");
       assertNotNull(producerState.getDebugInfo(), "Debug info should not be null");
