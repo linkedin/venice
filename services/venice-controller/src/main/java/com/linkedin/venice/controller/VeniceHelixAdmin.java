@@ -5707,7 +5707,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void setBackupVersionRetentionMs(String clusterName, String storeName, long backupVersionRetentionMs) {
-    if (backupVersionRetentionMs >= 0 && backupVersionRetentionMs < Store.MIN_BACKUP_VERSION_RETENTION_MS) {
+    if (backupVersionRetentionMs != -1 && backupVersionRetentionMs < Store.MIN_BACKUP_VERSION_RETENTION_MS) {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
           "Backup version retention time: " + backupVersionRetentionMs + "ms is below the minimum allowed value of "
@@ -5986,6 +5986,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        * If either of these three fields is not present, we should use store's original value to construct correct
        * updated partitioner config.
        */
+      if (amplificationFactor.isPresent() && amplificationFactor.get() < 1) {
+        throw new VeniceHttpException(
+            HttpStatus.SC_BAD_REQUEST,
+            "amplificationFactor: " + amplificationFactor.get() + " must be at least 1.",
+            ErrorType.INVALID_CONFIG);
+      }
       if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
         PartitionerConfig updatedPartitionerConfig = mergeNewSettingsIntoOldPartitionerConfig(
             originalStore,

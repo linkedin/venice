@@ -348,6 +348,17 @@ public class TestVeniceHelixAdminWithoutCluster {
       Assert.assertTrue(e.getCause() instanceof VeniceHttpException);
     }
 
+    // -2 (invalid negative, not the sentinel -1) should throw
+    try {
+      setBackupRetention.invoke(admin, "cluster", "store", -2L);
+      Assert.fail("Expected VeniceHttpException for retention -2");
+    } catch (InvocationTargetException e) {
+      Assert.assertTrue(e.getCause() instanceof VeniceHttpException);
+      VeniceHttpException ex = (VeniceHttpException) e.getCause();
+      Assert.assertEquals(ex.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
+      Assert.assertEquals(ex.getErrorType(), ErrorType.INVALID_CONFIG);
+    }
+
     // -1 (cluster default) should NOT throw (no call to storeMetadataUpdate expected since admin is a mock)
     // The validation passes; storeMetadataUpdate is mocked to do nothing
     setBackupRetention.invoke(admin, "cluster", "store", -1L);

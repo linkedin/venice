@@ -3566,6 +3566,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         () -> parentAdmin
             .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBackupVersionRetentionMs(0L)));
 
+    // backupVersionRetentionMs: -2 is invalid (not the sentinel -1)
+    Assert.expectThrows(
+        VeniceHttpException.class,
+        () -> parentAdmin
+            .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBackupVersionRetentionMs(-2L)));
+
     // backupVersionRetentionMs: -1 is valid (cluster default)
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBackupVersionRetentionMs(-1L));
 
