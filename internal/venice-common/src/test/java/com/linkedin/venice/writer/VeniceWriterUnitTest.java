@@ -17,6 +17,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.longThat;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
@@ -689,10 +690,11 @@ public class VeniceWriterUnitTest {
 
   /**
    * Testing that VeniceWriter allows oversized puts when pubSubLargeMessageSupportEnabled is true,
-   * but still enforces MAX_RECORD_SIZE_BYTES as an upper bound.
+   * but still enforces MAX_RECORD_SIZE_BYTES as an upper bound. The pubsub passthrough should take
+   * priority over Venice chunking even when chunking is enabled.
    */
-  @Test(timeOut = TIMEOUT)
-  public void testPutWithPubSubLargeMessageSupport() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIMEOUT)
+  public void testPutWithPubSubLargeMessageSupport(boolean isChunkingEnabled) {
     final int maxRecordSizeBytes = 5 * BYTES_PER_MB;
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
@@ -701,7 +703,7 @@ public class VeniceWriterUnitTest {
     final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
         .setKeyPayloadSerializer(serializer)
         .setValuePayloadSerializer(serializer)
-        .setChunkingEnabled(false)
+        .setChunkingEnabled(isChunkingEnabled)
         .setMaxRecordSizeBytes(maxRecordSizeBytes)
         .build();
 
@@ -712,10 +714,15 @@ public class VeniceWriterUnitTest {
     final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
 
     // Record larger than ~1MB chunk threshold but within MAX_RECORD_SIZE_BYTES should succeed
+    // and should be sent as a single message (no Venice chunking) regardless of isChunkingEnabled
     final int LARGE_VALUE_SIZE = 2 * BYTES_PER_MB;
     char[] largeValue = new char[LARGE_VALUE_SIZE];
     Arrays.fill(largeValue, '*');
     writer.put("test-key", new String(largeValue), 1, null); // Should NOT throw
+
+    // Verify at most 2 sendMessage calls (1 start-of-segment + 1 put) — proves pubsub passthrough
+    // was used, not Venice chunking (which would produce many more calls for a 2MB record)
+    verify(mockedProducer, atMost(2)).sendMessage(any(), any(), any(), any(), any(), any());
 
     // Record exceeding MAX_RECORD_SIZE_BYTES should still throw RecordTooLargeException
     final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
