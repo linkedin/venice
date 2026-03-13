@@ -34,7 +34,9 @@ public final class ServerMetricEntity {
         ThreadPoolOtelMetricEntity.class,
         ServerMetadataOtelMetricEntity.class,
         ParticipantStoreConsumptionOtelMetricEntity.class,
-        AdaptiveThrottlingOtelMetricEntity.class);
+        AdaptiveThrottlingOtelMetricEntity.class,
+        HeartbeatMonitoringOtelMetricEntity.class,
+        BlobTransferOtelMetricEntity.class);
   }
 
   public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =

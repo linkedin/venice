@@ -115,7 +115,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -581,7 +580,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         getHeartbeatMonitoringService().updateLagMonitor(
             topicName,
             partitionConsumptionState.getPartition(),
-            HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+            HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+            partitionConsumptionState.getReplicaId());
         LOGGER.info("Replica: {} moved to standby/follower state", partitionConsumptionState.getReplicaId());
 
         /**
@@ -692,7 +692,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             getHeartbeatMonitoringService().updateLagMonitor(
                 getKafkaVersionTopic(),
                 partitionConsumptionState.getPartition(),
-                HeartbeatLagMonitorAction.SET_LEADER_MONITOR);
+                HeartbeatLagMonitorAction.SET_LEADER_MONITOR,
+                partitionConsumptionState.getReplicaId());
 
             /**
              * May adjust the underlying storage partition to optimize the ingestion performance.
@@ -1416,9 +1417,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   private boolean isConsumingFromRemoteVersionTopic(PartitionConsumptionState partitionConsumptionState) {
-    return !partitionConsumptionState.isEndOfPushReceived() && !isCurrentVersion.getAsBoolean()
-    // Do not enable remote consumption for the source fabric leader. Otherwise, it will produce extra messages.
-        && !Objects.equals(nativeReplicationSourceVersionTopicKafkaURL, localKafkaServer);
+    if (partitionConsumptionState.isEndOfPushReceived() || isCurrentVersion.getAsBoolean()) {
+      return false;
+    }
+    /**
+     * Resolve the NR source URL through the cluster URL resolver before comparing with localKafkaServer.
+     * The parent controller may set pushStreamSourceAddress using a different protocol address (e.g. plaintext)
+     * than the server's resolved local Kafka URL (e.g. SSL), causing a false mismatch.
+     */
+    String resolvedSourceUrl = kafkaClusterUrlResolver != null
+        ? kafkaClusterUrlResolver.apply(nativeReplicationSourceVersionTopicKafkaURL)
+        : nativeReplicationSourceVersionTopicKafkaURL;
+    return !Objects.equals(resolvedSourceUrl, localKafkaServer);
   }
 
   private boolean isLeaderConsumingRemoteRealTimeTopic(PartitionConsumptionState partitionConsumptionState) {
@@ -2172,6 +2182,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (partitionConsumptionState.consumeRemotely()
             && currentLeaderTopic.isVersionTopicOrStreamReprocessingTopic()) {
           if (partitionConsumptionState.skipKafkaMessage()) {
+            /**
+             * Regional system stores (meta_store, push_status_store) have their NR source set to
+             * a remote region. After consuming EOP from the remote VT, skipKafkaMessage is set to
+             * filter out subsequent messages. The TopicSwitch on the remote VT points to the remote
+             * region's RT, but each region must consume its own local RT. By skipping all post-EOP
+             * messages (including the remote TopicSwitch), the leader falls through to
+             * checkLongRunningTaskState() which switches to the local VT where the local
+             * controller's TopicSwitch correctly points to the local RT.
+             */
             String msg = "Skipping messages after EOP in remote version topic. Replica: "
                 + partitionConsumptionState.getReplicaId();
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
@@ -2944,7 +2963,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     .asyncSendControlMessage(
                         controlMessage,
                         versionTopicPartitionToBeProduced,
-                        new HashMap<>(),
+                        Collections.emptyMap(),
                         callback,
                         leaderMetadataWrapper),
                 partition,
@@ -2976,7 +2995,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     .asyncSendControlMessage(
                         controlMessage,
                         consumerRecord.getTopicPartition().getPartitionNumber(),
-                        new HashMap<>(),
+                        Collections.emptyMap(),
                         callback,
                         DEFAULT_LEADER_METADATA_WRAPPER),
                 partition,
@@ -2994,7 +3013,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                     .asyncSendControlMessage(
                         controlMessage,
                         consumerRecord.getTopicPartition().getPartitionNumber(),
-                        new HashMap<>(),
+                        Collections.emptyMap(),
                         callback,
                         DEFAULT_LEADER_METADATA_WRAPPER),
                 partition,

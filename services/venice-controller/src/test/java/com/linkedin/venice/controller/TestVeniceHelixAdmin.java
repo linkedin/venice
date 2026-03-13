@@ -302,7 +302,8 @@ public class TestVeniceHelixAdmin {
         anyBoolean(),
         any(Optional.class),
         anyBoolean(),
-        anyBoolean());
+        anyBoolean(),
+        any(Optional.class));
 
     // Case 2: Real-time topic does not exist
     VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
@@ -317,7 +318,56 @@ public class TestVeniceHelixAdmin {
         anyBoolean(),
         any(Optional.class),
         anyBoolean(),
-        anyBoolean());
+        anyBoolean(),
+        any(Optional.class));
+
+    // Case 3: Unclean leader election config is set to false
+    reset(topicManager);
+    when(clusterConfig.getUncleanLeaderElectionEnableRealTimeTopics()).thenReturn(Optional.of(false));
+    when(topicManager.containsTopic(pubSubTopic)).thenReturn(false);
+    veniceHelixAdmin.createOrUpdateRealTimeTopic(clusterName, store, version, pubSubTopic);
+    verify(topicManager, times(1)).createTopic(
+        eq(pubSubTopic),
+        eq(partitionCount),
+        anyInt(),
+        anyLong(),
+        anyBoolean(),
+        any(Optional.class),
+        anyBoolean(),
+        anyBoolean(),
+        eq(Optional.of(false)));
+
+    // Case 4: Unclean leader election config is set to true
+    reset(topicManager);
+    when(clusterConfig.getUncleanLeaderElectionEnableRealTimeTopics()).thenReturn(Optional.of(true));
+    when(topicManager.containsTopic(pubSubTopic)).thenReturn(false);
+    veniceHelixAdmin.createOrUpdateRealTimeTopic(clusterName, store, version, pubSubTopic);
+    verify(topicManager, times(1)).createTopic(
+        eq(pubSubTopic),
+        eq(partitionCount),
+        anyInt(),
+        anyLong(),
+        anyBoolean(),
+        any(Optional.class),
+        anyBoolean(),
+        anyBoolean(),
+        eq(Optional.of(true)));
+
+    // Case 5: Unclean leader election config is not set (empty)
+    reset(topicManager);
+    when(clusterConfig.getUncleanLeaderElectionEnableRealTimeTopics()).thenReturn(Optional.empty());
+    when(topicManager.containsTopic(pubSubTopic)).thenReturn(false);
+    veniceHelixAdmin.createOrUpdateRealTimeTopic(clusterName, store, version, pubSubTopic);
+    verify(topicManager, times(1)).createTopic(
+        eq(pubSubTopic),
+        eq(partitionCount),
+        anyInt(),
+        anyLong(),
+        anyBoolean(),
+        any(Optional.class),
+        anyBoolean(),
+        anyBoolean(),
+        eq(Optional.empty()));
   }
 
   @Test

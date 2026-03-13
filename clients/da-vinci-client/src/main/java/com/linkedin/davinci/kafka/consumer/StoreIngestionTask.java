@@ -616,7 +616,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (internalRecordTransformerConfig != null) {
       this.recordTransformerConfig = internalRecordTransformerConfig.getRecordTransformerConfig();
-      this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
+      this.chunkAssembler =
+          new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName), version.isRmdChunkingEnabled());
 
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
       if (recordTransformerConfig.useSpecificRecordKeyDeserializer()) {
@@ -1739,9 +1740,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   void reportIngestionNotifier(PartitionConsumptionState partitionConsumptionState, Exception partitionException) {
-    List<PartitionConsumptionState> pcsList = new ArrayList<>();
-    pcsList.add(partitionConsumptionState);
-    ingestionNotificationDispatcher.reportError(pcsList, partitionException.getMessage(), partitionException);
+    ingestionNotificationDispatcher.reportError(
+        Collections.singletonList(partitionConsumptionState),
+        partitionException.getMessage(),
+        partitionException);
   }
 
   protected void checkIngestionProgress(Store store) throws InterruptedException {
@@ -1834,6 +1836,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
+    if (versionRole == VersionRole.CURRENT && newVersionRole != VersionRole.CURRENT) {
+      stopTrackingCurrentVersionIngestion();
+    }
+
     LOGGER.info(
         "Trigger for version topic: {} due to Previous: version role: {}, workload type: {} "
             + "changed to New: version role: {}, workload type: {}",
@@ -1852,6 +1858,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       versionedIngestionStats.recordResubscriptionFailureCount(storeName, versionNumber);
       throw e;
     }
+  }
+
+  /**
+   * {@link AbstractPartitionStateModel#onBecomeStandbyFromOffline} only needs to synchronously wait for ingestion
+   * to be completed for current versions. If a current version becomes no longer the current version, it no longer
+   * needs to {@link AbstractPartitionStateModel#waitConsumptionCompleted}. In that case, we stop tracking ingestion
+   * for those partitions and explicitly release their latches.
+   */
+  private void stopTrackingCurrentVersionIngestion() {
+    partitionConsumptionStateMap.values()
+        .stream()
+        .filter(pcs -> pcs.isLatchCreated() && !pcs.isLatchReleased())
+        .forEach(pcs -> {
+          ingestionNotificationDispatcher.reportStopped(pcs);
+          pcs.releaseLatch();
+        });
   }
 
   private void maybeUnsubscribeCompletedPartitions(Store store) {
@@ -3632,10 +3654,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         validateEndOfPushReceivedBeforeTopicSwitch(partitionConsumptionState, offset);
 
         LOGGER.info(
-            "Received {} control message. Replica: {}, Offset: {} NewSource: {}",
+            "Received {} control message. Replica: {}, Offset: {} SourceTopic: {} SourceKafkaServers: {}",
             type.name(),
             partitionConsumptionState.getReplicaId(),
             offset,
+            topicSwitch.getSourceTopicName(),
             topicSwitch.getSourceKafkaServers());
         processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
         break;
@@ -4288,6 +4311,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               put.getSchemaId(),
               keyBytes,
               put.getPutValue(),
+              put.getReplicationMetadataPayload(),
               consumerRecord.getPosition(),
               compressor.get());
 
@@ -4330,6 +4354,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           DaVinciRecordTransformerResult transformerResult;
           try {
+            // Use assembled RMD when chunked RMD was reassembled, otherwise fall back to the raw payload.
+            ByteBuffer rmdPayload = assembledRecord.replicationMetadataPayload() != null
+                ? assembledRecord.replicationMetadataPayload()
+                : put.getReplicationMetadataPayload();
             DaVinciRecordTransformerRecordMetadata recordTransformerRecordMetadata =
                 recordTransformerConfig.isRecordMetadataEnabled()
                     ? new DaVinciRecordTransformerRecordMetadata(
@@ -4338,7 +4366,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                         consumerRecord.getPosition(),
                         // Calculate payload size after chunk assembly
                         keyLen + assembledRecord.value().limit(),
-                        put.getReplicationMetadataPayload(),
+                        rmdPayload,
                         put.getReplicationMetadataVersionId())
                     : null;
 
@@ -4929,10 +4957,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public void reportError(String message, int userPartition, Exception e) {
-    List<PartitionConsumptionState> pcsList = new ArrayList<>();
-    if (partitionConsumptionStateMap.containsKey(userPartition)) {
-      pcsList.add(partitionConsumptionStateMap.get(userPartition));
-    }
+    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(userPartition);
+    List<PartitionConsumptionState> pcsList = pcs != null ? Collections.singletonList(pcs) : Collections.emptyList();
     reportError(pcsList, userPartition, message, e);
   }
 

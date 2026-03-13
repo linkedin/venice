@@ -1524,6 +1524,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return storeNameToInternalRecordTransformerConfig.get(storeName);
   }
 
+  public void unregisterRecordTransformerConfig(String storeName) {
+    storeNameToInternalRecordTransformerConfig.remove(storeName);
+  }
+
   @Override
   public void registerBlobTransferDisabled(String storeName) {
     blobTransferDisabledStores.add(storeName);

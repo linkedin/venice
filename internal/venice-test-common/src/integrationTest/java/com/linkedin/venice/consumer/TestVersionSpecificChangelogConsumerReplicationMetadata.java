@@ -1,22 +1,20 @@
 package com.linkedin.venice.consumer;
 
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
-import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
-import static com.linkedin.venice.utils.Utils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
 import com.linkedin.davinci.consumer.ImmutableChangeCapturePubSubMessage;
@@ -24,44 +22,39 @@ import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.davinci.utils.ClientRmdSerDe;
-import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.view.TestView;
+import com.linkedin.venice.writer.update.UpdateBuilder;
+import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
+import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
+import org.apache.avro.file.DataFileWriter;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -75,22 +68,9 @@ import org.testng.annotations.Test;
 public class TestVersionSpecificChangelogConsumerReplicationMetadata {
   private static final Logger LOGGER =
       LogManager.getLogger(TestVersionSpecificChangelogConsumerReplicationMetadata.class);
-  private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
-  private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-  private final List<AutoCloseable> testCloseables = new ArrayList<>();
-  private final List<String> testStoresToDelete = new ArrayList<>();
+  static final int TEST_TIMEOUT = 3 * 60_000; // 3 minutes
 
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-  private String clusterName;
-  private VeniceClusterWrapper clusterWrapper;
-  private ControllerClient parentControllerClient;
-  private ControllerClient childControllerClientRegion0;
-  private D2Client d2Client;
-  private ZkServerWrapper localZkServer;
-  private PubSubBrokerWrapper localKafka;
+  private ChangelogConsumerTestFixture fixture;
 
   protected boolean isAAWCParallelProcessingEnabled() {
     return false;
@@ -98,146 +78,180 @@ public class TestVersionSpecificChangelogConsumerReplicationMetadata {
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
-    Properties serverProperties = new Properties();
-    serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
-    serverProperties.put(
-        CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
-        "localhost:" + TestUtils.getFreePort());
-    serverProperties.put(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, isAAWCParallelProcessingEnabled());
-    VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
-        new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
-            .numberOfClusters(1)
-            .numberOfParentControllers(1)
-            .numberOfChildControllers(1)
-            .numberOfServers(1)
-            .numberOfRouters(1)
-            .replicationFactor(1)
-            .forkServer(false)
-            .serverProperties(serverProperties);
-    multiRegionMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
-
-    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-    clusterName = CLUSTER_NAMES[0];
-    clusterWrapper = childDatacenters.get(0).getClusters().get(clusterName);
-    localZkServer = childDatacenters.get(0).getZkServerWrapper();
-    localKafka = childDatacenters.get(0).getPubSubBrokerWrapper();
-
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
-    parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    childControllerClientRegion0 =
-        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    d2Client = new D2ClientBuilder().setZkHosts(localZkServer.getAddress())
-        .setZkSessionTimeout(3, TimeUnit.SECONDS)
-        .setZkStartupTimeout(3, TimeUnit.SECONDS)
-        .build();
-    D2ClientUtils.startClient(d2Client);
+    fixture = new ChangelogConsumerTestFixture(isAAWCParallelProcessingEnabled());
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    D2ClientUtils.shutdownClient(d2Client);
-    Utils.closeQuietlyWithErrorLogged(parentControllerClient);
-    Utils.closeQuietlyWithErrorLogged(childControllerClientRegion0);
-    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
-    TestView.resetCounters();
+    Utils.closeQuietlyWithErrorLogged(fixture);
   }
 
   @AfterMethod(alwaysRun = true)
   public void cleanupAfterTest() {
-    ChangelogConsumerTestUtils.cleanupAfterTest(testCloseables, testStoresToDelete, parentControllerClient, LOGGER);
+    fixture.cleanupAfterTest();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
-  public void testVersionSpecificWithDeserializedReplicationMetadata()
+  /**
+   * Verifies that the RMD payload is present and correctly deserializable on the version-specific changelog consumer
+   * for chunked records with no compression.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVersionSpecificWithChunkedRecordRmdPayload()
       throws IOException, ExecutionException, InterruptedException {
+    runVersionSpecificWithChunkedRecordRmdPayload(CompressionStrategy.NO_OP);
+  }
+
+  /**
+   * Same as {@link #testVersionSpecificWithChunkedRecordRmdPayload()} but with GZIP compression.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVersionSpecificWithChunkedRecordRmdPayloadGzip()
+      throws IOException, ExecutionException, InterruptedException {
+    runVersionSpecificWithChunkedRecordRmdPayload(CompressionStrategy.GZIP);
+  }
+
+  /**
+   * Same as {@link #testVersionSpecificWithChunkedRecordRmdPayload()} but with ZSTD_WITH_DICT compression.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVersionSpecificWithChunkedRecordRmdPayloadZstd()
+      throws IOException, ExecutionException, InterruptedException {
+    runVersionSpecificWithChunkedRecordRmdPayload(CompressionStrategy.ZSTD_WITH_DICT);
+  }
+
+  /**
+   * Verifies that the RMD payload is present and correctly deserializable on the version-specific changelog consumer
+   * for chunked records. The test:
+   * (1) Batch-pushes one large record (floatArray of 265K floats ≈ 1.06 MB) that exceeds the ~950 KB chunking
+   *     threshold. This creates a chunked batch record in the version topic with no RMD.
+   * (2) Sends a write-compute partial update that only touches the "name" field. The AA leader merges this into the
+   *     existing large record, producing a chunked VT record with a small RMD (floatArray stays in put-only state,
+   *     so activeElemTS remains empty and the RMD stays small).
+   * (3) Reads from the version-specific changelog consumer and verifies that the near-line message carries a
+   *     non-null replicationMetadataPayload that ClientRmdSerDe can deserialize into a valid RMD record with a
+   *     positive timestamp.
+   */
+  private void runVersionSpecificWithChunkedRecordRmdPayload(CompressionStrategy compressionStrategy)
+      throws IOException, ExecutionException, InterruptedException {
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+    Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+    Schema pushInputSchema =
+        new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(valueSchema).build();
+
+    // 265K floats × 4 bytes ≈ 1.06 MB, which exceeds the ~950 KB chunking threshold.
+    List<Float> largeFloatArray = new ArrayList<>(265_000);
+    for (int i = 0; i < 265_000; i++) {
+      largeFloatArray.add((float) i);
+    }
+
     File inputDir = getTempDataDirectory();
-    int version = 1;
-    int numKeys = 10;
-    Schema recordSchema =
-        TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema(inputDir, Integer.toString(version), numKeys);
+    File avroFile = new File(inputDir, "batch_data.avro");
+    try (DataFileWriter<GenericRecord> writer = new DataFileWriter<>(new GenericDatumWriter<>(pushInputSchema))) {
+      writer.create(pushInputSchema, avroFile);
+      GenericRecord valueRecord = new GenericData.Record(valueSchema);
+      valueRecord.put("name", "initial_name");
+      valueRecord.put("floatArray", largeFloatArray);
+      valueRecord.put("stringMap", Collections.emptyMap());
+      GenericRecord inputRecord = new GenericData.Record(pushInputSchema);
+      inputRecord.put(DEFAULT_KEY_FIELD_PROP, "key1");
+      inputRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord);
+      writer.append(inputRecord);
+    }
+
+    String storeName = Utils.getUniqueString("testRmdChunking");
+    fixture.addStoreToDelete(storeName);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("testStore");
-    testStoresToDelete.add(storeName);
-    Properties props = TestWriteUtils.defaultVPJProps(
-        parentControllers.get(0).getControllerUrl(),
+    Properties vpjProps = TestWriteUtils.defaultVPJProps(
+        fixture.getParentControllers().get(0).getControllerUrl(),
         inputDirPath,
         storeName,
-        clusterWrapper.getPubSubClientProperties());
-    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-    String valueSchemaStr = STRING_SCHEMA.toString();
-    UpdateStoreQueryParams storeParms = ChangelogConsumerTestUtils.buildDefaultStoreParams();
-    MetricsRepository metricsRepository =
-        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
-    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(storeName, childControllerClientRegion0, clusterWrapper);
-    IntegrationTestPushUtils.runVPJ(props, 1, childControllerClientRegion0);
-    Properties consumerProperties = ChangelogConsumerTestUtils
-        .buildConsumerProperties(multiRegionMultiClusterWrapper, localKafka, clusterName, localZkServer);
-    ChangelogClientConfig globalChangelogClientConfig =
-        ChangelogConsumerTestUtils.buildBaseChangelogClientConfig(consumerProperties, localZkServer.getAddress(), 3)
-            .setD2Client(d2Client)
-            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
-    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
-        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
-    VeniceChangelogConsumer<Integer, Utf8> changeLogConsumer =
-        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, true, true);
-    testCloseables.add(changeLogConsumer);
-    // Rewrite all the keys in near-line
-    try (VeniceSystemProducer veniceProducer = IntegrationTestPushUtils.getSamzaProducer(
-        childDatacenters.get(0).getClusters().get(CLUSTER_NAMES[0]),
+        fixture.getClusterWrapper().getPubSubClientProperties());
+
+    String keySchemaStr = pushInputSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = pushInputSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    UpdateStoreQueryParams storeParams = ChangelogConsumerTestUtils.buildDefaultStoreParams()
+        .setWriteComputationEnabled(true)
+        .setCompressionStrategy(compressionStrategy);
+    createStoreForJob(fixture.getClusterName(), keySchemaStr, valueSchemaStr, vpjProps, storeParams);
+    fixture.getParentControllerClient()
+        .updateStore(storeName, new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true));
+    ChangelogConsumerTestUtils.waitForMetaSystemStoreToBeReady(
         storeName,
-        Version.PushType.STREAM)) {
-      veniceProducer.start();
-      for (int i = 1; i <= numKeys; ++i) {
-        String value = "near-line" + i;
-        sendStreamingRecord(veniceProducer, storeName, i, value, null);
+        fixture.getChildControllerClientRegion0(),
+        fixture.getClusterWrapper());
+    IntegrationTestPushUtils.runVPJ(vpjProps, 1, fixture.getChildControllerClientRegion0());
+
+    // Send several write-compute partial update that only touches "name", leaving floatArray in put-only state.
+    // The AA leader merges this into the existing large record, producing a chunked VT record with a small RMD.
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(fixture.getMultiRegionMultiClusterWrapper(), 0, storeName)) {
+      for (int i = 0; i < 10; i++) {
+        UpdateBuilder updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+        updateBuilder.setNewFieldValue("name", "updated_name_" + i);
+        sendStreamingRecord(veniceProducer, storeName, "key1", updateBuilder.build(), null);
       }
     }
+
+    Properties consumerProperties = ChangelogConsumerTestUtils.buildConsumerProperties(
+        fixture.getMultiRegionMultiClusterWrapper(),
+        fixture.getLocalKafka(),
+        fixture.getClusterName(),
+        fixture.getLocalZkServer());
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    ChangelogClientConfig globalChangelogClientConfig = ChangelogConsumerTestUtils
+        .buildBaseChangelogClientConfig(consumerProperties, fixture.getLocalZkServer().getAddress(), 3)
+        .setD2Client(fixture.getD2Client())
+        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+
+    VeniceChangelogConsumer<Utf8, GenericRecord> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getVersionSpecificChangelogConsumer(storeName, 1, false);
+    fixture.addCloseable(changeLogConsumer);
     changeLogConsumer.subscribeAll().get();
-    // Track unique keys with validated RMD across poll retries. Using a Set avoids double-counting
-    // if poll() returns duplicate messages (at-least-once delivery) across retry iterations.
-    Set<Integer> validatedRmdKeys = new HashSet<>();
-    // The change events written from near-line should have valid and deserialized replication metadata.
-    // Poll until we have all messages, then verify RMD on near-line messages (identified by having non-null RMD,
-    // as batch messages don't carry replication metadata). We verify inside the assertion loop because
-    // message ordering from polling is non-deterministic — batch and near-line messages can interleave.
+
     try (StoreSchemaFetcher schemaFetcher = ClientFactory.createStoreSchemaFetcher(
         ClientConfig.defaultGenericClientConfig(storeName)
-            .setD2Client(d2Client)
+            .setD2Client(fixture.getD2Client())
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
       ClientRmdSerDe clientRmdSerDe = new ClientRmdSerDe(schemaFetcher);
+      List<String> recordsWithValidatedRmd = new ArrayList<>();
+      final AtomicInteger index = new AtomicInteger(0);
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        Collection<PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessagesList =
+        Collection<PubSubMessage<Utf8, ChangeEvent<GenericRecord>, VeniceChangeCoordinate>> pubSubMessages =
             changeLogConsumer.poll(1000);
-        for (PubSubMessage<Integer, ChangeEvent<Utf8>, VeniceChangeCoordinate> msg: pubSubMessagesList) {
+        for (PubSubMessage<Utf8, ChangeEvent<GenericRecord>, VeniceChangeCoordinate> msg: pubSubMessages) {
           if (msg.getKey() == null) {
-            continue;
+            continue; // skip control messages
           }
-          ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>> message =
-              (ImmutableChangeCapturePubSubMessage<Integer, ChangeEvent<Utf8>>) msg;
-          if (message.getDeserializedReplicationMetadata() != null && !validatedRmdKeys.contains(message.getKey())) {
-            long timestamp = (long) message.getDeserializedReplicationMetadata().get("timestamp");
-            assertTrue(timestamp > 0);
-            assertEquals(
-                message.getDeserializedReplicationMetadata(),
-                clientRmdSerDe.deserializeRmdBytes(
-                    message.getWriterSchemaId(),
-                    message.getWriterSchemaId(),
-                    message.getReplicationMetadataPayload()));
-            assertEquals(
-                message.getReplicationMetadataPayload(),
-                clientRmdSerDe
-                    .serializeRmdRecord(message.getWriterSchemaId(), message.getDeserializedReplicationMetadata()));
-            validatedRmdKeys.add(message.getKey());
+          ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>> message =
+              (ImmutableChangeCapturePubSubMessage<Utf8, ChangeEvent<GenericRecord>>) msg;
+          ByteBuffer rmdPayload = message.getReplicationMetadataPayload();
+          if (rmdPayload == null || !rmdPayload.hasRemaining()) {
+            continue; // skip empty rmd records
           }
+          String key = msg.getKey().toString();
+          String nameValue = msg.getValue().getCurrentValue().get("name").toString();
+          GenericRecord rmdRecord =
+              clientRmdSerDe.deserializeRmdBytes(message.getWriterSchemaId(), message.getWriterSchemaId(), rmdPayload);
+          assertNotNull(rmdRecord, "Deserialized RMD record should not be null for key: " + key);
+          // The timestamp field is a union: either a Long (put-only) or a per-field GenericRecord.
+          // After a partial update that only touches "name", it is a per-field record.
+          Object timestampObj = rmdRecord.get("timestamp");
+          long timestamp;
+          if (timestampObj instanceof Long) {
+            timestamp = (Long) timestampObj;
+          } else {
+            // Per-field record: use the "name" field's timestamp as a representative positive value.
+            timestamp = (long) ((GenericRecord) timestampObj).get("name");
+          }
+          assertTrue(timestamp > 0, "RMD timestamp should be positive for key: " + key);
+          assertEquals(nameValue, "updated_name_" + index.get());
+          index.incrementAndGet();
+          recordsWithValidatedRmd.add(nameValue);
         }
-        assertEquals(
-            validatedRmdKeys.size(),
-            numKeys,
-            "Expected " + numKeys + " unique keys with RMD but got " + validatedRmdKeys.size());
+        assertEquals(recordsWithValidatedRmd.size(), 10);
       });
     }
   }

@@ -18,10 +18,10 @@ import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -103,18 +103,7 @@ public class DaVinciClusterAgnosticTest {
     pubSubPositionTypeRegistry =
         multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getPubSubPositionTypeRegistry();
 
-    for (String cluster: clusterNames) {
-      try (ControllerClient controllerClient =
-          new ControllerClient(cluster, multiClusterVenice.getControllerConnectString())) {
-        // Verify the participant store is up and running in child region
-        String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster);
-        TestUtils.waitForNonDeterministicPushCompletion(
-            Version.composeKafkaTopic(participantStoreName, 1),
-            controllerClient,
-            5,
-            TimeUnit.MINUTES);
-      }
-    }
+    IntegrationTestUtils.waitForParticipantStorePush(clusterNames, multiClusterVenice.getControllerConnectString());
   }
 
   @AfterClass

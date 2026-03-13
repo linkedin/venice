@@ -173,9 +173,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final int DEFAULT_CLOSE_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
 
   /**
-   * Default checksum type. N.B.: Only MD5 (and having no checksums) supports checkpointing mid-checksum.
+   * Default checksum type for DIV (Data Integrity Validation).
    */
-  public static final String DEFAULT_CHECK_SUM_TYPE = CheckSumType.MD5.name();
+  public static final String DEFAULT_CHECK_SUM_TYPE = CheckSumType.ADHASH.name();
 
   /**
    * Default number of attempts when trying to produce to a Kafka topic and an exception is caught saying
@@ -1981,7 +1981,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     controlMessage.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();
     EndOfSegment endOfSegment = new EndOfSegment();
     endOfSegment.checksumValue = ByteBuffer.wrap(segments[partition].getFinalCheckSum());
-    endOfSegment.computedAggregates = new ArrayList<>(); // TODO Add extra aggregates
+    endOfSegment.computedAggregates = Collections.emptyList(); // TODO Add extra aggregates
     endOfSegment.finalSegment = finalSegment;
     controlMessage.controlMessageUnion = endOfSegment;
     return sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
@@ -2522,7 +2522,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         try {
           return sendEndOfSegment(
               partition,
-              new HashMap<>(), // TODO: Add extra debugging info
+              Collections.emptyMap(), // TODO: Add extra debugging info
               finalSegment
           // TODO: This will not always be true, once we support streaming, or more than one segment per
           // mapper in batch

@@ -103,10 +103,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * The config is only applicable to the version specific stateless changelog consumer.
    */
   private boolean includeControlMessages = false;
-  /**
-   * Whether to deserialize the replication metadata and provide it as a {@link org.apache.avro.generic.GenericRecord}
-   */
-  private boolean deserializeReplicationMetadata = false;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -406,7 +402,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords())
         .setIncludeControlMessages(config.shouldIncludeControlMessages())
-        .setDeserializeReplicationMetadata(config.shouldDeserializeReplicationMetadata())
         .setInnerClientConfig(ClientConfig.cloneConfig(config.getInnerClientConfig()))
         // Store version should not be cloned
         .setStoreVersion(null)
@@ -440,15 +435,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   public ChangelogClientConfig setIncludeControlMessages(Boolean includeControlMessages) {
     this.includeControlMessages = includeControlMessages;
-    return this;
-  }
-
-  public boolean shouldDeserializeReplicationMetadata() {
-    return deserializeReplicationMetadata;
-  }
-
-  public ChangelogClientConfig setDeserializeReplicationMetadata(boolean deserializeReplicationMetadata) {
-    this.deserializeReplicationMetadata = deserializeReplicationMetadata;
     return this;
   }
 

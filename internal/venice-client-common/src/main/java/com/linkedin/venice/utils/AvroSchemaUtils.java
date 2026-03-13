@@ -207,6 +207,16 @@ public class AvroSchemaUtils {
         return compareSchemaUnion(s1.getTypes(), s2.getTypes());
       case ENUM:
         return compareSchemaEnum(s1.getEnumSymbols(), s2.getEnumSymbols());
+      case INT:
+      case LONG:
+      case FLOAT:
+      case DOUBLE:
+      case BOOLEAN:
+      case BYTES:
+      case NULL:
+        // Primitive types cannot differ structurally; any inequality is due to custom properties only
+        // (e.g. "li.data.proto.numberFieldType"). Treat them as equal for schema comparison purposes.
+        return true;
       default:
         throw new VeniceException("Schema compare not supported for " + s1.toString());
     }

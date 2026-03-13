@@ -1,14 +1,9 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -16,23 +11,17 @@ import org.testng.annotations.Test;
 
 
 public class ZkRoutersClusterManagerTest {
-  private ZkClient zkClient;
-  private ZkServerWrapper zkServerWrapper;
-  private String clusterName;
-  private HelixAdapterSerializer adapter;
+  private ZkRoutersTestFixture fixture;
 
   @BeforeMethod
   public void setUp() {
-    clusterName = "ZkRoutersClusterManagerTest";
-    zkServerWrapper = ServiceFactory.getZkServer();
-    adapter = new HelixAdapterSerializer();
-    zkClient = new ZkClient(zkServerWrapper.getAddress());
+    fixture = new ZkRoutersTestFixture();
+    fixture.setUp();
   }
 
   @AfterMethod
   public void cleanUp() {
-    zkClient.close();
-    zkServerWrapper.close();
+    fixture.close();
   }
 
   @Test
@@ -42,7 +31,7 @@ public class ZkRoutersClusterManagerTest {
     for (int i = 0; i < routersCount; i++) {
       int port = 10555 + i;
       String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
-      ZkRoutersClusterManager manager = createManager(zkClient);
+      ZkRoutersClusterManager manager = fixture.createManager();
       managers[i] = manager;
       manager.registerRouter(instanceId);
       Assert.assertEquals(
@@ -65,9 +54,9 @@ public class ZkRoutersClusterManagerTest {
   @Test
   public void testRouterFailure() {
     int port = 10555;
-    ZkRoutersClusterManager manager = createManager(zkClient);
-    ZkClient failedZkClient = new ZkClient(zkServerWrapper.getAddress());
-    ZkRoutersClusterManager failedManager = createManager(failedZkClient);
+    ZkRoutersClusterManager manager = fixture.createManager();
+    ZkClient failedZkClient = new ZkClient(fixture.getZkServerWrapper().getAddress());
+    ZkRoutersClusterManager failedManager = fixture.createManager(failedZkClient);
     // Register two routers through different zk clients.
     manager.registerRouter(Utils.getHelixNodeIdentifier(Utils.getHostName(), port));
     failedManager.registerRouter(Utils.getHelixNodeIdentifier(Utils.getHostName(), port + 1));
@@ -84,7 +73,7 @@ public class ZkRoutersClusterManagerTest {
   public void testUnregisterLiveOuter() {
     int port = 10555;
     String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
-    ZkRoutersClusterManager manager = createManager(zkClient);
+    ZkRoutersClusterManager manager = fixture.createManager();
     manager.registerRouter(instanceId);
     Assert.assertEquals(
         manager.getLiveRoutersCount(),
@@ -101,98 +90,12 @@ public class ZkRoutersClusterManagerTest {
   public void testEnableThrottling() {
     int port = 10555;
     String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
-    ZkRoutersClusterManager manager = createManager(zkClient);
+    ZkRoutersClusterManager manager = fixture.createManager();
     manager.registerRouter(instanceId);
 
     manager.enableThrottling(false);
     Assert.assertFalse(manager.isThrottlingEnabled(), "Throttling has been disabled in cluster level config.");
     manager.enableThrottling(true);
     Assert.assertTrue(manager.isThrottlingEnabled(), "Throttling has been enable in cluster level config.");
-  }
-
-  @Test
-  public void testUpdateExpectRouterCount() {
-    int port = 10555;
-    String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
-    ZkRoutersClusterManager manager = createManager(zkClient);
-    manager.registerRouter(instanceId);
-    Assert.assertEquals(manager.getLiveRouterInstances().size(), 1);
-    int expectRouterNumber = -1;
-    try {
-      manager.updateExpectedRouterCount(expectRouterNumber);
-      Assert.fail("Invalid expect router count.");
-    } catch (VeniceException e) {
-      // expected
-    }
-    expectRouterNumber = 100;
-    manager.updateExpectedRouterCount(expectRouterNumber);
-    Assert.assertEquals(
-        manager.getExpectedRoutersCount(),
-        expectRouterNumber,
-        "Expect router count should be updated before.");
-  }
-
-  @Test
-  public void testEnableMaxCapacityProtection() {
-    int port = 10555;
-    String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
-    ZkRoutersClusterManager manager = createManager(zkClient);
-    manager.registerRouter(instanceId);
-
-    manager.enableMaxCapacityProtection(false);
-    Assert.assertFalse(
-        manager.isMaxCapacityProtectionEnabled(),
-        "Router protection has been disabled in cluster level config.");
-    manager.enableMaxCapacityProtection(true);
-    Assert.assertTrue(
-        manager.isMaxCapacityProtectionEnabled(),
-        "Router protection has been enabled in cluster level config.");
-  }
-
-  @Test
-  public void testHandleRouterClusterConfigChange() {
-    int port = 10555;
-    String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
-    ZkRoutersClusterManager controller = createManager(zkClient);
-    ZkRoutersClusterManager router = createManager(new ZkClient(zkServerWrapper.getAddress()));
-    router.registerRouter(instanceId);
-
-    int expectedNumber = 100;
-    controller.updateExpectedRouterCount(expectedNumber);
-    // The controller will know the new router is added.
-    TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> controller.getLiveRoutersCount() == 1);
-    // The router will know the expected number is updated.
-    TestUtils.waitForNonDeterministicCompletion(
-        1,
-        TimeUnit.SECONDS,
-        () -> router.getExpectedRoutersCount() == expectedNumber);
-
-    controller.enableThrottling(false);
-    controller.enableMaxCapacityProtection(false);
-    // The router will know the throttling and router protection are disabled.
-    TestUtils.waitForNonDeterministicCompletion(
-        1,
-        TimeUnit.SECONDS,
-        () -> !router.isThrottlingEnabled() && !router.isMaxCapacityProtectionEnabled());
-  }
-
-  private ZkRoutersClusterManager createManager(ZkClient zkClient) {
-    ZkRoutersClusterManager manager = new ZkRoutersClusterManager(zkClient, adapter, clusterName, 1, 1000);
-    manager.refresh();
-    manager.createRouterClusterConfig();
-    return manager;
-  }
-
-  @Test
-  public void testRouterClusterConfigCreationWhenZNodeAlreadyExistsWithEmptyContent() {
-    String myClusterName = Utils.getUniqueString("test-cluster");
-    ZkRoutersClusterManager manager = new ZkRoutersClusterManager(zkClient, adapter, myClusterName, 1, 1000);
-    zkClient.create(HelixUtils.getHelixClusterZkPath(myClusterName), null, CreateMode.PERSISTENT);
-    zkClient.create(manager.getRouterRootPath(), null, CreateMode.PERSISTENT);
-
-    manager.refresh();
-    Assert.assertNotNull(
-        zkClient.readData(manager.getRouterRootPath()),
-        "Routers ZNode should not be null" + " after refresh");
   }
 }

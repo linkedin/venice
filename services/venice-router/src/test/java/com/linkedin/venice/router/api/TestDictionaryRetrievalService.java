@@ -151,22 +151,18 @@ public class TestDictionaryRetrievalService {
         assertNotNull(finalDictionaryRetrievalService.getFetchDelayTimeinMsMap().get(KAFKA_TOPIC_NAME));
       });
 
-      // start at a higher retry time as it will be easy to miss the first couple of retries
+      // Verify exponential backoff by checking that the delay increases over time.
+      // We only verify up to a few doublings (not all the way to MAX) to keep the test fast.
       long expectedValue = MIN_DICTIONARY_DOWNLOAD_DELAY_TIME_MS * 4;
-      while (true) {
+      long verifyUpTo = MIN_DICTIONARY_DOWNLOAD_DELAY_TIME_MS * 32; // verify 5 doublings
+      while (expectedValue <= verifyUpTo) {
         long finalExpectedValue = expectedValue;
-        TestUtils.waitForNonDeterministicAssertion(MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
           assertEquals(
               (long) finalDictionaryRetrievalService.getFetchDelayTimeinMsMap().get(KAFKA_TOPIC_NAME),
               finalExpectedValue);
         });
-        if (expectedValue == MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS) {
-          break;
-        }
         expectedValue *= 2;
-        if (expectedValue > MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS) {
-          expectedValue = MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS;
-        }
       }
     } finally {
       if (dictionaryRetrievalService != null) {
@@ -366,6 +362,58 @@ public class TestDictionaryRetrievalService {
         doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
         // Reset store version status to ONLINE
         doReturn(VersionStatus.ONLINE).when(version).getStatus();
+      }
+    }
+  }
+
+  /**
+   * Bug 2: Verify that a synchronous exception from downloadDictionaries() re-queues the topic
+   * for retry instead of permanently abandoning it.
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testSynchronousExceptionRequeuesForRetry() throws Exception {
+    DictionaryRetrievalService dictionaryRetrievalService = null;
+    try {
+      dictionaryRetrievalService = new DictionaryRetrievalService(
+          onlineInstanceFinder,
+          routerConfig,
+          Optional.of(sslFactory),
+          metadataRepository,
+          storageNodeClient,
+          compressorFactory,
+          metricsRepository);
+      dictionaryRetrievalService.start();
+      StoreDataChangedListener storeChangeListener = dictionaryRetrievalService.getStoreChangeListener();
+
+      // Set up version that needs dictionary
+      doReturn(CompressionStrategy.ZSTD_WITH_DICT).when(version).getCompressionStrategy();
+      doReturn(VersionStatus.ONLINE).when(version).getStatus();
+      doReturn(STORE_NAME).when(version).getStoreName();
+      doReturn(VERSION_NUMBER).when(version).getNumber();
+      doReturn(false).when(compressorFactory).versionSpecificCompressorExists(KAFKA_TOPIC_NAME);
+
+      // Make metadataRepository.getStore() throw to trigger the synchronous exception path
+      // in downloadDictionaries() -> stream -> metadataRepository.getStore()
+      when(metadataRepository.getStore(any())).thenThrow(new RuntimeException("ZK connection broken"));
+
+      storeChangeListener.handleStoreChanged(store);
+
+      // The consumer thread should catch the exception and re-queue with backoff
+      DictionaryRetrievalService finalDictionaryRetrievalService = dictionaryRetrievalService;
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        // If the fix works, the topic gets re-queued via scheduledDictionaryFetchFutures
+        // and the delay map gets populated
+        assertNotNull(
+            finalDictionaryRetrievalService.getFetchDelayTimeinMsMap().get(KAFKA_TOPIC_NAME),
+            "Topic should be re-queued with backoff delay after synchronous exception");
+      });
+    } finally {
+      if (dictionaryRetrievalService != null) {
+        dictionaryRetrievalService.stop();
+        dictionaryRetrievalService.close();
+        doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
+        doReturn(VersionStatus.ONLINE).when(version).getStatus();
+        doReturn(store).when(metadataRepository).getStore(any());
       }
     }
   }

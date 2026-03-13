@@ -43,6 +43,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
@@ -62,6 +63,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -110,6 +112,7 @@ import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -1913,5 +1916,112 @@ public class VenicePushJobTest {
             "Version kafka-topic was rolled back after ingestion completed due to validation failure");
       }
     }
+  }
+
+  /**
+   * Test that VPJ detects a killed push during the data writing phase and kills the data writer job.
+   * This simulates the scenario where a repush is superseded by a user push, and the controller kills
+   * the repush version while data is still being written.
+   */
+  @Test(dataProvider = "DataWriterJobClasses")
+  public void testPushJobKilledDuringDataWriting(Class<? extends DataWriterComputeJob> dataWriterJobClass)
+      throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterJobClass.getCanonicalName());
+    ControllerClient client = getClient();
+
+    // Simulate controller returning ERROR status (push was killed)
+    JobStatusQueryResponse killResponse = mock(JobStatusQueryResponse.class);
+    doReturn(ExecutionStatus.ERROR.toString()).when(killResponse).getStatus();
+    doReturn(false).when(killResponse).isError();
+    doReturn(killResponse).when(client).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      pushJobSetting.pollJobStatusIntervalMs = 10; // Poll quickly for the test
+
+      CountDownLatch dataWriterRunningLatch = new CountDownLatch(1);
+      CountDownLatch dataWriterKilledLatch = new CountDownLatch(1);
+
+      // Stall the data writer job until it gets killed by the kill-check monitor
+      doCallRealMethod().when(pushJob).runJobWithKillDetection();
+      doCallRealMethod().when(pushJob).runJobAndUpdateStatus();
+      doCallRealMethod().when(pushJob).startPushJobKillCheckMonitor();
+      doCallRealMethod().when(pushJob).stopPushJobKillCheckMonitor();
+      doCallRealMethod().when(pushJob).killDataWriterJob();
+
+      DataWriterComputeJob dataWriterJob = spy(pushJob.getDataWriterComputeJob());
+      pushJob.setDataWriterComputeJob(dataWriterJob);
+      doNothing().when(dataWriterJob).configure(any(), any());
+      doNothing().when(dataWriterJob).validateJob();
+
+      Answer<Void> stallDataWriterJob = invocation -> {
+        dataWriterRunningLatch.countDown();
+        if (!dataWriterKilledLatch.await(10, TimeUnit.SECONDS)) {
+          fail("Timed out waiting for the data writer job to be killed by kill-check monitor");
+        }
+        throw new VeniceException("Data writer job was killed");
+      };
+      doAnswer(stallDataWriterJob).when(dataWriterJob).runComputeJob();
+
+      // When dataWriterJob.kill() is called, release the stalled data writer
+      doAnswer(invocation -> {
+        invocation.callRealMethod();
+        dataWriterKilledLatch.countDown();
+        return null;
+      }).when(dataWriterJob).kill();
+
+      // Stub only the validation methods from skipVPJValidation that this test needs bypassed.
+      // We intentionally avoid skipVPJValidation() because it also stubs runJobAndUpdateStatus(),
+      // which we need to run for kill-detection to work.
+      doAnswer(invocation -> {
+        VeniceProperties properties = pushJob.getJobProperties();
+        PushJobSetting pjs = pushJob.getPushJobSetting();
+        if (!pjs.isSourceKafka) {
+          Schema schema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(SIMPLE_FILE_SCHEMA_STR);
+          pjs.keyField = properties.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
+          pjs.valueField = properties.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
+          pjs.inputDataSchema = schema;
+          pjs.valueSchema = schema.getField(pjs.valueField).schema();
+          pjs.inputDataSchemaString = SIMPLE_FILE_SCHEMA_STR;
+          pjs.keySchema = pjs.inputDataSchema.getField(pjs.keyField).schema();
+          pjs.keySchemaString = pjs.keySchema.toString();
+          pjs.valueSchemaString = pjs.valueSchema.toString();
+        }
+        return getMockInputDataInfoProvider();
+      }).when(pushJob).getInputDataInfoProvider();
+      doNothing().when(pushJob).validateKeySchema(any());
+      doNothing().when(pushJob).validateAndRetrieveValueSchemas(any(), any(), anyBoolean());
+
+      try {
+        pushJob.run();
+        fail("Expected VeniceException due to push job being killed during data writing");
+      } catch (VeniceException e) {
+        assertTrue(
+            e.getMessage().contains("killed by the controller during the data writing phase")
+                || e.getMessage().contains("Data writer job was killed"),
+            "Unexpected error message: " + e.getMessage());
+      }
+
+      assertEquals(dataWriterRunningLatch.getCount(), 0, "Data writer job should have started");
+      assertEquals(dataWriterKilledLatch.getCount(), 0, "Data writer job should have been killed");
+      verify(dataWriterJob, times(1)).kill();
+      verify(client, atLeastOnce()).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
+    }
+  }
+
+  @Test
+  public void testResolveD2ClientWithExternalD2Client() {
+    D2Client mockD2Client = mock(D2Client.class);
+
+    Properties baseProps = TestWriteUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE, Collections.emptyMap());
+    baseProps.put(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
+
+    // When an external D2Client is provided, resolveD2Client should return it directly
+    VenicePushJob pushJob = new VenicePushJob(TEST_PUSH, baseProps, mockD2Client);
+    D2Client resolved = pushJob.resolveD2Client("someZkHost", Optional.empty());
+    assertEquals(resolved, mockD2Client);
   }
 }

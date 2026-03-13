@@ -70,15 +70,15 @@ public class VeniceSinkTest {
   @Test
   public void testVeniceSinkKvHappyPath() throws Exception {
     VenicePulsarSink sink = testSink(false, 0, 5);
-    verify(producer, atLeastOnce()).flush(anyString());
     sink.close();
+    verify(producer, atLeastOnce()).flush(anyString());
   }
 
   @Test
   public void testVeniceSinkStringHappyPath() throws Exception {
     VenicePulsarSink sink = testSink(true, 0, 5);
-    verify(producer, atLeastOnce()).flush(anyString());
     sink.close();
+    verify(producer, atLeastOnce()).flush(anyString());
   }
 
   /**

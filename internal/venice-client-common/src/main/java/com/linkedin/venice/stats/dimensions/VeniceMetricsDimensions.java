@@ -129,7 +129,10 @@ public enum VeniceMetricsDimensions {
   VENICE_READ_COMPUTE_OPERATION_TYPE("venice.read_compute.operation_type"),
 
   /** {@link VeniceAdaptiveThrottlerType} Type of adaptive throttler: pubsub_consumption_records_count, pubsub_consumption_bandwidth, etc. */
-  VENICE_ADAPTIVE_THROTTLER_TYPE("venice.adaptive_throttler.type");
+  VENICE_ADAPTIVE_THROTTLER_TYPE("venice.adaptive_throttler.type"),
+
+  /** {@link VeniceHeartbeatComponent} Heartbeat monitoring thread: reporter or logger. */
+  VENICE_HEARTBEAT_COMPONENT("venice.heartbeat.component");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

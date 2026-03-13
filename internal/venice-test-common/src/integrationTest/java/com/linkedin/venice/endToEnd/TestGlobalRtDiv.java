@@ -53,6 +53,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.StoreInfo;
@@ -518,11 +519,16 @@ public class TestGlobalRtDiv {
     LOGGER.info("Stopping leader server: {}", leaderNode.getNodeId());
     venice.stopVeniceServer(leaderNode.getPort());
 
+    // Wait for a new leader (different from the stopped one) to be elected.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+      Instance leader = routingDataRepo.getLeaderInstance(topicName, PARTITION);
+      assertNotNull(leader, "New leader should be elected");
+      assertNotEquals(leader.getNodeId(), oldLeaderNode.getNodeId(), "New leader should be different from old leader");
+    });
+
     // Verify that the other server is promoted to leader and load the Global RT DIV State correctly.
     Instance newLeader = verifyGlobalDivStateOnAllServers(topicName, PARTITION);
     LOGGER.info("New leader server: {}", newLeader.getNodeId());
-    // Confirm that leader has changed.
-    assertNotEquals(newLeader.getNodeId(), oldLeaderNode.getNodeId());
 
     // Restart the old leader server to test if it can load the Global RT DIV State correctly as a follower.
     LOGGER.info("Restarting old leader server: {}", oldLeaderNode.getNodeId());
@@ -593,7 +599,7 @@ public class TestGlobalRtDiv {
       assertTrue(producerState.getSegmentNumber() >= 0, "Segment number should be non-negative");
       assertTrue(producerState.getMessageSequenceNumber() >= 0, "Message sequence number should be non-negative");
       assertTrue(producerState.getMessageTimestamp() >= 0, "Message timestamp should be non-negative");
-      assertTrue(producerState.getChecksumType() >= 0 && producerState.getChecksumType() <= 3, "Checksum validity");
+      CheckSumType.valueOf(producerState.getChecksumType()); // throws VeniceMessageException if invalid
       assertNotNull(producerState.getChecksumState(), "Checksum state should not be null");
       assertNotNull(producerState.getAggregates(), "Aggregates should not be null");
       assertNotNull(producerState.getDebugInfo(), "Debug info should not be null");

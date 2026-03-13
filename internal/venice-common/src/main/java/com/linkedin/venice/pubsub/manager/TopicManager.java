@@ -230,6 +230,28 @@ public class TopicManager implements Closeable {
       Optional<Integer> minIsr,
       boolean useFastPubSubOperationTimeout,
       boolean useAlternativeBackend) {
+    createTopic(
+        topicName,
+        numPartitions,
+        replication,
+        retentionTimeMs,
+        logCompaction,
+        minIsr,
+        useFastPubSubOperationTimeout,
+        useAlternativeBackend,
+        Optional.empty());
+  }
+
+  public void createTopic(
+      PubSubTopic topicName,
+      int numPartitions,
+      int replication,
+      long retentionTimeMs,
+      boolean logCompaction,
+      Optional<Integer> minIsr,
+      boolean useFastPubSubOperationTimeout,
+      boolean useAlternativeBackend,
+      Optional<Boolean> uncleanLeaderElectionEnable) {
     long startTimeMs = System.currentTimeMillis();
     long deadlineMs = startTimeMs + (useFastPubSubOperationTimeout
         ? PUBSUB_FAST_OPERATION_TIMEOUT_MS
@@ -240,7 +262,8 @@ public class TopicManager implements Closeable {
         minIsr,
         topicManagerContext.getTopicMinLogCompactionLagMs(),
         Optional.empty(),
-        useAlternativeBackend);
+        useAlternativeBackend,
+        uncleanLeaderElectionEnable);
     logger.info(
         "Creating topic: {} partitions: {} replication: {}, configuration: {}",
         topicName,

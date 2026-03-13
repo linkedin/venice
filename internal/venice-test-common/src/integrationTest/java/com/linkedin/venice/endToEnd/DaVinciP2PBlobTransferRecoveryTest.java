@@ -42,18 +42,14 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIn
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.DaVinciUserApp;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
@@ -83,41 +79,23 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class DaVinciClientP2PBlobTransferTest2 {
-  private static final Logger LOGGER = LogManager.getLogger(DaVinciClientP2PBlobTransferTest2.class);
+public class DaVinciP2PBlobTransferRecoveryTest {
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciP2PBlobTransferRecoveryTest.class);
   private static final int TEST_TIMEOUT = 120_000;
+  private DaVinciClusterFixture fixture;
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
 
   @BeforeClass
   public void setUp() {
-    Utils.thisIsLocalhost();
-    Properties clusterConfig = new Properties();
-    clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
-    clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
-    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
-        .numberOfServers(2)
-        .numberOfRouters(1)
-        .replicationFactor(2)
-        .partitionSize(100)
-        .sslToStorageNodes(false)
-        .sslToKafka(false)
-        .extraProperties(clusterConfig)
-        .build();
-    cluster = ServiceFactory.getVeniceCluster(options);
-    d2Client = new D2ClientBuilder().setZkHosts(cluster.getZk().getAddress())
-        .setZkSessionTimeout(3, TimeUnit.SECONDS)
-        .setZkStartupTimeout(3, TimeUnit.SECONDS)
-        .build();
-    D2ClientUtils.startClient(d2Client);
+    fixture = new DaVinciClusterFixture(true);
+    cluster = fixture.getCluster();
+    d2Client = fixture.getD2Client();
   }
 
   @AfterClass
   public void cleanUp() {
-    if (d2Client != null) {
-      D2ClientUtils.shutdownClient(d2Client);
-    }
-    Utils.closeQuietlyWithErrorLogged(cluster);
+    Utils.closeQuietlyWithErrorLogged(fixture);
   }
 
   /**
@@ -136,6 +114,8 @@ public class DaVinciClientP2PBlobTransferTest2 {
     String storeName = Utils.getUniqueString("test-store");
     setUpStore(storeName, paramsConsumer, properties -> {}, true);
 
+    String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
+
     // Start the first DaVinci Client using DaVinciUserApp
     File configDir = Utils.getTempDataDirectory();
     File configFile = new File(configDir, "dvc-config.properties");
@@ -152,6 +132,9 @@ public class DaVinciClientP2PBlobTransferTest2 {
     props.setProperty("record.transformer.enabled", "false");
     props.setProperty("blob.transfer.manager.enabled", "true");
     props.setProperty("batch.push.report.enabled", "false");
+    props.setProperty("ssl.keystore.path", keyStorePath);
+    File readyMarker = new File(configDir, "ready.marker");
+    props.setProperty("ready.marker.path", readyMarker.getAbsolutePath());
 
     // Write properties to file
     try (FileWriter writer = new FileWriter(configFile)) {
@@ -160,8 +143,13 @@ public class DaVinciClientP2PBlobTransferTest2 {
 
     ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
-    // Wait for the first DaVinci Client to complete ingestion
-    Thread.sleep(60000);
+    // Poll until the forked DaVinci Client signals it is fully initialized
+    // (ingestion complete + blob transfer server ready).
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
+      Assert.assertTrue(readyMarker.exists(), "DaVinciUserApp not yet ready");
+    });
+
+    DaVinciClusterFixture.waitForBlobPeerDiscovery(d2Client, storeName, 1, 0);
 
     // Prepare client 2 configs
     String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -183,9 +171,17 @@ public class DaVinciClientP2PBlobTransferTest2 {
         .put(BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC, 1)
         .put(BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC, 1);
 
-    // set up SSL configs.
-    Properties sslProperties = SslUtils.getVeniceLocalSslProperties();
-    sslProperties.forEach((key, value) -> configBuilder.put((String) key, value));
+    // set up SSL configs using the same keystore path as the forked JVM.
+    configBuilder.put(SSL_KEYSTORE_TYPE, "JKS")
+        .put(SSL_KEYSTORE_LOCATION, keyStorePath)
+        .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_TRUSTSTORE_TYPE, "JKS")
+        .put(SSL_TRUSTSTORE_LOCATION, keyStorePath)
+        .put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
 
     if (!isGracefulShutdown) {
       // if not graceful shutdown, expect the idle event trigger,
@@ -263,6 +259,8 @@ public class DaVinciClientP2PBlobTransferTest2 {
     String storeName = Utils.getUniqueString("test-store");
     setUpStore(storeName, paramsConsumer, properties -> {}, true);
 
+    String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
+
     // Start the first DaVinci Client using DaVinciUserApp
     File configDir = Utils.getTempDataDirectory();
     File configFile = new File(configDir, "dvc-config.properties");
@@ -279,6 +277,9 @@ public class DaVinciClientP2PBlobTransferTest2 {
     props.setProperty("record.transformer.enabled", "false");
     props.setProperty("blob.transfer.manager.enabled", "true");
     props.setProperty("batch.push.report.enabled", "false");
+    props.setProperty("ssl.keystore.path", keyStorePath);
+    File readyMarker = new File(configDir, "ready.marker");
+    props.setProperty("ready.marker.path", readyMarker.getAbsolutePath());
 
     // Write properties to file
     try (FileWriter writer = new FileWriter(configFile)) {
@@ -287,8 +288,13 @@ public class DaVinciClientP2PBlobTransferTest2 {
 
     ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
-    // Wait for the first DaVinci Client to complete ingestion
-    Thread.sleep(60000);
+    // Poll until the forked DaVinci Client signals it is fully initialized
+    // (ingestion complete + blob transfer server ready).
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
+      Assert.assertTrue(readyMarker.exists(), "DaVinciUserApp not yet ready");
+    });
+
+    DaVinciClusterFixture.waitForBlobPeerDiscovery(d2Client, storeName, 1, 0);
 
     // Start the second DaVinci Client using settings for blob transfer
     String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
@@ -310,10 +316,10 @@ public class DaVinciClientP2PBlobTransferTest2 {
         .put(BLOB_TRANSFER_ACL_ENABLED, true)
         .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, -1000000)
         .put(SSL_KEYSTORE_TYPE, "JKS")
-        .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_KEYSTORE_LOCATION, keyStorePath)
         .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_TRUSTSTORE_TYPE, "JKS")
-        .put(SSL_TRUSTSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_TRUSTSTORE_LOCATION, keyStorePath)
         .put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")

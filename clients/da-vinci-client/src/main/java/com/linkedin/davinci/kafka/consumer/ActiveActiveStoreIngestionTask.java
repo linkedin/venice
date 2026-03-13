@@ -64,6 +64,7 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -1337,9 +1338,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // Subscribe (unsubscribe should have processed correctly regardless of remote broker state)
       consumerSubscribe(pubSubTopic, pcs, upstreamOffset, sourceKafkaUrl);
       // syncConsumedUpstreamRTOffsetMapIfNeeded
-      Map<String, PubSubPosition> urlToOffsetMap = new HashMap<>();
-      urlToOffsetMap.put(sourceKafkaUrl, upstreamOffset);
-      syncConsumedUpstreamRTOffsetMapIfNeeded(pcs, urlToOffsetMap);
+      syncConsumedUpstreamRTOffsetMapIfNeeded(pcs, Collections.singletonMap(sourceKafkaUrl, upstreamOffset));
 
       LOGGER.info(
           "Successfully repaired consumption and subscribed to {} at offset {}",

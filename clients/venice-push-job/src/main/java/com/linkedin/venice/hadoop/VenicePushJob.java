@@ -152,6 +152,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
@@ -181,6 +182,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -238,6 +240,11 @@ public class VenicePushJob implements AutoCloseable {
   private VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter;
   /** TODO: refactor to use {@link Lazy} */
 
+  // Externally provided D2Client for controller discovery (optional).
+  // When non-null, VPJ uses this instead of creating one via D2ClientFactory.
+  // The caller is responsible for managing the D2Client lifecycle.
+  private final D2Client externalD2Client;
+
   // Mutable state
   private ControllerClient controllerClient;
   private ControllerClient kmeSchemaSystemStoreControllerClient;
@@ -263,6 +270,8 @@ public class VenicePushJob implements AutoCloseable {
   private final PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
   private PushJobHeartbeatSender pushJobHeartbeatSender = null;
   private volatile boolean pushJobStatusUploadDisabledHasBeenLogged = false;
+  private ScheduledFuture<?> pushJobKillCheckScheduledFuture;
+  private volatile boolean pushJobKilledByController = false;
   private final ScheduledExecutorService timeoutExecutor;
   private static final int VERSION_SWAP_BUFFER_TIME_MINUTES = 20;
 
@@ -271,10 +280,24 @@ public class VenicePushJob implements AutoCloseable {
    * @param vanillaProps  Property bag for the job
    */
   public VenicePushJob(String jobId, Properties vanillaProps) {
+    this(jobId, vanillaProps, null);
+  }
+
+  /**
+   * @param jobId  id of the job
+   * @param vanillaProps  Property bag for the job
+   * @param d2Client  externally managed D2Client for controller discovery, or null to use D2ClientFactory
+   */
+  public VenicePushJob(String jobId, Properties vanillaProps, D2Client d2Client) {
     this.jobId = jobId;
+    this.externalD2Client = d2Client;
     this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
-    this.timeoutExecutor = Executors
-        .newSingleThreadScheduledExecutor(new DaemonThreadFactory(this.getClass().getName() + "-VPJTimeoutExecutor"));
+    String storeName = this.props.getString(VENICE_STORE_NAME_PROP);
+    LogContext logContext =
+        LogContext.newBuilder().setComponentName("VenicePushJob").setInstanceName(storeName).build();
+    this.timeoutExecutor = Executors.newScheduledThreadPool(
+        2,
+        new DaemonThreadFactory(this.getClass().getName() + "-VPJTimeoutExecutor", logContext));
     LOGGER.info("Constructing {}: {}", VenicePushJob.class.getSimpleName(), props.toString(true));
     this.sslProperties = Lazy.of(() -> {
       try {
@@ -858,7 +881,7 @@ public class VenicePushJob implements AutoCloseable {
         LOGGER.info("Incremental Push Version: {}", pushJobSetting.incrementalPushVersion);
         getVeniceWriter(pushJobSetting)
             .broadcastStartOfIncrementalPush(pushJobSetting.incrementalPushVersion, new HashMap<>());
-        runJobAndUpdateStatus();
+        runJobWithKillDetection();
         getVeniceWriter(pushJobSetting)
             .broadcastEndOfIncrementalPush(pushJobSetting.incrementalPushVersion, Collections.emptyMap());
       } else {
@@ -880,7 +903,7 @@ public class VenicePushJob implements AutoCloseable {
            * {@link createNewStoreVersion(PushJobSetting, long, ControllerClient, String, VeniceProperties)}
            */
         }
-        runJobAndUpdateStatus();
+        runJobWithKillDetection();
 
         if (!pushJobSetting.suppressEndOfPushMessage) {
           if (pushJobSetting.sendControlMessagesDirectly) {
@@ -1023,6 +1046,92 @@ public class VenicePushJob implements AutoCloseable {
           "Failing push-job for store " + pushJobSetting.storeName + " which is still running after " + timeoutMs
               + " ms (" + TimeUnit.MILLISECONDS.toHours(timeoutMs) + " hours)");
     }, timeoutMs, TimeUnit.MILLISECONDS);
+  }
+
+  /**
+   * Runs the data writer job with a concurrent kill-check monitor. The monitor periodically queries
+   * the controller for push status and kills the data writer if the push has been terminated.
+   *
+   * Note: There is an intentional race window where the monitor may set {@code pushJobKilledByController}
+   * after data writing completes but before the monitor is cancelled. This is correct behavior — if the
+   * push was killed, any data written is wasted, and we should still fail the job.
+   */
+  @VisibleForTesting
+  void runJobWithKillDetection() {
+    pushJobKilledByController = false;
+    startPushJobKillCheckMonitor();
+    try {
+      runJobAndUpdateStatus();
+    } finally {
+      stopPushJobKillCheckMonitor();
+    }
+    throwIfPushJobKilledByController();
+  }
+
+  /**
+   * Schedules a periodic task that checks whether the push job has been killed by the controller.
+   * This runs during the data writing phase to detect early kills (e.g., when a user push supersedes
+   * a repush) and abort the data writer job promptly instead of wasting resources.
+   */
+  @VisibleForTesting
+  void startPushJobKillCheckMonitor() {
+    String topicToMonitor = getTopicToMonitor(pushJobSetting);
+    long intervalMs = pushJobSetting.pollJobStatusIntervalMs;
+    LOGGER.info(
+        "Starting push job kill check monitor for store: {}, version: {} with interval: {} ms",
+        pushJobSetting.storeName,
+        pushJobSetting.version,
+        intervalMs);
+    pushJobKillCheckScheduledFuture = timeoutExecutor.scheduleWithFixedDelay(() -> {
+      try {
+        if (pushJobKilledByController) {
+          return;
+        }
+        JobStatusQueryResponse response = ControllerClient.retryableRequest(
+            controllerClient,
+            pushJobSetting.controllerStatusPollRetries,
+            client -> client.queryOverallJobStatus(topicToMonitor, Optional.empty(), null, false));
+        // response.isError() indicates an HTTP/transport error (failed to reach the controller),
+        // NOT that the push status is ERROR. Push status is checked separately below via status.isError().
+        if (response.isError()) {
+          LOGGER.error(
+              "Kill check monitor could not query job status for store: {}, version: {}. Error: {}",
+              pushJobSetting.storeName,
+              pushJobSetting.version,
+              response.getError());
+          return;
+        }
+        ExecutionStatus status = getExecutionStatusFromControllerResponse(response);
+        if (status.isTerminal() && status.isError()) {
+          LOGGER.error(
+              "Kill check monitor detected that push job for store: {}, version: {} has been killed. Status: {}",
+              pushJobSetting.storeName,
+              pushJobSetting.version,
+              status);
+          pushJobKilledByController = true;
+          killDataWriterJob();
+        }
+      } catch (Exception e) {
+        LOGGER.warn("Kill check monitor encountered an error while checking job status", e);
+      }
+    }, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
+  }
+
+  @VisibleForTesting
+  void stopPushJobKillCheckMonitor() {
+    if (pushJobKillCheckScheduledFuture != null) {
+      pushJobKillCheckScheduledFuture.cancel(false);
+      pushJobKillCheckScheduledFuture = null;
+      LOGGER.info("Stopped push job kill check monitor");
+    }
+  }
+
+  private void throwIfPushJobKilledByController() {
+    if (pushJobKilledByController) {
+      throw new VeniceException(
+          "Push job for store " + pushJobSetting.storeName + " (topic: " + pushJobSetting.topic
+              + ") was killed by the controller during the data writing phase.");
+    }
   }
 
   private void buildHDFSSchemaDir() throws IOException {
@@ -1428,8 +1537,7 @@ public class VenicePushJob implements AutoCloseable {
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
     if (useD2ControllerClient) {
-      // TODO: we probably need to provide more for constructing d2Client here.
-      D2Client d2Client = D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
+      D2Client d2Client = resolveD2Client(d2ZkHosts, sslFactory);
       return D2ControllerClientFactory
           .discoverAndConstructControllerClient(storeName, controllerD2ServiceName, retryAttempts, d2Client);
     } else {
@@ -1439,6 +1547,11 @@ public class VenicePushJob implements AutoCloseable {
           sslFactory,
           retryAttempts);
     }
+  }
+
+  // Visible for testing
+  D2Client resolveD2Client(String d2ZkHosts, Optional<SSLFactory> sslFactory) {
+    return externalD2Client != null ? externalD2Client : D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
   }
 
   private Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {

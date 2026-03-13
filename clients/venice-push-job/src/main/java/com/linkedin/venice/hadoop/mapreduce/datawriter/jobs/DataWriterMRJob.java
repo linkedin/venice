@@ -56,6 +56,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CRE
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.JobClientWrapper;
@@ -77,6 +78,7 @@ import com.linkedin.venice.hadoop.mapreduce.datawriter.partition.VeniceMRPartiti
 import com.linkedin.venice.hadoop.mapreduce.datawriter.reduce.VeniceReducer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.CounterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -94,6 +96,7 @@ import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Partitioner;
 import org.apache.hadoop.mapred.RunningJob;
+import org.apache.hadoop.mapreduce.Cluster;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -330,7 +333,6 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     }
   }
 
-  // Visible for testing
   public void setJobClientWrapper(JobClientWrapper jobClientWrapper) {
     this.jobClientWrapper = jobClientWrapper;
   }
@@ -393,8 +395,56 @@ public class DataWriterMRJob extends DataWriterComputeJob {
 
   @Override
   public void close() throws IOException {
-    if (runningJob != null && !runningJob.isComplete()) {
-      runningJob.killJob();
+    try {
+      if (runningJob != null && !runningJob.isComplete()) {
+        runningJob.killJob();
+      }
+    } finally {
+      cleanUpMRStagingDir();
     }
+  }
+
+  /**
+   * Clean up the MR job's staging directory in HDFS. When a MapReduce job is submitted, Hadoop copies
+   * the job jar and configuration to a staging directory (e.g., {@code /user/<username>/.staging/<job_id>}).
+   * This directory should be cleaned up by the framework after job completion, but it may not always happen
+   * (e.g., on client crashes or AM failures), leading to accumulation over time.
+   */
+  private void cleanUpMRStagingDir() {
+    if (runningJob == null || jobConf == null) {
+      return;
+    }
+    Cluster cluster = null;
+    try {
+      cluster = createCluster(jobConf);
+      Path stagingAreaDir = cluster.getStagingAreaDir();
+      Path jobStagingDir = new Path(stagingAreaDir, runningJob.getID().toString());
+      HadoopUtils.cleanUpHDFSPath(jobStagingDir.toString(), true);
+    } catch (Exception e) {
+      LOGGER.warn("Failed to resolve MR staging directory for job {}", runningJob.getID(), e);
+    } finally {
+      if (cluster != null) {
+        try {
+          cluster.close();
+        } catch (IOException e) {
+          LOGGER.warn("Failed to close Cluster object", e);
+        }
+      }
+    }
+  }
+
+  @VisibleForTesting
+  void setRunningJob(RunningJob runningJob) {
+    this.runningJob = runningJob;
+  }
+
+  @VisibleForTesting
+  void setJobConf(JobConf jobConf) {
+    this.jobConf = jobConf;
+  }
+
+  @VisibleForTesting
+  Cluster createCluster(JobConf conf) throws IOException {
+    return new Cluster(conf);
   }
 }

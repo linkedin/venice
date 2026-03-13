@@ -6,15 +6,16 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 
 
 public class TestStringRecordTransformer extends DaVinciRecordTransformer<Integer, String, String> {
-  private final Map<Integer, String> inMemoryDB = new HashMap<>();
-  private int transformInvocationCount = 0;
+  private final Map<Integer, String> inMemoryDB = new ConcurrentHashMap<>();
+  private final AtomicInteger transformInvocationCount = new AtomicInteger();
 
   public TestStringRecordTransformer(
       String storeName,
@@ -34,7 +35,7 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
       DaVinciRecordTransformerRecordMetadata recordMetadata) {
     String valueStr = convertUtf8ToString(value.get());
     String transformedValue = valueStr + "Transformed";
-    transformInvocationCount++;
+    transformInvocationCount.incrementAndGet();
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, transformedValue);
   }
 
@@ -88,7 +89,7 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   }
 
   public int getTransformInvocationCount() {
-    return transformInvocationCount;
+    return transformInvocationCount.get();
   }
 
   @Override

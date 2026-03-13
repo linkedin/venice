@@ -26,6 +26,7 @@ public class ServerMetadataServiceStatsOtelTest {
   private static final String TEST_METRIC_PREFIX = "server";
   private static final String TEST_CLUSTER_NAME = "test-cluster";
   private static final String TEST_STORE_NAME = "test-store";
+  private static final String OTEL_METRIC_NAME = ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName();
   private static final String TEHUTI_INVOKE_METRIC = ".ServerMetadataStats--request_based_metadata_invoke_count.Rate";
   private static final String TEHUTI_FAILURE_METRIC = ".ServerMetadataStats--request_based_metadata_failure_count.Rate";
   private InMemoryMetricReader inMemoryMetricReader;
@@ -53,14 +54,26 @@ public class ServerMetadataServiceStatsOtelTest {
   }
 
   @Test
+  public void testRecordInvokeIsTehutiOnlyNoOtel() {
+    stats.recordRequestBasedMetadataInvokeCount();
+    stats.recordRequestBasedMetadataInvokeCount();
+
+    // Tehuti invoke sensor recorded
+    assertTrue(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value() > 0);
+
+    // OTel: no metric data produced (invoke is Tehuti-only by design)
+    assertTrue(inMemoryMetricReader.collectAllMetrics().isEmpty(), "Invoke count should not produce any OTel metrics");
+
+    // Tehuti failure sensor unaffected
+    assertEquals(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value(), 0d);
+  }
+
+  @Test
   public void testRecordFailureUsesStoreNameForNonNoStoreException() {
     stats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME, new VeniceException("some error"));
 
     // OTel counter recorded under the actual store name (not UNKNOWN_STORE_NAME)
-    validateCounter(
-        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
-        1,
-        buildExpectedAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.FAIL));
+    validateCounter(OTEL_METRIC_NAME, 1, buildExpectedAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.FAIL));
 
     // Tehuti failure sensor also recorded (dual-recording), invoke sensor unaffected
     assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
@@ -73,7 +86,7 @@ public class ServerMetadataServiceStatsOtelTest {
 
     // OTel counter recorded
     validateCounter(
-        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
+        OTEL_METRIC_NAME,
         1,
         buildExpectedAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.SUCCESS));
 
@@ -89,14 +102,11 @@ public class ServerMetadataServiceStatsOtelTest {
     stats.recordRequestBasedMetadataFailureCount(TEST_STORE_NAME, null);
 
     validateCounter(
-        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
+        OTEL_METRIC_NAME,
         2,
         buildExpectedAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.SUCCESS));
 
-    validateCounter(
-        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
-        1,
-        buildExpectedAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.FAIL));
+    validateCounter(OTEL_METRIC_NAME, 1, buildExpectedAttributes(TEST_STORE_NAME, VeniceResponseStatusCategory.FAIL));
 
     // Tehuti: only failure sensor affected, invoke unaffected
     assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
@@ -112,15 +122,8 @@ public class ServerMetadataServiceStatsOtelTest {
     stats.recordRequestBasedMetadataSuccessCount(storeA);
     stats.recordRequestBasedMetadataSuccessCount(storeB);
 
-    validateCounter(
-        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
-        2,
-        buildExpectedAttributes(storeA, VeniceResponseStatusCategory.SUCCESS));
-
-    validateCounter(
-        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
-        1,
-        buildExpectedAttributes(storeB, VeniceResponseStatusCategory.SUCCESS));
+    validateCounter(OTEL_METRIC_NAME, 2, buildExpectedAttributes(storeA, VeniceResponseStatusCategory.SUCCESS));
+    validateCounter(OTEL_METRIC_NAME, 1, buildExpectedAttributes(storeB, VeniceResponseStatusCategory.SUCCESS));
   }
 
   @Test
@@ -142,7 +145,7 @@ public class ServerMetadataServiceStatsOtelTest {
 
     // OTel counter recorded under the sentinel store name
     validateCounter(
-        ServerMetadataOtelMetricEntity.METADATA_REQUEST_COUNT.getMetricName(),
+        OTEL_METRIC_NAME,
         1,
         buildExpectedAttributes(UNKNOWN_STORE_NAME, VeniceResponseStatusCategory.FAIL));
 

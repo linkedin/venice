@@ -131,6 +131,236 @@ public class ChunkAssemblerTest {
     Assert.assertEquals(valueRecord.writerSchemaId(), writerSchemaId);
   }
 
+  /**
+   * Verifies that when isRmdChunkingEnabled=true, RMD chunks (putValue empty, replicationMetadataPayload non-empty)
+   * are buffered, then assembled from the RMD manifest on the manifest message, and the assembled RMD bytes are
+   * returned in ByteBufferValueRecord.replicationMetadataPayload().
+   */
+  @Test
+  public void testRmdChunkingAssembly() {
+    StorageEngine mockStorageEngine = mock(StorageEngine.class);
+    ChunkAssembler assembler = new RocksDBChunkAssembler(mockStorageEngine, false, true);
+    PubSubTopicPartition mockPartition = mock(PubSubTopicPartition.class);
+    PubSubTopic mockTopic = mock(PubSubTopic.class);
+    doReturn(0).when(mockPartition).getPartitionNumber();
+    doReturn("test-rmd-chunking-topic").when(mockTopic).getName();
+    doReturn(mockTopic).when(mockPartition).getPubSubTopic();
+
+    VeniceCompressor compressor = new NoopCompressor();
+    byte[] serializedKey = "rmd-test-key".getBytes();
+    int writerSchemaId = 3;
+    Map<KafkaKey, Put> valueCunksMap = new HashMap<>();
+    Map<KafkaKey, Put> rmdChunksMap = new HashMap<>();
+
+    // Build value chunks
+    ChunkedPayloadAndManifest valueManifestResult = newChunksAndManifest(serializedKey, writerSchemaId, valueCunksMap);
+    // Build RMD chunks (isValuePayload=false) with an offset starting after value chunks
+    int valueChunkCount = valueManifestResult.getChunkedValueManifest().keysWithChunkIdSuffix.size();
+    byte[] rmdPayload = new byte[2 * BYTES_PER_MB];
+    for (int i = 0; i < rmdPayload.length; i++) {
+      rmdPayload[i] = (byte) (i % 127);
+    }
+    ProducerMetadata producerMetadata = new ProducerMetadata(new GUID(), 0, 0, 0L, 0L);
+    ChunkedPayloadAndManifest rmdManifestResult = WriterChunkingHelper.chunkPayloadAndSend(
+        serializedKey,
+        rmdPayload,
+        MessageType.PUT,
+        false, // isValuePayload=false → RMD chunks
+        writerSchemaId,
+        valueChunkCount, // start chunk index after value chunks
+        false,
+        () -> "rmd-size-report",
+        VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES,
+        new KeyWithChunkingSuffixSerializer(),
+        ((keyProvider, put) -> rmdChunksMap.put(keyProvider.getKey(producerMetadata), put)));
+
+    PubSubPosition pos = ApacheKafkaOffsetPosition.of(1L);
+
+    // Feed value chunks
+    for (Map.Entry<KafkaKey, Put> entry: valueCunksMap.entrySet()) {
+      byte[] key = entry.getKey().getKey();
+      byte[] stored =
+          ValueRecord.create(entry.getValue().getSchemaId(), ByteUtils.extractByteArray(entry.getValue().putValue))
+              .serialize();
+      doReturn(stored).when(mockStorageEngine).get(0, ByteBuffer.wrap(key));
+      Assert.assertNull(
+          assembler.bufferAndAssembleRecord(
+              mockPartition,
+              AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
+              key,
+              entry.getValue().getPutValue(),
+              entry.getValue().replicationMetadataPayload,
+              pos,
+              compressor));
+      verify(mockStorageEngine, times(1)).put(eq(0), eq(key), eq(stored));
+    }
+
+    // Feed RMD chunks (putValue is EMPTY_BYTE_BUFFER, replicationMetadataPayload has data).
+    // RMD chunks are looked up via get(int, byte[]) directly in ChunkAssembler (not via RawBytesChunkingAdapter),
+    // so mock the byte[] overload rather than the ByteBuffer overload.
+    for (Map.Entry<KafkaKey, Put> entry: rmdChunksMap.entrySet()) {
+      byte[] key = entry.getKey().getKey();
+      byte[] stored =
+          ValueRecord
+              .create(
+                  entry.getValue().getSchemaId(),
+                  ByteUtils.extractByteArray(entry.getValue().replicationMetadataPayload))
+              .serialize();
+      doReturn(stored).when(mockStorageEngine).get(0, key);
+      Assert.assertNull(
+          assembler.bufferAndAssembleRecord(
+              mockPartition,
+              AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
+              key,
+              entry.getValue().getPutValue(),
+              entry.getValue().replicationMetadataPayload,
+              pos,
+              compressor));
+      verify(mockStorageEngine, times(1)).put(eq(0), eq(key), eq(stored));
+    }
+
+    // Build value manifest bytes and rmd manifest bytes for the manifest message
+    ByteBuffer valueManifestBytes =
+        chunkedValueManifestSerializer.serialize(valueManifestResult.getChunkedValueManifest());
+    byte[] valueManifestByteArray =
+        ValueRecord
+            .create(
+                AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+                ByteUtils.extractByteArray(valueManifestBytes))
+            .serialize();
+    doReturn(valueManifestByteArray).when(mockStorageEngine).get(0, ByteBuffer.wrap(serializedKey));
+
+    ByteBuffer rmdManifestBytes = chunkedValueManifestSerializer.serialize(rmdManifestResult.getChunkedValueManifest());
+
+    // Send the manifest message with the RMD manifest in replicationMetadataPayload
+    ByteBufferValueRecord<ByteBuffer> result = assembler.bufferAndAssembleRecord(
+        mockPartition,
+        AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+        serializedKey,
+        valueManifestBytes,
+        rmdManifestBytes,
+        ApacheKafkaOffsetPosition.of(10L),
+        compressor);
+
+    Assert.assertNotNull(result);
+    Assert.assertEquals(result.writerSchemaId(), writerSchemaId);
+    // The assembled RMD should equal the original RMD payload
+    Assert.assertNotNull(result.replicationMetadataPayload());
+    byte[] assembledRmd = ByteUtils.extractByteArray(result.replicationMetadataPayload());
+    Assert.assertEquals(assembledRmd, rmdPayload);
+  }
+
+  /**
+   * Verifies that a missing RMD chunk (null returned from storage) causes a VeniceException when
+   * skipFailedToAssembleRecords=false, and returns null when skipFailedToAssembleRecords=true.
+   */
+  @Test
+  public void testRmdChunkingMissingChunkThrows() {
+    StorageEngine mockStorageEngine = mock(StorageEngine.class);
+    PubSubTopicPartition mockPartition = mock(PubSubTopicPartition.class);
+    PubSubTopic mockTopic = mock(PubSubTopic.class);
+    doReturn(0).when(mockPartition).getPartitionNumber();
+    doReturn("test-rmd-missing-chunk-topic").when(mockTopic).getName();
+    doReturn(mockTopic).when(mockPartition).getPubSubTopic();
+    VeniceCompressor compressor = new NoopCompressor();
+
+    byte[] serializedKey = "missing-rmd-key".getBytes();
+    int writerSchemaId = 2;
+    Map<KafkaKey, Put> valueCunksMap = new HashMap<>();
+    ChunkedPayloadAndManifest valueManifest = newChunksAndManifest(serializedKey, writerSchemaId, valueCunksMap);
+    int valueChunkCount = valueManifest.getChunkedValueManifest().keysWithChunkIdSuffix.size();
+
+    // Build a small RMD manifest whose chunks will NOT be registered in mockStorageEngine
+    byte[] rmdPayload = new byte[2 * BYTES_PER_MB];
+    ChunkedPayloadAndManifest rmdManifest = WriterChunkingHelper.chunkPayloadAndSend(
+        serializedKey,
+        rmdPayload,
+        MessageType.PUT,
+        false,
+        writerSchemaId,
+        valueChunkCount,
+        false,
+        () -> "rmd-size-report",
+        VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES,
+        new KeyWithChunkingSuffixSerializer(),
+        ((keyProvider, put) -> {
+          /* intentionally don't register in rmdChunksMap – chunks will be missing */
+        }));
+
+    // Register value chunks so the value assembles fine
+    ByteBuffer valueManifestBytes = chunkedValueManifestSerializer.serialize(valueManifest.getChunkedValueManifest());
+    byte[] valueManifestByteArray =
+        ValueRecord
+            .create(
+                AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+                ByteUtils.extractByteArray(valueManifestBytes))
+            .serialize();
+    doReturn(valueManifestByteArray).when(mockStorageEngine).get(0, ByteBuffer.wrap(serializedKey));
+    for (Map.Entry<KafkaKey, Put> entry: valueCunksMap.entrySet()) {
+      byte[] key = entry.getKey().getKey();
+      byte[] stored =
+          ValueRecord.create(entry.getValue().getSchemaId(), ByteUtils.extractByteArray(entry.getValue().putValue))
+              .serialize();
+      doReturn(stored).when(mockStorageEngine).get(0, ByteBuffer.wrap(key));
+    }
+
+    ByteBuffer rmdManifestBytes = chunkedValueManifestSerializer.serialize(rmdManifest.getChunkedValueManifest());
+    PubSubPosition pos = ApacheKafkaOffsetPosition.of(10L);
+
+    ChunkAssembler throwAssembler = new RocksDBChunkAssembler(mockStorageEngine, false, true);
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> throwAssembler.bufferAndAssembleRecord(
+            mockPartition,
+            AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+            serializedKey,
+            valueManifestBytes,
+            rmdManifestBytes,
+            pos,
+            compressor));
+
+    ChunkAssembler skipAssembler = new RocksDBChunkAssembler(mockStorageEngine, true, true);
+    Assert.assertNull(
+        skipAssembler.bufferAndAssembleRecord(
+            mockPartition,
+            AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+            serializedKey,
+            valueManifestBytes,
+            rmdManifestBytes,
+            pos,
+            compressor));
+  }
+
+  /**
+   * Verifies that when isRmdChunkingEnabled=false (default), a non-empty replicationMetadataPayload on a CHUNK
+   * message is ignored (not stored), so chunk messages with RMD bytes are treated as value-less and return null.
+   */
+  @Test
+  public void testRmdChunkingDisabledIgnoresRmdChunks() {
+    StorageEngine mockStorageEngine = mock(StorageEngine.class);
+    ChunkAssembler assembler = new RocksDBChunkAssembler(mockStorageEngine, false); // isRmdChunkingEnabled=false
+    PubSubTopicPartition mockPartition = mock(PubSubTopicPartition.class);
+    doReturn(0).when(mockPartition).getPartitionNumber();
+
+    byte[] key = "some-key".getBytes();
+    ByteBuffer emptyValue = ByteBuffer.allocate(0);
+    ByteBuffer rmdBytes = ByteBuffer.wrap(new byte[] { 1, 2, 3 });
+    PubSubPosition pos = ApacheKafkaOffsetPosition.of(1L);
+
+    // A CHUNK message with empty putValue and non-empty rmd should be ignored (no put to storage, returns null)
+    Assert.assertNull(
+        assembler.bufferAndAssembleRecord(
+            mockPartition,
+            AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
+            key,
+            emptyValue,
+            rmdBytes,
+            pos,
+            new NoopCompressor()));
+
+    verify(mockStorageEngine, times(0)).put(eq(0), eq(key), org.mockito.ArgumentMatchers.<byte[]>any());
+  }
+
   @Test
   public void testDecompressValueIfNeededSkipsDecompressionForChunkedRecords() throws IOException {
     GzipCompressor compressor = new GzipCompressor();
