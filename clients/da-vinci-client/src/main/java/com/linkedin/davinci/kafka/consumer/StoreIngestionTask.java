@@ -2619,26 +2619,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopicPartition topicPartition,
       int partition,
       String topic,
-      PartitionConsumptionState partitionConsumptionState,
+      PartitionConsumptionState newPartitionConsumptionState,
       OffsetRecord offsetRecord) {
     long consumptionStatePrepTimeStart = System.currentTimeMillis();
-    if (!checkDatabaseIntegrity(partition, topic, offsetRecord, partitionConsumptionState)) {
+    if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
       LOGGER.warn(
           "Restart ingestion from the beginning by resetting OffsetRecord for topic-partition: {}. Replica: {}",
           getReplicaId(topic, partition),
-          partitionConsumptionState.getReplicaId());
+          newPartitionConsumptionState.getReplicaId());
       resetOffset(partition, topicPartition, true);
-      partitionConsumptionState = partitionConsumptionStateMap.get(partition);
-      offsetRecord = partitionConsumptionState.getOffsetRecord();
+      newPartitionConsumptionState = partitionConsumptionStateMap.get(partition);
+      offsetRecord = newPartitionConsumptionState.getOffsetRecord();
     }
 
-    checkConsumptionStateWhenStart(offsetRecord, partitionConsumptionState);
-    reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
+    checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
+    reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
     versionedIngestionStats.recordSubscribePrepLatency(
         storeName,
         versionNumber,
         LatencyUtils.getElapsedTimeFromMsToMs(consumptionStatePrepTimeStart));
-    updateLeaderTopicOnFollower(partitionConsumptionState);
+    updateLeaderTopicOnFollower(newPartitionConsumptionState);
 
     // Subscribe to local version topic.
     PubSubPosition subscribePosition;
@@ -2664,10 +2664,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         });
       }
     } else {
-      subscribePosition = getLocalVtSubscribePosition(partitionConsumptionState);
+      subscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
       LOGGER.info("Subscribed to local: {} position: {}", topicPartition, subscribePosition);
     }
-    consumerSubscribe(topicPartition.getPubSubTopic(), partitionConsumptionState, subscribePosition, localKafkaServer);
+    consumerSubscribe(
+        topicPartition.getPubSubTopic(),
+        newPartitionConsumptionState,
+        subscribePosition,
+        localKafkaServer);
 
     if (getServerConfig().isIngestionProgressLoggingEnabled() && !subscribePosition.isSymbolic()) {
       try {
