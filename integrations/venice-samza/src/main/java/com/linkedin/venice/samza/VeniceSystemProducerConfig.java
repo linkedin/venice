@@ -273,6 +273,7 @@ public class VeniceSystemProducerConfig {
     public VeniceSystemProducerConfig build() {
       Objects.requireNonNull(storeName, "storeName cannot be null");
       Objects.requireNonNull(pushType, "pushType cannot be null");
+      Objects.requireNonNull(samzaJobId, "samzaJobId cannot be null");
 
       boolean hasDiscoveryUrl = discoveryUrl != null;
       boolean hasD2Clients = providedChildColoD2Client != null || providedPrimaryControllerColoD2Client != null;

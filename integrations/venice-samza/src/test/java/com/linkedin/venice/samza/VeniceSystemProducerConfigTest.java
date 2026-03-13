@@ -17,6 +17,15 @@ public class VeniceSystemProducerConfigTest {
         .build();
   }
 
+  @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "samzaJobId cannot be null")
+  public void testBuilderRejectsNullSamzaJobId() {
+    new VeniceSystemProducerConfig.Builder().setStoreName("store")
+        .setPushType(Version.PushType.STREAM)
+        .setRunningFabric("dc-0")
+        .setDiscoveryUrl("http://discovery")
+        .build();
+  }
+
   @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "pushType cannot be null")
   public void testBuilderRejectsNullPushType() {
     new VeniceSystemProducerConfig.Builder().setStoreName("store")
