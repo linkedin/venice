@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
 import com.linkedin.davinci.storage.ReadMetadataRetriever;
@@ -12,6 +13,7 @@ import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.grpc.VeniceGrpcServer;
 import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.listener.grpc.VeniceIngestionMonitorServiceImpl;
 import com.linkedin.venice.listener.grpc.VeniceReadServiceImpl;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -54,6 +56,7 @@ public class ListenerService extends AbstractVeniceService {
   private final int port;
   private final int grpcPort;
   private VeniceGrpcServer grpcServer;
+  private VeniceIngestionMonitorServiceImpl ingestionMonitorService;
   private final boolean isGrpcEnabled;
   private final VeniceServerConfig serverConfig;
   private final ThreadPoolExecutor executor;
@@ -78,7 +81,8 @@ public class ListenerService extends AbstractVeniceService {
       Optional<DynamicAccessController> storeAccessController,
       DiskHealthCheckService diskHealthService,
       StorageEngineBackedCompressorFactory compressorFactory,
-      Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
+      Optional<ResourceReadUsageTracker> resourceReadUsageTracker,
+      Optional<KafkaStoreIngestionService> kafkaStoreIngestionService) {
 
     this.serverConfig = serverConfig;
     this.port = serverConfig.getListenerPort();
@@ -173,6 +177,11 @@ public class ListenerService extends AbstractVeniceService {
           .setExecutor(grpcExecutor)
           .setInterceptors(interceptors);
 
+      kafkaStoreIngestionService.ifPresent(service -> {
+        ingestionMonitorService = new VeniceIngestionMonitorServiceImpl(service);
+        grpcServerBuilder.addService(ingestionMonitorService);
+      });
+
       sslFactory.ifPresent(grpcServerBuilder::setSslFactory);
 
       grpcServer = new VeniceGrpcServer(grpcServerBuilder.build());
@@ -211,6 +220,9 @@ public class ListenerService extends AbstractVeniceService {
     bossGroup.shutdownGracefully();
     shutdown.sync();
 
+    if (ingestionMonitorService != null) {
+      ingestionMonitorService.close();
+    }
     if (grpcServer != null) {
       LOGGER.info("Stopping gRPC service on port {}", grpcPort);
       grpcServer.stop();

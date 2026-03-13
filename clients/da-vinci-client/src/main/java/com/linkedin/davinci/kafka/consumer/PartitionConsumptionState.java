@@ -143,6 +143,12 @@ public class PartitionConsumptionState {
   private volatile DolStamp dolStamp = null;
 
   /**
+   * Optional per-partition ingestion monitor. Only non-null when a gRPC monitoring session is active.
+   * The volatile read (~1-2ns) is negligible overhead on the hot path.
+   */
+  private volatile PartitionIngestionMonitor ingestionMonitor = null;
+
+  /**
    * The highest leadership term observed by this replica. Currently used only
    * for troubleshooting. This will eventually become part of the durable state.
    */
@@ -570,6 +576,14 @@ public class PartitionConsumptionState {
 
   public void clearDolState() {
     this.dolStamp = null;
+  }
+
+  public PartitionIngestionMonitor getIngestionMonitor() {
+    return ingestionMonitor;
+  }
+
+  public void setIngestionMonitor(PartitionIngestionMonitor monitor) {
+    this.ingestionMonitor = monitor;
   }
 
   public long getHighestLeadershipTerm() {
