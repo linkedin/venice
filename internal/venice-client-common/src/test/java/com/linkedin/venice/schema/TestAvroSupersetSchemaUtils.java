@@ -525,32 +525,51 @@ public class TestAvroSupersetSchemaUtils {
   }
 
   @Test
-  public void testGenerateSupersetSchemaWithNestedRecordAndNewEnumField() {
-    // v1: SubItem has two fields; Date uses plain "int" in its union fields.
+  public void testGenerateSupersetSchemaWithAnnotatedPrimitiveTypesAndNewEnumField() {
+    // v1: plain primitive types throughout.
+    // - InnerRecord.tag uses a plain null in its union (covers NULL type)
+    // - DateRecord uses plain int/long/boolean/float/double/bytes (covers remaining primitive types)
     String schemaV1 = "{" + "\"type\":\"record\",\"name\":\"OuterRecord\",\"namespace\":\"com.example\","
         + "\"fields\":[" + "  {\"name\":\"items\",\"type\":{\"type\":\"array\",\"items\":{"
         + "    \"type\":\"record\",\"name\":\"InnerRecord\"," + "    \"fields\":["
-        + "      {\"name\":\"id\",\"type\":\"string\"}," + "      {\"name\":\"subItems\","
+        + "      {\"name\":\"id\",\"type\":\"string\"},"
+        // NULL: plain null in union
+        + "      {\"name\":\"tag\",\"type\":[\"null\",\"string\"],\"default\":null}," + "      {\"name\":\"subItems\","
         + "       \"type\":[\"null\",{\"type\":\"array\",\"items\":{"
         + "         \"type\":\"record\",\"name\":\"SubItem\"," + "         \"fields\":["
         + "           {\"name\":\"ref\",\"type\":\"string\"},"
         + "           {\"name\":\"categoryRef\",\"type\":[\"null\",\"string\"],\"default\":null}" + "         ]"
         + "       }}],\"default\":null}," + "      {\"name\":\"startDate\"," + "       \"type\":[\"null\",{"
         + "         \"type\":\"record\",\"name\":\"DateRecord\",\"namespace\":\"com.example.common\","
-        + "         \"fields\":[" + "           {\"name\":\"year\",\"type\":[\"null\",\"int\"]},"
+        + "         \"fields\":["
+        // INT
+        + "           {\"name\":\"year\",\"type\":[\"null\",\"int\"]},"
         + "           {\"name\":\"month\",\"type\":[\"null\",\"int\"]},"
-        + "           {\"name\":\"day\",\"type\":[\"null\",\"int\"]}" + "         ]" + "       }],\"default\":null},"
+        + "           {\"name\":\"day\",\"type\":[\"null\",\"int\"]},"
+        // LONG
+        + "           {\"name\":\"timestamp\",\"type\":[\"null\",\"long\"]},"
+        // BOOLEAN
+        + "           {\"name\":\"active\",\"type\":[\"null\",\"boolean\"]},"
+        // FLOAT
+        + "           {\"name\":\"score\",\"type\":[\"null\",\"float\"]},"
+        // DOUBLE
+        + "           {\"name\":\"weight\",\"type\":[\"null\",\"double\"]},"
+        // BYTES
+        + "           {\"name\":\"data\",\"type\":[\"null\",\"bytes\"]}" + "         ]" + "       }],\"default\":null},"
         + "      {\"name\":\"endDate\",\"type\":[\"null\",\"com.example.common.DateRecord\"],\"default\":null}"
         + "    ]" + "  }}}" + "]}";
 
-    // v2: SubItem gains a new nullable enum field "source" (default null); DateRecord's int fields
-    // carry a custom "proto.fieldType" property — exercising superset merge of primitive types
-    // that differ only in custom properties.
+    // v2: SubItem gains a new nullable enum field "source" (default null); all primitive types in
+    // InnerRecord and DateRecord carry a custom "proto.fieldType" property — exercising superset
+    // merge and comparison for every annotated primitive type (NULL, INT, LONG, BOOLEAN, FLOAT,
+    // DOUBLE, BYTES).
     String schemaV2 = "{" + "\"type\":\"record\",\"name\":\"OuterRecord\",\"namespace\":\"com.example\","
         + "\"fields\":[" + "  {\"name\":\"items\",\"type\":{\"type\":\"array\",\"items\":{"
         + "    \"type\":\"record\",\"name\":\"InnerRecord\"," + "    \"fields\":["
-        + "      {\"name\":\"id\",\"type\":\"string\"}," + "      {\"name\":\"subItems\","
-        + "       \"type\":[\"null\",{\"type\":\"array\",\"items\":{"
+        + "      {\"name\":\"id\",\"type\":\"string\"},"
+        // NULL: annotated null in union
+        + "      {\"name\":\"tag\",\"type\":[{\"type\":\"null\",\"proto.nullable\":\"true\"},\"string\"],\"default\":null},"
+        + "      {\"name\":\"subItems\"," + "       \"type\":[\"null\",{\"type\":\"array\",\"items\":{"
         + "         \"type\":\"record\",\"name\":\"SubItem\"," + "         \"fields\":["
         + "           {\"name\":\"ref\",\"type\":\"string\"},"
         + "           {\"name\":\"categoryRef\",\"type\":[\"null\",\"string\"],\"default\":null},"
@@ -561,9 +580,20 @@ public class TestAvroSupersetSchemaUtils {
         + "       }}],\"default\":null}," + "      {\"name\":\"startDate\"," + "       \"type\":[\"null\",{"
         + "         \"type\":\"record\",\"name\":\"DateRecord\",\"namespace\":\"com.example.common\","
         + "         \"fields\":["
+        // INT
         + "           {\"name\":\"year\",\"type\":[\"null\",{\"type\":\"int\",\"proto.fieldType\":\"sint32\"}],\"proto.fieldNumber\":1},"
         + "           {\"name\":\"month\",\"type\":[\"null\",{\"type\":\"int\",\"proto.fieldType\":\"sint32\"}],\"proto.fieldNumber\":2},"
-        + "           {\"name\":\"day\",\"type\":[\"null\",{\"type\":\"int\",\"proto.fieldType\":\"sint32\"}],\"proto.fieldNumber\":3}"
+        + "           {\"name\":\"day\",\"type\":[\"null\",{\"type\":\"int\",\"proto.fieldType\":\"sint32\"}],\"proto.fieldNumber\":3},"
+        // LONG
+        + "           {\"name\":\"timestamp\",\"type\":[\"null\",{\"type\":\"long\",\"proto.fieldType\":\"int64\"}],\"proto.fieldNumber\":4},"
+        // BOOLEAN
+        + "           {\"name\":\"active\",\"type\":[\"null\",{\"type\":\"boolean\",\"proto.fieldType\":\"bool\"}],\"proto.fieldNumber\":5},"
+        // FLOAT
+        + "           {\"name\":\"score\",\"type\":[\"null\",{\"type\":\"float\",\"proto.fieldType\":\"float\"}],\"proto.fieldNumber\":6},"
+        // DOUBLE
+        + "           {\"name\":\"weight\",\"type\":[\"null\",{\"type\":\"double\",\"proto.fieldType\":\"double\"}],\"proto.fieldNumber\":7},"
+        // BYTES
+        + "           {\"name\":\"data\",\"type\":[\"null\",{\"type\":\"bytes\",\"proto.fieldType\":\"bytes\"}],\"proto.fieldNumber\":8}"
         + "         ]" + "       }],\"default\":null},"
         + "      {\"name\":\"endDate\",\"type\":[\"null\",\"com.example.common.DateRecord\"],\"default\":null}"
         + "    ]" + "  }}}" + "]}";
