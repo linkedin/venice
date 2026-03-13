@@ -2803,12 +2803,6 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       // Only update fields that are set, other fields will be read from the original store's partitioner config.
-      if (amplificationFactor.isPresent() && amplificationFactor.get() < 1) {
-        String errorMessage =
-            errorMessagePrefix + "amplificationFactor: " + amplificationFactor.get() + " must be at least 1.";
-        LOGGER.error(errorMessage);
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
-      }
       PartitionerConfig updatedPartitionerConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldPartitionerConfig(
           currStore,
           partitionerClass,
@@ -3024,19 +3018,8 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.clientDecompressionEnabled =
           clientDecompressionEnabled.map(addToUpdatedConfigList(updatedConfigsList, CLIENT_DECOMPRESSION_ENABLED))
               .orElseGet(currStore::getClientDecompressionEnabled);
-      if (batchGetLimit.isPresent() && batchGetLimit.get() < 1) {
-        String errorMessage = errorMessagePrefix + "batchGetLimit: " + batchGetLimit.get() + " must be at least 1.";
-        LOGGER.error(errorMessage);
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
-      }
       setStore.batchGetLimit = batchGetLimit.map(addToUpdatedConfigList(updatedConfigsList, BATCH_GET_LIMIT))
           .orElseGet(currStore::getBatchGetLimit);
-      if (numVersionsToPreserve.isPresent() && numVersionsToPreserve.get() < 0) {
-        String errorMessage = errorMessagePrefix + "numVersionsToPreserve: " + numVersionsToPreserve.get()
-            + " must be non-negative. Use 0 to defer to cluster-level config.";
-        LOGGER.error(errorMessage);
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
-      }
       setStore.numVersionsToPreserve =
           numVersionsToPreserve.map(addToUpdatedConfigList(updatedConfigsList, NUM_VERSIONS_TO_PRESERVE))
               .orElseGet(currStore::getNumVersionsToPreserve);
@@ -3050,12 +3033,6 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.readComputationEnabled =
           readComputationEnabled.map(addToUpdatedConfigList(updatedConfigsList, READ_COMPUTATION_ENABLED))
               .orElseGet(currStore::isReadComputationEnabled);
-      if (bootstrapToOnlineTimeoutInHours.isPresent() && bootstrapToOnlineTimeoutInHours.get() < 1) {
-        String errorMessage = errorMessagePrefix + "bootstrapToOnlineTimeoutInHours: "
-            + bootstrapToOnlineTimeoutInHours.get() + " must be at least 1.";
-        LOGGER.error(errorMessage);
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
-      }
       setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours
           .map(addToUpdatedConfigList(updatedConfigsList, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS))
           .orElseGet(currStore::getBootstrapToOnlineTimeoutInHours);
@@ -3103,12 +3080,6 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.backupVersionRetentionMs =
           backupVersionRetentionMs.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_VERSION_RETENTION_MS))
               .orElseGet(currStore::getBackupVersionRetentionMs);
-      if (replicationFactor.isPresent() && replicationFactor.get() < 1) {
-        String errorMessage =
-            errorMessagePrefix + "replicationFactor: " + replicationFactor.get() + " must be at least 1.";
-        LOGGER.error(errorMessage);
-        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
-      }
       setStore.replicationFactor = replicationFactor.map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_FACTOR))
           .orElseGet(currStore::getReplicationFactor);
       setStore.migrationDuplicateStore =
@@ -3208,15 +3179,6 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException(
             "Store's max compaction lag seconds: " + setStore.maxCompactionLagSeconds + " shouldn't be smaller than "
                 + "store's min compaction lag seconds: " + setStore.minCompactionLagSeconds);
-      }
-      if (maxRecordSizeBytes.isPresent()) {
-        int recordSizeBytes = maxRecordSizeBytes.get();
-        if (recordSizeBytes != -1 && recordSizeBytes < 1) {
-          String errorMessage =
-              errorMessagePrefix + "maxRecordSizeBytes: " + recordSizeBytes + " must be -1 (disabled) or at least 1.";
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
-        }
       }
       setStore.maxRecordSizeBytes =
           maxRecordSizeBytes.map(addToUpdatedConfigList(updatedConfigsList, MAX_RECORD_SIZE_BYTES))

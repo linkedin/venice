@@ -735,7 +735,7 @@ public class VeniceParentHelixAdminTest {
         parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
     Assert.assertNotNull(newStoreResponse);
     Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
-    long backupVersionRetentionMs = TimeUnit.HOURS.toMillis(1);
+    long backupVersionRetentionMs = TimeUnit.DAYS.toMillis(1);
     ControllerResponse controllerResponse = parentControllerClient.updateStore(
         storeName,
         new UpdateStoreQueryParams().setBackupVersionRetentionMs(backupVersionRetentionMs).setReadQuotaInCU(10000));
