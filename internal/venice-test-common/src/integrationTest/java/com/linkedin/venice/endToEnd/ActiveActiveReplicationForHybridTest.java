@@ -46,6 +46,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.samza.VeniceSystemProducerConfig;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
@@ -462,18 +463,16 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
       // Build the SystemProducer with the mock time
       VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
       try (VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
-          childDataCenter.getZkServerWrapper().getAddress(),
-          childDataCenter.getZkServerWrapper().getAddress(),
-          D2_SERVICE_NAME,
-          storeName,
-          Version.PushType.STREAM,
-          Utils.getUniqueString("venice-push-id"),
-          "dc-0",
-          true,
-          null,
-          Optional.empty(),
-          Optional.empty(),
-          mockTime)) {
+          new VeniceSystemProducerConfig.Builder().setStoreName(storeName)
+              .setPushType(Version.PushType.STREAM)
+              .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
+              .setRunningFabric("dc-0")
+              .setVerifyLatestProtocolPresent(true)
+              .setVeniceChildD2ZkHost(childDataCenter.getZkServerWrapper().getAddress())
+              .setPrimaryControllerColoD2ZKHost(childDataCenter.getZkServerWrapper().getAddress())
+              .setPrimaryControllerD2ServiceName(D2_SERVICE_NAME)
+              .setTime(mockTime)
+              .build())) {
         producerInDC0.start();
 
         // Send <Key1, Value1>
@@ -546,18 +545,16 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
       // Build the SystemProducer with the mock time
       VeniceMultiClusterWrapper childDataCenter1 = childDatacenters.get(1);
       try (VeniceSystemProducer producerInDC1 = new VeniceSystemProducer(
-          childDataCenter.getZkServerWrapper().getAddress(),
-          childDataCenter1.getZkServerWrapper().getAddress(),
-          D2_SERVICE_NAME,
-          storeName,
-          Version.PushType.STREAM,
-          Utils.getUniqueString("venice-push-id"),
-          "dc-1",
-          true,
-          null,
-          Optional.empty(),
-          Optional.empty(),
-          mockTime)) {
+          new VeniceSystemProducerConfig.Builder().setStoreName(storeName)
+              .setPushType(Version.PushType.STREAM)
+              .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
+              .setRunningFabric("dc-1")
+              .setVerifyLatestProtocolPresent(true)
+              .setVeniceChildD2ZkHost(childDataCenter.getZkServerWrapper().getAddress())
+              .setPrimaryControllerColoD2ZKHost(childDataCenter1.getZkServerWrapper().getAddress())
+              .setPrimaryControllerD2ServiceName(D2_SERVICE_NAME)
+              .setTime(mockTime)
+              .build())) {
         producerInDC1.start();
 
         // Send <Key1, Value3>, which will be ignored if DCR is implemented properly

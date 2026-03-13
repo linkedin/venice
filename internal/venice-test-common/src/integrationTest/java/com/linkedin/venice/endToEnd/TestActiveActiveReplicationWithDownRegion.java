@@ -18,6 +18,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.samza.VeniceSystemProducerConfig;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
@@ -108,46 +109,40 @@ public class TestActiveActiveReplicationWithDownRegion extends AbstractMultiRegi
     // Now lets populate some data into dc-0 and verify that records replicate to all regions
     // Build a system producer that writes nearline to dc-0
     SystemProducer producerInDC0 = new VeniceSystemProducer(
-        childDatacenters.get(0).getZkServerWrapper().getAddress(),
-        childDatacenters.get(0).getZkServerWrapper().getAddress(),
-        D2_SERVICE_NAME,
-        storeName,
-        Version.PushType.STREAM,
-        Utils.getUniqueString("venice-push-id"),
-        "dc-0",
-        true,
-        null,
-        Optional.empty(),
-        Optional.empty());
+        new VeniceSystemProducerConfig.Builder().setStoreName(storeName)
+            .setPushType(Version.PushType.STREAM)
+            .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
+            .setRunningFabric("dc-0")
+            .setVerifyLatestProtocolPresent(true)
+            .setVeniceChildD2ZkHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
+            .setPrimaryControllerColoD2ZKHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
+            .setPrimaryControllerD2ServiceName(D2_SERVICE_NAME)
+            .build());
     producerInDC0.start();
 
     SystemProducer producerInDC1 = new VeniceSystemProducer(
-        childDatacenters.get(1).getZkServerWrapper().getAddress(),
-        childDatacenters.get(1).getZkServerWrapper().getAddress(),
-        D2_SERVICE_NAME,
-        storeName,
-        Version.PushType.STREAM,
-        Utils.getUniqueString("venice-push-id"),
-        "dc-1",
-        true,
-        null,
-        Optional.empty(),
-        Optional.empty());
+        new VeniceSystemProducerConfig.Builder().setStoreName(storeName)
+            .setPushType(Version.PushType.STREAM)
+            .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
+            .setRunningFabric("dc-1")
+            .setVerifyLatestProtocolPresent(true)
+            .setVeniceChildD2ZkHost(childDatacenters.get(1).getZkServerWrapper().getAddress())
+            .setPrimaryControllerColoD2ZKHost(childDatacenters.get(1).getZkServerWrapper().getAddress())
+            .setPrimaryControllerD2ServiceName(D2_SERVICE_NAME)
+            .build());
     producerInDC1.start();
 
     // Build another one which will write some batch data
     SystemProducer batchProducer = new VeniceSystemProducer(
-        childDatacenters.get(0).getZkServerWrapper().getAddress(),
-        multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress(),
-        PARENT_D2_SERVICE_NAME,
-        storeName,
-        Version.PushType.BATCH,
-        Utils.getUniqueString("venice-push-id"),
-        "dc-0",
-        true,
-        null,
-        Optional.empty(),
-        Optional.empty());
+        new VeniceSystemProducerConfig.Builder().setStoreName(storeName)
+            .setPushType(Version.PushType.BATCH)
+            .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
+            .setRunningFabric("dc-0")
+            .setVerifyLatestProtocolPresent(true)
+            .setVeniceChildD2ZkHost(childDatacenters.get(0).getZkServerWrapper().getAddress())
+            .setPrimaryControllerColoD2ZKHost(multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress())
+            .setPrimaryControllerD2ServiceName(PARENT_D2_SERVICE_NAME)
+            .build());
     batchProducer.start();
 
     // Send a few keys, and close out the system writer

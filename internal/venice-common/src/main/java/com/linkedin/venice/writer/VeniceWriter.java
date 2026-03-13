@@ -298,6 +298,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private final boolean isRmdChunkingEnabled;
   private final int maxRecordSizeBytes;
+  private final VeniceWriterHook writerHook;
 
   private final ControlMessage heartBeatMessage;
 
@@ -341,6 +342,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.isChunkingSet = true;
     this.isRmdChunkingEnabled = params.isRmdChunkingEnabled();
     this.maxRecordSizeBytes = params.getMaxRecordSizeBytes();
+    this.writerHook = params.getWriterHook();
     this.maxSizeForUserPayloadPerMessageInBytes = props
         .getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
@@ -765,6 +767,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ChunkedValueManifest oldRmdManifest,
       int partition) {
 
+    if (writerHook != null) {
+      writerHook.onBeforeProduce(serializedKey.length, 0);
+    }
+
     isChunkingFlagInvoked = true;
 
     int rmdPayloadSize = deleteMetadata == null ? 0 : deleteMetadata.getSerializedSize();
@@ -1081,6 +1087,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ChunkedValueManifest oldRmdManifest,
       boolean isGlobalRtDiv,
       PubSubMessageHeaders pubSubMessageHeaders) {
+    if (writerHook != null) {
+      writerHook.onBeforeProduce(serializedKey.length, serializedValue.length);
+    }
+
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     isChunkingFlagInvoked = true;
 
@@ -1253,6 +1263,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     byte[] serializedUpdate = writeComputeSerializer.serialize(topicName, update);
     int partition = getPartition(serializedKey);
+
+    if (writerHook != null) {
+      writerHook.onBeforeProduce(serializedKey.length, serializedUpdate.length);
+    }
 
     // large value is not supported for "update" yet
     if (serializedKey.length + serializedUpdate.length > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
