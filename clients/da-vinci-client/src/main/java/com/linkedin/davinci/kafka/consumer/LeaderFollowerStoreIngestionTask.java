@@ -2587,16 +2587,33 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (hbService == null) {
       return;
     }
+
+    // For batch-only stores: skip leaders (no upstream to lag behind) and skip after EOP (no more records)
+    if (partitionConsumptionState.isBatchOnly()) {
+      if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)
+          || partitionConsumptionState.isEndOfPushReceived()) {
+        return;
+      }
+    }
+
     String region =
         isDaVinciClient() ? serverConfig.getRegionName() : serverConfig.getKafkaClusterUrlToAliasMap().get(pubSubUrl);
-    long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
     boolean isComplete = partitionConsumptionState.isComplete();
     HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
 
-    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      hbService.recordLeaderRecordTimestamp(cachedKey, messageTimestamp, isComplete);
+    if (partitionConsumptionState.isBatchOnly()) {
+      // Use broker timestamp for batch followers. On the local VT this is approximately when the leader
+      // produced the record, giving meaningful "follower behind leader" lag.
+      long brokerTimestamp = consumerRecord.getPubSubMessageTime();
+      hbService.recordFollowerRecordTimestamp(cachedKey, brokerTimestamp, isComplete);
     } else {
-      hbService.recordFollowerRecordTimestamp(cachedKey, messageTimestamp, isComplete);
+      // For hybrid stores, use producer metadata timestamp to measure end-to-end replication lag.
+      long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
+      if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+        hbService.recordLeaderRecordTimestamp(cachedKey, messageTimestamp, isComplete);
+      } else {
+        hbService.recordFollowerRecordTimestamp(cachedKey, messageTimestamp, isComplete);
+      }
     }
   }
 
