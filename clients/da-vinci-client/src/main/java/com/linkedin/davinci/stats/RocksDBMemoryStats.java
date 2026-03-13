@@ -1,5 +1,7 @@
 package com.linkedin.davinci.stats;
 
+import static com.linkedin.venice.utils.Utils.setOf;
+
 import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.AbstractVeniceStats;
@@ -8,24 +10,21 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
-import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.Cache;
-import org.rocksdb.SstFileManager;
 
 
 /**
@@ -52,20 +51,19 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
   }
 
   // metrics emitted on a per instance basis need only be collected once, not aggregated
-  private static final Set<String> INSTANCE_METRIC_DOMAINS = Collections.unmodifiableSet(
-      new HashSet<>(
-          Arrays.asList(
-              RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_CAPACITY.getRocksDBProperty(),
-              RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_PINNED_USAGE.getRocksDBProperty(),
-              RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_USAGE.getRocksDBProperty())));
-  private volatile long memoryLimit = -1;
-  private volatile SstFileManager sstFileManager;
+  private static final Set<String> INSTANCE_METRIC_DOMAINS = setOf(
+      RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_CAPACITY.getRocksDBProperty(),
+      RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_PINNED_USAGE.getRocksDBProperty(),
+      RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_USAGE.getRocksDBProperty());
 
   // metrics related to block cache, which should not be collected when plain table format is enabled.
-  private static final Set<String> BLOCK_CACHE_METRICS =
-      PARTITION_METRIC_DOMAINS.stream().filter(s -> s.contains("rocksdb.block-cache")).collect(Collectors.toSet());
+  private static final Set<String> BLOCK_CACHE_METRICS = setOf(
+      RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_CAPACITY.getRocksDBProperty(),
+      RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_USAGE.getRocksDBProperty(),
+      RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_PINNED_USAGE.getRocksDBProperty());
 
-  private final Map<String, RocksDBStoragePartition> hostedRocksDBPartitions = new ConcurrentHashMap<>();
+  private final Map<String, RocksDBStoragePartition> hostedRocksDBPartitions = new VeniceConcurrentHashMap<>();
+  private final AtomicBoolean rmdBlockCacheRegistered = new AtomicBoolean(false);
 
   /** OTel repository; null when OTel is disabled or when using a plain {@link MetricsRepository}. */
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
@@ -75,22 +73,44 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
   /**
    * Tehuti metric name enum for all RocksDB memory sensors.
    *
-   * <p>Property-backed constants (no-arg) derive their sensor name from the matching
+   * <p>Property-backed constants derive their sensor name from the explicitly referenced
    * {@link RocksDBMemoryOtelMetricEntity} constant's {@code getRocksDBProperty()}.
    * Non-property constants supply an explicit sensor name.
    */
   enum TehutiMetricName implements TehutiMetricNameEnum {
-    // Property-backed metrics — sensor name derived from OTel enum's rocksDBProperty
-    NUM_IMMUTABLE_MEM_TABLE, MEM_TABLE_FLUSH_PENDING, COMPACTION_PENDING, BACKGROUND_ERRORS, CUR_SIZE_ACTIVE_MEM_TABLE,
-    CUR_SIZE_ALL_MEM_TABLES, SIZE_ALL_MEM_TABLES, NUM_ENTRIES_ACTIVE_MEM_TABLE, NUM_ENTRIES_IMM_MEM_TABLES,
-    NUM_DELETES_ACTIVE_MEM_TABLE, NUM_DELETES_IMM_MEM_TABLES, ESTIMATE_NUM_KEYS, ESTIMATE_TABLE_READERS_MEM,
-    NUM_SNAPSHOTS, NUM_LIVE_VERSIONS, ESTIMATE_LIVE_DATA_SIZE, MIN_LOG_NUMBER_TO_KEEP, TOTAL_SST_FILES_SIZE,
-    LIVE_SST_FILES_SIZE, ESTIMATE_PENDING_COMPACTION_BYTES, NUM_RUNNING_COMPACTIONS, NUM_RUNNING_FLUSHES,
-    ACTUAL_DELAYED_WRITE_RATE, BLOCK_CACHE_CAPACITY, BLOCK_CACHE_PINNED_USAGE, BLOCK_CACHE_USAGE, NUM_BLOB_FILES,
-    TOTAL_BLOB_FILE_SIZE, LIVE_BLOB_FILE_SIZE, LIVE_BLOB_FILE_GARBAGE_SIZE,
+    // Property-backed metrics — sensor name derived from the explicit OTel entity reference
+    NUM_IMMUTABLE_MEM_TABLE(RocksDBMemoryOtelMetricEntity.NUM_IMMUTABLE_MEM_TABLE),
+    MEM_TABLE_FLUSH_PENDING(RocksDBMemoryOtelMetricEntity.MEM_TABLE_FLUSH_PENDING),
+    COMPACTION_PENDING(RocksDBMemoryOtelMetricEntity.COMPACTION_PENDING),
+    BACKGROUND_ERRORS(RocksDBMemoryOtelMetricEntity.BACKGROUND_ERRORS),
+    CUR_SIZE_ACTIVE_MEM_TABLE(RocksDBMemoryOtelMetricEntity.CUR_SIZE_ACTIVE_MEM_TABLE),
+    CUR_SIZE_ALL_MEM_TABLES(RocksDBMemoryOtelMetricEntity.CUR_SIZE_ALL_MEM_TABLES),
+    SIZE_ALL_MEM_TABLES(RocksDBMemoryOtelMetricEntity.SIZE_ALL_MEM_TABLES),
+    NUM_ENTRIES_ACTIVE_MEM_TABLE(RocksDBMemoryOtelMetricEntity.NUM_ENTRIES_ACTIVE_MEM_TABLE),
+    NUM_ENTRIES_IMMUTABLE_MEM_TABLES(RocksDBMemoryOtelMetricEntity.NUM_ENTRIES_IMMUTABLE_MEM_TABLES),
+    NUM_DELETES_ACTIVE_MEM_TABLE(RocksDBMemoryOtelMetricEntity.NUM_DELETES_ACTIVE_MEM_TABLE),
+    NUM_DELETES_IMMUTABLE_MEM_TABLES(RocksDBMemoryOtelMetricEntity.NUM_DELETES_IMMUTABLE_MEM_TABLES),
+    ESTIMATE_NUM_KEYS(RocksDBMemoryOtelMetricEntity.ESTIMATE_NUM_KEYS),
+    ESTIMATE_TABLE_READERS_MEM(RocksDBMemoryOtelMetricEntity.ESTIMATE_TABLE_READERS_MEM),
+    NUM_SNAPSHOTS(RocksDBMemoryOtelMetricEntity.NUM_SNAPSHOTS),
+    NUM_LIVE_VERSIONS(RocksDBMemoryOtelMetricEntity.NUM_LIVE_VERSIONS),
+    ESTIMATE_LIVE_DATA_SIZE(RocksDBMemoryOtelMetricEntity.ESTIMATE_LIVE_DATA_SIZE),
+    MIN_LOG_NUMBER_TO_KEEP(RocksDBMemoryOtelMetricEntity.MIN_LOG_NUMBER_TO_KEEP),
+    TOTAL_SST_FILES_SIZE(RocksDBMemoryOtelMetricEntity.TOTAL_SST_FILES_SIZE),
+    LIVE_SST_FILES_SIZE(RocksDBMemoryOtelMetricEntity.LIVE_SST_FILES_SIZE),
+    ESTIMATE_PENDING_COMPACTION_BYTES(RocksDBMemoryOtelMetricEntity.ESTIMATE_PENDING_COMPACTION_BYTES),
+    NUM_RUNNING_COMPACTIONS(RocksDBMemoryOtelMetricEntity.NUM_RUNNING_COMPACTIONS),
+    NUM_RUNNING_FLUSHES(RocksDBMemoryOtelMetricEntity.NUM_RUNNING_FLUSHES),
+    ACTUAL_DELAYED_WRITE_RATE(RocksDBMemoryOtelMetricEntity.ACTUAL_DELAYED_WRITE_RATE),
+    BLOCK_CACHE_CAPACITY(RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_CAPACITY),
+    BLOCK_CACHE_PINNED_USAGE(RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_PINNED_USAGE),
+    BLOCK_CACHE_USAGE(RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_USAGE),
+    NUM_BLOB_FILES(RocksDBMemoryOtelMetricEntity.NUM_BLOB_FILES),
+    TOTAL_BLOB_FILE_SIZE(RocksDBMemoryOtelMetricEntity.TOTAL_BLOB_FILE_SIZE),
+    LIVE_BLOB_FILE_SIZE(RocksDBMemoryOtelMetricEntity.LIVE_BLOB_FILE_SIZE),
+    LIVE_BLOB_FILE_GARBAGE_SIZE(RocksDBMemoryOtelMetricEntity.LIVE_BLOB_FILE_GARBAGE_SIZE),
 
     // Non-property metrics — explicit sensor name (these don't map to a RocksDB property)
-    MEMORY_LIMIT("memory_limit"), MEMORY_USAGE("memory_usage"),
     RMD_BLOCK_CACHE_CAPACITY("rocksdb.rmd-block-cache-capacity"),
     RMD_BLOCK_CACHE_USAGE("rocksdb.rmd-block-cache-usage"),
     RMD_BLOCK_CACHE_PINNED_USAGE("rocksdb.rmd-block-cache-pinned-usage");
@@ -108,8 +128,8 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
     private final String sensorName;
 
     /** Derives sensor name from the matching {@link RocksDBMemoryOtelMetricEntity}'s rocksDBProperty. */
-    TehutiMetricName() {
-      this.sensorName = RocksDBMemoryOtelMetricEntity.valueOf(name()).getRocksDBProperty();
+    TehutiMetricName(RocksDBMemoryOtelMetricEntity otelEntity) {
+      this.sensorName = otelEntity.getRocksDBProperty();
     }
 
     /** Explicit sensor name for non-property metrics. */
@@ -154,17 +174,6 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
           TehutiMetricName.fromSensorName(metric),
           () -> getAggregatedPropertyValue(metric));
     }
-
-    registerAsyncGauge(RocksDBMemoryOtelMetricEntity.MEMORY_LIMIT, TehutiMetricName.MEMORY_LIMIT, () -> memoryLimit);
-    registerAsyncGauge(RocksDBMemoryOtelMetricEntity.MEMORY_USAGE, TehutiMetricName.MEMORY_USAGE, this::getMemoryUsage);
-  }
-
-  public void setMemoryLimit(long memoryLimit) {
-    this.memoryLimit = memoryLimit;
-  }
-
-  public void setSstFileManager(SstFileManager sstFileManager) {
-    this.sstFileManager = sstFileManager;
   }
 
   public void registerPartition(String partitionName, RocksDBStoragePartition rocksDBPartition) {
@@ -181,6 +190,10 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
   }
 
   public void setRMDBlockCache(Cache rmdCache, long rmdCacheCapacity) {
+    if (!rmdBlockCacheRegistered.compareAndSet(false, true)) {
+      LOGGER.warn("setRMDBlockCache called more than once; ignoring duplicate registration");
+      return;
+    }
     registerAsyncGauge(
         RocksDBMemoryOtelMetricEntity.RMD_BLOCK_CACHE_CAPACITY,
         TehutiMetricName.RMD_BLOCK_CACHE_CAPACITY,
@@ -233,12 +246,5 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
       }
     }
     return total;
-  }
-
-  private long getMemoryUsage() {
-    if (memoryLimit > 0 && sstFileManager != null) {
-      return sstFileManager.getTotalSize();
-    }
-    return -1;
   }
 }

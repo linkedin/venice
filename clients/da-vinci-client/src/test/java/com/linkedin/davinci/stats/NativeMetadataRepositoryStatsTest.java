@@ -3,7 +3,7 @@ package com.linkedin.davinci.stats;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import io.tehuti.metrics.MetricsRepository;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import java.time.Clock;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -16,7 +16,10 @@ public class NativeMetadataRepositoryStatsTest {
     doReturn(1000L).when(mockClock).millis();
     String store1 = "testStore1";
     String store2 = "testStore2";
-    NativeMetadataRepositoryStats stats = new NativeMetadataRepositoryStats(new MetricsRepository(), "test", mockClock);
+    NativeMetadataRepositoryStats stats = new NativeMetadataRepositoryStats(
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
+        "test",
+        mockClock);
     Assert.assertEquals(stats.getMetadataStalenessHighWatermarkMs(), Double.NaN);
     stats.updateCacheTimestamp(store1, 0);
     Assert.assertEquals(stats.getMetadataStalenessHighWatermarkMs(), 1000d);

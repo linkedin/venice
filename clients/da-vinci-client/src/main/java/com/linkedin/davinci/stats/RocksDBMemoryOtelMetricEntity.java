@@ -16,6 +16,8 @@ import java.util.Map;
  * OTel metric entities for RocksDB memory consumption stats.
  *
  * <p>Maps 1:1 from Tehuti async gauges in {@link RocksDBMemoryStats} to OTel ASYNC_GAUGE metrics.
+ * OTel names use hierarchical dot-separated naming grouped by RocksDB subsystem
+ * (memtable, compaction, flush, block_cache, sst, blob, rmd_block_cache).
  *
  * <p>Constants that correspond to a RocksDB property (queried via
  * {@link com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition#getRocksDBStatValue})
@@ -23,117 +25,148 @@ import java.util.Map;
  * and are discoverable via {@link #fromRocksDBProperty(String)}.
  */
 public enum RocksDBMemoryOtelMetricEntity implements ModuleMetricEntityInterface {
+  // Memtable metrics
   NUM_IMMUTABLE_MEM_TABLE(
-      "rocksdb.num_immutable_mem_table", MetricUnit.NUMBER, "Number of immutable memtables",
-      "rocksdb.num-immutable-mem-table"
+      "rocksdb.memtable.immutable.unflushed_count", MetricUnit.NUMBER,
+      "Number of immutable memtables that have not yet been flushed", "rocksdb.num-immutable-mem-table"
   ),
   MEM_TABLE_FLUSH_PENDING(
-      "rocksdb.mem_table_flush_pending", MetricUnit.NUMBER, "Number of pending memtable flushes",
+      "rocksdb.memtable.immutable.flush_pending", MetricUnit.NUMBER, "1 if a memtable flush is pending, 0 otherwise",
       "rocksdb.mem-table-flush-pending"
   ),
-  COMPACTION_PENDING(
-      "rocksdb.compaction_pending", MetricUnit.NUMBER, "Number of pending compactions", "rocksdb.compaction-pending"
-  ),
-  BACKGROUND_ERRORS(
-      "rocksdb.background_errors", MetricUnit.NUMBER, "Number of background errors", "rocksdb.background-errors"
-  ),
   CUR_SIZE_ACTIVE_MEM_TABLE(
-      "rocksdb.cur_size_active_mem_table", MetricUnit.BYTES, "Current size of active memtables",
+      "rocksdb.memtable.active.size", MetricUnit.BYTES, "Approximate size of the active memtable in bytes",
       "rocksdb.cur-size-active-mem-table"
   ),
   CUR_SIZE_ALL_MEM_TABLES(
-      "rocksdb.cur_size_all_mem_tables", MetricUnit.BYTES, "Current size of all memtables",
-      "rocksdb.cur-size-all-mem-tables"
+      "rocksdb.memtable.active_and_unflushed_immutable.size", MetricUnit.BYTES,
+      "Approximate size of active and unflushed immutable memtables in bytes", "rocksdb.cur-size-all-mem-tables"
   ),
   SIZE_ALL_MEM_TABLES(
-      "rocksdb.size_all_mem_tables", MetricUnit.BYTES, "Total size of all memtables", "rocksdb.size-all-mem-tables"
+      "rocksdb.memtable.all.size", MetricUnit.BYTES,
+      "Approximate size of active, unflushed immutable, and pinned immutable memtables in bytes",
+      "rocksdb.size-all-mem-tables"
   ),
   NUM_ENTRIES_ACTIVE_MEM_TABLE(
-      "rocksdb.num_entries_active_mem_table", MetricUnit.NUMBER, "Number of entries in active memtables",
+      "rocksdb.memtable.active.entry_count", MetricUnit.NUMBER, "Total number of entries in the active memtable",
       "rocksdb.num-entries-active-mem-table"
   ),
-  NUM_ENTRIES_IMM_MEM_TABLES(
-      "rocksdb.num_entries_imm_mem_tables", MetricUnit.NUMBER, "Number of entries in immutable memtables",
-      "rocksdb.num-entries-imm-mem-tables"
+  NUM_ENTRIES_IMMUTABLE_MEM_TABLES(
+      "rocksdb.memtable.immutable.entry_count", MetricUnit.NUMBER,
+      "Total number of entries in the unflushed immutable memtables", "rocksdb.num-entries-imm-mem-tables"
   ),
   NUM_DELETES_ACTIVE_MEM_TABLE(
-      "rocksdb.num_deletes_active_mem_table", MetricUnit.NUMBER, "Number of deletes in active memtables",
-      "rocksdb.num-deletes-active-mem-table"
+      "rocksdb.memtable.active.delete_count", MetricUnit.NUMBER,
+      "Total number of delete entries in the active memtable", "rocksdb.num-deletes-active-mem-table"
   ),
-  NUM_DELETES_IMM_MEM_TABLES(
-      "rocksdb.num_deletes_imm_mem_tables", MetricUnit.NUMBER, "Number of deletes in immutable memtables",
-      "rocksdb.num-deletes-imm-mem-tables"
+  NUM_DELETES_IMMUTABLE_MEM_TABLES(
+      "rocksdb.memtable.immutable.delete_count", MetricUnit.NUMBER,
+      "Total number of delete entries in the unflushed immutable memtables", "rocksdb.num-deletes-imm-mem-tables"
   ),
-  ESTIMATE_NUM_KEYS(
-      "rocksdb.estimate_num_keys", MetricUnit.NUMBER, "Estimated number of keys", "rocksdb.estimate-num-keys"
-  ),
-  ESTIMATE_TABLE_READERS_MEM(
-      "rocksdb.estimate_table_readers_mem", MetricUnit.BYTES, "Estimated memory used by table readers",
-      "rocksdb.estimate-table-readers-mem"
-  ), NUM_SNAPSHOTS("rocksdb.num_snapshots", MetricUnit.NUMBER, "Number of snapshots", "rocksdb.num-snapshots"),
-  NUM_LIVE_VERSIONS(
-      "rocksdb.num_live_versions", MetricUnit.NUMBER, "Number of live versions", "rocksdb.num-live-versions"
-  ),
-  ESTIMATE_LIVE_DATA_SIZE(
-      "rocksdb.estimate_live_data_size", MetricUnit.BYTES, "Estimated live data size", "rocksdb.estimate-live-data-size"
-  ),
-  MIN_LOG_NUMBER_TO_KEEP(
-      "rocksdb.min_log_number_to_keep", MetricUnit.NUMBER, "Minimum log number to keep",
-      "rocksdb.min-log-number-to-keep"
-  ),
-  TOTAL_SST_FILES_SIZE(
-      "rocksdb.total_sst_files_size", MetricUnit.BYTES, "Total SST file size", "rocksdb.total-sst-files-size"
-  ),
-  LIVE_SST_FILES_SIZE(
-      "rocksdb.live_sst_files_size", MetricUnit.BYTES, "Live SST file size", "rocksdb.live-sst-files-size"
+
+  // Compaction metrics
+  COMPACTION_PENDING(
+      "rocksdb.compaction.pending", MetricUnit.NUMBER, "1 if at least one compaction is pending, 0 otherwise",
+      "rocksdb.compaction-pending"
   ),
   ESTIMATE_PENDING_COMPACTION_BYTES(
-      "rocksdb.estimate_pending_compaction_bytes", MetricUnit.BYTES, "Estimated pending compaction bytes",
+      "rocksdb.compaction.estimated_pending_bytes", MetricUnit.BYTES,
+      "Estimated total bytes compaction needs to rewrite to get all levels down to target size",
       "rocksdb.estimate-pending-compaction-bytes"
   ),
   NUM_RUNNING_COMPACTIONS(
-      "rocksdb.num_running_compactions", MetricUnit.NUMBER, "Number of running compactions",
+      "rocksdb.compaction.running_count", MetricUnit.NUMBER, "Number of currently running compactions",
       "rocksdb.num-running-compactions"
   ),
+
+  // Flush metrics
   NUM_RUNNING_FLUSHES(
-      "rocksdb.num_running_flushes", MetricUnit.NUMBER, "Number of running flushes", "rocksdb.num-running-flushes"
+      "rocksdb.flush.running_count", MetricUnit.NUMBER, "Number of currently running flushes",
+      "rocksdb.num-running-flushes"
+  ),
+
+  // General DB metrics
+  BACKGROUND_ERRORS(
+      "rocksdb.background_errors", MetricUnit.NUMBER, "Accumulated number of background errors",
+      "rocksdb.background-errors"
+  ),
+  ESTIMATE_NUM_KEYS(
+      "rocksdb.keys.estimated_count", MetricUnit.NUMBER,
+      "Estimated number of total keys in the active and unflushed immutable memtables and storage",
+      "rocksdb.estimate-num-keys"
+  ),
+  ESTIMATE_TABLE_READERS_MEM(
+      "rocksdb.table_readers.estimated_memory", MetricUnit.BYTES,
+      "Estimated memory used for reading SST tables, excluding block cache", "rocksdb.estimate-table-readers-mem"
+  ),
+  NUM_SNAPSHOTS(
+      "rocksdb.snapshots.count", MetricUnit.NUMBER, "Number of unreleased snapshots of the database",
+      "rocksdb.num-snapshots"
+  ),
+  NUM_LIVE_VERSIONS(
+      "rocksdb.versions.live_count", MetricUnit.NUMBER,
+      "Number of live versions. More live versions often mean more SST files are held from being deleted",
+      "rocksdb.num-live-versions"
+  ),
+  ESTIMATE_LIVE_DATA_SIZE(
+      "rocksdb.data.estimated_live_size", MetricUnit.BYTES,
+      "Estimated amount of live data in bytes, including blob file live bytes", "rocksdb.estimate-live-data-size"
+  ),
+  MIN_LOG_NUMBER_TO_KEEP(
+      "rocksdb.min_log_number_to_keep", MetricUnit.NUMBER, "Minimum log number of the log files that should be kept",
+      "rocksdb.min-log-number-to-keep"
   ),
   ACTUAL_DELAYED_WRITE_RATE(
-      "rocksdb.actual_delayed_write_rate", MetricUnit.NUMBER, "Actual delayed write rate",
-      "rocksdb.actual-delayed-write-rate"
+      "rocksdb.actual_delayed_write_rate", MetricUnit.NUMBER,
+      "Current actual delayed write rate in bytes per second. 0 means no delay", "rocksdb.actual-delayed-write-rate"
   ),
 
-  // Block cache properties
+  // SST file metrics
+  TOTAL_SST_FILES_SIZE(
+      "rocksdb.sst.total_size", MetricUnit.BYTES, "Total size of all SST files across all versions",
+      "rocksdb.total-sst-files-size"
+  ),
+  LIVE_SST_FILES_SIZE(
+      "rocksdb.sst.live_size", MetricUnit.BYTES, "Total size of all SST files in the current version",
+      "rocksdb.live-sst-files-size"
+  ),
+
+  // Block cache metrics
   BLOCK_CACHE_CAPACITY(
-      "rocksdb.block_cache_capacity", MetricUnit.BYTES, "Block cache capacity", "rocksdb.block-cache-capacity"
+      "rocksdb.block_cache.capacity", MetricUnit.BYTES, "Block cache capacity", "rocksdb.block-cache-capacity"
+  ),
+  BLOCK_CACHE_USAGE(
+      "rocksdb.block_cache.usage", MetricUnit.BYTES, "Memory size for the entries residing in block cache",
+      "rocksdb.block-cache-usage"
   ),
   BLOCK_CACHE_PINNED_USAGE(
-      "rocksdb.block_cache_pinned_usage", MetricUnit.BYTES, "Block cache pinned usage",
+      "rocksdb.block_cache.pinned_usage", MetricUnit.BYTES, "Memory size for the entries being pinned in block cache",
       "rocksdb.block-cache-pinned-usage"
-  ), BLOCK_CACHE_USAGE("rocksdb.block_cache_usage", MetricUnit.BYTES, "Block cache usage", "rocksdb.block-cache-usage"),
+  ),
 
   // Blob file metrics
-  NUM_BLOB_FILES("rocksdb.num_blob_files", MetricUnit.NUMBER, "Number of blob files", "rocksdb.num-blob-files"),
+  NUM_BLOB_FILES(
+      "rocksdb.blob.file_count", MetricUnit.NUMBER, "Number of blob files in the current version",
+      "rocksdb.num-blob-files"
+  ),
   TOTAL_BLOB_FILE_SIZE(
-      "rocksdb.total_blob_file_size", MetricUnit.BYTES, "Total blob file size", "rocksdb.total-blob-file-size"
+      "rocksdb.blob.total_size", MetricUnit.BYTES, "Total size of all blob files across all versions",
+      "rocksdb.total-blob-file-size"
   ),
   LIVE_BLOB_FILE_SIZE(
-      "rocksdb.live_blob_file_size", MetricUnit.BYTES, "Live blob file size", "rocksdb.live-blob-file-size"
+      "rocksdb.blob.live_size", MetricUnit.BYTES, "Total size of all blob files in the current version",
+      "rocksdb.live-blob-file-size"
   ),
   LIVE_BLOB_FILE_GARBAGE_SIZE(
-      "rocksdb.live_blob_file_garbage_size", MetricUnit.BYTES, "Live blob file garbage size",
+      "rocksdb.blob.garbage_size", MetricUnit.BYTES, "Total amount of garbage in the blob files in the current version",
       "rocksdb.live-blob-file-garbage-size"
   ),
 
-  // Server-level memory metrics (not backed by a RocksDB property)
-  MEMORY_LIMIT("rocksdb.memory_limit", MetricUnit.BYTES, "RocksDB memory limit for this server"),
-  MEMORY_USAGE("rocksdb.memory_usage", MetricUnit.BYTES, "RocksDB SST file manager total size"),
-
   // RMD (Replication Metadata) block cache metrics (not backed by a RocksDB property)
-  RMD_BLOCK_CACHE_CAPACITY("rocksdb.rmd_block_cache_capacity", MetricUnit.BYTES, "RMD block cache capacity"),
-  RMD_BLOCK_CACHE_USAGE("rocksdb.rmd_block_cache_usage", MetricUnit.BYTES, "RMD block cache usage"),
+  RMD_BLOCK_CACHE_CAPACITY("rocksdb.rmd_block_cache.capacity", MetricUnit.BYTES, "RMD block cache capacity"),
+  RMD_BLOCK_CACHE_USAGE("rocksdb.rmd_block_cache.usage", MetricUnit.BYTES, "RMD block cache usage"),
   RMD_BLOCK_CACHE_PINNED_USAGE(
-      "rocksdb.rmd_block_cache_pinned_usage", MetricUnit.BYTES, "RMD block cache pinned usage"
+      "rocksdb.rmd_block_cache.pinned_usage", MetricUnit.BYTES, "RMD block cache pinned usage"
   );
 
   /**
@@ -162,7 +195,7 @@ public enum RocksDBMemoryOtelMetricEntity implements ModuleMetricEntityInterface
     return rocksDBProperty;
   }
 
-  /** Constructor for metrics not backed by a RocksDB property (MEMORY_LIMIT, MEMORY_USAGE, RMD_*). */
+  /** Constructor for metrics not backed by a RocksDB property (RMD_*). */
   RocksDBMemoryOtelMetricEntity(String metricName, MetricUnit unit, String description) {
     this(metricName, unit, description, null);
   }

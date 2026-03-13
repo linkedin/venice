@@ -30,9 +30,9 @@ public class RocksDBMemoryTehutiMetricNameTest {
     map.put(RocksDBMemoryStats.TehutiMetricName.CUR_SIZE_ALL_MEM_TABLES, "rocksdb.cur-size-all-mem-tables");
     map.put(RocksDBMemoryStats.TehutiMetricName.SIZE_ALL_MEM_TABLES, "rocksdb.size-all-mem-tables");
     map.put(RocksDBMemoryStats.TehutiMetricName.NUM_ENTRIES_ACTIVE_MEM_TABLE, "rocksdb.num-entries-active-mem-table");
-    map.put(RocksDBMemoryStats.TehutiMetricName.NUM_ENTRIES_IMM_MEM_TABLES, "rocksdb.num-entries-imm-mem-tables");
+    map.put(RocksDBMemoryStats.TehutiMetricName.NUM_ENTRIES_IMMUTABLE_MEM_TABLES, "rocksdb.num-entries-imm-mem-tables");
     map.put(RocksDBMemoryStats.TehutiMetricName.NUM_DELETES_ACTIVE_MEM_TABLE, "rocksdb.num-deletes-active-mem-table");
-    map.put(RocksDBMemoryStats.TehutiMetricName.NUM_DELETES_IMM_MEM_TABLES, "rocksdb.num-deletes-imm-mem-tables");
+    map.put(RocksDBMemoryStats.TehutiMetricName.NUM_DELETES_IMMUTABLE_MEM_TABLES, "rocksdb.num-deletes-imm-mem-tables");
     map.put(RocksDBMemoryStats.TehutiMetricName.ESTIMATE_NUM_KEYS, "rocksdb.estimate-num-keys");
     map.put(RocksDBMemoryStats.TehutiMetricName.ESTIMATE_TABLE_READERS_MEM, "rocksdb.estimate-table-readers-mem");
     map.put(RocksDBMemoryStats.TehutiMetricName.NUM_SNAPSHOTS, "rocksdb.num-snapshots");
@@ -54,10 +54,6 @@ public class RocksDBMemoryTehutiMetricNameTest {
     map.put(RocksDBMemoryStats.TehutiMetricName.TOTAL_BLOB_FILE_SIZE, "rocksdb.total-blob-file-size");
     map.put(RocksDBMemoryStats.TehutiMetricName.LIVE_BLOB_FILE_SIZE, "rocksdb.live-blob-file-size");
     map.put(RocksDBMemoryStats.TehutiMetricName.LIVE_BLOB_FILE_GARBAGE_SIZE, "rocksdb.live-blob-file-garbage-size");
-
-    // Server-level memory metrics
-    map.put(RocksDBMemoryStats.TehutiMetricName.MEMORY_LIMIT, "memory_limit");
-    map.put(RocksDBMemoryStats.TehutiMetricName.MEMORY_USAGE, "memory_usage");
 
     // RMD block cache metrics
     map.put(RocksDBMemoryStats.TehutiMetricName.RMD_BLOCK_CACHE_CAPACITY, "rocksdb.rmd-block-cache-capacity");

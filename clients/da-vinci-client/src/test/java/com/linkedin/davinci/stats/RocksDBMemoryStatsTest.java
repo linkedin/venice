@@ -10,7 +10,6 @@ import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import org.rocksdb.Cache;
-import org.rocksdb.SstFileManager;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -67,6 +66,27 @@ public class RocksDBMemoryStatsTest {
   }
 
   @Test
+  public void testSetRMDBlockCacheIgnoresDuplicateCall() {
+    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, "test_store", false, "test-cluster");
+
+    Cache firstCache = mock(Cache.class);
+    when(firstCache.getUsage()).thenReturn(512L);
+    when(firstCache.getPinnedUsage()).thenReturn(256L);
+    stats.setRMDBlockCache(firstCache, 1024L);
+
+    // Second call with different values should be ignored
+    Cache secondCache = mock(Cache.class);
+    when(secondCache.getUsage()).thenReturn(9999L);
+    when(secondCache.getPinnedUsage()).thenReturn(8888L);
+    stats.setRMDBlockCache(secondCache, 5000L);
+
+    // Gauges should still report the first cache's values
+    assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-capacity.Gauge").value(), 1024.0);
+    assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-usage.Gauge").value(), 512.0);
+    assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-pinned-usage.Gauge").value(), 256.0);
+  }
+
+  @Test
   public void testBlockCacheTehutiSensorsNotRegisteredWithPlainTable() {
     new RocksDBMemoryStats(metricsRepository, "test_store", true, "test-cluster");
 
@@ -84,33 +104,5 @@ public class RocksDBMemoryStatsTest {
     assertNull(
         metricsRepository.getMetric(".test_store--rocksdb.block-cache-pinned-usage.Gauge"),
         "block-cache-pinned-usage Tehuti sensor should not be registered when plainTableEnabled=true");
-  }
-
-  @Test
-  public void testMemoryLimitTehutiGauge() {
-    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, "test_store", false, "test-cluster");
-
-    // Default memory limit is -1
-    assertEquals(metricsRepository.getMetric(".test_store--memory_limit.Gauge").value(), -1.0);
-
-    // Set memory limit and verify Tehuti sensor reflects it
-    stats.setMemoryLimit(4096L);
-    assertEquals(metricsRepository.getMetric(".test_store--memory_limit.Gauge").value(), 4096.0);
-  }
-
-  @Test
-  public void testMemoryUsageTehutiGauge() {
-    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, "test_store", false, "test-cluster");
-
-    // Without sstFileManager or positive memoryLimit, returns -1
-    assertEquals(metricsRepository.getMetric(".test_store--memory_usage.Gauge").value(), -1.0);
-
-    // Set memory limit and sstFileManager
-    stats.setMemoryLimit(4096L);
-    SstFileManager mockSstFileManager = mock(SstFileManager.class);
-    when(mockSstFileManager.getTotalSize()).thenReturn(2048L);
-    stats.setSstFileManager(mockSstFileManager);
-
-    assertEquals(metricsRepository.getMetric(".test_store--memory_usage.Gauge").value(), 2048.0);
   }
 }

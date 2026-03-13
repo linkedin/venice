@@ -15,7 +15,6 @@ import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import org.rocksdb.Cache;
-import org.rocksdb.SstFileManager;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -55,14 +54,14 @@ public class RocksDBMemoryStatsOtelTest {
     new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
 
     // With no partitions, all partition-aggregated metrics should return 0
-    validateGauge("rocksdb.num_immutable_mem_table", 0);
-    validateGauge("rocksdb.total_sst_files_size", 0);
-    validateGauge("rocksdb.estimate_num_keys", 0);
-    validateGauge("rocksdb.num_running_compactions", 0);
+    validateGauge("rocksdb.memtable.immutable.unflushed_count", 0);
+    validateGauge("rocksdb.sst.total_size", 0);
+    validateGauge("rocksdb.keys.estimated_count", 0);
+    validateGauge("rocksdb.compaction.running_count", 0);
 
     // Instance-level block cache metrics also 0 with no partitions
-    validateGauge("rocksdb.block_cache_capacity", 0);
-    validateGauge("rocksdb.block_cache_usage", 0);
+    validateGauge("rocksdb.block_cache.capacity", 0);
+    validateGauge("rocksdb.block_cache.usage", 0);
   }
 
   @Test
@@ -70,62 +69,18 @@ public class RocksDBMemoryStatsOtelTest {
     new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, true, TEST_CLUSTER_NAME);
 
     // Non-block-cache metric should still be present
-    validateGauge("rocksdb.num_immutable_mem_table", 0);
-    validateGauge("rocksdb.compaction_pending", 0);
-    validateGauge("rocksdb.num_blob_files", 0);
+    validateGauge("rocksdb.memtable.immutable.unflushed_count", 0);
+    validateGauge("rocksdb.compaction.pending", 0);
+    validateGauge("rocksdb.blob.file_count", 0);
 
     // Block cache metrics should NOT be present when plainTableEnabled=true
     String[] blockCacheMetrics =
-        { "rocksdb.block_cache_capacity", "rocksdb.block_cache_usage", "rocksdb.block_cache_pinned_usage" };
+        { "rocksdb.block_cache.capacity", "rocksdb.block_cache.usage", "rocksdb.block_cache.pinned_usage" };
     for (String metricName: blockCacheMetrics) {
       String fullName = TEST_METRIC_PREFIX + "." + metricName;
       boolean absent = inMemoryMetricReader.collectAllMetrics().stream().noneMatch(md -> md.getName().equals(fullName));
       assertTrue(absent, "Block cache metric '" + fullName + "' should not be registered when plainTableEnabled=true");
     }
-  }
-
-  @Test
-  public void testMemoryLimitGauge() {
-    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
-
-    // Default memory limit is -1
-    validateGauge("rocksdb.memory_limit", -1);
-
-    // Set memory limit and verify
-    stats.setMemoryLimit(4096L);
-    validateGauge("rocksdb.memory_limit", 4096);
-  }
-
-  @Test
-  public void testMemoryUsageGauge() {
-    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
-
-    // Without sstFileManager or positive memoryLimit, returns -1
-    validateGauge("rocksdb.memory_usage", -1);
-
-    // Set memory limit but no sstFileManager — still -1
-    stats.setMemoryLimit(4096L);
-    validateGauge("rocksdb.memory_usage", -1);
-
-    // Set sstFileManager
-    SstFileManager mockSstFileManager = mock(SstFileManager.class);
-    when(mockSstFileManager.getTotalSize()).thenReturn(2048L);
-    stats.setSstFileManager(mockSstFileManager);
-
-    validateGauge("rocksdb.memory_usage", 2048);
-  }
-
-  @Test
-  public void testMemoryUsageWithZeroMemoryLimit() {
-    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
-
-    stats.setMemoryLimit(0);
-    SstFileManager mockSstFileManager = mock(SstFileManager.class);
-    when(mockSstFileManager.getTotalSize()).thenReturn(2048L);
-    stats.setSstFileManager(mockSstFileManager);
-
-    // memoryLimit <= 0 means usage returns -1
-    validateGauge("rocksdb.memory_usage", -1);
   }
 
   @Test
@@ -138,9 +93,9 @@ public class RocksDBMemoryStatsOtelTest {
 
     stats.setRMDBlockCache(mockCache, 1024L);
 
-    validateGauge("rocksdb.rmd_block_cache_capacity", 1024);
-    validateGauge("rocksdb.rmd_block_cache_usage", 512);
-    validateGauge("rocksdb.rmd_block_cache_pinned_usage", 256);
+    validateGauge("rocksdb.rmd_block_cache.capacity", 1024);
+    validateGauge("rocksdb.rmd_block_cache.usage", 512);
+    validateGauge("rocksdb.rmd_block_cache.pinned_usage", 256);
   }
 
   @Test
@@ -157,10 +112,10 @@ public class RocksDBMemoryStatsOtelTest {
     when(mockCache.getPinnedUsage()).thenReturn(1024L);
 
     // OTel should reflect live values
-    validateGauge("rocksdb.rmd_block_cache_usage", 2048);
-    validateGauge("rocksdb.rmd_block_cache_pinned_usage", 1024);
+    validateGauge("rocksdb.rmd_block_cache.usage", 2048);
+    validateGauge("rocksdb.rmd_block_cache.pinned_usage", 1024);
     // Capacity is fixed
-    validateGauge("rocksdb.rmd_block_cache_capacity", 1024);
+    validateGauge("rocksdb.rmd_block_cache.capacity", 1024);
   }
 
   @Test
@@ -192,11 +147,6 @@ public class RocksDBMemoryStatsOtelTest {
   /** Exercises all recording paths on a RocksDBMemoryStats instance — used by NPE prevention tests. */
   private static void exerciseAllRecordingPaths(MetricsRepository repo) {
     RocksDBMemoryStats stats = new RocksDBMemoryStats(repo, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
-
-    stats.setMemoryLimit(1024L);
-    SstFileManager mockSstFileManager = mock(SstFileManager.class);
-    when(mockSstFileManager.getTotalSize()).thenReturn(512L);
-    stats.setSstFileManager(mockSstFileManager);
 
     Cache mockCache = mock(Cache.class);
     when(mockCache.getUsage()).thenReturn(256L);
