@@ -152,6 +152,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RegionUtils;
@@ -291,8 +292,12 @@ public class VenicePushJob implements AutoCloseable {
     this.jobId = jobId;
     this.externalD2Client = d2Client;
     this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
-    this.timeoutExecutor = Executors
-        .newSingleThreadScheduledExecutor(new DaemonThreadFactory(this.getClass().getName() + "-VPJTimeoutExecutor"));
+    String storeName = this.props.getString(VENICE_STORE_NAME_PROP);
+    LogContext logContext =
+        LogContext.newBuilder().setComponentName("VenicePushJob").setInstanceName(storeName).build();
+    this.timeoutExecutor = Executors.newScheduledThreadPool(
+        2,
+        new DaemonThreadFactory(this.getClass().getName() + "-VPJTimeoutExecutor", logContext));
     LOGGER.info("Constructing {}: {}", VenicePushJob.class.getSimpleName(), props.toString(true));
     this.sslProperties = Lazy.of(() -> {
       try {
