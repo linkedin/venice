@@ -1577,7 +1577,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // manifest container so chunk deletion works correctly.
         Set<ByteArrayKey> seenKeys = new HashSet<>();
 
-        for (PubSubMessageProcessedResultWrapper processedRecord: processedResults) {
+        for (int i = 0; i < processedResults.size(); i++) {
+          PubSubMessageProcessedResultWrapper processedRecord = processedResults.get(i);
           ByteArrayKey key = ByteArrayKey.wrap(processedRecord.getMessage().getKey().getKey());
 
           if (seenKeys.contains(key)) {

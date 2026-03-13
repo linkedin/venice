@@ -2894,6 +2894,22 @@ public class ConfigKeys {
   public static final String SERVER_GLOBAL_RT_DIV_ENABLED = "server.global.rt.div.enabled";
 
   /**
+   * When enabled, same-key records within a single batch will only produce the final merged state to the version
+   * topic, suppressing intermediate VT produces. This reduces write amplification for hot keys receiving many
+   * partial updates (write-compute UPDATEs) in a short window. DCR merge is still applied individually per record;
+   * only the VT produce is coalesced. Disabled for stores with view writers (which may require intermediate states).
+   *
+   * <p>Value semantics:
+   * <ul>
+   *   <li>Negative (default): feature disabled</li>
+   *   <li>0: coalesce within the current batch only (no time window)</li>
+   *   <li>Positive: time-based coalescing window in milliseconds. A key's VT produce is skipped if the previous
+   *       produce for that key occurred within this window. Recommended starting point: 60000 (1 minute).</li>
+   * </ul>
+   */
+  public static final String SERVER_AA_WC_VT_COALESCING_WINDOW_MS = "server.aa.wc.vt.coalescing.window.ms";
+
+  /**
    * This config is used to control the RocksDB lookup concurrency when handling AA/WC workload with parallel processing enabled.
    * Check {@link #SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED} for more details.
    */

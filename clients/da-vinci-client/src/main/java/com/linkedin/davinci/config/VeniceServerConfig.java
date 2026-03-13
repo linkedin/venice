@@ -66,6 +66,7 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCH
 import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_LEADER_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_VT_COALESCING_WINDOW_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_ENABLED;
@@ -657,6 +658,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int nonCurrentVersionNonAAWCLeaderQuotaRecordsPerSecond;
   private final int channelOptionWriteBufferHighBytes;
   private final boolean aaWCWorkloadParallelProcessingEnabled;
+  private final long aaWCVtCoalescingWindowMs;
   private final int aaWCWorkloadParallelProcessingThreadPoolSize;
   private final boolean crossTpParallelProcessingEnabled;
   private final int crossTpParallelProcessingThreadPoolSize;
@@ -1129,6 +1131,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     }
     aaWCWorkloadParallelProcessingEnabled =
         serverProperties.getBoolean(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED, false);
+    aaWCVtCoalescingWindowMs = serverProperties.getLong(SERVER_AA_WC_VT_COALESCING_WINDOW_MS, -1);
     aaWCWorkloadParallelProcessingThreadPoolSize =
         serverProperties.getInt(SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE, 8);
     crossTpParallelProcessingEnabled = serverProperties.getBoolean(SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED, false);
@@ -2029,6 +2032,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isAAWCWorkloadParallelProcessingEnabled() {
     return aaWCWorkloadParallelProcessingEnabled;
+  }
+
+  public long getAAWCVtCoalescingWindowMs() {
+    return aaWCVtCoalescingWindowMs;
   }
 
   public int getAAWCWorkloadParallelProcessingThreadPoolSize() {

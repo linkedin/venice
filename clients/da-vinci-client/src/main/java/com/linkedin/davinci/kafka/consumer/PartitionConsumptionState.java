@@ -209,6 +209,13 @@ public class PartitionConsumptionState {
   private final Map<ByteArrayKey, TransientRecord> transientRecordMap = new VeniceConcurrentHashMap<>();
 
   /**
+   * Tracks the last time each key was produced to the version topic (VT). Used by time-window-based VT coalescing
+   * to skip redundant VT produces for hot keys within the configured window.
+   * Accessed from the consumer thread only (same thread that calls processMessageAndMaybeProduceToKafka).
+   */
+  private final Map<ByteArrayKey, Long> vtCoalescingLastProduceTimeMs = new VeniceConcurrentHashMap<>();
+
+  /**
    * This field is used to track whether the last queued record has been fully processed or not.
    * For Leader role, it is redundant from {@literal ProducedRecord#persistedToDBFuture} since it is tracking
    * the completeness end to end, since this field won't be set.
@@ -745,6 +752,18 @@ public class PartitionConsumptionState {
      * It might not be easily cacheable if we pass different topics as input param (which it seems we do).
      */
     return new PubSubTopicPartitionImpl(topic, getPartition());
+  }
+
+  /**
+   * Returns the last VT produce timestamp for the given key, or -1 if never produced.
+   */
+  public long getVtCoalescingLastProduceTimeMs(byte[] key) {
+    Long ts = vtCoalescingLastProduceTimeMs.get(ByteArrayKey.wrap(key));
+    return ts != null ? ts : -1;
+  }
+
+  public void setVtCoalescingLastProduceTimeMs(byte[] key, long timeMs) {
+    vtCoalescingLastProduceTimeMs.put(ByteArrayKey.wrap(key), timeMs);
   }
 
   public int getTransientRecordMapSize() {
