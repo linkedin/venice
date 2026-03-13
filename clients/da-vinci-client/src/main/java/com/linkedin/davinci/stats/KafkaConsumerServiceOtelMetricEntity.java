@@ -54,34 +54,38 @@ public enum KafkaConsumerServiceOtelMetricEntity implements ModuleMetricEntityIn
       "Latency of producing consumed records to the write buffer", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
   ),
 
-  TOPIC_DELETED_COUNT(
-      "ingestion.pubsub.consumer.topic.deleted_count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of detected deleted topics", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
+  TOPIC_DETECTED_DELETED_COUNT(
+      "ingestion.pubsub.consumer.topic.detected_deleted_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of topics detected as deleted", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
   ),
 
-  TOPIC_NO_INGESTION_COUNT(
-      "ingestion.pubsub.consumer.topic.no_ingestion_count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of topic-partitions with no running ingestion task", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
+  ORPHAN_TOPIC_PARTITION_COUNT(
+      "ingestion.pubsub.consumer.topic.orphan_partition_count", MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of topic-partitions assigned to consumer with no running ingestion task",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
   ),
 
   /**
    * Latency of consumer pool actions (subscribe, update assignment).
    * Shared OTel instrument differentiated by {@link com.linkedin.venice.stats.dimensions.VeniceConsumerPoolAction}.
    */
-  CONSUMER_ACTION_TIME(
-      "ingestion.pubsub.consumer.consumer_action.time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
+  POOL_ACTION_TIME(
+      "ingestion.pubsub.consumer.pool_action.time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "Latency of consumer pool actions (subscribe, update assignment)",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_CONSUMER_POOL_ACTION)
   ),
 
-  POOL_IDLE_TIME(
-      "ingestion.pubsub.consumer.pool.idle_time", MetricType.GAUGE, MetricUnit.MILLISECOND,
-      "Maximum idle time of the consumer pool since last successful poll", setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
-  ),
-
+  /**
+   * Max elapsed time since the last successful poll across all consumers in the pool.
+   * Captures the same value as the Tehuti {@code idle_time} sensor. The Tehuti
+   * {@code max_elapsed_time_since_last_successful_poll} AsyncGauge is intentionally excluded
+   * from OTel because it reads from the same source method
+   * ({@link com.linkedin.davinci.kafka.consumer.KafkaConsumerService#getMaxElapsedTimeMSSinceLastPollInConsumerPool})
+   * and would be redundant.
+   */
   POLL_TIME_SINCE_LAST_SUCCESS(
-      "ingestion.pubsub.consumer.poll.time_since_last_success", MetricType.ASYNC_GAUGE, MetricUnit.MILLISECOND,
-      "Maximum elapsed time since the last successful poll across all consumers in the pool",
+      "ingestion.pubsub.consumer.poll.time_since_last_success", MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+      MetricUnit.MILLISECOND, "Max elapsed time since last successful poll across consumers in the pool",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
   ),
 

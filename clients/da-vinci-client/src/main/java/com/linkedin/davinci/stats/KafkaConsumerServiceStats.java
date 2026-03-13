@@ -1,6 +1,6 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.CONSUMER_ACTION_TIME;
+import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.ORPHAN_TOPIC_PARTITION_COUNT;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.PARTITION_ASSIGNMENT_COUNT;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POLL_BYTES;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POLL_COUNT;
@@ -9,10 +9,9 @@ import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.PO
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POLL_RECORD_COUNT;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POLL_TIME;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POLL_TIME_SINCE_LAST_SUCCESS;
-import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POOL_IDLE_TIME;
+import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POOL_ACTION_TIME;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.PRODUCE_TO_WRITE_BUFFER_TIME;
-import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.TOPIC_DELETED_COUNT;
-import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.TOPIC_NO_INGESTION_COUNT;
+import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.TOPIC_DETECTED_DELETED_COUNT;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.LongAdderRateGauge;
@@ -21,8 +20,6 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceConsumerPoolAction;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityState.TehutiSensorRegistrationFunction;
-import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
-import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
@@ -50,7 +47,7 @@ import java.util.function.LongSupplier;
  * (2) Total and Per store only: The stat is registered for each store on this host.
  */
 public class KafkaConsumerServiceStats extends AbstractVeniceStats {
-  /** Tehuti metric names for joint Tehuti+OTel API. */
+  /** Tehuti metric names for KafkaConsumerServiceStats sensors. */
   enum TehutiMetricName implements TehutiMetricNameEnum {
     BYTES_PER_POLL, CONSUMER_POLL_RESULT_NUM, CONSUMER_POLL_REQUEST, CONSUMER_POLL_NON_ZERO_RESULT_NUM,
     CONSUMER_POLL_REQUEST_LATENCY, CONSUMER_POLL_ERROR, CONSUMER_RECORDS_PRODUCING_TO_WRITE_BUFFER_LATENCY,
@@ -58,7 +55,9 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     UPDATE_CURRENT_ASSIGNMENT_LATENCY, IDLE_TIME, MAX_ELAPSED_TIME_SINCE_LAST_SUCCESSFUL_POLL
   }
 
-  // Tehuti-only sensors (no OTel counterpart — OTel uses raw histogram via partitionAssignmentCountOtel)
+  // Tehuti-only sensors (no OTel counterpart). min/max/avg partition counts are superseded by the
+  // OTel MIN_MAX_COUNT_SUM metric (partitionAssignmentCountOtel). subscribedPartitionsNum (total count)
+  // has no direct OTel equivalent — the histogram sum provides the equivalent.
   private final Sensor maxPartitionsPerConsumer;
   private final Sensor minPartitionsPerConsumer;
   private final Sensor avgPartitionsPerConsumer;
@@ -70,25 +69,26 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final MetricEntityStateBase pollBytesOtel;
   private final MetricEntityStateBase pollRecordCountOtel;
 
-  // ASYNC_COUNTER metrics: OTel callback only on total instance (per-store would register
-  // redundant ObservableCounter callbacks that always report zero). Tehuti sensors on all instances.
+  // ASYNC_COUNTER total-only metrics: OTel callback only on total instance (per-store would register
+  // redundant ObservableCounter callbacks that always report zero). Per-store Tehuti shares total's sensor.
   private final MetricEntityStateBase pollCountOtel;
   private final MetricEntityStateBase pollNonEmptyCountOtel;
 
-  // Remaining total-only metrics: Tehuti sensors on all instances, OTel on all instances.
-  // Non-async types have no callback overhead — they only emit when .record() is called.
+  // Total-only metrics: OTel only on total instance (per-store gets totalOnlyOtelRepo=null).
+  // Tehuti sensors are registered on all instances but only total's sensor receives recordings
+  // (callers use aggStats.recordTotal*()).
   private final MetricEntityStateBase pollTimeOtel;
   private final MetricEntityStateBase pollErrorCountOtel;
   private final MetricEntityStateBase produceToWriteBufferTimeOtel;
-  private final MetricEntityStateBase topicDeletedCountOtel;
-  private final MetricEntityStateBase topicNoIngestionCountOtel;
-  private final MetricEntityStateBase poolIdleTimeOtel;
+  private final MetricEntityStateBase topicDetectedDeletedCountOtel;
+  private final MetricEntityStateBase orphanTopicPartitionCountOtel;
+  private final MetricEntityStateBase pollTimeSinceLastSuccessOtel;
 
-  // Shared OTel instrument with VeniceConsumerPoolAction dimension
+  // Shared OTel instrument with VeniceConsumerPoolAction dimension (total-only)
   private final MetricEntityStateOneEnum<VeniceConsumerPoolAction> subscribeActionTimeOtel;
   private final MetricEntityStateOneEnum<VeniceConsumerPoolAction> updateAssignmentActionTimeOtel;
 
-  // OTel-only, recorded from KafkaConsumerService.recordPartitionsPerConsumerSensor()
+  // OTel-only, recorded only on the total instance from KafkaConsumerService.recordPartitionsPerConsumerSensor()
   private final MetricEntityStateBase partitionAssignmentCountOtel;
 
   public KafkaConsumerServiceStats(
@@ -100,9 +100,15 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
       String clusterName) {
     super(metricsRepository, storeName);
 
-    // OTel setup — intentionally NOT calling .isTotalStats(true) because that disables OTel
-    // entirely. Unlike per-store-aggregated classes, this class has metrics that are only
-    // recorded on the total instance, so OTel must remain enabled on total.
+    // OTel setup — intentionally NOT calling .isTotalStats(isTotalStats()) here.
+    // In the standard pattern (ServerHttpRequestStats, etc.), .isTotalStats(true) disables
+    // OTel on the total instance because per-store instances emit all metrics and OTel
+    // aggregates at query time. This class is different: only 2 metrics (POLL_BYTES,
+    // POLL_RECORD_COUNT) are per-store; the remaining 11 are recorded ONLY on the total
+    // instance (via AggKafkaConsumerServiceStats.recordTotal*()). Disabling OTel on total
+    // would leave those 11 metrics with no OTel representation at all. Instead, we use
+    // totalOnlyOtelRepo (null for per-store instances) to suppress OTel on per-store
+    // instances for total-only metrics.
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
             .setStoreName(storeName)
@@ -112,10 +118,13 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
     Attributes baseAttributes = otelData.getBaseAttributes();
 
-    // Tehuti-only partition gauges (no OTel counterpart — OTel uses raw histogram)
+    // Tehuti-only partition gauges (no OTel counterpart — OTel records raw per-consumer values
+    // to PARTITION_ASSIGNMENT_COUNT histogram, which provides min/max/avg/count natively)
     minPartitionsPerConsumer = registerSensor("min_partitions_per_consumer", new Gauge());
     maxPartitionsPerConsumer = registerSensor("max_partitions_per_consumer", new Gauge());
     avgPartitionsPerConsumer = registerSensor("avg_partitions_per_consumer", new Gauge());
+    // Tehuti-only: total subscribed partition count across all consumers. No OTel counterpart
+    // because OTel's PARTITION_ASSIGNMENT_COUNT histogram sum provides the equivalent aggregate.
     subscribedPartitionsNum = registerSensor("subscribed_partitions_num", new Gauge());
 
     // Per-store metrics: on per-store instances, Tehuti sensor has parent propagation to total
@@ -137,24 +146,31 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes);
 
-    // ASYNC_COUNTER metrics: OTel callback only on total instance to avoid registering
-    // redundant per-store ObservableCounter callbacks that would always report zero.
-    // Tehuti sensors are still created on every instance (matching original pattern).
+    // Total-only OTel repository: null for per-store instances to avoid registering
+    // unused OTel instruments. Total-only metrics are only recorded via aggStats.recordTotal*().
     VeniceOpenTelemetryMetricsRepository totalOnlyOtelRepo = totalStats == null ? otelRepository : null;
 
+    // ASYNC_COUNTER metrics: OTel callback only on total instance to avoid registering
+    // redundant per-store ObservableCounter callbacks that would always report zero.
+    // Per-store Tehuti shares total's sensor (matching original registerOnlyTotalRate behavior).
+    TehutiSensorRegistrationFunction pollCountTehutiReg =
+        totalStats == null ? this::registerSensorIfAbsent : (name, stats) -> totalStats.pollCountOtel.getTehutiSensor();
     pollCountOtel = MetricEntityStateBase.create(
         POLL_COUNT.getMetricEntity(),
         totalOnlyOtelRepo,
-        this::registerSensorIfAbsent,
+        pollCountTehutiReg,
         TehutiMetricName.CONSUMER_POLL_REQUEST,
         Collections.singletonList(new LongAdderRateGauge(time)),
         baseDimensionsMap,
         baseAttributes);
 
+    TehutiSensorRegistrationFunction pollNonEmptyTehutiReg = totalStats == null
+        ? this::registerSensorIfAbsent
+        : (name, stats) -> totalStats.pollNonEmptyCountOtel.getTehutiSensor();
     pollNonEmptyCountOtel = MetricEntityStateBase.create(
         POLL_NON_EMPTY_COUNT.getMetricEntity(),
         totalOnlyOtelRepo,
-        this::registerSensorIfAbsent,
+        pollNonEmptyTehutiReg,
         TehutiMetricName.CONSUMER_POLL_NON_ZERO_RESULT_NUM,
         Collections.singletonList(new LongAdderRateGauge(time)),
         baseDimensionsMap,
@@ -162,7 +178,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
     pollTimeOtel = MetricEntityStateBase.create(
         POLL_TIME.getMetricEntity(),
-        otelRepository,
+        totalOnlyOtelRepo,
         this::registerSensorIfAbsent,
         TehutiMetricName.CONSUMER_POLL_REQUEST_LATENCY,
         Arrays.asList(new Avg(), new Max()),
@@ -171,7 +187,7 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
     pollErrorCountOtel = MetricEntityStateBase.create(
         POLL_ERROR_COUNT.getMetricEntity(),
-        otelRepository,
+        totalOnlyOtelRepo,
         this::registerSensorIfAbsent,
         TehutiMetricName.CONSUMER_POLL_ERROR,
         Collections.singletonList(new OccurrenceRate()),
@@ -180,34 +196,34 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
     produceToWriteBufferTimeOtel = MetricEntityStateBase.create(
         PRODUCE_TO_WRITE_BUFFER_TIME.getMetricEntity(),
-        otelRepository,
+        totalOnlyOtelRepo,
         this::registerSensorIfAbsent,
         TehutiMetricName.CONSUMER_RECORDS_PRODUCING_TO_WRITE_BUFFER_LATENCY,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
         baseAttributes);
 
-    topicDeletedCountOtel = MetricEntityStateBase.create(
-        TOPIC_DELETED_COUNT.getMetricEntity(),
-        otelRepository,
+    topicDetectedDeletedCountOtel = MetricEntityStateBase.create(
+        TOPIC_DETECTED_DELETED_COUNT.getMetricEntity(),
+        totalOnlyOtelRepo,
         this::registerSensorIfAbsent,
         TehutiMetricName.DETECTED_DELETED_TOPIC_NUM,
         Collections.singletonList(new Total()),
         baseDimensionsMap,
         baseAttributes);
 
-    topicNoIngestionCountOtel = MetricEntityStateBase.create(
-        TOPIC_NO_INGESTION_COUNT.getMetricEntity(),
-        otelRepository,
+    orphanTopicPartitionCountOtel = MetricEntityStateBase.create(
+        ORPHAN_TOPIC_PARTITION_COUNT.getMetricEntity(),
+        totalOnlyOtelRepo,
         this::registerSensorIfAbsent,
         TehutiMetricName.DETECTED_NO_RUNNING_INGESTION_TOPIC_PARTITION_NUM,
         Collections.singletonList(new Total()),
         baseDimensionsMap,
         baseAttributes);
 
-    poolIdleTimeOtel = MetricEntityStateBase.create(
-        POOL_IDLE_TIME.getMetricEntity(),
-        otelRepository,
+    pollTimeSinceLastSuccessOtel = MetricEntityStateBase.create(
+        POLL_TIME_SINCE_LAST_SUCCESS.getMetricEntity(),
+        totalOnlyOtelRepo,
         this::registerSensorIfAbsent,
         TehutiMetricName.IDLE_TIME,
         Collections.singletonList(new Max()),
@@ -216,8 +232,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
     // Shared OTel instrument for subscribe + update_assignment, each with its own Tehuti sensor
     subscribeActionTimeOtel = MetricEntityStateOneEnum.create(
-        CONSUMER_ACTION_TIME.getMetricEntity(),
-        otelRepository,
+        POOL_ACTION_TIME.getMetricEntity(),
+        totalOnlyOtelRepo,
         this::registerSensorIfAbsent,
         TehutiMetricName.DELEGATE_SUBSCRIBE_LATENCY,
         Arrays.asList(new Avg(), new Max()),
@@ -225,40 +241,27 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
         VeniceConsumerPoolAction.class);
 
     updateAssignmentActionTimeOtel = MetricEntityStateOneEnum.create(
-        CONSUMER_ACTION_TIME.getMetricEntity(),
-        otelRepository,
+        POOL_ACTION_TIME.getMetricEntity(),
+        totalOnlyOtelRepo,
         this::registerSensorIfAbsent,
         TehutiMetricName.UPDATE_CURRENT_ASSIGNMENT_LATENCY,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
         VeniceConsumerPoolAction.class);
 
-    // Joint async gauge for max elapsed time since last successful poll.
-    // OTel callback only on total instance — per-store instances would produce misleading data
-    // points (pool-wide value tagged with per-store attributes) and register unnecessary callbacks.
-    AsyncMetricEntityStateBase.create(
-        POLL_TIME_SINCE_LAST_SUCCESS.getMetricEntity(),
-        totalStats == null ? otelRepository : null,
-        this::registerSensorIfAbsent,
-        TehutiMetricName.MAX_ELAPSED_TIME_SINCE_LAST_SUCCESSFUL_POLL,
-        Collections.singletonList(
-            new AsyncGauge(
-                (ignored, ignored2) -> getMaxElapsedTimeSinceLastPollInConsumerPool.getAsLong(),
-                "max_elapsed_time_since_last_successful_poll")),
-        baseDimensionsMap,
-        baseAttributes,
-        getMaxElapsedTimeSinceLastPollInConsumerPool);
+    // Tehuti-only async gauge: OTel intentionally omitted because this reads from the same source
+    // method (getMaxElapsedTimeMSSinceLastPollInConsumerPool) that also records to the
+    // pollTimeSinceLastSuccessOtel metric above. Having both would be redundant in OTel.
+    registerSensor(
+        new AsyncGauge(
+            (ignored, ignored2) -> getMaxElapsedTimeSinceLastPollInConsumerPool.getAsLong(),
+            TehutiMetricName.MAX_ELAPSED_TIME_SINCE_LAST_SUCCESSFUL_POLL.getMetricName()));
 
-    // OTel-only partition assignment histogram (asymmetric: raw values -> OTel, pre-computed -> Tehuti)
+    // OTel-only partition assignment histogram (asymmetric: raw values -> OTel, pre-computed -> Tehuti).
+    // Uses totalOnlyOtelRepo: only the total instance needs this instrument — per-store instances
+    // never call recordPartitionAssignmentForOtel().
     partitionAssignmentCountOtel = MetricEntityStateBase
-        .create(PARTITION_ASSIGNMENT_COUNT.getMetricEntity(), otelRepository, baseDimensionsMap, baseAttributes);
-  }
-
-  /** Returns a sensor registration function that propagates per-store recordings to the total's Tehuti sensor. */
-  private TehutiSensorRegistrationFunction registerPerStoreAndTotal(MetricEntityState totalMetric) {
-    Sensor parentSensor = totalMetric != null ? totalMetric.getTehutiSensor() : null;
-    Sensor[] parents = parentSensor != null ? new Sensor[] { parentSensor } : null;
-    return (name, stats) -> registerSensor(name, parents, stats);
+        .create(PARTITION_ASSIGNMENT_COUNT.getMetricEntity(), totalOnlyOtelRepo, baseDimensionsMap, baseAttributes);
   }
 
   // Recording methods
@@ -291,12 +294,12 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
   /** Joint API — records to both Tehuti (Total) and OTel (COUNTER). */
   public void recordDetectedDeletedTopicNum(int count) {
-    topicDeletedCountOtel.record(count);
+    topicDetectedDeletedCountOtel.record(count);
   }
 
   /** Joint API — records to both Tehuti (Total) and OTel (COUNTER). */
   public void recordDetectedNoRunningIngestionTopicPartitionNum(int count) {
-    topicNoIngestionCountOtel.record(count);
+    orphanTopicPartitionCountOtel.record(count);
   }
 
   /** Joint API — records to both Tehuti (Avg, Max) and OTel (HISTOGRAM) with SUBSCRIBE dimension. */
@@ -326,9 +329,9 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     pollBytesOtel.record(count);
   }
 
-  /** Joint API — records to both Tehuti (Max) and OTel (GAUGE). */
+  /** Joint API — records to both Tehuti (Max) and OTel (MIN_MAX_COUNT_SUM). */
   public void recordConsumerIdleTime(double time) {
-    poolIdleTimeOtel.record(time);
+    pollTimeSinceLastSuccessOtel.record(time);
   }
 
   public void recordSubscribedPartitionsNum(int count) {
@@ -337,7 +340,8 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
   /**
    * Records a single per-consumer partition count to the OTel partition assignment histogram.
-   * Called for each consumer in the pool from {@link KafkaConsumerService#recordPartitionsPerConsumerSensor()}.
+   * Called for each consumer in the pool from
+   * {@link com.linkedin.davinci.kafka.consumer.KafkaConsumerService#recordPartitionsPerConsumerSensor()}.
    * Tehuti keeps 4 pre-computed gauge values; OTel records raw per-consumer values to a single
    * MIN_MAX_COUNT_SUM histogram.
    */

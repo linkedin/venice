@@ -1,6 +1,6 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.CONSUMER_ACTION_TIME;
+import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.ORPHAN_TOPIC_PARTITION_COUNT;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.PARTITION_ASSIGNMENT_COUNT;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POLL_BYTES;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POLL_COUNT;
@@ -9,10 +9,9 @@ import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.PO
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POLL_RECORD_COUNT;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POLL_TIME;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POLL_TIME_SINCE_LAST_SUCCESS;
-import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POOL_IDLE_TIME;
+import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.POOL_ACTION_TIME;
 import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.PRODUCE_TO_WRITE_BUFFER_TIME;
-import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.TOPIC_DELETED_COUNT;
-import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.TOPIC_NO_INGESTION_COUNT;
+import static com.linkedin.davinci.stats.KafkaConsumerServiceOtelMetricEntity.TOPIC_DETECTED_DELETED_COUNT;
 import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CONSUMER_POOL_ACTION;
@@ -29,11 +28,12 @@ import com.linkedin.venice.utils.SystemTime;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.ExponentialHistogramPointData;
 import io.opentelemetry.sdk.metrics.data.HistogramPointData;
-import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Collection;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -48,6 +48,10 @@ public class KafkaConsumerServiceStatsOtelTest {
   /** After AbstractVeniceStats sanitization: dots → underscores */
   private static final String TOTAL_STATS_NAME = "total_kafka_consumer_service_for_test-region";
 
+  // Dedicated AsyncGaugeExecutor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR.
+  // The static default executor gets permanently shut down when any MetricsRepository.close() triggers
+  // its closure, causing all subsequent tests' AsyncGauge.measure() to return 0.0 (cached default).
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
 
@@ -59,12 +63,14 @@ public class KafkaConsumerServiceStatsOtelTest {
 
   @BeforeMethod
   public void setUp() {
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
     inMemoryMetricReader = InMemoryMetricReader.create();
     metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(new MetricConfig(asyncGaugeExecutor))
             .build());
 
     // Create total stats (totalStats=null means this IS the total instance)
@@ -87,9 +93,12 @@ public class KafkaConsumerServiceStatsOtelTest {
   }
 
   @AfterMethod
-  public void tearDown() {
+  public void tearDown() throws Exception {
     if (metricsRepository != null) {
       metricsRepository.close();
+    }
+    if (asyncGaugeExecutor != null) {
+      asyncGaugeExecutor.close();
     }
   }
 
@@ -110,12 +119,6 @@ public class KafkaConsumerServiceStatsOtelTest {
         buildPerStoreAttributes(),
         POLL_BYTES.getMetricName(),
         TEST_METRIC_PREFIX);
-  }
-
-  @Test
-  public void testRecordByteSizePerPollTehutiParentPropagation() {
-    perStoreStats.recordByteSizePerPoll(1024);
-    perStoreStats.recordByteSizePerPoll(2048);
 
     // Per-store Tehuti: Min=1024, Max=2048
     assertEquals(getTehutiMetricValue(TEST_STORE_NAME, "bytes_per_poll", "Min"), 1024.0);
@@ -141,12 +144,6 @@ public class KafkaConsumerServiceStatsOtelTest {
         buildPerStoreAttributes(),
         POLL_RECORD_COUNT.getMetricName(),
         TEST_METRIC_PREFIX);
-  }
-
-  @Test
-  public void testRecordPollResultNumTehutiParentPropagation() {
-    perStoreStats.recordPollResultNum(100);
-    perStoreStats.recordPollResultNum(200);
 
     // Per-store Tehuti: Avg=150, Min=100
     assertEquals(getTehutiMetricValue(TEST_STORE_NAME, "consumer_poll_result_num", "Avg"), 150.0);
@@ -198,9 +195,9 @@ public class KafkaConsumerServiceStatsOtelTest {
 
   /**
    * Verifies that total-only OTel recordings do NOT produce data points with per-store attributes.
-   * Covers synchronous metric types: HISTOGRAM, COUNTER, MIN_MAX_COUNT_SUM, and GAUGE.
-   * Async metrics (POLL_COUNT, POLL_NON_EMPTY_COUNT, POLL_TIME_SINCE_LAST_SUCCESS) are excluded
-   * because async callbacks register at construction time and may report zero-valued data points.
+   * Covers synchronous metric types: HISTOGRAM, COUNTER, and MIN_MAX_COUNT_SUM.
+   * Async metrics (POLL_COUNT, POLL_NON_EMPTY_COUNT) are excluded because async callbacks
+   * register at construction time and may report zero-valued data points.
    */
   @Test
   public void testTotalRecordingDoesNotProduceOtelDataWithPerStoreAttributes() {
@@ -208,6 +205,7 @@ public class KafkaConsumerServiceStatsOtelTest {
     totalStats.recordPollError();
     totalStats.recordConsumerRecordsProducingToWriterBufferLatency(10.0);
     totalStats.recordDetectedDeletedTopicNum(2);
+    totalStats.recordDetectedNoRunningIngestionTopicPartitionNum(1);
     totalStats.recordConsumerIdleTime(500.0);
     totalStats.recordDelegateSubscribeLatency(15.0);
 
@@ -234,7 +232,7 @@ public class KafkaConsumerServiceStatsOtelTest {
         .build();
     ExponentialHistogramPointData subscribePerStore = OpenTelemetryDataTestUtils.getExponentialHistogramPointData(
         metrics,
-        CONSUMER_ACTION_TIME.getMetricName(),
+        POOL_ACTION_TIME.getMetricName(),
         TEST_METRIC_PREFIX,
         perStoreSubscribeAttrs);
     assertNull(subscribePerStore, "Total-only subscribe latency should not produce per-store OTel data");
@@ -244,13 +242,21 @@ public class KafkaConsumerServiceStatsOtelTest {
         .assertNoLongSumDataForAttributes(metrics, POLL_ERROR_COUNT.getMetricName(), TEST_METRIC_PREFIX, perStoreAttrs);
     OpenTelemetryDataTestUtils.assertNoLongSumDataForAttributes(
         metrics,
-        TOPIC_DELETED_COUNT.getMetricName(),
+        TOPIC_DETECTED_DELETED_COUNT.getMetricName(),
+        TEST_METRIC_PREFIX,
+        perStoreAttrs);
+    OpenTelemetryDataTestUtils.assertNoLongSumDataForAttributes(
+        metrics,
+        ORPHAN_TOPIC_PARTITION_COUNT.getMetricName(),
         TEST_METRIC_PREFIX,
         perStoreAttrs);
 
-    // GAUGE metric: no per-store data point
-    LongPointData idleTimePerStore = OpenTelemetryDataTestUtils
-        .getLongPointDataFromGauge(metrics, POOL_IDLE_TIME.getMetricName(), TEST_METRIC_PREFIX, perStoreAttrs);
+    // MIN_MAX_COUNT_SUM metric: no per-store data point
+    HistogramPointData idleTimePerStore = OpenTelemetryDataTestUtils.getHistogramPointData(
+        metrics,
+        POLL_TIME_SINCE_LAST_SUCCESS.getMetricName(),
+        TEST_METRIC_PREFIX,
+        perStoreAttrs);
     assertNull(idleTimePerStore, "Total-only idle time should not produce per-store OTel data");
   }
 
@@ -279,18 +285,13 @@ public class KafkaConsumerServiceStatsOtelTest {
         buildTotalAttributes(),
         POLL_TIME.getMetricName(),
         TEST_METRIC_PREFIX);
-  }
-
-  @Test
-  public void testRecordPollRequestLatencyTehutiValues() {
-    totalStats.recordPollRequestLatency(50.0);
-    totalStats.recordPollRequestLatency(100.0);
 
     // Tehuti: poll time Avg=75, Max=100
     assertEquals(getTehutiMetricValue(TOTAL_STATS_NAME, "consumer_poll_request_latency", "Avg"), 75.0);
     assertEquals(getTehutiMetricValue(TOTAL_STATS_NAME, "consumer_poll_request_latency", "Max"), 100.0);
 
-    // Tehuti: poll count sensor should exist (LongAdderRateGauge uses "Rate" as suffix)
+    // Tehuti: poll count sensor exists (LongAdderRateGauge uses "Rate" suffix; rate value is
+    // time-dependent so only existence is asserted — VeniceMetricsRepository uses SystemTime)
     assertNotNull(
         metricsRepository.getMetric("." + TOTAL_STATS_NAME + "--consumer_poll_request.Rate"),
         "Rate Tehuti sensor should be registered for poll count");
@@ -309,7 +310,8 @@ public class KafkaConsumerServiceStatsOtelTest {
         POLL_NON_EMPTY_COUNT.getMetricName(),
         TEST_METRIC_PREFIX);
 
-    // Tehuti: sensor should exist (LongAdderRateGauge uses "Rate" as suffix)
+    // Tehuti: sensor exists (LongAdderRateGauge uses "Rate" suffix; rate value is
+    // time-dependent so only existence is asserted — VeniceMetricsRepository uses SystemTime)
     assertNotNull(
         metricsRepository.getMetric("." + TOTAL_STATS_NAME + "--consumer_poll_non_zero_result_num.Rate"),
         "Rate Tehuti sensor should be registered for non-empty poll count");
@@ -361,7 +363,7 @@ public class KafkaConsumerServiceStatsOtelTest {
     totalStats.recordDetectedDeletedTopicNum(3);
 
     // OTel: COUNTER = 5
-    validateCounter(TOPIC_DELETED_COUNT.getMetricName(), 5);
+    validateCounter(TOPIC_DETECTED_DELETED_COUNT.getMetricName(), 5);
 
     // Tehuti: Total = 5
     assertEquals(getTehutiMetricValue(TOTAL_STATS_NAME, "detected_deleted_topic_num", "Total"), 5.0);
@@ -372,7 +374,7 @@ public class KafkaConsumerServiceStatsOtelTest {
     totalStats.recordDetectedNoRunningIngestionTopicPartitionNum(1);
 
     // OTel: COUNTER = 1
-    validateCounter(TOPIC_NO_INGESTION_COUNT.getMetricName(), 1);
+    validateCounter(ORPHAN_TOPIC_PARTITION_COUNT.getMetricName(), 1);
 
     // Tehuti: Total = 1
     assertEquals(
@@ -393,7 +395,7 @@ public class KafkaConsumerServiceStatsOtelTest {
         1,
         15.0,
         expectedAttributes,
-        CONSUMER_ACTION_TIME.getMetricName(),
+        POOL_ACTION_TIME.getMetricName(),
         TEST_METRIC_PREFIX);
 
     // Tehuti: Avg=15, Max=15
@@ -414,7 +416,7 @@ public class KafkaConsumerServiceStatsOtelTest {
         1,
         25.0,
         expectedAttributes,
-        CONSUMER_ACTION_TIME.getMetricName(),
+        POOL_ACTION_TIME.getMetricName(),
         TEST_METRIC_PREFIX);
 
     // Tehuti: Avg=25, Max=25
@@ -436,7 +438,7 @@ public class KafkaConsumerServiceStatsOtelTest {
         2,
         30.0,
         buildTotalAttributesWithAction(VeniceConsumerPoolAction.SUBSCRIBE),
-        CONSUMER_ACTION_TIME.getMetricName(),
+        POOL_ACTION_TIME.getMetricName(),
         TEST_METRIC_PREFIX);
 
     // OTel: Update assignment min=50, max=50, count=1, sum=50
@@ -447,7 +449,7 @@ public class KafkaConsumerServiceStatsOtelTest {
         1,
         50.0,
         buildTotalAttributesWithAction(VeniceConsumerPoolAction.UPDATE_ASSIGNMENT),
-        CONSUMER_ACTION_TIME.getMetricName(),
+        POOL_ACTION_TIME.getMetricName(),
         TEST_METRIC_PREFIX);
 
     // Tehuti: independent sensors with correct values
@@ -458,50 +460,93 @@ public class KafkaConsumerServiceStatsOtelTest {
   @Test
   public void testRecordConsumerIdleTime() {
     totalStats.recordConsumerIdleTime(500.0);
+    totalStats.recordConsumerIdleTime(200.0);
 
-    // OTel: GAUGE = 500
-    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
+    // OTel: MIN_MAX_COUNT_SUM histogram: min=200, max=500, count=2, sum=700
+    OpenTelemetryDataTestUtils.validateHistogramPointData(
         inMemoryMetricReader,
-        500L,
+        200,
+        500,
+        2,
+        700,
         buildTotalAttributes(),
-        POOL_IDLE_TIME.getMetricName(),
+        POLL_TIME_SINCE_LAST_SUCCESS.getMetricName(),
         TEST_METRIC_PREFIX);
 
     // Tehuti: Max = 500
     assertEquals(getTehutiMetricValue(TOTAL_STATS_NAME, "idle_time", "Max"), 500.0);
   }
 
+  // ASYNC_COUNTER per-store suppression: per-store instances have totalOnlyOtelRepo=null,
+  // so no OTel callbacks are registered. Per-store Tehuti shares total's sensor.
+
+  /**
+   * Verifies that ASYNC_COUNTER metrics (POLL_COUNT, POLL_NON_EMPTY_COUNT) do NOT register
+   * OTel callbacks on per-store instances. Per-store instances have totalOnlyOtelRepo=null.
+   */
   @Test
-  public void testRecordConsumerIdleTimeGaugeOverwrite() {
-    totalStats.recordConsumerIdleTime(500.0);
-    totalStats.recordConsumerIdleTime(200.0);
+  public void testAsyncCounterPerStoreOtelSuppression() {
+    // Record via per-store instance — this goes to shared Tehuti sensor but should NOT create OTel data
+    perStoreStats.recordPollRequestLatency(10.0);
+    perStoreStats.recordNonZeroPollResultNum(5);
 
-    // OTel: Gauge should report the latest value, not a sum
-    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
-        inMemoryMetricReader,
-        200L,
-        buildTotalAttributes(),
-        POOL_IDLE_TIME.getMetricName(),
-        TEST_METRIC_PREFIX);
+    Collection<MetricData> metrics = inMemoryMetricReader.collectAllMetrics();
+    Attributes perStoreAttrs = buildPerStoreAttributes();
 
-    // Tehuti: Max = 500 (Tehuti Max tracks the maximum, not the latest)
-    assertEquals(getTehutiMetricValue(TOTAL_STATS_NAME, "idle_time", "Max"), 500.0);
+    // No per-store OTel data for ASYNC_COUNTER metrics
+    OpenTelemetryDataTestUtils
+        .assertNoLongSumDataForAttributes(metrics, POLL_COUNT.getMetricName(), TEST_METRIC_PREFIX, perStoreAttrs);
+    OpenTelemetryDataTestUtils.assertNoLongSumDataForAttributes(
+        metrics,
+        POLL_NON_EMPTY_COUNT.getMetricName(),
+        TEST_METRIC_PREFIX,
+        perStoreAttrs);
   }
 
-  // Async gauge — Joint async overload
+  /**
+   * Verifies that per-store ASYNC_COUNTER recordings share the total's Tehuti sensor.
+   * Recording via perStoreStats should increment the total's LongAdderRateGauge sensor.
+   */
+  @Test
+  public void testAsyncCounterTehutiSensorSharing() {
+    // Record via per-store instance
+    perStoreStats.recordPollRequestLatency(10.0);
+    perStoreStats.recordPollRequestLatency(20.0);
+
+    // Total's Tehuti sensor should exist (shared by per-store instance)
+    assertNotNull(
+        metricsRepository.getMetric("." + TOTAL_STATS_NAME + "--consumer_poll_request.Rate"),
+        "Per-store recording should share total's Tehuti sensor for poll count");
+
+    // Per-store should NOT have its own separate sensor
+    assertNull(
+        metricsRepository.getMetric("." + TEST_STORE_NAME + "--consumer_poll_request.Rate"),
+        "Per-store instance should not have its own Tehuti sensor for poll count");
+  }
+
+  // Tehuti-only async gauge (OTel intentionally omitted — redundant with POLL_TIME_SINCE_LAST_SUCCESS histogram)
 
   @Test
-  public void testAsyncGaugePollTimeSinceLastSuccess() {
-    // The supplier returns 42L (set in setUp). OTel async gauge fires at collection time.
-    OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(
-        inMemoryMetricReader,
-        42L,
-        buildTotalAttributes(),
-        POLL_TIME_SINCE_LAST_SUCCESS.getMetricName(),
-        TEST_METRIC_PREFIX);
-
-    // Tehuti: AsyncGauge uses "Gauge" suffix (per metricNameSuffix())
+  public void testAsyncGaugeMaxElapsedTimeSinceLastPoll() {
+    // The supplier returns 42L (set in setUp). No OTel metric — only Tehuti AsyncGauge.
+    // Uses a dedicated AsyncGaugeExecutor (not the shared static DEFAULT_ASYNC_GAUGE_EXECUTOR)
+    // to avoid stale thread pool shutdown from prior test teardowns.
     assertEquals(getTehutiMetricValue(TOTAL_STATS_NAME, "max_elapsed_time_since_last_successful_poll", "Gauge"), 42.0);
+  }
+
+  // Tehuti-only partition gauges (no OTel counterpart — OTel uses PARTITION_ASSIGNMENT_COUNT histogram)
+
+  @Test
+  public void testTehutiOnlyPartitionGauges() {
+    totalStats.recordMinPartitionsPerConsumer(2);
+    totalStats.recordMaxPartitionsPerConsumer(15);
+    totalStats.recordAvgPartitionsPerConsumer(8);
+    totalStats.recordSubscribedPartitionsNum(50);
+
+    assertEquals(getTehutiMetricValue(TOTAL_STATS_NAME, "min_partitions_per_consumer", "Gauge"), 2.0);
+    assertEquals(getTehutiMetricValue(TOTAL_STATS_NAME, "max_partitions_per_consumer", "Gauge"), 15.0);
+    assertEquals(getTehutiMetricValue(TOTAL_STATS_NAME, "avg_partitions_per_consumer", "Gauge"), 8.0);
+    assertEquals(getTehutiMetricValue(TOTAL_STATS_NAME, "subscribed_partitions_num", "Gauge"), 50.0);
   }
 
   // OTel-only metric
@@ -540,6 +585,16 @@ public class KafkaConsumerServiceStatsOtelTest {
         1024,
         buildTotalAttributes(),
         POLL_BYTES.getMetricName(),
+        TEST_METRIC_PREFIX);
+
+    OpenTelemetryDataTestUtils.validateHistogramPointData(
+        inMemoryMetricReader,
+        100,
+        100,
+        1,
+        100,
+        buildTotalAttributes(),
+        POLL_RECORD_COUNT.getMetricName(),
         TEST_METRIC_PREFIX);
 
     assertEquals(getTehutiMetricValue(TOTAL_STATS_NAME, "bytes_per_poll", "Max"), 1024.0);
