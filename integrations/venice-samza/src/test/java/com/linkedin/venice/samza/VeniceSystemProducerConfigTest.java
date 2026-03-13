@@ -96,4 +96,35 @@ public class VeniceSystemProducerConfigTest {
         .setProvidedPrimaryControllerColoD2Client(mock(D2Client.class))
         .build();
   }
+
+  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*At least one connection mode.*")
+  public void testBuilderRejectsNoConnectionMode() {
+    new VeniceSystemProducerConfig.Builder().setStoreName("store")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("job-id")
+        .setRunningFabric("dc-0")
+        .build();
+  }
+
+  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*veniceChildD2ZkHost.*primaryControllerColoD2ZKHost.*must be set together")
+  public void testBuilderRejectsPartialZkHosts() {
+    new VeniceSystemProducerConfig.Builder().setStoreName("store")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("job-id")
+        .setRunningFabric("dc-0")
+        .setVeniceChildD2ZkHost("zk:2181")
+        .setPrimaryControllerD2ServiceName("ChildController")
+        .build();
+  }
+
+  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*primaryControllerD2ServiceName.*required.*")
+  public void testBuilderRejectsMissingD2ServiceNameForZkMode() {
+    new VeniceSystemProducerConfig.Builder().setStoreName("store")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("job-id")
+        .setRunningFabric("dc-0")
+        .setVeniceChildD2ZkHost("zk:2181")
+        .setPrimaryControllerColoD2ZKHost("zk:2181")
+        .build();
+  }
 }

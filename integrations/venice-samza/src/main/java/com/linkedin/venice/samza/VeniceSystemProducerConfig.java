@@ -292,6 +292,18 @@ public class VeniceSystemProducerConfig {
         throw new IllegalStateException(
             "Both childColoD2Client and primaryControllerColoD2Client must be set together");
       }
+      if (!hasDiscoveryUrl && !hasD2Clients && !hasZkHosts) {
+        throw new IllegalStateException(
+            "At least one connection mode must be configured: discoveryUrl, ZK hosts, or D2 clients");
+      }
+      if (hasZkHosts && (veniceChildD2ZkHost == null || primaryControllerColoD2ZKHost == null)) {
+        throw new IllegalStateException(
+            "Both veniceChildD2ZkHost and primaryControllerColoD2ZKHost must be set together");
+      }
+      if (!hasDiscoveryUrl && primaryControllerD2ServiceName == null) {
+        throw new IllegalStateException(
+            "primaryControllerD2ServiceName is required for ZK-based and D2Client-based connection modes");
+      }
       return new VeniceSystemProducerConfig(this);
     }
   }

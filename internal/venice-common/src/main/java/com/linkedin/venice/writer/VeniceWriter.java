@@ -767,16 +767,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ChunkedValueManifest oldRmdManifest,
       int partition) {
 
-    if (writerHook != null) {
-      writerHook.onBeforeProduce(serializedKey.length, 0);
-    }
-
     isChunkingFlagInvoked = true;
 
     int rmdPayloadSize = deleteMetadata == null ? 0 : deleteMetadata.getSerializedSize();
     if (isChunkingNeededForRecord(serializedKey.length + rmdPayloadSize)) {
       throw new RecordTooLargeException(
           "This record exceeds the maximum size. " + getSizeReport(serializedKey.length, 0, rmdPayloadSize));
+    }
+
+    if (writerHook != null) {
+      writerHook.onBeforeProduce(serializedKey.length, 0);
     }
 
     if (isChunkingEnabled) {
@@ -1087,10 +1087,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ChunkedValueManifest oldRmdManifest,
       boolean isGlobalRtDiv,
       PubSubMessageHeaders pubSubMessageHeaders) {
-    if (writerHook != null) {
-      writerHook.onBeforeProduce(serializedKey.length, serializedValue.length);
-    }
-
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     isChunkingFlagInvoked = true;
 
@@ -1102,6 +1098,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
       // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
       if ((isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) || isGlobalRtDiv) {
+        if (writerHook != null) {
+          writerHook.onBeforeProduce(serializedKey.length, serializedValue.length);
+        }
         return putLargeValue(
             serializedKey,
             serializedValue,
@@ -1119,6 +1118,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             "This record exceeds the maximum size. "
                 + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
       }
+    }
+
+    if (writerHook != null) {
+      writerHook.onBeforeProduce(serializedKey.length, serializedValue.length);
     }
 
     if (isChunkingEnabled) {
@@ -1264,15 +1267,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] serializedUpdate = writeComputeSerializer.serialize(topicName, update);
     int partition = getPartition(serializedKey);
 
-    if (writerHook != null) {
-      writerHook.onBeforeProduce(serializedKey.length, serializedUpdate.length);
-    }
-
     // large value is not supported for "update" yet
     if (serializedKey.length + serializedUpdate.length > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
       throw new RecordTooLargeException(
           "This partial update exceeds the maximum size. "
               + getSizeReport(serializedKey.length, serializedUpdate.length, 0));
+    }
+
+    if (writerHook != null) {
+      writerHook.onBeforeProduce(serializedKey.length, serializedUpdate.length);
     }
 
     KafkaKey kafkaKey = new KafkaKey((MessageType.UPDATE), serializedKey);

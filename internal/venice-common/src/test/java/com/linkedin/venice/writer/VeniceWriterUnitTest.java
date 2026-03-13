@@ -20,6 +20,7 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -1023,5 +1024,63 @@ public class VeniceWriterUnitTest {
     verify(mockHook, times(1)).onBeforeProduce(eq(expectedKey.length), eq(expectedValue.length));
     // Producer should be called multiple times (chunks + manifest)
     verify(mockedProducer, atLeast(2)).sendMessage(any(), any(), any(), any(), any(), any());
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testWriterHookNotCalledWhenRecordTooLarge() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+
+    // Non-chunking writer — records over ~1MB will throw RecordTooLargeException
+    String testTopic = "test";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(1)
+            .setWriterHook(mockHook)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Build a value large enough to exceed the max size (~1MB)
+    StringBuilder stringBuilder = new StringBuilder();
+    for (int i = 0; i < 50000; i++) {
+      stringBuilder.append("abcdefghabcdefghabcdefghabcdefgh");
+    }
+    String largeValue = stringBuilder.toString();
+
+    // put() with too-large record should throw and NOT call hook
+    try {
+      writer.put("key", largeValue, 1, null);
+      fail("Expected RecordTooLargeException");
+    } catch (RecordTooLargeException e) {
+      // expected
+    }
+    verify(mockHook, never()).onBeforeProduce(any(int.class), any(int.class));
+
+    // update() with too-large record should throw and NOT call hook
+    try {
+      writer.update("key", largeValue, 1, 1, null, APP_DEFAULT_LOGICAL_TS);
+      fail("Expected RecordTooLargeException");
+    } catch (RecordTooLargeException e) {
+      // expected
+    }
+    verify(mockHook, never()).onBeforeProduce(any(int.class), any(int.class));
+
+    // delete() with too-large key should throw and NOT call hook
+    try {
+      writer.delete(largeValue, null);
+      fail("Expected RecordTooLargeException");
+    } catch (RecordTooLargeException e) {
+      // expected
+    }
+    verify(mockHook, never()).onBeforeProduce(any(int.class), any(int.class));
   }
 }
