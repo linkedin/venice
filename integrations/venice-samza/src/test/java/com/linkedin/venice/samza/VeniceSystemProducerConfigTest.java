@@ -142,18 +142,6 @@ public class VeniceSystemProducerConfigTest {
         .build();
   }
 
-  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*routerUrl.*required.*discoveryUrl.*verifyLatestProtocolPresent.*")
-  public void testBuilderRejectsMissingRouterUrlWithDiscoveryAndProtocolVerification() {
-    new VeniceSystemProducerConfig.Builder().setStoreName("store")
-        .setPushType(Version.PushType.STREAM)
-        .setSamzaJobId("job-id")
-        .setRunningFabric("dc-0")
-        .setFactory(mock(VeniceSystemFactory.class))
-        .setDiscoveryUrl("http://discovery")
-        .setVerifyLatestProtocolPresent(true)
-        .build();
-  }
-
   @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "time cannot be null")
   public void testBuilderRejectsNullTime() {
     new VeniceSystemProducerConfig.Builder().setStoreName("store")

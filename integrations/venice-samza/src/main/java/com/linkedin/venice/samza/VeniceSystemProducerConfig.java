@@ -306,10 +306,6 @@ public class VeniceSystemProducerConfig {
         throw new IllegalStateException(
             "primaryControllerD2ServiceName is required for ZK-based and D2Client-based connection modes");
       }
-      if (hasDiscoveryUrl && verifyLatestProtocolPresent && (routerUrl == null || routerUrl.trim().isEmpty())) {
-        throw new IllegalStateException(
-            "routerUrl is required when discoveryUrl is set and verifyLatestProtocolPresent is enabled");
-      }
       return new VeniceSystemProducerConfig(this);
     }
   }

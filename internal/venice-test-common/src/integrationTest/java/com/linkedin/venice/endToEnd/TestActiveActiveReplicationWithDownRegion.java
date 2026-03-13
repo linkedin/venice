@@ -17,6 +17,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.samza.VeniceSystemProducerConfig;
 import com.linkedin.venice.utils.TestUtils;
@@ -109,7 +110,8 @@ public class TestActiveActiveReplicationWithDownRegion extends AbstractMultiRegi
     // Now lets populate some data into dc-0 and verify that records replicate to all regions
     // Build a system producer that writes nearline to dc-0
     SystemProducer producerInDC0 = new VeniceSystemProducer(
-        new VeniceSystemProducerConfig.Builder().setStoreName(storeName)
+        new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+            .setStoreName(storeName)
             .setPushType(Version.PushType.STREAM)
             .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
             .setRunningFabric("dc-0")
@@ -121,7 +123,8 @@ public class TestActiveActiveReplicationWithDownRegion extends AbstractMultiRegi
     producerInDC0.start();
 
     SystemProducer producerInDC1 = new VeniceSystemProducer(
-        new VeniceSystemProducerConfig.Builder().setStoreName(storeName)
+        new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+            .setStoreName(storeName)
             .setPushType(Version.PushType.STREAM)
             .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
             .setRunningFabric("dc-1")
@@ -134,7 +137,8 @@ public class TestActiveActiveReplicationWithDownRegion extends AbstractMultiRegi
 
     // Build another one which will write some batch data
     SystemProducer batchProducer = new VeniceSystemProducer(
-        new VeniceSystemProducerConfig.Builder().setStoreName(storeName)
+        new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+            .setStoreName(storeName)
             .setPushType(Version.PushType.BATCH)
             .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
             .setRunningFabric("dc-0")

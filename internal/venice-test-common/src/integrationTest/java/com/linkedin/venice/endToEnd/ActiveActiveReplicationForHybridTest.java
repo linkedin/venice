@@ -45,6 +45,7 @@ import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
+import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.samza.VeniceSystemProducerConfig;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -463,7 +464,8 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
       // Build the SystemProducer with the mock time
       VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
       try (VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
-          new VeniceSystemProducerConfig.Builder().setStoreName(storeName)
+          new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setStoreName(storeName)
               .setPushType(Version.PushType.STREAM)
               .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
               .setRunningFabric("dc-0")
@@ -545,7 +547,8 @@ public class ActiveActiveReplicationForHybridTest extends AbstractMultiRegionTes
       // Build the SystemProducer with the mock time
       VeniceMultiClusterWrapper childDataCenter1 = childDatacenters.get(1);
       try (VeniceSystemProducer producerInDC1 = new VeniceSystemProducer(
-          new VeniceSystemProducerConfig.Builder().setStoreName(storeName)
+          new VeniceSystemProducerConfig.Builder().setFactory(new VeniceSystemFactory())
+              .setStoreName(storeName)
               .setPushType(Version.PushType.STREAM)
               .setSamzaJobId(Utils.getUniqueString("venice-push-id"))
               .setRunningFabric("dc-1")
