@@ -272,7 +272,6 @@ public class ChunkAssemblerTest {
 
     // Build a small RMD manifest whose chunks will NOT be registered in mockStorageEngine
     byte[] rmdPayload = new byte[2 * BYTES_PER_MB];
-    ProducerMetadata producerMetadata = new ProducerMetadata(new GUID(), 0, 0, 0L, 0L);
     ChunkedPayloadAndManifest rmdManifest = WriterChunkingHelper.chunkPayloadAndSend(
         serializedKey,
         rmdPayload,
