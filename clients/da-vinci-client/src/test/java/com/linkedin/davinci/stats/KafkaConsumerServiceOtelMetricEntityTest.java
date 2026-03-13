@@ -101,7 +101,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
     map.put(
         ORPHAN_TOPIC_PARTITION_COUNT,
         new MetricEntityExpectation(
-            "ingestion.pubsub.consumer.topic.orphan_partition_count",
+            "ingestion.pubsub.consumer.topic.partition.orphan_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
             "Count of topic-partitions assigned to consumer with no running ingestion task",
