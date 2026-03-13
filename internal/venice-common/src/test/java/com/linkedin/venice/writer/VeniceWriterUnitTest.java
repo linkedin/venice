@@ -34,6 +34,7 @@ import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.LeaderProducerCallback;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -722,6 +723,36 @@ public class VeniceWriterUnitTest {
     Arrays.fill(tooLargeValue, '*');
     String tooLargeString = new String(tooLargeValue);
     Assert.expectThrows(RecordTooLargeException.class, () -> writer.put("test-key", tooLargeString, 1, null));
+  }
+
+  /**
+   * Testing the constructor validation for MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES:
+   * - Without chunking or pubsub large message support, exceeding the default payload size should fail.
+   * - With pubSubLargeMessageSupportEnabled, exceeding the default payload size is allowed.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testConstructorValidationWithPubSubLargeMessageSupport() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
+    int oversizedPayload = DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + 1;
+
+    // Without chunking or pubsub support, oversized payload config should throw
+    VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
+        .setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setChunkingEnabled(false)
+        .build();
+    Properties failProps = new Properties();
+    failProps.put(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, String.valueOf(oversizedPayload));
+    Assert.expectThrows(
+        VeniceException.class,
+        () -> new VeniceWriter<>(options, new VeniceProperties(failProps), mockedProducer));
+
+    // With pubsub large message support enabled, oversized payload config should succeed
+    Properties successProps = new Properties();
+    successProps.put(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, String.valueOf(oversizedPayload));
+    successProps.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, "true");
+    new VeniceWriter<>(options, new VeniceProperties(successProps), mockedProducer); // Should NOT throw
   }
 
   /**

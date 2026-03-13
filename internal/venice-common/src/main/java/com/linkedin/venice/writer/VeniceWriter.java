@@ -1102,7 +1102,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     /**
      * {@link RecordTooLargeException} will be thrown unless the record size fits within one of the following categories:
-     * Chunking Not Needed < ~1MB < Chunking Needed < MAX_RECORD_SIZE_BYTES
+     * 1. Chunking Not Needed (< ~1MB): record fits in a single message, no special handling needed.
+     * 2. Chunking Needed (< MAX_RECORD_SIZE_BYTES): Venice-level chunking splits the record (requires chunking enabled).
+     * 3. PubSub passthrough (< MAX_RECORD_SIZE_BYTES): the pubsub layer handles fragmentation/reassembly natively
+     *    (requires pubSubLargeMessageSupportEnabled, chunking not required).
      */
     int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
     if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
