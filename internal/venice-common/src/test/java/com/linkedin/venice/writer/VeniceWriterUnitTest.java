@@ -685,6 +685,48 @@ public class VeniceWriterUnitTest {
   }
 
   /**
+   * Testing that VeniceWriter allows oversized puts when pubSubLargeMessageSupportEnabled is true,
+   * but still enforces MAX_RECORD_SIZE_BYTES as an upper bound.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testPutWithPubSubLargeMessageSupport() {
+    final int maxRecordSizeBytes = 5 * BYTES_PER_MB;
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
+    final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
+        .setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setChunkingEnabled(false)
+        .setMaxRecordSizeBytes(maxRecordSizeBytes)
+        .build();
+
+    // Enable pubsub large message support via properties
+    Properties properties = new Properties();
+    properties.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, "true");
+    VeniceProperties props = new VeniceProperties(properties);
+    final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
+
+    // Record larger than ~1MB chunk threshold but within MAX_RECORD_SIZE_BYTES should succeed
+    final int LARGE_VALUE_SIZE = 2 * BYTES_PER_MB;
+    char[] largeValue = new char[LARGE_VALUE_SIZE];
+    Arrays.fill(largeValue, '*');
+    writer.put("test-key", new String(largeValue), 1, null); // Should NOT throw
+
+    // Record exceeding MAX_RECORD_SIZE_BYTES should still throw RecordTooLargeException
+    final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
+    char[] tooLargeValue = new char[TOO_LARGE_VALUE_SIZE];
+    Arrays.fill(tooLargeValue, '*');
+    try {
+      writer.put("test-key", new String(tooLargeValue), 1, null);
+      fail("Should've thrown RecordTooLargeException for records exceeding MAX_RECORD_SIZE_BYTES");
+    } catch (RecordTooLargeException e) {
+      // Expected: MAX_RECORD_SIZE_BYTES is still enforced even with pubsub large message support
+    }
+  }
+
+  /**
    * Testing that VeniceWriter does not throw when calling put() with Global RT DIV messages
    * and does not enforce size limits on them
    */
