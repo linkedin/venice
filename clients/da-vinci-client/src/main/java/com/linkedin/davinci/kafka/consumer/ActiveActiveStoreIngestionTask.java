@@ -457,6 +457,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     MessageType msgType = MessageType.valueOf(kafkaValue.messageType);
     final int incomingValueSchemaId;
     final int incomingWriteComputeSchemaId;
+    int incomingUpdatePayloadSize = 0;
 
     switch (msgType) {
       case PUT:
@@ -467,6 +468,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         Update incomingUpdate = (Update) kafkaValue.payloadUnion;
         incomingValueSchemaId = incomingUpdate.schemaId;
         incomingWriteComputeSchemaId = incomingUpdate.updateSchemaId;
+        incomingUpdatePayloadSize = incomingUpdate.updateValue.remaining();
         break;
       case DELETE:
         incomingValueSchemaId = -1; // Ignored since we don't need the schema id for DELETE operations.
@@ -575,6 +577,26 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           consumerRecord.getTopicPartition().getPartitionNumber(),
           mergeConflictResult.getNewValue(),
           partitionConsumptionState);
+
+      // Partial-update amplification detection (AA path)
+      if (msgType == MessageType.UPDATE && updatedValueBytes != null) {
+        int largeResultThreshold = serverConfig.getPartialUpdateLargeResultLogThresholdBytes();
+        PartialUpdateAmplificationDetector amplificationDetector =
+            partitionConsumptionState.getOrCreatePartialUpdateAmplificationDetector(
+                serverConfig.getPartialUpdateAmplificationReportIntervalMs());
+        amplificationDetector
+            .record(keyBytes, incomingUpdatePayloadSize, updatedValueBytes.remaining(), largeResultThreshold);
+        PartialUpdateAmplificationDetector.AmplificationReport ampReport =
+            amplificationDetector.tryBuildReportAndReset(System.currentTimeMillis(), largeResultThreshold);
+        if (ampReport != null) {
+          LOGGER.warn(
+              "Partial-update amplification report for {} [Partition {}]\n{}",
+              partitionConsumptionState.getReplicaId(),
+              consumerRecord.getTopicPartition().getPartitionNumber(),
+              ampReport);
+          aggVersionedIngestionStats.recordPartialUpdateAmplificationAlertCount(storeName, versionNumber);
+        }
+      }
 
       final int valueSchemaId = mergeConflictResult.getValueSchemaId();
 

@@ -3473,6 +3473,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         final byte[] updatedValueBytes;
         final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
+        final int incomingUpdatePayloadSize = update.updateValue.remaining();
         WriteComputeResult writeComputeResult;
         try {
           long writeComputeStartTimeInNS = System.nanoTime();
@@ -3494,6 +3495,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         } catch (Exception e) {
           setWriteComputeFailureCode(StatsErrorCode.WRITE_COMPUTE_UPDATE_FAILURE.code);
           throw new RuntimeException(e);
+        }
+
+        // Partial-update amplification detection (outside WC try-catch to avoid masking failures as WC errors)
+        if (updatedValueBytes != null) {
+          int largeResultThreshold = serverConfig.getPartialUpdateLargeResultLogThresholdBytes();
+          PartialUpdateAmplificationDetector amplificationDetector =
+              partitionConsumptionState.getOrCreatePartialUpdateAmplificationDetector(
+                  serverConfig.getPartialUpdateAmplificationReportIntervalMs());
+          amplificationDetector
+              .record(keyBytes, incomingUpdatePayloadSize, updatedValueBytes.length, largeResultThreshold);
+          PartialUpdateAmplificationDetector.AmplificationReport ampReport =
+              amplificationDetector.tryBuildReportAndReset(System.currentTimeMillis(), largeResultThreshold);
+          if (ampReport != null) {
+            LOGGER.warn(
+                "Partial-update amplification report for {} [Partition {}]\n{}",
+                partitionConsumptionState.getReplicaId(),
+                consumerRecord.getTopicPartition().getPartitionNumber(),
+                ampReport);
+            versionedIngestionStats.recordPartialUpdateAmplificationAlertCount(storeName, versionNumber);
+          }
         }
 
         if (updatedValueBytes == null) {

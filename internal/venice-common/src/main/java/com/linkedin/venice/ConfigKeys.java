@@ -3288,4 +3288,18 @@ public class ConfigKeys {
    */
   public static final String SERVER_READ_QUOTA_INITIALIZATION_FALLBACK_ENABLED =
       "server.read.quota.initialization.fallback.enabled";
+
+  /**
+   * Partial-update results larger than this threshold (in bytes) are tracked in the per-partition heavy-key map
+   * for amplification detection. Default: 100 KB.
+   */
+  public static final String PARTIAL_UPDATE_LARGE_RESULT_LOG_THRESHOLD_BYTES =
+      "partial.update.large.result.log.threshold.bytes";
+
+  /**
+   * How often (in ms) to emit a per-partition summary report of partial-update amplification.
+   * Only partitions with large results are reported. Default: 60,000 ms (1 minute).
+   */
+  public static final String PARTIAL_UPDATE_AMPLIFICATION_REPORT_INTERVAL_MS =
+      "partial.update.amplification.report.interval.ms";
 }
