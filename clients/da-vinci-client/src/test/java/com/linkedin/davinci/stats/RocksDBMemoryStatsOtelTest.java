@@ -21,9 +21,16 @@ import org.testng.annotations.Test;
 
 
 public class RocksDBMemoryStatsOtelTest {
-  private static final String TEST_METRIC_PREFIX = "server";
-  private static final String TEST_CLUSTER_NAME = "test-cluster";
-  private static final String TEST_STATS_NAME = "test_store";
+  static final String TEST_METRIC_PREFIX = "server";
+  static final String TEST_CLUSTER_NAME = "test-cluster";
+  static final String TEST_STATS_NAME = "test_store";
+
+  static Cache createMockCache(long usage, long pinnedUsage) {
+    Cache cache = mock(Cache.class);
+    when(cache.getUsage()).thenReturn(usage);
+    when(cache.getPinnedUsage()).thenReturn(pinnedUsage);
+    return cache;
+  }
 
   private InMemoryMetricReader inMemoryMetricReader;
   private VeniceMetricsRepository metricsRepository;
@@ -87,10 +94,7 @@ public class RocksDBMemoryStatsOtelTest {
   public void testRMDBlockCacheGauges() {
     RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
 
-    Cache mockCache = mock(Cache.class);
-    when(mockCache.getUsage()).thenReturn(512L);
-    when(mockCache.getPinnedUsage()).thenReturn(256L);
-
+    Cache mockCache = createMockCache(512L, 256L);
     stats.setRMDBlockCache(mockCache, 1024L);
 
     validateGauge("rocksdb.rmd_block_cache.capacity", 1024);
@@ -102,9 +106,7 @@ public class RocksDBMemoryStatsOtelTest {
   public void testRMDBlockCacheLiveValueUpdates() {
     RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
 
-    Cache mockCache = mock(Cache.class);
-    when(mockCache.getUsage()).thenReturn(512L);
-    when(mockCache.getPinnedUsage()).thenReturn(256L);
+    Cache mockCache = createMockCache(512L, 256L);
     stats.setRMDBlockCache(mockCache, 1024L);
 
     // Change cache values
@@ -147,11 +149,7 @@ public class RocksDBMemoryStatsOtelTest {
   /** Exercises all recording paths on a RocksDBMemoryStats instance — used by NPE prevention tests. */
   private static void exerciseAllRecordingPaths(MetricsRepository repo) {
     RocksDBMemoryStats stats = new RocksDBMemoryStats(repo, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
-
-    Cache mockCache = mock(Cache.class);
-    when(mockCache.getUsage()).thenReturn(256L);
-    when(mockCache.getPinnedUsage()).thenReturn(128L);
-    stats.setRMDBlockCache(mockCache, 512L);
+    stats.setRMDBlockCache(createMockCache(256L, 128L), 512L);
   }
 
   private void validateGauge(String metricName, long expectedValue) {

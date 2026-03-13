@@ -1,6 +1,8 @@
 package com.linkedin.davinci.stats;
 
-import static org.mockito.Mockito.mock;
+import static com.linkedin.davinci.stats.RocksDBMemoryStatsOtelTest.TEST_CLUSTER_NAME;
+import static com.linkedin.davinci.stats.RocksDBMemoryStatsOtelTest.TEST_STATS_NAME;
+import static com.linkedin.davinci.stats.RocksDBMemoryStatsOtelTest.createMockCache;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -34,12 +36,9 @@ public class RocksDBMemoryStatsTest {
 
   @Test
   public void testSetRMDBlockCacheRegistersGauges() {
-    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, "test_store", false, "test-cluster");
+    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
 
-    Cache mockCache = mock(Cache.class);
-    when(mockCache.getUsage()).thenReturn(512L);
-    when(mockCache.getPinnedUsage()).thenReturn(256L);
-
+    Cache mockCache = createMockCache(512L, 256L);
     stats.setRMDBlockCache(mockCache, 1024L);
 
     assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-capacity.Gauge").value(), 1024.0);
@@ -49,12 +48,9 @@ public class RocksDBMemoryStatsTest {
 
   @Test
   public void testSetRMDBlockCacheReportsLiveUsageValues() {
-    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, "test_store", false, "test-cluster");
+    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
 
-    Cache mockCache = mock(Cache.class);
-    when(mockCache.getUsage()).thenReturn(512L);
-    when(mockCache.getPinnedUsage()).thenReturn(256L);
-
+    Cache mockCache = createMockCache(512L, 256L);
     stats.setRMDBlockCache(mockCache, 1024L);
 
     // Simulate runtime usage changes — usage and pinned-usage gauges should report live values
@@ -67,17 +63,13 @@ public class RocksDBMemoryStatsTest {
 
   @Test
   public void testSetRMDBlockCacheIgnoresDuplicateCall() {
-    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, "test_store", false, "test-cluster");
+    RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
 
-    Cache firstCache = mock(Cache.class);
-    when(firstCache.getUsage()).thenReturn(512L);
-    when(firstCache.getPinnedUsage()).thenReturn(256L);
+    Cache firstCache = createMockCache(512L, 256L);
     stats.setRMDBlockCache(firstCache, 1024L);
 
     // Second call with different values should be ignored
-    Cache secondCache = mock(Cache.class);
-    when(secondCache.getUsage()).thenReturn(9999L);
-    when(secondCache.getPinnedUsage()).thenReturn(8888L);
+    Cache secondCache = createMockCache(9999L, 8888L);
     stats.setRMDBlockCache(secondCache, 5000L);
 
     // Gauges should still report the first cache's values
@@ -88,7 +80,7 @@ public class RocksDBMemoryStatsTest {
 
   @Test
   public void testBlockCacheTehutiSensorsNotRegisteredWithPlainTable() {
-    new RocksDBMemoryStats(metricsRepository, "test_store", true, "test-cluster");
+    new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, true, TEST_CLUSTER_NAME);
 
     // Non-block-cache Tehuti sensors should be registered
     assertNotNull(metricsRepository.getMetric(".test_store--rocksdb.num-immutable-mem-table.Gauge"));
