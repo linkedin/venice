@@ -9,7 +9,6 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -51,7 +50,7 @@ public class DaVinciRecordTransformerStatsTest {
 
   @Test
   public void testDaVinciRecordTransformerStatsReporterCanReportForGauge() {
-    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    MetricsRepository metricsRepository = new MetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");
@@ -77,7 +76,7 @@ public class DaVinciRecordTransformerStatsTest {
 
   @Test
   public void testDaVinciRecordTransformerStatsReporterCanReportForCount() {
-    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    MetricsRepository metricsRepository = new MetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");

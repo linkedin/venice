@@ -11,7 +11,6 @@ import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import io.opentelemetry.sdk.metrics.export.MetricReader;
 import io.tehuti.metrics.MetricConfig;
-import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -537,12 +536,7 @@ public class VeniceMetricsConfig {
     // Validate required fields before building
     private void checkAndSetDefaults() {
       if (tehutiMetricConfig == null) {
-        // Create a dedicated per-instance AsyncGaugeExecutor instead of using the shared static
-        // DEFAULT_ASYNC_GAUGE_EXECUTOR. The shared static executor (3 threads) becomes a bottleneck
-        // when multiple MetricsRepository instances exist in the same JVM (e.g., in tests), causing
-        // AsyncGauge measurements to time out and return stale cached values (0.0).
-        // Parameters match Tehuti's defaults exactly — only the isolation changes.
-        setTehutiMetricConfig(new MetricConfig(new AsyncGauge.AsyncGaugeExecutor.Builder().build()));
+        setTehutiMetricConfig(new MetricConfig());
       }
 
       if (metricPrefix == null) {

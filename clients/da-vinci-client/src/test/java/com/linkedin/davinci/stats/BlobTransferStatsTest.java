@@ -2,7 +2,6 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -44,7 +43,7 @@ public class BlobTransferStatsTest {
 
   @Test
   public void blobTransferStatsReporterCanReportForGauge() {
-    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    MetricsRepository metricsRepository = new MetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");
@@ -70,7 +69,7 @@ public class BlobTransferStatsTest {
 
   @Test
   public void blobTransferStatsReporterCanReportForCount() {
-    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    MetricsRepository metricsRepository = new MetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");
