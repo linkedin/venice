@@ -17,6 +17,8 @@ import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.metrics.AsyncMetricEntityState.TehutiSensorRegistrationFunction;
+import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.utils.SystemTime;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MeasurableStat;
@@ -348,5 +350,40 @@ public class AbstractVeniceStatsTest {
     assertTrue(sensor1 instanceof io.tehuti.metrics.NoopSensor);
     assertEquals(sensor2.name(), "noopSensor");
     assertTrue(sensor2 instanceof io.tehuti.metrics.NoopSensor);
+  }
+
+  @Test
+  public void testRegisterPerStoreAndTotalWithMetricEntityState() {
+    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricConfig metricConfig = new MetricConfig();
+
+    AbstractVeniceStats totalStats = new AbstractVeniceStats(metricsRepository, "total");
+    AbstractVeniceStats perStoreStats = new AbstractVeniceStats(metricsRepository, "testStore");
+
+    // Create a total sensor via a mock MetricEntityState
+    Sensor totalSensor = totalStats.registerSensor("totalSensor", new Count());
+    MetricEntityState mockTotalMetric = mock(MetricEntityState.class);
+    Mockito.when(mockTotalMetric.getTehutiSensor()).thenReturn(totalSensor);
+
+    // 1) Non-null totalMetric — returned function should wire parent propagation
+    TehutiSensorRegistrationFunction fn = perStoreStats.registerPerStoreAndTotal(mockTotalMetric);
+    Sensor perStoreSensor = fn.register("perStoreSensor", new Count());
+    perStoreSensor.record(1);
+
+    long now = System.currentTimeMillis();
+    // Per-store sensor recorded
+    assertEquals(metricsRepository.getMetric(".testStore--perStoreSensor.Count").value(), 1.0);
+    // Total sensor also recorded via parent propagation
+    assertEquals(metricsRepository.getMetric(".total--totalSensor.Count").value(), 1.0);
+
+    // 2) Null totalMetric — returned function should create sensor with no parent
+    TehutiSensorRegistrationFunction fnNoParent = perStoreStats.registerPerStoreAndTotal(null);
+    Sensor standaloneSensor = fnNoParent.register("standaloneSensor", new Gauge());
+    standaloneSensor.record(5);
+
+    // Standalone sensor recorded
+    assertEquals(metricsRepository.getMetric(".testStore--standaloneSensor.Gauge").value(), 5.0);
+    // Total sensor unchanged (no parent propagation)
+    assertEquals(metricsRepository.getMetric(".total--totalSensor.Count").value(), 1.0);
   }
 }
