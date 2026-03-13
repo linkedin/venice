@@ -720,12 +720,8 @@ public class VeniceWriterUnitTest {
     final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
     char[] tooLargeValue = new char[TOO_LARGE_VALUE_SIZE];
     Arrays.fill(tooLargeValue, '*');
-    try {
-      writer.put("test-key", new String(tooLargeValue), 1, null);
-      fail("Should've thrown RecordTooLargeException for records exceeding MAX_RECORD_SIZE_BYTES");
-    } catch (RecordTooLargeException e) {
-      // Expected: MAX_RECORD_SIZE_BYTES is still enforced even with pubsub large message support
-    }
+    String tooLargeString = new String(tooLargeValue);
+    Assert.expectThrows(RecordTooLargeException.class, () -> writer.put("test-key", tooLargeString, 1, null));
   }
 
   /**

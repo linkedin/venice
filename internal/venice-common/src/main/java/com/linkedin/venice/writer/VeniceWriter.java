@@ -130,8 +130,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VENICE_WRITER_CONFIG_PREFIX + "max.size.for.user.payload.per.message.in.bytes";
 
   /**
-   * When enabled, VeniceWriter will delegate large message handling to the pubsub layer (e.g., Xinfra's native
-   * fragmentation/reassembly) instead of rejecting records that exceed the per-message size limit. This allows
+   * When enabled, VeniceWriter will delegate large message handling to the pubsub layer's native
+   * fragmentation/reassembly instead of rejecting records that exceed the per-message size limit. This allows
    * large records to flow through without Venice-level chunking.
    */
   public static final String PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED =
@@ -1132,7 +1132,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
                   + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
         }
         // Fall through to the normal non-chunked put path below.
-        // The pubsub producer layer (e.g., Xinfra) will handle fragmentation/reassembly.
+        // The pubsub producer layer will handle fragmentation/reassembly natively.
       } else {
         throw new RecordTooLargeException(
             "This record exceeds the maximum size. "
