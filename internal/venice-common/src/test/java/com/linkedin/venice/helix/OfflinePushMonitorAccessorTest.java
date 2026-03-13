@@ -238,6 +238,7 @@ public class OfflinePushMonitorAccessorTest {
         break;
       }
     }
+    Assert.assertNotNull(currentReplica, "instance1 replica should exist in currentData");
     List<StatusSnapshot> history = new ArrayList<>();
     history.add(new StatusSnapshot(ExecutionStatus.STARTED, String.valueOf(System.currentTimeMillis())));
     history.add(new StatusSnapshot(ExecutionStatus.PROGRESS, String.valueOf(System.currentTimeMillis())));
