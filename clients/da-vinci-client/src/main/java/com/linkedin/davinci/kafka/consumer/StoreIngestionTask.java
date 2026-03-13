@@ -2467,10 +2467,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ConsumerActionType operation = consumerAction.getType();
     switch (operation) {
       case SUBSCRIBE:
+        // Get the last persisted Offset record from metadata service
+        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
         PartitionConsumptionState newPartitionConsumptionState =
-            initializePartitionConsumptionState(topicPartition, partition, topic);
-        newPartitionConsumptionState =
-            validateDataIntegrityAndConsumptionState(topicPartition, partition, topic, newPartitionConsumptionState);
+            initializePartitionConsumptionState(topicPartition, partition, topic, offsetRecord);
+        newPartitionConsumptionState = validateDataIntegrityAndConsumptionState(
+            topicPartition,
+            partition,
+            topic,
+            newPartitionConsumptionState,
+            offsetRecord);
         executePartitionSubscription(consumerAction, topicPartition, partition, newPartitionConsumptionState);
         break;
       case UNSUBSCRIBE:
@@ -2556,16 +2562,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * Initializes the partition consumption state for a new subscription. Clears previous error tracking,
-   * drains buffered messages from the prior subscription, restores the persisted offset, creates a fresh
-   * {@link PartitionConsumptionState}, sets the Helix state transition latch if needed, and loads the
+   * drains buffered messages from the prior subscription, creates a fresh {@link PartitionConsumptionState}
+   * from the given offset record, sets the Helix state transition latch if needed, and loads the
    * data integrity validator state from the offset record.
    *
+   * @param offsetRecord the persisted offset record retrieved from the metadata service
    * @return the newly created {@link PartitionConsumptionState}
    */
   protected PartitionConsumptionState initializePartitionConsumptionState(
       PubSubTopicPartition topicPartition,
       int partition,
-      String topic) throws InterruptedException {
+      String topic,
+      OffsetRecord offsetRecord) throws InterruptedException {
     // Clear the error partition tracking
     partitionIngestionExceptionList.set(partition, null);
     // Regardless of whether it's Helix action or not, remove the partition from alerts as long as server decides
@@ -2574,9 +2582,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Drain the buffered message by last subscription.
     storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
     subscribedCount++;
-
-    // Get the last persisted Offset record from metadata service
-    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
 
     // Let's try to restore the state retrieved from the OffsetManager
     PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
@@ -2607,14 +2612,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * state, reports version topic offset catch-up progress, records subscribe preparation latency, and
    * updates the leader topic on follower replicas.
    *
+   * @param offsetRecord the persisted offset record retrieved from the metadata service
    * @return the validated {@link PartitionConsumptionState}, which may be a new instance if the offset was reset
    */
   protected PartitionConsumptionState validateDataIntegrityAndConsumptionState(
       PubSubTopicPartition topicPartition,
       int partition,
       String topic,
-      PartitionConsumptionState partitionConsumptionState) {
-    OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+      PartitionConsumptionState partitionConsumptionState,
+      OffsetRecord offsetRecord) {
     long consumptionStatePrepTimeStart = System.currentTimeMillis();
     if (!checkDatabaseIntegrity(partition, topic, offsetRecord, partitionConsumptionState)) {
       LOGGER.warn(
