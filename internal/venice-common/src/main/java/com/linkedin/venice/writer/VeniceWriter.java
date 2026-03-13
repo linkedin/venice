@@ -130,6 +130,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VENICE_WRITER_CONFIG_PREFIX + "max.size.for.user.payload.per.message.in.bytes";
 
   /**
+   * When enabled, VeniceWriter will delegate large message handling to the pubsub layer (e.g., Xinfra's native
+   * fragmentation/reassembly) instead of rejecting records that exceed the per-message size limit. This allows
+   * large records to flow through without Venice-level chunking.
+   */
+  public static final String PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED =
+      VENICE_WRITER_CONFIG_PREFIX + "pubsub.large.message.support.enabled";
+
+  /**
    * Maximum Venice record size. Default: {@value UNLIMITED_MAX_RECORD_SIZE}
    *
    * Large records can cause performance issues, so this setting is used to detect and prevent them. Not to be confused
@@ -298,6 +306,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private final boolean isRmdChunkingEnabled;
   private final int maxRecordSizeBytes;
+  private final boolean pubSubLargeMessageSupportEnabled;
 
   private final ControlMessage heartBeatMessage;
 
@@ -341,14 +350,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.isChunkingSet = true;
     this.isRmdChunkingEnabled = params.isRmdChunkingEnabled();
     this.maxRecordSizeBytes = params.getMaxRecordSizeBytes();
+    this.pubSubLargeMessageSupportEnabled = props.getBoolean(PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, false);
     this.maxSizeForUserPayloadPerMessageInBytes = props
         .getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
-      if (!isChunkingEnabled) {
+      if (!isChunkingEnabled && !pubSubLargeMessageSupportEnabled) {
         throw new VeniceException(
             MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
                 + ") cannot be set higher than " + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " unless "
-                + ENABLE_CHUNKING + " is true");
+                + ENABLE_CHUNKING + " is true or " + PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED + " is true");
       } else if (isChunkingEnabled && !Version.isVersionTopic(topicName)) {
         throw new VeniceException(
             MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " (" + maxSizeForUserPayloadPerMessageInBytes
@@ -1104,6 +1114,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             oldValueManifest,
             oldRmdManifest,
             isGlobalRtDiv);
+      } else if (pubSubLargeMessageSupportEnabled) {
+        // Fall through to the normal non-chunked put path below.
+        // The pubsub producer layer (e.g., Xinfra) will handle fragmentation/reassembly.
       } else {
         throw new RecordTooLargeException(
             "This record exceeds the maximum size. "
