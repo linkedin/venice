@@ -2467,109 +2467,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ConsumerActionType operation = consumerAction.getType();
     switch (operation) {
       case SUBSCRIBE:
-        // Clear the error partition tracking
-        partitionIngestionExceptionList.set(partition, null);
-        // Regardless of whether it's Helix action or not, remove the partition from alerts as long as server decides
-        // to start or retry the ingestion.
-        failedPartitions.remove(partition);
-        // Drain the buffered message by last subscription.
-        storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
-        subscribedCount++;
-
-        // Get the last persisted Offset record from metadata service
-        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
-
-        // Let's try to restore the state retrieved from the OffsetManager
-        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
-            topicPartition,
-            offsetRecord,
-            pubSubContext,
-            hybridStoreConfig.isPresent(),
-            schemaRepository.getKeySchema(storeName).getSchema());
-        newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
-
-        boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
-        if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
-          // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
-          newPartitionConsumptionState.setLatchCreated();
-        }
-
-        partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
-
-        // Load the VT segments from the offset record into the appropriate data integrity validator
-        getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
-
-        long consumptionStatePrepTimeStart = System.currentTimeMillis();
-        if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
-          LOGGER.warn(
-              "Restart ingestion from the beginning by resetting OffsetRecord for topic-partition: {}. Replica: {}",
-              getReplicaId(topic, partition),
-              newPartitionConsumptionState.getReplicaId());
-          resetOffset(partition, topicPartition, true);
-          newPartitionConsumptionState = partitionConsumptionStateMap.get(partition);
-          offsetRecord = newPartitionConsumptionState.getOffsetRecord();
-        }
-
-        checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
-        reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
-        versionedIngestionStats.recordSubscribePrepLatency(
-            storeName,
-            versionNumber,
-            LatencyUtils.getElapsedTimeFromMsToMs(consumptionStatePrepTimeStart));
-        updateLeaderTopicOnFollower(newPartitionConsumptionState);
-
-        // Subscribe to local version topic.
-        PubSubPosition subscribePosition;
-        if (consumerAction.getPubSubPosition() != null) {
-          if (recordTransformer == null) {
-            throw new VeniceException("seekToCheckpoint will not be supported for non-transformed client");
-          }
-          skipValidationsForDaVinciClientEnabled = true;
-          subscribePosition = consumerAction.getPubSubPosition();
-          LOGGER.info("Subscribed to user given partition: {} position: {}", topicPartition, subscribePosition);
-          // report completion immediately for user seek subscription
-          partitionConsumptionStateMap.get(partition).lagHasCaughtUp();
-          reportCompleted(partitionConsumptionStateMap.get(partition), true);
-
-          // Synthesize StoreVersionState when seeking past SOP (SOP was not consumed).
-          // Skip for EARLIEST since SOP will be consumed naturally and populate SVS correctly.
-          if (!PubSubSymbolicPosition.EARLIEST.equals(subscribePosition)
-              && storageEngine.getStoreVersionState() == null) {
-            storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
-              if (previousStoreVersionState != null) {
-                return previousStoreVersionState;
-              }
-              return getNewStoreVersionState(0L, !isHybridMode(), null);
-            });
-          }
-        } else {
-          subscribePosition = getLocalVtSubscribePosition(newPartitionConsumptionState);
-          LOGGER.info("Subscribed to local: {} position: {}", topicPartition, subscribePosition);
-        }
-        consumerSubscribe(
-            topicPartition.getPubSubTopic(),
-            newPartitionConsumptionState,
-            subscribePosition,
-            localKafkaServer);
-
-        if (getServerConfig().isIngestionProgressLoggingEnabled() && !subscribePosition.isSymbolic()) {
-          try {
-            TopicManager topicManager = getTopicManager(localKafkaServer);
-            int percentage = topicManager.getIngestionProgressPercentage(topicPartition, subscribePosition);
-            LOGGER.info(
-                "Subscribed to: {} position: {} latestPosition: {} progress: {}%",
-                topicPartition,
-                subscribePosition,
-                topicManager.getLatestPositionCached(topicPartition),
-                percentage);
-          } catch (Exception e) {
-            // this log message is best-effort. there is no point in throwing an exception for the sake of this.
-            LOGGER.warn("Swallowed an exception when trying to determine progress for {}", topicPartition, e);
-          }
-        } else { // no point in logging progress if it's symbolic (earliest or latest position)
-          LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
-        }
-        storageUtilizationManager.initPartition(partition);
+        PartitionConsumptionState newPartitionConsumptionState =
+            initializePartitionConsumptionState(topicPartition, partition, topic);
+        validateDataIntegrityAndConsumptionState(topicPartition, partition, topic, newPartitionConsumptionState);
+        executePartitionSubscription(consumerAction, topicPartition, partition, newPartitionConsumptionState);
         break;
       case UNSUBSCRIBE:
         LOGGER.info("{} Unsubscribing to: {}", ingestionTaskName, topicPartition);
@@ -2650,6 +2551,144 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
     }
+  }
+
+  /**
+   * Initializes the partition consumption state for a new subscription. Clears previous error tracking,
+   * drains buffered messages from the prior subscription, restores the persisted offset, creates a fresh
+   * {@link PartitionConsumptionState}, sets the Helix state transition latch if needed, and loads the
+   * data integrity validator state from the offset record.
+   *
+   * @return the newly created {@link PartitionConsumptionState}
+   */
+  protected PartitionConsumptionState initializePartitionConsumptionState(
+      PubSubTopicPartition topicPartition,
+      int partition,
+      String topic) throws InterruptedException {
+    // Clear the error partition tracking
+    partitionIngestionExceptionList.set(partition, null);
+    // Regardless of whether it's Helix action or not, remove the partition from alerts as long as server decides
+    // to start or retry the ingestion.
+    failedPartitions.remove(partition);
+    // Drain the buffered message by last subscription.
+    storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
+    subscribedCount++;
+
+    // Get the last persisted Offset record from metadata service
+    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
+
+    // Let's try to restore the state retrieved from the OffsetManager
+    PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(
+        topicPartition,
+        offsetRecord,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
+        schemaRepository.getKeySchema(storeName).getSchema());
+    newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
+
+    boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+    if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
+      // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
+      newPartitionConsumptionState.setLatchCreated();
+    }
+
+    partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
+
+    // Load the VT segments from the offset record into the appropriate data integrity validator
+    getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
+
+    return newPartitionConsumptionState;
+  }
+
+  /**
+   * Validates the database integrity for the partition and checks consumption readiness. If the integrity
+   * check fails, resets the offset to restart ingestion from the beginning. Then validates the consumption
+   * state, reports version topic offset catch-up progress, records subscribe preparation latency, and
+   * updates the leader topic on follower replicas.
+   */
+  protected void validateDataIntegrityAndConsumptionState(
+      PubSubTopicPartition topicPartition,
+      int partition,
+      String topic,
+      PartitionConsumptionState partitionConsumptionState) {
+    OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+    long consumptionStatePrepTimeStart = System.currentTimeMillis();
+    if (!checkDatabaseIntegrity(partition, topic, offsetRecord, partitionConsumptionState)) {
+      LOGGER.warn(
+          "Restart ingestion from the beginning by resetting OffsetRecord for topic-partition: {}. Replica: {}",
+          getReplicaId(topic, partition),
+          partitionConsumptionState.getReplicaId());
+      resetOffset(partition, topicPartition, true);
+      partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+      offsetRecord = partitionConsumptionState.getOffsetRecord();
+    }
+
+    checkConsumptionStateWhenStart(offsetRecord, partitionConsumptionState);
+    reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
+    versionedIngestionStats.recordSubscribePrepLatency(
+        storeName,
+        versionNumber,
+        LatencyUtils.getElapsedTimeFromMsToMs(consumptionStatePrepTimeStart));
+    updateLeaderTopicOnFollower(partitionConsumptionState);
+  }
+
+  /**
+   * Subscribes the partition to the local version topic. Determines the subscribe position (either from
+   * a user-provided checkpoint or from the current consumption state), issues the consumer subscription,
+   * logs the ingestion progress, and initializes the storage utilization manager for the partition.
+   */
+  private void executePartitionSubscription(
+      ConsumerAction consumerAction,
+      PubSubTopicPartition topicPartition,
+      int partition,
+      PartitionConsumptionState partitionConsumptionState) {
+    // Subscribe to local version topic.
+    PubSubPosition subscribePosition;
+    if (consumerAction.getPubSubPosition() != null) {
+      if (recordTransformer == null) {
+        throw new VeniceException("seekToCheckpoint will not be supported for non-transformed client");
+      }
+      skipValidationsForDaVinciClientEnabled = true;
+      subscribePosition = consumerAction.getPubSubPosition();
+      LOGGER.info("Subscribed to user given partition: {} position: {}", topicPartition, subscribePosition);
+      // report completion immediately for user seek subscription
+      partitionConsumptionStateMap.get(partition).lagHasCaughtUp();
+      reportCompleted(partitionConsumptionStateMap.get(partition), true);
+
+      // Synthesize StoreVersionState when seeking past SOP (SOP was not consumed).
+      // Skip for EARLIEST since SOP will be consumed naturally and populate SVS correctly.
+      if (!PubSubSymbolicPosition.EARLIEST.equals(subscribePosition) && storageEngine.getStoreVersionState() == null) {
+        storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
+          if (previousStoreVersionState != null) {
+            return previousStoreVersionState;
+          }
+          return getNewStoreVersionState(0L, !isHybridMode(), null);
+        });
+      }
+    } else {
+      subscribePosition = getLocalVtSubscribePosition(partitionConsumptionState);
+      LOGGER.info("Subscribed to local: {} position: {}", topicPartition, subscribePosition);
+    }
+    consumerSubscribe(topicPartition.getPubSubTopic(), partitionConsumptionState, subscribePosition, localKafkaServer);
+
+    if (getServerConfig().isIngestionProgressLoggingEnabled() && !subscribePosition.isSymbolic()) {
+      try {
+        TopicManager topicManager = getTopicManager(localKafkaServer);
+        int percentage = topicManager.getIngestionProgressPercentage(topicPartition, subscribePosition);
+        LOGGER.info(
+            "Subscribed to: {} position: {} latestPosition: {} progress: {}%",
+            topicPartition,
+            subscribePosition,
+            topicManager.getLatestPositionCached(topicPartition),
+            percentage);
+      } catch (Exception e) {
+        // this log message is best-effort. there is no point in throwing an exception for the sake of this.
+        LOGGER.warn("Swallowed an exception when trying to determine progress for {}", topicPartition, e);
+      }
+    } else { // no point in logging progress if it's symbolic (earliest or latest position)
+      LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
+    }
+    storageUtilizationManager.initPartition(partition);
   }
 
   private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {
