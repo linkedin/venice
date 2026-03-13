@@ -53,6 +53,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.StoreInfo;
@@ -598,7 +599,7 @@ public class TestGlobalRtDiv {
       assertTrue(producerState.getSegmentNumber() >= 0, "Segment number should be non-negative");
       assertTrue(producerState.getMessageSequenceNumber() >= 0, "Message sequence number should be non-negative");
       assertTrue(producerState.getMessageTimestamp() >= 0, "Message timestamp should be non-negative");
-      assertTrue(producerState.getChecksumType() >= 0 && producerState.getChecksumType() <= 3, "Checksum validity");
+      assertNotNull(CheckSumType.valueOf(producerState.getChecksumType()), "Checksum validity");
       assertNotNull(producerState.getChecksumState(), "Checksum state should not be null");
       assertNotNull(producerState.getAggregates(), "Aggregates should not be null");
       assertNotNull(producerState.getDebugInfo(), "Debug info should not be null");
