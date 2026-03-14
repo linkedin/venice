@@ -1777,7 +1777,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testTrackRecordReceivedSkipsDuringBatchIngestion() throws Exception {
+  public void testTrackRecordReceivedSkipsBeforeEOP() throws Exception {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
 
     LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
@@ -1786,14 +1786,14 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
 
-    // Batch-only store before EOP (not complete) — should skip
+    // Batch-only store before EOP — should skip
     PartitionConsumptionState batchPcs = mock(PartitionConsumptionState.class);
-    doReturn(false).when(batchPcs).isComplete();
+    doReturn(false).when(batchPcs).isEndOfPushReceived();
     ingestionTask.trackRecordReceived(batchPcs, consumerRecord, "abc:123");
 
-    // Hybrid store during rewind, lag not caught up (not complete) — should skip
+    // Hybrid store before EOP — should also skip
     PartitionConsumptionState hybridPcs = mock(PartitionConsumptionState.class);
-    doReturn(false).when(hybridPcs).isComplete();
+    doReturn(false).when(hybridPcs).isEndOfPushReceived();
     ingestionTask.trackRecordReceived(hybridPcs, consumerRecord, "abc:123");
 
     verify(heartbeatMonitoringService, never())
@@ -1803,7 +1803,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testTrackRecordReceivedEmitsAfterPartitionComplete() throws Exception {
+  public void testTrackRecordReceivedEmitsAfterEOP() throws Exception {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
 
     LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
@@ -1818,7 +1818,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     doReturn(100).when(pcs).getPartition();
-    doReturn(true).when(pcs).isComplete();
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(false).when(pcs).isComplete();
     doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
 
     long producerTimestamp = 1000L;
@@ -1832,9 +1833,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     HeartbeatKey followerKey = new HeartbeatKey("foo", 1, 100, "c1");
     doReturn(followerKey).when(pcs).getOrCreateCachedHeartbeatKey("c1");
 
-    // Partition is complete — should emit even with skip enabled
+    // EOP received — should emit even during hybrid rewind
     ingestionTask.trackRecordReceived(pcs, consumerRecord, "abc:123");
     verify(heartbeatMonitoringService, times(1))
-        .recordFollowerRecordTimestamp(eq(followerKey), eq(producerTimestamp), eq(true));
+        .recordFollowerRecordTimestamp(eq(followerKey), eq(producerTimestamp), eq(false));
   }
 }

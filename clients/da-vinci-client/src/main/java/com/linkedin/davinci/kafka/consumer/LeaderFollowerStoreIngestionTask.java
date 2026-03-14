@@ -2577,11 +2577,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Record a regular data record timestamp to the heartbeat monitoring service.
    * Called only when record-level timestamp tracking is enabled (checked by caller).
    *
-   * When {@code perRecordBatchOtelMetricsEnabled} is disabled (default), per-record tracking is skipped until the partition is
-   * complete (EOP received, and for hybrid stores, rewind lag caught up). During batch ingestion and hybrid
-   * rewind, producer metadata timestamps are stale and do not reflect meaningful replication lag. For hybrid
-   * stores, tracking resumes once the partition catches up and begins consuming current RT data. Batch-only
-   * stores are effectively skipped entirely since no more data records arrive after completion.
+   * When {@code perRecordBatchOtelMetricsEnabled} is disabled (default), per-record tracking is skipped before
+   * EOP. During batch ingestion the producer metadata timestamp from VPJ measures push duration rather than
+   * replication lag, producing a meaningless metric. After EOP, tracking resumes for hybrid stores consuming
+   * from RT. Batch-only stores effectively skip entirely since no data records arrive after EOP.
    */
   @Override
   protected void trackRecordReceived(
@@ -2593,10 +2592,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
 
-    // Unless batch per-record metrics are explicitly enabled, skip until partition is complete: for batch-only
-    // this means EOP received, for hybrid this means EOP received AND rewind lag caught up. This avoids
-    // emitting stale VPJ/rewind timestamps.
-    if (!perRecordBatchOtelMetricsEnabled && !partitionConsumptionState.isComplete()) {
+    // Skip during batch ingestion (pre-EOP) unless explicitly enabled. VPJ producer timestamps are not
+    // meaningful for lag during the batch portion.
+    if (!perRecordBatchOtelMetricsEnabled && !partitionConsumptionState.isEndOfPushReceived()) {
       return;
     }
 
