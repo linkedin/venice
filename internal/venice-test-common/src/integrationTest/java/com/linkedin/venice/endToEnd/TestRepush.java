@@ -76,6 +76,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -627,6 +628,263 @@ public class TestRepush extends AbstractMultiRegionTest {
         });
       }
     }
+  }
+
+  /**
+   * Test that TTL repush correctly handles RMD-chunked data in VT.
+   *
+   * This test creates an AA store with chunking and RMD chunking enabled, then:
+   * 1. Writes streaming data to RT so the server produces RMD-bearing records to VT v1
+   *    (with rmdChunkingEnabled=true, the server chunks the RMD separately)
+   * 2. Runs a non-TTL repush (v1 -> v2) to guarantee VT v2 has assembled data with RMD chunks
+   * 3. Writes fresh/stale streaming data for TTL testing
+   * 4. Runs a TTL repush (v2 -> v3) via the Spark VPJ
+   * 5. Validates the Spark chunk assembly + TTL filtering pipeline produced correct results
+   *
+   * Test keys written before TTL repush:
+   * - keyFresh: Multiple fresh map entries (all timestamps >= FRESH_TS) -> preserved after TTL repush
+   * - keyStale: Stale record (timestamp < FRESH_TS) -> filtered out after TTL repush
+   * - keyMixed: Fresh map entry + stale regular field -> partially preserved (map kept, field reverted to default)
+   */
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testTTLRepushWithRmdChunkedData() {
+    final String storeName = Utils.getUniqueString("ttlRmdChunk");
+    String parentControllerUrl = getParentControllerUrl();
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+    Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+
+    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema);
+    ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+    when(schemaRepo.getReplicationMetadataSchema(storeName, 1, 1)).thenReturn(new RmdSchemaEntry(1, 1, rmdSchema));
+    when(schemaRepo.getDerivedSchema(storeName, 1, 1)).thenReturn(new DerivedSchemaEntry(1, 1, partialUpdateSchema));
+    when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepo);
+    RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, 1);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "test_owner", STRING_SCHEMA.toString(), valueSchema.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setPartitionCount(1)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setActiveActiveReplicationEnabled(true)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
+              .setHybridRewindSeconds(1L)
+              .setHybridOffsetLagThreshold(1L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      // Step 1: Empty push to create v1. The server will consume RT data and produce to VT v1 with RMD.
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+
+    long STALE_TS = 99999L;
+    long FRESH_TS = 100000L;
+    String STRING_MAP_FIELD = "stringMap";
+    String REGULAR_FIELD = "name";
+    String keyFresh = "keyFresh";
+    String keyStale = "keyStale";
+    String keyMixed = "keyMixed";
+
+    // Step 2: Write initial streaming data to RT. The server leader processes these and produces
+    // to VT v1 with RMD. With rmdChunkingEnabled=true, the server stores RMD in separate chunks.
+    try (VeniceSystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM)) {
+      for (int i = 0; i < 20; i++) {
+        UpdateBuilder updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+        updateBuilder.setEntriesToAddToMapField(STRING_MAP_FIELD, Collections.singletonMap("k" + i, "v" + i));
+        sendStreamingRecord(veniceProducer, storeName, keyFresh, updateBuilder.build(), FRESH_TS);
+      }
+    }
+
+    // Wait for initial data to be ingested into storage (and VT v1).
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        try {
+          GenericRecord valueRecord = readValue(storeReader, keyFresh);
+          assertNotNull(valueRecord, "keyFresh should exist after initial streaming writes");
+          Map<Utf8, Utf8> mapValue = (Map<Utf8, Utf8>) valueRecord.get(STRING_MAP_FIELD);
+          assertNotNull(mapValue);
+          assertEquals(mapValue.size(), 20, "keyFresh should have 20 map entries");
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+    }
+
+    // Step 3: Non-TTL repush (v1 -> v2). This reads from VT v1 which contains server-produced
+    // records with RMD chunks (because server chunk size = 200 bytes). The repush assembles the
+    // chunks and writes them to VT v2. This guarantees VT v2 has real data with RMD.
+    Properties repushProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
+    repushProps.setProperty(SOURCE_KAFKA, "true");
+    repushProps.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+    repushProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    repushProps.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+    IntegrationTestPushUtils.runVPJ(repushProps);
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 2),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    // Verify v2 data is correct after non-TTL repush.
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        try {
+          GenericRecord valueRecord = readValue(storeReader, keyFresh);
+          assertNotNull(valueRecord, "keyFresh should exist in v2 after non-TTL repush");
+          Map<Utf8, Utf8> mapValue = (Map<Utf8, Utf8>) valueRecord.get(STRING_MAP_FIELD);
+          assertEquals(mapValue.size(), 20, "keyFresh should have 20 map entries in v2");
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+    }
+
+    // Step 4: Write fresh/stale/mixed streaming data to RT. The server produces these to VT v2 with RMD.
+    try (VeniceSystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM)) {
+      // keyStale: Fully stale record - should be filtered out by TTL repush.
+      UpdateBuilder updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+      updateBuilder.setNewFieldValue(REGULAR_FIELD, "stale_name");
+      updateBuilder.setEntriesToAddToMapField(STRING_MAP_FIELD, Collections.singletonMap("sk1", "sv1"));
+      sendStreamingRecord(veniceProducer, storeName, keyStale, updateBuilder.build(), STALE_TS);
+
+      // keyMixed: Fresh map entry + stale regular field -> partially preserved after TTL repush.
+      updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+      updateBuilder.setEntriesToAddToMapField(STRING_MAP_FIELD, Collections.singletonMap("mk1", "mv1"));
+      sendStreamingRecord(veniceProducer, storeName, keyMixed, updateBuilder.build(), FRESH_TS);
+      updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+      updateBuilder.setNewFieldValue(REGULAR_FIELD, "mixed_name");
+      sendStreamingRecord(veniceProducer, storeName, keyMixed, updateBuilder.build(), STALE_TS);
+    }
+
+    // Wait for fresh/stale data to be ingested into VT v2.
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        try {
+          GenericRecord valueRecord = readValue(storeReader, keyStale);
+          assertNotNull(valueRecord, "keyStale should exist before TTL repush");
+          assertEquals(valueRecord.get(REGULAR_FIELD), new Utf8("stale_name"));
+
+          valueRecord = readValue(storeReader, keyMixed);
+          assertNotNull(valueRecord, "keyMixed should exist before TTL repush");
+          assertEquals(valueRecord.get(REGULAR_FIELD), new Utf8("mixed_name"));
+          Map<Utf8, Utf8> mapValue = (Map<Utf8, Utf8>) valueRecord.get(STRING_MAP_FIELD);
+          assertEquals(mapValue.get(new Utf8("mk1")), new Utf8("mv1"));
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+    }
+
+    // Step 5: TTL repush (v2 -> v3). VT v2 now contains RMD-chunked data from both the non-TTL
+    // repush (keyFresh) and the server-produced streaming records (keyStale, keyMixed).
+    // The Spark VPJ must: read chunked records from VT v2 -> assemble chunks -> apply TTL filter -> output.
+    Properties ttlProps =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
+    ttlProps.setProperty(SOURCE_KAFKA, "true");
+    ttlProps.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+    ttlProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    ttlProps.setProperty(REPUSH_TTL_ENABLE, "true");
+    ttlProps.setProperty(REPUSH_TTL_START_TIMESTAMP, String.valueOf(FRESH_TS));
+    // Don't consume from RT so stale records don't re-enter.
+    ttlProps.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+    IntegrationTestPushUtils.runVPJ(ttlProps);
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 3),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    // Step 6: Validate post-TTL-repush data.
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(ASSERTION_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        try {
+          // keyFresh: all entries were written with FRESH_TS, so all should be preserved.
+          GenericRecord valueRecord = readValue(storeReader, keyFresh);
+          assertNotNull(valueRecord, "keyFresh should be preserved after TTL repush");
+          Map<Utf8, Utf8> mapValue = (Map<Utf8, Utf8>) valueRecord.get(STRING_MAP_FIELD);
+          assertNotNull(mapValue, "keyFresh stringMap should not be null after repush");
+          assertEquals(mapValue.size(), 20, "keyFresh should still have 20 map entries after TTL repush");
+          for (int i = 0; i < 20; i++) {
+            assertEquals(
+                mapValue.get(new Utf8("k" + i)),
+                new Utf8("v" + i),
+                "keyFresh map entry k" + i + " should be preserved");
+          }
+
+          // keyStale: fully stale, should be filtered out.
+          valueRecord = readValue(storeReader, keyStale);
+          assertNull(valueRecord, "keyStale should be filtered out by TTL repush");
+
+          // keyMixed: map entry with FRESH_TS kept, regular field with STALE_TS reverted to default.
+          valueRecord = readValue(storeReader, keyMixed);
+          assertNotNull(valueRecord, "keyMixed should be partially preserved after TTL repush");
+          assertEquals(
+              valueRecord.get(REGULAR_FIELD),
+              new Utf8("default_name"),
+              "keyMixed stale regular field should revert to default");
+          mapValue = (Map<Utf8, Utf8>) valueRecord.get(STRING_MAP_FIELD);
+          assertNotNull(mapValue, "keyMixed stringMap should not be null");
+          assertEquals(mapValue.get(new Utf8("mk1")), new Utf8("mv1"), "keyMixed fresh map entry should be preserved");
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+    }
+
+    // Step 7: Validate RMD on v3.
+    String kafkaTopic_v3 = Version.composeKafkaTopic(storeName, 3);
+    // keyFresh: should have per-element timestamps for all 20 entries.
+    validateRmdData(rmdSerDe, kafkaTopic_v3, keyFresh, rmdWithValueSchemaId -> {
+      GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
+      GenericRecord stringMapTsRecord = (GenericRecord) timestampRecord.get(STRING_MAP_FIELD);
+      assertNotNull(stringMapTsRecord, "RMD for keyFresh should have stringMap timestamps");
+      java.util.List<Long> activeElemTs = (List<Long>) stringMapTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME);
+      assertNotNull(activeElemTs, "Active element timestamps should exist");
+      assertEquals(activeElemTs.size(), 20, "Should have 20 active element timestamps");
+      for (Long ts: activeElemTs) {
+        assertEquals(ts.longValue(), FRESH_TS, "Each element timestamp should be FRESH_TS");
+      }
+    });
+
+    // keyMixed: should have fresh map entry preserved, stale regular field timestamp in RMD.
+    validateRmdData(rmdSerDe, kafkaTopic_v3, keyMixed, rmdWithValueSchemaId -> {
+      GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
+      GenericRecord stringMapTsRecord = (GenericRecord) timestampRecord.get(STRING_MAP_FIELD);
+      assertNotNull(stringMapTsRecord, "RMD for keyMixed should have stringMap timestamps");
+      java.util.List<Long> activeElemTs = (List<Long>) stringMapTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME);
+      assertNotNull(activeElemTs, "Active element timestamps should exist for keyMixed");
+      assertEquals(activeElemTs.size(), 1, "keyMixed should have 1 active element timestamp");
+      assertEquals(activeElemTs.get(0).longValue(), FRESH_TS, "keyMixed map element timestamp should be FRESH_TS");
+      assertEquals(
+          timestampRecord.get(REGULAR_FIELD),
+          STALE_TS,
+          "keyMixed regular field RMD timestamp should reflect the stale write");
+    });
   }
 
   private GenericRecord readValue(AvroGenericStoreClient<Object, Object> storeReader, String key)
