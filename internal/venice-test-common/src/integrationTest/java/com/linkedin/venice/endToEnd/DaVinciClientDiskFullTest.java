@@ -270,6 +270,13 @@ public class DaVinciClientDiskFullTest {
 
           daVinciClient.subscribeAll().get(30, TimeUnit.SECONDS);
 
+          // Verify mockConstruction intercepted the DiskUsage constructor.
+          // If this fails, a refactor moved DiskUsage creation outside KafkaStoreIngestionService.
+          assertFalse(
+              mockedDiskUsage.constructed().isEmpty(),
+              "mockConstruction did not intercept any DiskUsage construction — "
+                  + "DiskUsage may no longer be created in the DaVinci client path");
+
           // Validate entries
           for (int i = 1; i <= 1; i++) {
             String key = Integer.toString(i);
