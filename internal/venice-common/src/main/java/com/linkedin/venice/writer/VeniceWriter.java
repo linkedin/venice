@@ -1139,15 +1139,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
       if (pubSubLargeMessageSupportEnabled) {
         // PubSub passthrough takes priority over Venice chunking. Two-level enforcement:
-        // 1. Venice max record size (inner bound) — honored when explicitly configured
-        // 2. PubSub max size (outer bound) — prevents OOM during reassembly
-        int keyValueSize = serializedKey.length + serializedValue.length;
-        if (isRecordTooLarge(keyValueSize)) {
+        // 1. Venice max record size (inner bound, key+value only, excludes RMD) — honored when explicitly configured
+        // 2. PubSub max size (outer bound, full record including RMD) — the pubsub layer sends the entire record
+        if (isRecordTooLarge(serializedKey.length + serializedValue.length)) {
           throw new RecordTooLargeException(
               "This record exceeds the Venice max record size (" + maxRecordSizeBytes + " bytes). "
                   + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
         }
-        if (keyValueSize > pubSubLargeMessageMaxSizeBytes) {
+        if (veniceRecordSize > pubSubLargeMessageMaxSizeBytes) {
           throw new RecordTooLargeException(
               "This record exceeds the pubsub large message max size (" + pubSubLargeMessageMaxSizeBytes + " bytes). "
                   + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
