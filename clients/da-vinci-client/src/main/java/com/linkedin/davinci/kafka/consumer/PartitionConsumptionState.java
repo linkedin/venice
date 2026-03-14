@@ -303,6 +303,30 @@ public class PartitionConsumptionState {
   private boolean hasResubscribedAfterBootstrapAsCurrentVersion;
 
   /**
+   * Tracks an in-progress blob transfer for this partition. When non-null, blob transfer is in progress
+   * and Kafka subscribe has not yet happened. The SIT main loop's checkLongRunningTaskState() will poll
+   * this future for completion and then perform Kafka subscribe.
+   *
+   * Set during SUBSCRIBE action processing when blob transfer is needed.
+   * Cleared when blob transfer completes (success or failure) or when UNSUBSCRIBE cancels it.
+   */
+  private volatile CompletableFuture<Void> pendingBlobTransfer;
+
+  /**
+   * Tracks an in-progress record transformer recovery after blob transfer completes.
+   * Set when blob transfer finishes and transformer recovery is submitted to the thread pool.
+   * Cleared when transformer recovery completes and Kafka subscribe proceeds.
+   */
+  private volatile CompletableFuture<Void> pendingTransformerRecovery;
+
+  /**
+   * The action to run on the SIT thread when transformer recovery completes.
+   * For the Kafka path: calls executeKafkaSubscribe.
+   * For the blob transfer path: calls completePostTransformerSubscribe.
+   */
+  private volatile Runnable postTransformerSubscribeAction;
+
+  /**
    * Cached HeartbeatKey references keyed by region, populated during lag monitor setup.
    * Eliminates HeartbeatKey creation and hash computation on the per-record recording path.
    */
@@ -403,6 +427,38 @@ public class PartitionConsumptionState {
 
   public void setCurrentVersionSupplier(BooleanSupplier isCurrentVersion) {
     this.isCurrentVersion = isCurrentVersion;
+  }
+
+  public CompletableFuture<Void> getPendingBlobTransfer() {
+    return this.pendingBlobTransfer;
+  }
+
+  public void setPendingBlobTransfer(CompletableFuture<Void> pendingBlobTransfer) {
+    this.pendingBlobTransfer = pendingBlobTransfer;
+  }
+
+  public boolean isBlobTransferInProgress() {
+    return this.pendingBlobTransfer != null;
+  }
+
+  public CompletableFuture<Void> getPendingTransformerRecovery() {
+    return this.pendingTransformerRecovery;
+  }
+
+  public void setPendingTransformerRecovery(CompletableFuture<Void> pendingTransformerRecovery) {
+    this.pendingTransformerRecovery = pendingTransformerRecovery;
+  }
+
+  public boolean isTransformerRecoveryInProgress() {
+    return this.pendingTransformerRecovery != null;
+  }
+
+  public Runnable getPostTransformerSubscribeAction() {
+    return this.postTransformerSubscribeAction;
+  }
+
+  public void setPostTransformerSubscribeAction(Runnable postTransformerSubscribeAction) {
+    this.postTransformerSubscribeAction = postTransformerSubscribeAction;
   }
 
   public OffsetRecord getOffsetRecord() {

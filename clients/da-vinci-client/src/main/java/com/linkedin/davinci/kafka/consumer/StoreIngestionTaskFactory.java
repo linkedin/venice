@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -28,6 +29,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -122,6 +124,9 @@ public class StoreIngestionTaskFactory {
     private ExecutorService aaWCWorkLoadProcessingThreadPool;
     private ExecutorService aaWCIngestionStorageLookupThreadPool;
     private Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier;
+    private Supplier<BlobTransferManager> blobTransferManagerSupplier;
+    private Set<String> blobTransferDisabledStores;
+    private BlobTransferIngestionHelper blobTransferHelper;
 
     private interface Setter {
       void apply();
@@ -323,6 +328,48 @@ public class StoreIngestionTaskFactory {
 
     public Supplier<IngestionTaskReusableObjects> getReusableObjectsSupplier() {
       return this.reusableObjectsSupplier;
+    }
+
+    /**
+     * Sets a supplier for the blob transfer manager. Uses a supplier because the blob transfer
+     * manager is created after the factory is built (due to initialization ordering), so it
+     * needs to be resolved lazily when each SIT is constructed.
+     */
+    public Builder setBlobTransferManagerSupplier(Supplier<BlobTransferManager> blobTransferManagerSupplier) {
+      return set(() -> this.blobTransferManagerSupplier = blobTransferManagerSupplier);
+    }
+
+    public BlobTransferManager getBlobTransferManager() {
+      return blobTransferManagerSupplier != null ? blobTransferManagerSupplier.get() : null;
+    }
+
+    /**
+     * Sets the shared set of store names for which blob transfer is disabled
+     * (e.g., version-specific or stateless DaVinci clients). The set is checked live at decision time.
+     */
+    public Builder setBlobTransferDisabledStores(Set<String> blobTransferDisabledStores) {
+      return set(() -> this.blobTransferDisabledStores = blobTransferDisabledStores);
+    }
+
+    /**
+     * Returns the shared {@link BlobTransferIngestionHelper} singleton, creating it lazily on first call.
+     * Returns null if blob transfer is not configured.
+     */
+    public BlobTransferIngestionHelper getBlobTransferHelper(StorageService storageService) {
+      if (blobTransferHelper != null) {
+        return blobTransferHelper;
+      }
+      BlobTransferManager blobTransferManager = getBlobTransferManager();
+      if (blobTransferManager == null) {
+        return null;
+      }
+      blobTransferHelper = new BlobTransferIngestionHelper(
+          blobTransferManager,
+          storageService,
+          storageMetadataService,
+          serverConfig,
+          blobTransferDisabledStores);
+      return blobTransferHelper;
     }
   }
 }

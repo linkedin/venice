@@ -456,6 +456,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private boolean skipValidationsForDaVinciClientEnabled = false;
   private long lastResubscriptionCheckTimestamp = System.currentTimeMillis();
 
+  // Helper encapsulating blob transfer utility methods. Null when blob transfer is not configured.
+  protected final BlobTransferIngestionHelper blobTransferHelper;
+
   public StoreIngestionTask(
       StorageService storageService,
       StoreIngestionTaskFactory.Builder builder,
@@ -730,6 +733,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
     this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
+    this.blobTransferHelper = builder.getBlobTransferHelper(storageService);
   }
 
   @VisibleForTesting
@@ -858,41 +862,47 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         .incrementAndGet();
     pendingSubscriptionActionCount.incrementAndGet();
     ConsumerAction consumerAction = new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction);
+    consumerActionsQueue.add(consumerAction);
+  }
 
-    if (recordTransformer != null) {
-      recordTransformerOnRecoveryThreadPool.submit(() -> {
-        try {
-          long startTime = System.nanoTime();
-          recordTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
-          LOGGER.info(
-              "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {}",
-              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              getReplicaId(topicPartition));
+  /**
+   * Submits record transformer recovery work (onStartVersionIngestion + internalOnRecovery) to the
+   * dedicated thread pool. Returns a CompletableFuture that completes when the transformer work is done.
+   */
+  private CompletableFuture<Void> submitTransformerRecoveryAsync(int partitionNumber, String replicaId) {
+    CompletableFuture<Void> future = new CompletableFuture<>();
+    recordTransformerOnRecoveryThreadPool.submit(() -> {
+      try {
+        long startTime = System.nanoTime();
+        recordTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
+        LOGGER.info(
+            "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {}",
+            LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+            replicaId);
 
-          startTime = System.nanoTime();
-          recordTransformer.internalOnRecovery(
-              storageEngine,
-              partitionNumber,
-              partitionStateSerializer,
-              compressor,
-              pubSubContext,
-              schemaIdToSchemaMap,
-              schemaRepository);
-          LOGGER.info(
-              "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
-              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              getReplicaId(topicPartition));
-          pubSubPosition.ifPresent(consumerAction::setPubSubPosition);
-          recordTransformer.countDownStartConsumptionLatch();
-          consumerActionsQueue.add(consumerAction);
-        } catch (Exception e) {
-          LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {}", getReplicaId(topicPartition), e);
-          setLastStoreIngestionException(e);
-        }
-      });
-    } else {
-      consumerActionsQueue.add(consumerAction);
-    }
+        startTime = System.nanoTime();
+        recordTransformer.internalOnRecovery(
+            storageEngine,
+            partitionNumber,
+            partitionStateSerializer,
+            compressor,
+            pubSubContext,
+            schemaIdToSchemaMap,
+            schemaRepository);
+        LOGGER.info(
+            "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
+            LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+            replicaId);
+        // pubSubPosition.ifPresent(consumerAction::setPubSubPosition);
+        recordTransformer.countDownStartConsumptionLatch();
+        future.complete(null);
+      } catch (Exception e) {
+        LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {}", replicaId, e);
+        setLastStoreIngestionException(e);
+        future.completeExceptionally(e);
+      }
+    });
+    return future;
   }
 
   public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
@@ -2469,6 +2479,39 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case SUBSCRIBE:
         PartitionConsumptionState newPartitionConsumptionState =
             initializePartitionConsumptionState(topicPartition, partition, topic);
+
+        // check blob transfer config and trigger transfer async
+        if (shouldStartBlobTransfer(partition, newPartitionConsumptionState, consumerAction)) {
+          storageUtilizationManager.initPartition(partition);
+          blobTransferHelper.startBlobTransferAsyncForPartition(
+              partition,
+              newPartitionConsumptionState,
+              storageEngine,
+              storeName,
+              versionNumber,
+              storeVersionConfig,
+              kafkaVersionTopic);
+          break;
+        }
+
+        if (recordTransformer != null) {
+          // Submit transformer recovery to the thread pool. When it completes,
+          // checkLongRunningTaskState will invoke the stored action to subscribe to Kafka.
+          CompletableFuture<Void> transformerFuture =
+              submitTransformerRecoveryAsync(partition, newPartitionConsumptionState.getReplicaId());
+          newPartitionConsumptionState.setPendingTransformerRecovery(transformerFuture);
+          PartitionConsumptionState capturedPcs = newPartitionConsumptionState;
+          newPartitionConsumptionState.setPostTransformerSubscribeAction(
+              () -> validateAndSubscribePartition(
+                  consumerAction,
+                  topicPartition,
+                  partition,
+                  topic,
+                  capturedPcs,
+                  capturedPcs.getOffsetRecord()));
+          break;
+        }
+
         validateAndSubscribePartition(
             consumerAction,
             topicPartition,
@@ -2482,6 +2525,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
         forceUnSubscribedCount--;
         subscribedCount--;
+
+        // Cancel any pending blob transfer before unsubscribing
+        if (consumptionState != null && blobTransferHelper != null) {
+          blobTransferHelper.requestPendingBlobTransferCancellation(consumptionState);
+        }
+        // Clear any pending transformer recovery — the thread pool task will complete
+        // but its result will be ignored since the PCS is being unsubscribed.
+        if (consumptionState != null) {
+          consumptionState.setPendingTransformerRecovery(null);
+          consumptionState.setPostTransformerSubscribeAction(null);
+        }
+
         if (consumptionState != null) {
           consumerUnSubscribeAllTopics(consumptionState);
         }
@@ -2551,6 +2606,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
         throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + topic);
       case DROP_PARTITION:
+        // Cancel any pending blob transfer and wait for it to fully stop before dropping,
+        // to ensure Netty is not still writing files when we delete the partition.
+        if (blobTransferHelper != null) {
+          blobTransferHelper.cancelBlobTransferAndAwaitTermination(
+              partition,
+              serverConfig.getStopConsumptionTimeoutInSeconds(),
+              getReplicaId(topic, partition));
+        }
+
         dropPartitionSynchronously(topicPartition);
         break;
       default:
@@ -2642,7 +2706,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     // Subscribe to local version topic.
     PubSubPosition subscribePosition;
-    if (consumerAction.getPubSubPosition() != null) {
+    if (consumerAction != null && consumerAction.getPubSubPosition() != null) {
       if (recordTransformer == null) {
         throw new VeniceException("seekToCheckpoint will not be supported for non-transformed client");
       }
@@ -2691,6 +2755,147 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Subscribed to: {} position: {}", topicPartition, subscribePosition);
     }
     storageUtilizationManager.initPartition(partition);
+  }
+
+  /**
+   * Determines whether blob transfer should be used for the given partition.
+   * Returns true if blob transfer is configured and the replica is lagged enough to benefit from it.
+   */
+  protected boolean shouldStartBlobTransfer(
+      int partition,
+      PartitionConsumptionState pcs,
+      ConsumerAction consumerAction) {
+    if (blobTransferHelper == null) {
+      return false;
+    }
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    return blobTransferHelper.shouldStartBlobTransfer(
+        consumerAction,
+        store,
+        storeName,
+        versionNumber,
+        partition,
+        pcs.getReplicaId(),
+        isDaVinciClient,
+        hybridStoreConfig.isPresent(),
+        kafkaVersionTopic,
+        pubSubContext);
+  }
+
+  /**
+   * Called from checkLongRunningTaskState() when a blob transfer completes (success or failure).
+   * Creates a fresh PCS from the post-transfer offset record while preserving any leader/follower
+   * and DoL state that may have been set during blob transfer (e.g. STANDBY_TO_LEADER transition),
+   * then performs Kafka subscribe.
+   */
+  protected void completeBlobTransferAndSubscribe(PartitionConsumptionState pcs) {
+    int partition = pcs.getPartition();
+    String replicaId = pcs.getReplicaId();
+    CompletableFuture<Void> future = pcs.getPendingBlobTransfer();
+
+    boolean transferSucceeded = !future.isCompletedExceptionally() && !future.isCancelled();
+
+    // Record blob transfer stats
+    blobTransferHelper.updateBlobTransferResponseStats(storeName, versionNumber, transferSucceeded, future);
+
+    // Clear tracking manager status now that the transfer is fully handled.
+    // This prevents stale state from leaking into subsequent lifecycle operations.
+    blobTransferHelper.clearTransferStatus(replicaId);
+
+    if (transferSucceeded) {
+      LOGGER.info("Blob transfer completed successfully for replica: {}. Proceeding with Kafka subscribe.", replicaId);
+    } else {
+      LOGGER.warn("Blob transfer failed for replica: {}. Falling back to Kafka bootstrap from scratch.", replicaId);
+    }
+
+    // Post-transfer directory validation
+    blobTransferHelper
+        .validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partition, transferSucceeded, replicaId);
+
+    // Adjust storage partition: drop the blob-transfer-in-progress partition and create a new one
+    // with default options (RocksDB open, read/write enabled).
+    blobTransferHelper.adjustStoragePartitionWhenBlobTransferComplete(storageEngine, partition, replicaId);
+
+    // Clear blob transfer tracking so isBlobTransferInProgress() returns false.
+    pcs.setPendingBlobTransfer(null);
+
+    // Sync PCS
+    completePostTransferPSCUpdated(pcs);
+
+    if (recordTransformer != null) {
+      // Submit transformer recovery to the dedicated thread pool to avoid blocking the SIT thread.
+      // The post-transformer subscribe work will proceed when checkLongRunningTaskState detects completion.
+      CompletableFuture<Void> transformerFuture = submitTransformerRecoveryAsync(partition, replicaId);
+      pcs.setPendingTransformerRecovery(transformerFuture);
+      pcs.setPostTransformerSubscribeAction(
+          () -> validateAndSubscribePartition(
+              null,
+              pcs.getReplicaTopicPartition(),
+              partition,
+              pcs.getReplicaTopicPartition().getPubSubTopic().getName(),
+              pcs,
+              pcs.getOffsetRecord()));
+      return;
+    }
+
+    // No transformer after blob transfer — proceed directly with post-transfer subscribe
+    validateAndSubscribePartition(
+        null,
+        pcs.getReplicaTopicPartition(),
+        partition,
+        pcs.getReplicaTopicPartition().getPubSubTopic().getName(),
+        pcs,
+        pcs.getOffsetRecord());
+  }
+
+  protected void completePostTransferPSCUpdated(PartitionConsumptionState pcs) {
+    int partition = pcs.getPartition();
+    String replicaId = pcs.getReplicaId();
+    PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
+
+    // Update PCS
+    // Preserve leader/follower and DoL state from the old PCS — a STANDBY_TO_LEADER transition
+    // may have been processed during blob transfer that we need to carry forward.
+    LeaderFollowerStateType preservedLfState = pcs.getLeaderFollowerState();
+    DolStamp preservedDolStamp = pcs.getDolState();
+
+    // Create a fresh PCS from the post-transfer offset record so that offset, endOfPushReceived,
+    // and other fields derived from the offset record reflect the transferred data.
+    String topic = topicPartition.getPubSubTopic().getName();
+    OffsetRecord newOffsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
+    if (newOffsetRecord == null) {
+      LOGGER.warn("No offset record found after blob transfer for replica: {}. Using empty offset record.", replicaId);
+      newOffsetRecord = new OffsetRecord(partitionStateSerializer, pubSubContext);
+    }
+    PartitionConsumptionState newPcs = new PartitionConsumptionState(
+        topicPartition,
+        newOffsetRecord,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
+        schemaRepository.getKeySchema(storeName).getSchema());
+    newPcs.setCurrentVersionSupplier(isCurrentVersion);
+
+    boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+    if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
+      newPcs.setLatchCreated();
+    }
+
+    // Restore preserved leader/follower and DoL state
+    newPcs.setLeaderFollowerState(preservedLfState);
+    if (preservedDolStamp != null) {
+      newPcs.setDolState(preservedDolStamp);
+    }
+    LOGGER.info(
+        "Created fresh PCS after blob transfer for replica: {}. Restored leader/follower state: {}",
+        replicaId,
+        preservedLfState);
+
+    partitionConsumptionStateMap.put(partition, newPcs);
+
+    LOGGER.info(
+        "Post-blob-transfer Kafka subscribe for replica: {} at position: {}",
+        replicaId,
+        getLocalVtSubscribePosition(newPcs));
   }
 
   private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {
