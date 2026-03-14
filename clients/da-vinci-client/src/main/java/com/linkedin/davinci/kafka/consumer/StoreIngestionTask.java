@@ -1493,10 +1493,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
       if (isGlobalRtDivEnabled()) {
-        // Key by version topic name when consuming from VT, else by RT broker URL
+        // Key by version topic name when consuming from local VT, by RT broker URL when consuming from RT.
+        // Remote VTs are excluded from tracking.
         PubSubTopic topic = topicPartition.getPubSubTopic();
-        String consumedBytesKey = versionTopic.equals(topic) ? versionTopic.getName() : kafkaUrl;
-        consumedBytesSinceLastSync.compute(consumedBytesKey, (k, v) -> (v == null) ? recordSize : v + recordSize);
+        if (versionTopic.equals(topic) || topic.isRealTime()) {
+          String consumedBytesKey = versionTopic.equals(topic) ? versionTopic.getName() : kafkaUrl;
+          consumedBytesSinceLastSync.compute(consumedBytesKey, (k, v) -> (v == null) ? recordSize : v + recordSize);
+        }
       }
     }
 
