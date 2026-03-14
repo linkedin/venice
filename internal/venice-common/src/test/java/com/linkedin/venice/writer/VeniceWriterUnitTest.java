@@ -688,12 +688,10 @@ public class VeniceWriterUnitTest {
 
   /**
    * Testing that VeniceWriter allows oversized puts when pubSubLargeMessageSupportEnabled is true,
-   * but still enforces MAX_RECORD_SIZE_BYTES as an upper bound. The pubsub passthrough should take
-   * priority over Venice chunking even when chunking is enabled.
+   * enforces PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES (default 4MB), and takes priority over Venice chunking.
    */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIMEOUT)
   public void testPutWithPubSubLargeMessageSupport(boolean isChunkingEnabled) {
-    final int maxRecordSizeBytes = 5 * BYTES_PER_MB;
     CompletableFuture mockedFuture = mock(CompletableFuture.class);
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
@@ -702,7 +700,6 @@ public class VeniceWriterUnitTest {
         .setKeyPayloadSerializer(serializer)
         .setValuePayloadSerializer(serializer)
         .setChunkingEnabled(isChunkingEnabled)
-        .setMaxRecordSizeBytes(maxRecordSizeBytes)
         .build();
 
     // Enable pubsub large message support via properties
@@ -711,7 +708,7 @@ public class VeniceWriterUnitTest {
     VeniceProperties props = new VeniceProperties(properties);
     final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
 
-    // Record larger than ~1MB chunk threshold but within MAX_RECORD_SIZE_BYTES should succeed
+    // Record larger than ~1MB chunk threshold but within 4MB default pubsub limit should succeed
     // and should be sent as a single message (no Venice chunking) regardless of isChunkingEnabled
     final int LARGE_VALUE_SIZE = 2 * BYTES_PER_MB;
     char[] largeValue = new char[LARGE_VALUE_SIZE];
@@ -722,9 +719,43 @@ public class VeniceWriterUnitTest {
     // was used, not Venice chunking (which would produce many more calls for a 2MB record)
     verify(mockedProducer, atMost(2)).sendMessage(any(), any(), any(), any(), any(), any());
 
-    // Record exceeding MAX_RECORD_SIZE_BYTES should still throw RecordTooLargeException
-    final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
+    // Record exceeding the 4MB default pubsub limit should throw RecordTooLargeException
+    final int TOO_LARGE_VALUE_SIZE = 5 * BYTES_PER_MB;
     char[] tooLargeValue = new char[TOO_LARGE_VALUE_SIZE];
+    Arrays.fill(tooLargeValue, '*');
+    String tooLargeString = new String(tooLargeValue);
+    Assert.expectThrows(RecordTooLargeException.class, () -> writer.put("test-key", tooLargeString, 1, null));
+  }
+
+  /**
+   * Testing that PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES is configurable.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testPubSubLargeMessageCustomMaxSize() {
+    final int customMaxSize = 8 * BYTES_PER_MB;
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
+    final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
+        .setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setChunkingEnabled(false)
+        .build();
+
+    Properties properties = new Properties();
+    properties.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, "true");
+    properties.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES, String.valueOf(customMaxSize));
+    VeniceProperties props = new VeniceProperties(properties);
+    final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
+
+    // 5MB record should succeed with custom 8MB limit (would fail with default 4MB)
+    char[] largeValue = new char[5 * BYTES_PER_MB];
+    Arrays.fill(largeValue, '*');
+    writer.put("test-key", new String(largeValue), 1, null); // Should NOT throw
+
+    // 9MB record should fail even with custom 8MB limit
+    char[] tooLargeValue = new char[9 * BYTES_PER_MB];
     Arrays.fill(tooLargeValue, '*');
     String tooLargeString = new String(tooLargeValue);
     Assert.expectThrows(RecordTooLargeException.class, () -> writer.put("test-key", tooLargeString, 1, null));
