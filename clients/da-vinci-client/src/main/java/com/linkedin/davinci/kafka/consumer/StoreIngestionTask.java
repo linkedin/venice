@@ -2472,6 +2472,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  /**
+   * SUBSCRIBE has three mutually exclusive paths:
+   *  1. Blob transfer (may coexist with record transformer): transfers data first, then
+   *  triggers transformer recovery if needed. shouldStartBlobTransfer skips when
+   *  consumerAction has a pubSubPosition (seek-to-checkpoint), so blob transfer and
+   *  user-specified positions never conflict.
+   *  2. Record transformer without blob transfer: runs async recovery, then subscribes via
+   *  postTransformerSubscribeAction. Any pubSubPosition on consumerAction is preserved
+   *  and applied in validateAndSubscribePartition after recovery completes.
+   *  3. Default: subscribes immediately with the persisted offset.
+   * @param consumerAction
+   * @throws InterruptedException
+   */
+
   protected void processCommonConsumerAction(ConsumerAction consumerAction) throws InterruptedException {
     PubSubTopicPartition topicPartition = consumerAction.getTopicPartition();
     int partition = topicPartition.getPartitionNumber();
@@ -2482,7 +2496,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         PartitionConsumptionState newPartitionConsumptionState =
             initializePartitionConsumptionState(topicPartition, partition, topic);
 
-        // check blob transfer config and trigger transfer async
         if (shouldStartBlobTransfer(partition, newPartitionConsumptionState, consumerAction)) {
           storageUtilizationManager.initPartition(partition);
           blobTransferHelper.startBlobTransferAsyncForPartition(
@@ -2502,15 +2515,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           CompletableFuture<Void> transformerFuture =
               submitTransformerRecoveryAsync(partition, newPartitionConsumptionState.getReplicaId());
           newPartitionConsumptionState.setPendingTransformerRecovery(transformerFuture);
-          PartitionConsumptionState capturedPcs = newPartitionConsumptionState;
-          newPartitionConsumptionState.setPostTransformerSubscribeAction(
-              () -> validateAndSubscribePartition(
-                  consumerAction,
-                  topicPartition,
-                  partition,
-                  topic,
-                  capturedPcs,
-                  capturedPcs.getOffsetRecord()));
+          newPartitionConsumptionState.setPostTransformerSubscribeAction(() -> {
+            // Re-read offset from storage since onRecovery may have modified it
+            // (e.g., cleared offset when alwaysBootstrapFromVersionTopic=true).
+            // The PCS created before recovery may have stale state.
+            PartitionConsumptionState freshPcs =
+                reinitializePartitionConsumptionStateFromStorage(topicPartition, partition);
+            validateAndSubscribePartition(
+                consumerAction,
+                topicPartition,
+                partition,
+                topic,
+                freshPcs,
+                freshPcs.getOffsetRecord());
+          });
           break;
         }
 
@@ -2669,6 +2687,37 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
 
     return newPartitionConsumptionState;
+  }
+
+  /**
+   * Re-reads the persisted offset from storage and creates a fresh {@link PartitionConsumptionState}.
+   * This is used after async transformer recovery completes, because recovery may have modified the
+   * persisted offset (e.g., cleared it when {@code alwaysBootstrapFromVersionTopic} is true).
+   * The PCS that was created before recovery would have stale offset data.
+   */
+  private PartitionConsumptionState reinitializePartitionConsumptionStateFromStorage(
+      PubSubTopicPartition topicPartition,
+      int partition) {
+    String topic = topicPartition.getPubSubTopic().getName();
+    OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
+
+    PartitionConsumptionState freshPcs = new PartitionConsumptionState(
+        topicPartition,
+        offsetRecord,
+        pubSubContext,
+        hybridStoreConfig.isPresent(),
+        schemaRepository.getKeySchema(storeName).getSchema());
+    freshPcs.setCurrentVersionSupplier(isCurrentVersion);
+
+    boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+    if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
+      freshPcs.setLatchCreated();
+    }
+
+    partitionConsumptionStateMap.put(partition, freshPcs);
+    getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
+
+    return freshPcs;
   }
 
   /**
@@ -2831,16 +2880,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (recordTransformer != null) {
         // Submit transformer recovery to the dedicated thread pool to avoid blocking the SIT thread.
         // The post-transformer subscribe work will proceed when checkLongRunningTaskState detects completion.
+        PubSubTopicPartition blobTopicPartition = freshPcs.getReplicaTopicPartition();
         CompletableFuture<Void> transformerFuture = submitTransformerRecoveryAsync(partition, replicaId);
         freshPcs.setPendingTransformerRecovery(transformerFuture);
-        freshPcs.setPostTransformerSubscribeAction(
-            () -> validateAndSubscribePartition(
-                null,
-                freshPcs.getReplicaTopicPartition(),
-                partition,
-                freshPcs.getReplicaTopicPartition().getPubSubTopic().getName(),
-                freshPcs,
-                freshPcs.getOffsetRecord()));
+        freshPcs.setPostTransformerSubscribeAction(() -> {
+          // Re-read offset from storage since onRecovery may have modified it.
+          PartitionConsumptionState postRecoveryPcs =
+              reinitializePartitionConsumptionStateFromStorage(blobTopicPartition, partition);
+          validateAndSubscribePartition(
+              null,
+              blobTopicPartition,
+              partition,
+              blobTopicPartition.getPubSubTopic().getName(),
+              postRecoveryPcs,
+              postRecoveryPcs.getOffsetRecord());
+        });
         return;
       }
 
