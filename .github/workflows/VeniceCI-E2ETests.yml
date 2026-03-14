@@ -11,7 +11,11 @@
 
 name: E2ETests
 
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   IntegrationTests_1:
