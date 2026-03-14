@@ -5,6 +5,7 @@
 name: VerifyDiskFullTest
 
 on:
+  pull_request:
   workflow_dispatch:
 
 jobs:
