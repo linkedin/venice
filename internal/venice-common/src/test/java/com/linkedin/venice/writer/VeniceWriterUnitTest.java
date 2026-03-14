@@ -72,6 +72,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -667,7 +668,7 @@ public class VeniceWriterUnitTest {
     // "small" < maxSizeForUserPayloadPerMessageInBytes < "large" < maxRecordSizeBytes < "too large"
     final int SMALL_VALUE_SIZE = maxRecordSizeBytes / 2;
     final int LARGE_VALUE_SIZE = maxRecordSizeBytes - BYTES_PER_KB; // offset to account for the size of the key
-    final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
+    final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes + BYTES_PER_KB;
 
     for (int size: Arrays.asList(SMALL_VALUE_SIZE, LARGE_VALUE_SIZE, TOO_LARGE_VALUE_SIZE)) {
       char[] valueChars = new char[size];
@@ -768,8 +769,38 @@ public class VeniceWriterUnitTest {
   }
 
   /**
+   * Testing two-level enforcement: when pubsub large message support is enabled and maxRecordSizeBytes is explicitly
+   * set, both Venice max record size (inner bound) and pubsub max size (outer bound) are enforced.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testPubSubLargeMessageTwoLevelEnforcement() {
+    Properties extra = new Properties();
+    extra.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES, String.valueOf(4 * BYTES_PER_MB));
+    PubSubProducerAdapter mockedProducer = createMockedProducer();
+    // Set maxRecordSizeBytes to 2MB (inner bound), pubsub max to 4MB (outer bound)
+    VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
+    VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
+        .setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setChunkingEnabled(false)
+        .setMaxRecordSizeBytes(2 * BYTES_PER_MB)
+        .build();
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, pubSubProps(extra), mockedProducer);
+
+    // 1.5MB record — within both limits, should succeed via pubsub passthrough
+    writer.put("test-key", valueOfSize((int) (1.5 * BYTES_PER_MB)), 1, null);
+    verify(mockedProducer, times(2)).sendMessage(any(), any(), any(), any(), any(), any());
+
+    // 3MB record — exceeds Venice maxRecordSizeBytes (2MB) but within pubsub limit (4MB) — rejected by Venice limit
+    String exceedsVeniceLimit = valueOfSize(3 * BYTES_PER_MB);
+    RecordTooLargeException ex =
+        Assert.expectThrows(RecordTooLargeException.class, () -> writer.put("test-key", exceedsVeniceLimit, 1, null));
+    assertTrue(ex.getMessage().contains("Venice max record size"));
+  }
+
+  /**
    * Testing that Global RT DIV messages use pubsub passthrough when the flag is enabled,
-   * and are subject to PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES (no size bypass).
+   * and are subject to both Venice max record size and PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES (no size bypass).
    */
   @Test(timeOut = TIMEOUT)
   public void testGlobalRtDivWithPubSubLargeMessageSupport() {
@@ -779,8 +810,8 @@ public class VeniceWriterUnitTest {
 
     // GlobalRtDiv within 4MB limit — pubsub passthrough
     writer.put(
-        "test-key".getBytes(java.nio.charset.StandardCharsets.UTF_8),
-        valueOfSize(2 * BYTES_PER_MB).getBytes(java.nio.charset.StandardCharsets.UTF_8),
+        "test-key".getBytes(StandardCharsets.UTF_8),
+        valueOfSize(2 * BYTES_PER_MB).getBytes(StandardCharsets.UTF_8),
         0,
         1,
         null,
@@ -795,11 +826,11 @@ public class VeniceWriterUnitTest {
     verify(mockedProducer, times(2)).sendMessage(any(), any(), any(), any(), any(), any());
 
     // GlobalRtDiv exceeding 4MB limit — rejected, no size bypass
-    byte[] overLimitBytes = valueOfSize(5 * BYTES_PER_MB).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    byte[] overLimitBytes = valueOfSize(5 * BYTES_PER_MB).getBytes(StandardCharsets.UTF_8);
     Assert.expectThrows(
         RecordTooLargeException.class,
         () -> writer.put(
-            "test-key".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+            "test-key".getBytes(StandardCharsets.UTF_8),
             overLimitBytes,
             0,
             1,
@@ -835,6 +866,28 @@ public class VeniceWriterUnitTest {
     successProps.put(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, String.valueOf(oversizedPayload));
     successProps.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, "true");
     new VeniceWriter<>(options, new VeniceProperties(successProps), mockedProducer); // Should NOT throw
+
+    // Non-positive pubsub max size should throw
+    Properties negativeMaxProps = new Properties();
+    negativeMaxProps.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, "true");
+    negativeMaxProps.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES, "0");
+    Assert.expectThrows(
+        VeniceException.class,
+        () -> new VeniceWriter<>(options, new VeniceProperties(negativeMaxProps), mockedProducer));
+
+    // maxRecordSizeBytes > pubSubLargeMessageMaxSizeBytes should throw when pubsub enabled
+    VeniceWriterOptions optionsWithMaxRecord = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
+        .setKeyPayloadSerializer(new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA))
+        .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA))
+        .setChunkingEnabled(false)
+        .setMaxRecordSizeBytes(8 * BYTES_PER_MB)
+        .build();
+    Properties invalidMaxProps = new Properties();
+    invalidMaxProps.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, "true");
+    invalidMaxProps.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES, String.valueOf(4 * BYTES_PER_MB));
+    Assert.expectThrows(
+        VeniceException.class,
+        () -> new VeniceWriter<>(optionsWithMaxRecord, new VeniceProperties(invalidMaxProps), mockedProducer));
   }
 
   /**
@@ -861,15 +914,15 @@ public class VeniceWriterUnitTest {
     // "small" < maxSizeForUserPayloadPerMessageInBytes < "large" < maxRecordSizeBytes < "too large"
     final int SMALL_VALUE_SIZE = maxRecordSizeBytes / 2;
     final int LARGE_VALUE_SIZE = maxRecordSizeBytes - BYTES_PER_KB; // offset to account for the size of the key
-    final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes * 2;
+    final int TOO_LARGE_VALUE_SIZE = maxRecordSizeBytes + BYTES_PER_KB;
 
     // Even when the value is too large, there should not be an exception thrown for Global RT DIV (non-put) messages
     for (int size: Arrays.asList(SMALL_VALUE_SIZE, LARGE_VALUE_SIZE, TOO_LARGE_VALUE_SIZE)) {
       char[] valueChars = new char[size];
       Arrays.fill(valueChars, '*');
       writer.put(
-          String.format("test-key-%d", size).getBytes(),
-          new String(valueChars).getBytes(),
+          String.format("test-key-%d", size).getBytes(StandardCharsets.UTF_8),
+          new String(valueChars).getBytes(StandardCharsets.UTF_8),
           0,
           1,
           null,
