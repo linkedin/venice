@@ -869,12 +869,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Submits record transformer recovery work (onStartVersionIngestion + internalOnRecovery) to the
    * dedicated thread pool. Returns a CompletableFuture that completes when the transformer work is done.
    */
-  private CompletableFuture<Void> submitTransformerRecoveryAsync(int partition, String replicaId) {
+  private CompletableFuture<Void> submitTransformerRecoveryAsync(int partitionNumber, String replicaId) {
     CompletableFuture<Void> future = new CompletableFuture<>();
     recordTransformerOnRecoveryThreadPool.submit(() -> {
       try {
         long startTime = System.nanoTime();
-        recordTransformer.onStartVersionIngestion(partition, isCurrentVersion.getAsBoolean());
+        recordTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
         LOGGER.info(
             "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {}",
             LatencyUtils.getElapsedTimeFromNSToMS(startTime),
@@ -883,7 +883,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         startTime = System.nanoTime();
         recordTransformer.internalOnRecovery(
             storageEngine,
-            partition,
+            partitionNumber,
             partitionStateSerializer,
             compressor,
             pubSubContext,
@@ -893,9 +893,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
             LatencyUtils.getElapsedTimeFromNSToMS(startTime),
             replicaId);
+        // pubSubPosition.ifPresent(consumerAction::setPubSubPosition);
         recordTransformer.countDownStartConsumptionLatch();
         future.complete(null);
       } catch (Exception e) {
+        LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {}", replicaId, e);
+        setLastStoreIngestionException(e);
         future.completeExceptionally(e);
       }
     });
@@ -2522,6 +2525,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
         forceUnSubscribedCount--;
         subscribedCount--;
+
+        // Cancel any pending blob transfer before unsubscribing
+        if (consumptionState != null && blobTransferHelper != null) {
+          blobTransferHelper.requestPendingBlobTransferCancellation(consumptionState);
+        }
+        // Clear any pending transformer recovery — the thread pool task will complete
+        // but its result will be ignored since the PCS is being unsubscribed.
+        if (consumptionState != null) {
+          consumptionState.setPendingTransformerRecovery(null);
+          consumptionState.setPostTransformerSubscribeAction(null);
+        }
+
         if (consumptionState != null) {
           consumerUnSubscribeAllTopics(consumptionState);
         }
@@ -2591,6 +2606,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
         throw new VeniceIngestionTaskKilledException(KILLED_JOB_MESSAGE + topic);
       case DROP_PARTITION:
+        // Cancel any pending blob transfer and wait for it to fully stop before dropping,
+        // to ensure Netty is not still writing files when we delete the partition.
+        if (blobTransferHelper != null) {
+          blobTransferHelper.cancelBlobTransferAndAwaitTermination(
+              partition,
+              serverConfig.getStopConsumptionTimeoutInSeconds(),
+              getReplicaId(topic, partition));
+        }
+
         dropPartitionSynchronously(topicPartition);
         break;
       default:
