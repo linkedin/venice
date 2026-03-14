@@ -842,6 +842,63 @@ public class VeniceWriterUnitTest {
   }
 
   /**
+   * Testing that the pubsub large message max size check accounts for RMD size.
+   * A record where key+value fits within the pubsub limit but key+value+RMD exceeds it should be rejected.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testPubSubLargeMessageMaxSizeIncludesRmd() {
+    int pubSubMaxSize = 4 * BYTES_PER_MB;
+    Properties extra = new Properties();
+    extra.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES, String.valueOf(pubSubMaxSize));
+    PubSubProducerAdapter mockedProducer = createMockedProducer();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter<>(buildWriterOptions(true), pubSubProps(extra), mockedProducer);
+
+    byte[] key = "test-key".getBytes(StandardCharsets.UTF_8);
+    // Value is 3MB — key+value is well within the 4MB pubsub limit
+    byte[] value = valueOfSize(3 * BYTES_PER_MB).getBytes(StandardCharsets.UTF_8);
+    // RMD payload is 2MB — key+value+RMD exceeds the 4MB pubsub limit
+    ByteBuffer rmdPayload = ByteBuffer.allocate(2 * BYTES_PER_MB);
+    PutMetadata putMetadata = new PutMetadata(1, rmdPayload);
+
+    // Should be rejected because key+value+RMD > pubSubLargeMessageMaxSizeBytes
+    RecordTooLargeException ex = Assert.expectThrows(
+        RecordTooLargeException.class,
+        () -> writer.put(
+            key,
+            value,
+            0,
+            1,
+            null,
+            new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(0), 0, 0),
+            APP_DEFAULT_LOGICAL_TS,
+            putMetadata,
+            null,
+            null,
+            false));
+    assertTrue(ex.getMessage().contains("pubsub large message max size"));
+
+    // Same key+value but with small RMD — should succeed via pubsub passthrough
+    ByteBuffer smallRmd = ByteBuffer.allocate(100);
+    PutMetadata smallPutMetadata = new PutMetadata(1, smallRmd);
+    writer.put(
+        key,
+        value,
+        0,
+        1,
+        null,
+        new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(0), 0, 0),
+        APP_DEFAULT_LOGICAL_TS,
+        smallPutMetadata,
+        null,
+        null,
+        false);
+
+    // Verify 2 sendMessage calls (1 start-of-segment + 1 put) — pubsub passthrough
+    verify(mockedProducer, times(2)).sendMessage(any(), any(), any(), any(), any(), any());
+  }
+
+  /**
    * Testing the constructor validation for MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES:
    * - Without chunking or pubsub large message support, exceeding the default payload size should fail.
    * - With pubSubLargeMessageSupportEnabled, exceeding the default payload size is allowed.
