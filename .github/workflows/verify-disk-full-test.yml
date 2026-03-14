@@ -1,0 +1,46 @@
+# Temporary workflow to verify DaVinciClientDiskFullTest determinism.
+# Runs the test 200 times (50 parallel jobs × 4 data provider combinations).
+# Delete this file after verification is complete.
+
+name: VerifyDiskFullTest
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  DiskFullTest:
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/gradle-test-setup
+      - name: Run DaVinciClientDiskFullTest (run ${{ matrix.run }})
+        run: |
+          ./gradlew --no-daemon -DforkEvery=1 -DmaxParallelForks=1 \
+            :internal:venice-test-common:integrationTest \
+            --tests "com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest" \
+            --continue
+      - name: Package Build Artifacts
+        if: always()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-${{ matrix.run }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-${{ matrix.run }}-artifacts
+          tar -zcvf ${{ github.job }}-${{ matrix.run }}-logs.tar.gz ${{ github.job }}-${{ matrix.run }}-artifacts
+      - name: Upload Build Artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ github.job }}-${{ matrix.run }}
+          path: ${{ github.job }}-${{ matrix.run }}-logs.tar.gz
+          retention-days: 7
