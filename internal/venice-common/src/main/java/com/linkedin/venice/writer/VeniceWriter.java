@@ -298,6 +298,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private final boolean isRmdChunkingEnabled;
   private final int maxRecordSizeBytes;
+  private final VeniceWriterHook writerHook;
 
   private final ControlMessage heartBeatMessage;
 
@@ -341,6 +342,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.isChunkingSet = true;
     this.isRmdChunkingEnabled = params.isRmdChunkingEnabled();
     this.maxRecordSizeBytes = params.getMaxRecordSizeBytes();
+    this.writerHook = params.getWriterHook();
     this.maxSizeForUserPayloadPerMessageInBytes = props
         .getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
@@ -773,6 +775,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           "This record exceeds the maximum size. " + getSizeReport(serializedKey.length, 0, rmdPayloadSize));
     }
 
+    if (writerHook != null) {
+      writerHook.onBeforeProduce(VeniceWriterHook.OperationType.DELETE, serializedKey.length, 0);
+    }
+
     if (isChunkingEnabled) {
       serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     }
@@ -1092,6 +1098,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
       // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
       if ((isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) || isGlobalRtDiv) {
+        if (writerHook != null) {
+          writerHook.onBeforeProduce(VeniceWriterHook.OperationType.PUT, serializedKey.length, serializedValue.length);
+        }
         return putLargeValue(
             serializedKey,
             serializedValue,
@@ -1109,6 +1118,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             "This record exceeds the maximum size. "
                 + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
       }
+    }
+
+    if (writerHook != null) {
+      writerHook.onBeforeProduce(VeniceWriterHook.OperationType.PUT, serializedKey.length, serializedValue.length);
     }
 
     if (isChunkingEnabled) {
@@ -1259,6 +1272,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       throw new RecordTooLargeException(
           "This partial update exceeds the maximum size. "
               + getSizeReport(serializedKey.length, serializedUpdate.length, 0));
+    }
+
+    if (writerHook != null) {
+      writerHook.onBeforeProduce(VeniceWriterHook.OperationType.UPDATE, serializedKey.length, serializedUpdate.length);
     }
 
     KafkaKey kafkaKey = new KafkaKey((MessageType.UPDATE), serializedKey);
