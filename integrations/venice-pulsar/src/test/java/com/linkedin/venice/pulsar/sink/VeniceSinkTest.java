@@ -18,7 +18,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -28,8 +27,8 @@ import org.apache.pulsar.common.schema.SchemaType;
 import org.apache.pulsar.functions.api.Record;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
-import org.testng.annotations.AfterTest;
-import org.testng.annotations.BeforeTest;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -38,12 +37,10 @@ public class VeniceSinkTest {
   VeniceSystemProducer producer;
 
   ScheduledExecutorService executor;
-  ScheduledExecutorService flushExecutor;
 
-  @BeforeTest
+  @BeforeMethod
   public void setUp() {
     executor = Executors.newScheduledThreadPool(20);
-    flushExecutor = Executors.newSingleThreadScheduledExecutor();
     config = new VenicePulsarSinkConfig();
     config.setVeniceDiscoveryUrl("http://test:5555")
         .setVeniceRouterUrl("http://test:7777")
@@ -55,35 +52,31 @@ public class VeniceSinkTest {
     producer = Mockito.mock(VeniceSystemProducer.class);
   }
 
-  @AfterTest
-  public void tearDown() {
+  @AfterMethod
+  public void tearDown() throws InterruptedException {
     if (executor != null) {
       executor.shutdownNow();
+      executor.awaitTermination(5, TimeUnit.SECONDS);
       executor = null;
-    }
-    if (flushExecutor != null) {
-      flushExecutor.shutdownNow();
-      flushExecutor = null;
     }
   }
 
   @Test
   public void testVeniceSinkKvHappyPath() throws Exception {
-    VenicePulsarSink sink = testSink(false, 0, 5);
+    VenicePulsarSink sink = testSink(false, 1, 5);
     sink.close();
     verify(producer, atLeastOnce()).flush(anyString());
   }
 
   @Test
   public void testVeniceSinkStringHappyPath() throws Exception {
-    VenicePulsarSink sink = testSink(true, 0, 5);
+    VenicePulsarSink sink = testSink(true, 1, 5);
     sink.close();
     verify(producer, atLeastOnce()).flush(anyString());
   }
 
   /**
-   * Test that the sink can handle a messages when flush is slow.
-   * @throws Exception
+   * Test that the sink can handle messages when flush is slow.
    */
   @Test
   public void testVeniceSinkSlowFlush() throws Exception {
@@ -118,17 +111,18 @@ public class VeniceSinkTest {
       return future;
     });
 
+    // Flush mock: drain pending futures synchronously on the caller's thread (the sink's internal
+    // scheduler). Optional sleep simulates slow flush for throttle tests. This avoids the previous
+    // approach of scheduling a drain task on the test executor and blocking on f.get(), which caused
+    // thread contention and flakiness under CI load.
     doAnswer((InvocationOnMock invocation) -> {
-      ScheduledFuture<?> f = executor.schedule(() -> {
-        while (true) {
-          CompletableFuture<Void> future = futures.poll();
-          if (future == null) {
-            break;
-          }
-          future.complete(null);
-        }
-      }, ThreadLocalRandom.current().nextInt(minFlushDelay, maxFlushDelay), TimeUnit.MILLISECONDS);
-      f.get();
+      if (minFlushDelay > 0) {
+        Thread.sleep(ThreadLocalRandom.current().nextInt(minFlushDelay, maxFlushDelay));
+      }
+      CompletableFuture<Void> future;
+      while ((future = futures.poll()) != null) {
+        future.complete(null);
+      }
       return null;
     }).when(producer).flush(anyString());
 
