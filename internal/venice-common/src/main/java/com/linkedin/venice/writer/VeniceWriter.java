@@ -368,6 +368,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       throw new VeniceException(
           PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES + " must be positive, got: " + pubSubLargeMessageMaxSizeBytes);
     }
+    if (pubSubLargeMessageSupportEnabled && maxRecordSizeBytes != UNLIMITED_MAX_RECORD_SIZE
+        && maxRecordSizeBytes > pubSubLargeMessageMaxSizeBytes) {
+      throw new VeniceException(
+          MAX_RECORD_SIZE_BYTES + " (" + maxRecordSizeBytes + ") must be <= " + PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES
+              + " (" + pubSubLargeMessageMaxSizeBytes + ") when pubsub large message support is enabled");
+    }
     this.maxSizeForUserPayloadPerMessageInBytes = props
         .getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
@@ -1114,20 +1120,27 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     /**
      * {@link RecordTooLargeException} will be thrown unless the record size fits within one of the following categories:
      * 1. Small record (< ~1MB): fits in a single message, no special handling needed.
-     * 2. PubSub passthrough (< PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES, default 4MB): when
-     *    pubSubLargeMessageSupportEnabled=true, the pubsub layer handles fragmentation/reassembly natively.
-     *    Takes priority over Venice chunking.
+     * 2. PubSub passthrough: when pubSubLargeMessageSupportEnabled=true, the pubsub layer handles
+     *    fragmentation/reassembly natively. Takes priority over Venice chunking. Two-level enforcement:
+     *    - Venice limit: MAX_RECORD_SIZE_BYTES (inner bound, when explicitly configured)
+     *    - PubSub limit: PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES (outer bound, default 4MB)
      * 3. Venice chunking (< MAX_RECORD_SIZE_BYTES): Venice-level chunking splits the record into chunks.
      *    Used when pubSubLargeMessageSupportEnabled=false and chunkingEnabled=true.
      * 4. Global RT DIV: always uses Venice chunking when pubSubLargeMessageSupportEnabled=false,
-     *    or pubsub passthrough when pubSubLargeMessageSupportEnabled=true. No size bypass.
+     *    or pubsub passthrough when pubSubLargeMessageSupportEnabled=true (subject to both limits).
      */
     int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
     if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
       if (pubSubLargeMessageSupportEnabled) {
-        // PubSub passthrough takes priority over Venice chunking. Enforce the pubsub max size limit
-        // for all records (including Global RT DIV) to prevent OOM during reassembly.
+        // PubSub passthrough takes priority over Venice chunking. Two-level enforcement:
+        // 1. Venice max record size (inner bound) — honored when explicitly configured
+        // 2. PubSub max size (outer bound) — prevents OOM during reassembly
         int keyValueSize = serializedKey.length + serializedValue.length;
+        if (isRecordTooLarge(keyValueSize)) {
+          throw new RecordTooLargeException(
+              "This record exceeds the Venice max record size (" + maxRecordSizeBytes + " bytes). "
+                  + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
+        }
         if (keyValueSize > pubSubLargeMessageMaxSizeBytes) {
           throw new RecordTooLargeException(
               "This record exceeds the pubsub large message max size (" + pubSubLargeMessageMaxSizeBytes + " bytes). "
