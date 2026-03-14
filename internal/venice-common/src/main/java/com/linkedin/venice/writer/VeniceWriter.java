@@ -1103,19 +1103,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
      */
     int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
     if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
-      if (pubSubLargeMessageSupportEnabled) {
-        // PubSub passthrough takes priority over Venice chunking. Enforce MAX_RECORD_SIZE_BYTES
-        // to prevent arbitrarily large records from causing downstream issues (e.g., OOM during reassembly).
-        if (isRecordTooLarge(serializedKey.length + serializedValue.length)) {
-          throw new RecordTooLargeException(
-              "This record exceeds the maximum record size even with pubsub large message support enabled. "
-                  + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
-        }
-        // Fall through to the normal non-chunked put path below.
-        // The pubsub producer layer will handle fragmentation/reassembly natively.
-      } else if (
-      // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
-      (isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) || isGlobalRtDiv) {
+      if (isGlobalRtDiv) {
+        // Global RT DIV messages always bypass size limits and use the chunking path.
         return putLargeValue(
             serializedKey,
             serializedValue,
@@ -1128,6 +1117,31 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             oldValueManifest,
             oldRmdManifest,
             isGlobalRtDiv);
+      } else if (pubSubLargeMessageSupportEnabled) {
+        // PubSub passthrough takes priority over Venice chunking. Enforce MAX_RECORD_SIZE_BYTES
+        // to prevent arbitrarily large records from causing downstream issues (e.g., OOM during reassembly).
+        if (isRecordTooLarge(serializedKey.length + serializedValue.length)) {
+          throw new RecordTooLargeException(
+              "This record exceeds the maximum record size even with pubsub large message support enabled. "
+                  + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
+        }
+        // Fall through to the normal non-chunked put path below.
+        // The pubsub producer layer will handle fragmentation/reassembly natively.
+      } else if (
+      // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
+      isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) {
+        return putLargeValue(
+            serializedKey,
+            serializedValue,
+            valueSchemaId,
+            callback,
+            partition,
+            leaderMetadataWrapper,
+            logicalTs,
+            putMetadata,
+            oldValueManifest,
+            oldRmdManifest,
+            false);
       } else {
         throw new RecordTooLargeException(
             "This record exceeds the maximum size. "
