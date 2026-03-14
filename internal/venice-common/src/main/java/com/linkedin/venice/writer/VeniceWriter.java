@@ -776,7 +776,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     if (writerHook != null) {
-      writerHook.onBeforeProduce(serializedKey.length, 0);
+      writerHook.onBeforeProduce(VeniceWriterHook.OperationType.DELETE, serializedKey.length, 0);
     }
 
     if (isChunkingEnabled) {
@@ -1099,7 +1099,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
       if ((isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) || isGlobalRtDiv) {
         if (writerHook != null) {
-          writerHook.onBeforeProduce(serializedKey.length, serializedValue.length);
+          writerHook.onBeforeProduce(VeniceWriterHook.OperationType.PUT, serializedKey.length, serializedValue.length);
         }
         return putLargeValue(
             serializedKey,
@@ -1121,7 +1121,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     if (writerHook != null) {
-      writerHook.onBeforeProduce(serializedKey.length, serializedValue.length);
+      writerHook.onBeforeProduce(VeniceWriterHook.OperationType.PUT, serializedKey.length, serializedValue.length);
     }
 
     if (isChunkingEnabled) {
@@ -1275,7 +1275,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     if (writerHook != null) {
-      writerHook.onBeforeProduce(serializedKey.length, serializedUpdate.length);
+      writerHook.onBeforeProduce(VeniceWriterHook.OperationType.UPDATE, serializedKey.length, serializedUpdate.length);
     }
 
     KafkaKey kafkaKey = new KafkaKey((MessageType.UPDATE), serializedKey);

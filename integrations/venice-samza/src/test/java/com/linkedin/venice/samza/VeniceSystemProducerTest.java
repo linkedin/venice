@@ -211,10 +211,9 @@ public class VeniceSystemProducerTest {
   }
 
   @Test
-  public void testWriterHookCalledWhenProducingViaSystemProducer() {
+  public void testWriterHookCalledForPutAndDeleteViaSystemProducer() {
     VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
 
-    // Build a real VeniceWriter with the hook and a mock PubSub producer
     PubSubProducerAdapter mockPubSubProducer = mock(PubSubProducerAdapter.class);
     java.util.concurrent.CompletableFuture mockFuture = mock(java.util.concurrent.CompletableFuture.class);
     when(mockPubSubProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockFuture);
@@ -227,8 +226,32 @@ public class VeniceSystemProducerTest {
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, realWriter);
 
     producerSpy.send("myKey", "myValue");
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), any(int.class), any(int.class));
 
-    verify(mockHook).onBeforeProduce(any(int.class), any(int.class));
+    producerSpy.send((Object) "myKey", null);
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), any(int.class), eq(0));
+
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testWriterHookCalledForUpdateViaSystemProducer() {
+    VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
+
+    PubSubProducerAdapter mockPubSubProducer = mock(PubSubProducerAdapter.class);
+    java.util.concurrent.CompletableFuture mockFuture = mock(java.util.concurrent.CompletableFuture.class);
+    when(mockPubSubProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockFuture);
+    VeniceWriter<byte[], byte[], byte[]> realWriter = new VeniceWriter(
+        new VeniceWriterOptions.Builder("test_store_rt").setPartitionCount(1).setWriterHook(mockHook).build(),
+        VeniceProperties.empty(),
+        mockPubSubProducer);
+
+    ControllerClient mockControllerClient = buildMockControllerClient(1, 1, true, "test_store_rt");
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, realWriter);
+
+    producerSpy.send("myKey", "myValue");
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), any(int.class), any(int.class));
+
     producerSpy.stop();
   }
 

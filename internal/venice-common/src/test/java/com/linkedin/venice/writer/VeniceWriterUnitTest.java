@@ -894,21 +894,23 @@ public class VeniceWriterUnitTest {
     String key = "test-key";
     byte[] expectedKey = serializer.serialize(testTopic, key);
 
-    // Put: hook called with key and value sizes
+    // Put: hook called with PUT operation type and correct sizes
     String value = "test-value";
     writer.put(key, value, 1, null);
     byte[] expectedValue = serializer.serialize(testTopic, value);
-    verify(mockHook, times(1)).onBeforeProduce(eq(expectedKey.length), eq(expectedValue.length));
+    verify(mockHook)
+        .onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), eq(expectedKey.length), eq(expectedValue.length));
 
-    // Delete: hook called with key size and 0 for value
+    // Delete: hook called with DELETE operation type, key size and 0 for value
     writer.delete(key, null);
-    verify(mockHook, times(1)).onBeforeProduce(eq(expectedKey.length), eq(0));
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), eq(expectedKey.length), eq(0));
 
-    // Update: hook called with key and update payload sizes
+    // Update: hook called with UPDATE operation type and update payload sizes
     String updateValue = "test-update";
     writer.update(key, updateValue, 1, 1, null, APP_DEFAULT_LOGICAL_TS);
     byte[] expectedUpdate = serializer.serialize(testTopic, updateValue);
-    verify(mockHook, times(1)).onBeforeProduce(eq(expectedKey.length), eq(expectedUpdate.length));
+    verify(mockHook)
+        .onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), eq(expectedKey.length), eq(expectedUpdate.length));
   }
 
   @Test(timeOut = TIMEOUT)
@@ -945,7 +947,7 @@ public class VeniceWriterUnitTest {
     java.util.concurrent.CountDownLatch hookEntered = new java.util.concurrent.CountDownLatch(1);
     java.util.concurrent.CountDownLatch hookRelease = new java.util.concurrent.CountDownLatch(1);
 
-    VeniceWriterHook blockingHook = (keySizeBytes, valueSizeBytes) -> {
+    VeniceWriterHook blockingHook = (operationType, keySizeBytes, valueSizeBytes) -> {
       hookEntered.countDown();
       try {
         hookRelease.await();
@@ -1023,7 +1025,8 @@ public class VeniceWriterUnitTest {
     byte[] expectedKey = serializer.serialize(testTopic, key);
     byte[] expectedValue = serializer.serialize(testTopic, largeValue);
     // Hook should fire exactly once with original pre-chunking sizes
-    verify(mockHook, times(1)).onBeforeProduce(eq(expectedKey.length), eq(expectedValue.length));
+    verify(mockHook)
+        .onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), eq(expectedKey.length), eq(expectedValue.length));
     // Producer should be called multiple times (chunks + manifest)
     verify(mockedProducer, atLeast(2)).sendMessage(any(), any(), any(), any(), any(), any());
   }
@@ -1065,7 +1068,8 @@ public class VeniceWriterUnitTest {
     } catch (RecordTooLargeException e) {
       // expected
     }
-    verify(mockHook, never()).onBeforeProduce(any(int.class), any(int.class));
+    verify(mockHook, never())
+        .onBeforeProduce(any(VeniceWriterHook.OperationType.class), any(int.class), any(int.class));
 
     // update() with too-large record should throw and NOT call hook
     try {
@@ -1074,7 +1078,8 @@ public class VeniceWriterUnitTest {
     } catch (RecordTooLargeException e) {
       // expected
     }
-    verify(mockHook, never()).onBeforeProduce(any(int.class), any(int.class));
+    verify(mockHook, never())
+        .onBeforeProduce(any(VeniceWriterHook.OperationType.class), any(int.class), any(int.class));
 
     // delete() with too-large key should throw and NOT call hook
     try {
@@ -1083,6 +1088,7 @@ public class VeniceWriterUnitTest {
     } catch (RecordTooLargeException e) {
       // expected
     }
-    verify(mockHook, never()).onBeforeProduce(any(int.class), any(int.class));
+    verify(mockHook, never())
+        .onBeforeProduce(any(VeniceWriterHook.OperationType.class), any(int.class), any(int.class));
   }
 }

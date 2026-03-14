@@ -16,12 +16,17 @@ package com.linkedin.venice.writer;
  * pre-chunking sizes, not per-chunk.
  */
 public interface VeniceWriterHook {
+  enum OperationType {
+    PUT, DELETE, UPDATE
+  }
+
   /**
    * Called with serialized byte sizes before producing to the pub-sub system.
    * May block to apply backpressure (e.g., quota throttling).
    *
+   * @param operationType the type of write operation (PUT, DELETE, or UPDATE)
    * @param keySizeBytes serialized key size in bytes
    * @param valueSizeBytes serialized value/update-payload size in bytes (0 for deletes)
    */
-  void onBeforeProduce(int keySizeBytes, int valueSizeBytes);
+  void onBeforeProduce(OperationType operationType, int keySizeBytes, int valueSizeBytes);
 }
