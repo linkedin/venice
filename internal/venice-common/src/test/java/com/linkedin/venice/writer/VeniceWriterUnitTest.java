@@ -16,7 +16,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.longThat;
 import static org.mockito.Mockito.atLeast;
-import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
@@ -738,9 +737,9 @@ public class VeniceWriterUnitTest {
     // Large record within 4MB default pubsub limit — pubsub passthrough, no Venice chunking
     writer.put("test-key", valueOfSize(2 * BYTES_PER_MB), 1, null);
 
-    // Verify at most 3 sendMessage calls (1 start-of-segment + 2 puts) — proves pubsub passthrough
+    // Verify exactly 3 sendMessage calls (1 start-of-segment + 2 puts) — proves pubsub passthrough
     // was used, not Venice chunking (which would produce many more calls for a 2MB record)
-    verify(mockedProducer, atMost(3)).sendMessage(any(), any(), any(), any(), any(), any());
+    verify(mockedProducer, times(3)).sendMessage(any(), any(), any(), any(), any(), any());
 
     // Record exceeding the 4MB default pubsub limit — rejected
     String tooLarge = valueOfSize(5 * BYTES_PER_MB);
@@ -778,8 +777,8 @@ public class VeniceWriterUnitTest {
 
     // GlobalRtDiv within 4MB limit — pubsub passthrough
     writer.put(
-        "test-key".getBytes(),
-        valueOfSize(2 * BYTES_PER_MB).getBytes(),
+        "test-key".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+        valueOfSize(2 * BYTES_PER_MB).getBytes(java.nio.charset.StandardCharsets.UTF_8),
         0,
         1,
         null,
@@ -790,15 +789,15 @@ public class VeniceWriterUnitTest {
         null,
         true);
 
-    // Verify at most 2 sendMessage calls — pubsub passthrough, not Venice chunking
-    verify(mockedProducer, atMost(2)).sendMessage(any(), any(), any(), any(), any(), any());
+    // Verify exactly 2 sendMessage calls (1 start-of-segment + 1 put) — pubsub passthrough, not Venice chunking
+    verify(mockedProducer, times(2)).sendMessage(any(), any(), any(), any(), any(), any());
 
     // GlobalRtDiv exceeding 4MB limit — rejected, no size bypass
-    byte[] overLimitBytes = valueOfSize(5 * BYTES_PER_MB).getBytes();
+    byte[] overLimitBytes = valueOfSize(5 * BYTES_PER_MB).getBytes(java.nio.charset.StandardCharsets.UTF_8);
     Assert.expectThrows(
         RecordTooLargeException.class,
         () -> writer.put(
-            "test-key".getBytes(),
+            "test-key".getBytes(java.nio.charset.StandardCharsets.UTF_8),
             overLimitBytes,
             0,
             1,
