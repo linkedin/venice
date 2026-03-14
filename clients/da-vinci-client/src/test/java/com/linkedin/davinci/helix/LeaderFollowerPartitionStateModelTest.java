@@ -118,23 +118,32 @@ public class LeaderFollowerPartitionStateModelTest {
 
     // STANDBY->LEADER
     leaderFollowerPartitionStateModelSpy.onBecomeLeaderFromStandby(message, context);
-    verify(heartbeatMonitoringService, never())
-        .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.SET_LEADER_MONITOR));
+    verify(heartbeatMonitoringService, never()).updateLagMonitor(
+        eq(resourceName),
+        eq(partition),
+        eq(HeartbeatLagMonitorAction.SET_LEADER_MONITOR),
+        anyString());
 
     // LEADER->STANDBY
     leaderFollowerPartitionStateModelSpy.onBecomeStandbyFromLeader(message, context);
-    verify(heartbeatMonitoringService, never())
-        .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR));
+    verify(heartbeatMonitoringService, never()).updateLagMonitor(
+        eq(resourceName),
+        eq(partition),
+        eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR),
+        anyString());
 
     // OFFLINE->STANDBY
     leaderFollowerPartitionStateModelSpy.onBecomeStandbyFromOffline(message, context);
-    verify(heartbeatMonitoringService, times(1))
-        .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR));
+    verify(heartbeatMonitoringService, times(1)).updateLagMonitor(
+        eq(resourceName),
+        eq(partition),
+        eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR),
+        anyString());
 
     // STANDBY->OFFLINE
     leaderFollowerPartitionStateModelSpy.onBecomeOfflineFromStandby(message, context);
     verify(heartbeatMonitoringService)
-        .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.REMOVE_MONITOR));
+        .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.REMOVE_MONITOR), anyString());
   }
 
   @Test

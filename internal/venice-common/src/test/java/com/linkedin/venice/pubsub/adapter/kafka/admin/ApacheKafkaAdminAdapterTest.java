@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -594,6 +595,81 @@ public class ApacheKafkaAdminAdapterTest {
     verify(internalKafkaAdminClientMock, times(3)).describeConfigs(any());
     verify(describeConfigsResultMock, times(3)).all();
     verify(describeConfigsKafkaFutureMock, times(3)).get();
+  }
+
+  @Test
+  public void testSetTopicConfigUncleanLeaderElection() {
+    // Test all three cases: false, true, and absent (Optional.empty)
+    Optional<Boolean>[] cases = new Optional[] { Optional.of(false), Optional.of(true), Optional.empty() };
+    for (Optional<Boolean> uncleanSetting: cases) {
+      reset(internalKafkaAdminClientMock);
+
+      PubSubTopicConfiguration topicConfiguration =
+          new PubSubTopicConfiguration(Optional.of(1111L), true, Optional.of(222), 333L, Optional.empty());
+      topicConfiguration.setUncleanLeaderElectionEnable(uncleanSetting);
+
+      AlterConfigsResult alterConfigsResultMock = mock(AlterConfigsResult.class);
+      KafkaFuture<Void> alterConfigsKafkaFutureMock = mock(KafkaFuture.class);
+
+      Map<ConfigResource, Config> resourceConfigMap = new HashMap<>();
+      when(internalKafkaAdminClientMock.alterConfigs(any())).thenAnswer(invocation -> {
+        resourceConfigMap.putAll(invocation.getArgument(0));
+        return alterConfigsResultMock;
+      });
+      when(alterConfigsResultMock.all()).thenReturn(alterConfigsKafkaFutureMock);
+
+      kafkaAdminAdapter.setTopicConfig(testPubSubTopic, topicConfiguration);
+
+      assertEquals(resourceConfigMap.size(), 1);
+      for (Map.Entry<ConfigResource, Config> entry: resourceConfigMap.entrySet()) {
+        Config config = entry.getValue();
+        if (uncleanSetting.isPresent()) {
+          assertEquals(
+              config.get(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG).value(),
+              Boolean.toString(uncleanSetting.get()));
+        } else {
+          // When unset, the property should not be present
+          assertTrue(config.get(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG) == null);
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testGetTopicConfigUncleanLeaderElection() throws Exception {
+    // Test with and without unclean.leader.election.enable in the topic config
+    for (Optional<String> uncleanValue: new Optional[] { Optional.of("false"), Optional.empty() }) {
+      reset(internalKafkaAdminClientMock);
+
+      DescribeConfigsResult describeConfigsResultMock = mock(DescribeConfigsResult.class);
+      KafkaFuture<Map<ConfigResource, Config>> describeConfigsKafkaFutureMock = mock(KafkaFuture.class);
+
+      List<ConfigEntry> configEntries = new ArrayList<>(
+          Arrays.asList(
+              new ConfigEntry("cleanup.policy", "compact"),
+              new ConfigEntry("retention.ms", "1111"),
+              new ConfigEntry("min.compaction.lag.ms", "2222"),
+              new ConfigEntry("min.insync.replicas", "3333")));
+      uncleanValue.ifPresent(v -> configEntries.add(new ConfigEntry("unclean.leader.election.enable", v)));
+      Config config = new Config(configEntries);
+      Map<ConfigResource, Config> configMap = new HashMap<>();
+      configMap.put(new ConfigResource(ConfigResource.Type.TOPIC, testPubSubTopic.getName()), config);
+
+      when(internalKafkaAdminClientMock.describeConfigs(any())).thenReturn(describeConfigsResultMock);
+      when(describeConfigsResultMock.all()).thenReturn(describeConfigsKafkaFutureMock);
+      when(describeConfigsKafkaFutureMock.get()).thenReturn(configMap);
+
+      PubSubTopicConfiguration topicConfiguration = kafkaAdminAdapter.getTopicConfig(testPubSubTopic);
+
+      if (uncleanValue.isPresent()) {
+        assertTrue(topicConfiguration.getUncleanLeaderElectionEnable().isPresent());
+        assertEquals(
+            topicConfiguration.getUncleanLeaderElectionEnable().get(),
+            (Boolean) Boolean.parseBoolean(uncleanValue.get()));
+      } else {
+        assertFalse(topicConfiguration.getUncleanLeaderElectionEnable().isPresent());
+      }
+    }
   }
 
   @Test

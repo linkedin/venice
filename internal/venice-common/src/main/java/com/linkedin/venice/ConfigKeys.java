@@ -301,6 +301,16 @@ public class ConfigKeys {
   public static final String KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS = "kafka.min.in.sync.replicas.admin.topics";
 
   /**
+   * Whether to enable unclean leader election for real-time buffer topics.
+   * When set to false, only in-sync replicas can be elected as leader,
+   * preventing data loss at the cost of reduced availability.
+   *
+   * Will use the Kafka cluster's default if not set.
+   */
+  public static final String KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS =
+      "kafka.unclean.leader.election.enable.rt.topics";
+
+  /**
    * The replication factor to set for store-version topics.
    */
   public static final String KAFKA_REPLICATION_FACTOR = "kafka.replication.factor";

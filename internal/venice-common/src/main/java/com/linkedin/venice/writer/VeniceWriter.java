@@ -173,9 +173,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final int DEFAULT_CLOSE_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
 
   /**
-   * Default checksum type. N.B.: Only MD5 (and having no checksums) supports checkpointing mid-checksum.
+   * Default checksum type for DIV (Data Integrity Validation).
    */
-  public static final String DEFAULT_CHECK_SUM_TYPE = CheckSumType.MD5.name();
+  public static final String DEFAULT_CHECK_SUM_TYPE = CheckSumType.ADHASH.name();
 
   /**
    * Default number of attempts when trying to produce to a Kafka topic and an exception is caught saying

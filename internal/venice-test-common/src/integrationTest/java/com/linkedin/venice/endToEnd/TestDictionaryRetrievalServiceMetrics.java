@@ -95,4 +95,16 @@ public class TestDictionaryRetrievalServiceMetrics {
     double versionQueued = routerMetrics.getMetric(metricPrefix + "dictionary_version_queued.Count").value();
     Assert.assertTrue(versionQueued > 0, "Expected dictionary_version_queued > 0, got " + versionQueued);
   }
+
+  /**
+   * Verify that shutting down the router after a ZSTD_WITH_DICT push does not throw exceptions
+   * (e.g., "ZkClient already closed!" from DictionaryRetrievalService accessing ZK during shutdown).
+   * Depends on testDictionaryRetrievalMetricsAfterPush to ensure dictionaries are already downloaded.
+   */
+  @Test(timeOut = TEST_TIMEOUT, dependsOnMethods = "testDictionaryRetrievalMetricsAfterPush")
+  public void testRouterShutdownAfterDictionaryDownload() {
+    VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
+    // Explicitly stop the router — this should not throw any exceptions
+    veniceCluster.stopVeniceRouter(routerWrapper.getPort());
+  }
 }
