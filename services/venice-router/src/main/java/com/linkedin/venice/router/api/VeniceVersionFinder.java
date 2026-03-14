@@ -152,32 +152,36 @@ public class VeniceVersionFinder {
       stats.recordStalenessReason(StaleVersionReason.DICTIONARY_NOT_DOWNLOADED);
     }
 
-    /**
-     * When the router has only one available version, despite offline partitions, or dictionary not yet downloaded,
-     * it will return it as the available version.
-     * If the partitions are still unavailable or the dictionary is not downloaded by the time the records needs to
-     * be decompressed, then the router will return an error response.
-     */
-    // log if existing version ready to serve
+    // Check if existing version is still viable before falling back to it
     Version existingVersion = store.getVersion(existingVersionNumber);
-    boolean existingVersionDecompressorReady =
-        isDecompressorReady(existingVersion, Version.composeKafkaTopic(storeName, existingVersionNumber));
-    // existing version ready to serve
+    String existingVersionKafkaTopic = Version.composeKafkaTopic(storeName, existingVersionNumber);
+    boolean existingVersionPartitionResourcesReady = isPartitionResourcesReady(existingVersionKafkaTopic);
+    boolean existingVersionDecompressorReady = isDecompressorReady(existingVersion, existingVersionKafkaTopic);
+
     if (!EXCEPTION_FILTER.isRedundantException(storeName)) {
       LOGGER.warn(
           "Unable to serve new version: {}." + " Partition resources ready for new version? {}."
-              + " Decompressor not ready for new version? {}." + " Continuing to serve existing version: {}."
+              + " Decompressor ready for new version? {}." + " Existing version: {}."
+              + " Partition resources ready for existing version? {}."
               + " Decompressor ready for existing version? {}.",
           newVersionKafkaTopic,
           newVersionPartitionResourcesReady,
           newVersionDecompressorReady,
           existingVersionNumber,
+          existingVersionPartitionResourcesReady,
           existingVersionDecompressorReady);
     }
+
     stats.recordStale(metadataCurrentVersionNumber, existingVersionNumber);
-    lastCurrentVersionMap.put(storeName, existingVersionNumber);
-    /** new and existing version both being not ready is a rare case. However, returning something is better than nothing. */
-    return existingVersionNumber;
+    if (existingVersionPartitionResourcesReady) {
+      lastCurrentVersionMap.put(storeName, existingVersionNumber);
+      return existingVersionNumber;
+    } else {
+      // Existing version's Helix resource has been deleted — cannot serve either version.
+      // Reset to force re-evaluation on next request.
+      lastCurrentVersionMap.put(storeName, Store.NON_EXISTING_VERSION);
+      return Store.NON_EXISTING_VERSION;
+    }
   }
 
   protected boolean isPartitionResourcesReady(String kafkaTopic) {

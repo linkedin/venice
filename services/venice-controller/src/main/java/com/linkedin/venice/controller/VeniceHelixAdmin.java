@@ -3623,7 +3623,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
           clusterConfig.getMinInSyncReplicasRealTimeTopics(),
           false,
-          clusterConfig.shouldUseAlternativePubSubBackend(store.getName(), true));
+          clusterConfig.shouldUseAlternativePubSubBackend(store.getName(), true),
+          clusterConfig.getUncleanLeaderElectionEnableRealTimeTopics());
     }
     LOGGER.info(
         "Completed setup for real-time topic: {} for store: {} with reference hybrid version: {} and partition count: {}",

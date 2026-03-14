@@ -37,6 +37,7 @@ public final class ServerMetricEntity {
         AdaptiveThrottlingOtelMetricEntity.class,
         HeartbeatMonitoringOtelMetricEntity.class,
         BlobTransferOtelMetricEntity.class,
+        KafkaConsumerServiceOtelMetricEntity.class,
         RocksDBMemoryOtelMetricEntity.class);
   }
 

@@ -6,6 +6,7 @@ import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngine;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
+import javax.annotation.Nullable;
 
 
 /**
@@ -17,18 +18,35 @@ import java.nio.ByteBuffer;
  */
 public class RocksDBChunkAssembler extends ChunkAssembler {
   public RocksDBChunkAssembler(StorageEngine bufferStorageEngine, boolean skipFailedToAssembleRecords) {
-    super(bufferStorageEngine, skipFailedToAssembleRecords);
+    this(bufferStorageEngine, skipFailedToAssembleRecords, false);
+  }
+
+  public RocksDBChunkAssembler(
+      StorageEngine bufferStorageEngine,
+      boolean skipFailedToAssembleRecords,
+      boolean isRmdChunkingEnabled) {
+    super(bufferStorageEngine, skipFailedToAssembleRecords, isRmdChunkingEnabled);
   }
 
   /**
-   * Remove the manifest and its chunks from the {@link RocksDBStorageEngine} backed buffer.
+   * Remove the manifest, its value chunks, and (if RMD chunking was enabled) its RMD chunks from the
+   * {@link RocksDBStorageEngine} backed buffer.
    */
   @Override
-  void evictChunks(int partitionId, byte[] keyBytes, ChunkedValueManifestContainer manifestContainer) {
+  void evictChunks(
+      int partitionId,
+      byte[] keyBytes,
+      ChunkedValueManifestContainer manifestContainer,
+      @Nullable ChunkedValueManifest rmdManifest) {
     ChunkedValueManifest manifest = manifestContainer.getManifest();
     if (manifest != null) {
       for (ByteBuffer chunkKeyByte: manifest.getKeysWithChunkIdSuffix()) {
         bufferStorageEngine.delete(partitionId, ByteUtils.extractByteArray(chunkKeyByte));
+      }
+    }
+    if (rmdManifest != null) {
+      for (ByteBuffer rmdChunkKeyByte: rmdManifest.getKeysWithChunkIdSuffix()) {
+        bufferStorageEngine.delete(partitionId, ByteUtils.extractByteArray(rmdChunkKeyByte));
       }
     }
     bufferStorageEngine.delete(partitionId, keyBytes);

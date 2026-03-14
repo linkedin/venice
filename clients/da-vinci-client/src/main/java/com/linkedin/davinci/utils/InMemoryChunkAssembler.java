@@ -2,6 +2,8 @@ package com.linkedin.davinci.utils;
 
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import javax.annotation.Nullable;
 
 
 /*
@@ -17,16 +19,25 @@ public class InMemoryChunkAssembler extends ChunkAssembler {
   // to assemble them. So we rely on the simpler and concrete implementation as opposed to the abstraction in order
   // to control and guarantee the behavior we're expecting.
   public InMemoryChunkAssembler(StorageEngine bufferStorageEngine) {
-    super(bufferStorageEngine, true);
+    this(bufferStorageEngine, false);
+  }
+
+  public InMemoryChunkAssembler(StorageEngine bufferStorageEngine, boolean isRmdChunkingEnabled) {
+    super(bufferStorageEngine, true, isRmdChunkingEnabled);
   }
 
   /**
    * We only buffer one record at a time for a given partition. If we've made it this far we either just finished
    * assembling a large record, or, didn't specify anything. So we'll clear the cache. Kafka might give duplicate
    * delivery, but it won't give out of order delivery, so this is safe to do in all such contexts.
+   * Dropping the entire partition also evicts any buffered RMD chunks.
    */
   @Override
-  void evictChunks(int partitionId, byte[] keyBytes, ChunkedValueManifestContainer manifestContainer) {
+  void evictChunks(
+      int partitionId,
+      byte[] keyBytes,
+      ChunkedValueManifestContainer manifestContainer,
+      @Nullable ChunkedValueManifest rmdManifest) {
     bufferStorageEngine.dropPartition(partitionId);
   }
 }

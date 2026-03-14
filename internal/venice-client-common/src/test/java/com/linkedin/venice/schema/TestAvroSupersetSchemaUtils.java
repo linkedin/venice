@@ -525,6 +525,116 @@ public class TestAvroSupersetSchemaUtils {
   }
 
   @Test
+  public void testGenerateSupersetSchemaWithAnnotatedPrimitiveTypesAndNewEnumField() {
+    // v1: plain primitive types throughout.
+    // - InnerRecord.tag uses a plain null in its union (covers NULL type)
+    // - DateRecord uses plain int/long/boolean/float/double/bytes (covers remaining primitive types)
+    String schemaV1 = "{" + "\"type\":\"record\",\"name\":\"OuterRecord\",\"namespace\":\"com.example\","
+        + "\"fields\":[" + "  {\"name\":\"items\",\"type\":{\"type\":\"array\",\"items\":{"
+        + "    \"type\":\"record\",\"name\":\"InnerRecord\"," + "    \"fields\":["
+        + "      {\"name\":\"id\",\"type\":\"string\"},"
+        // NULL: plain null in union
+        + "      {\"name\":\"tag\",\"type\":[\"null\",\"string\"],\"default\":null}," + "      {\"name\":\"subItems\","
+        + "       \"type\":[\"null\",{\"type\":\"array\",\"items\":{"
+        + "         \"type\":\"record\",\"name\":\"SubItem\"," + "         \"fields\":["
+        + "           {\"name\":\"ref\",\"type\":\"string\"},"
+        + "           {\"name\":\"categoryRef\",\"type\":[\"null\",\"string\"],\"default\":null}" + "         ]"
+        + "       }}],\"default\":null}," + "      {\"name\":\"startDate\"," + "       \"type\":[\"null\",{"
+        + "         \"type\":\"record\",\"name\":\"DateRecord\",\"namespace\":\"com.example.common\","
+        + "         \"fields\":["
+        // INT
+        + "           {\"name\":\"year\",\"type\":[\"null\",\"int\"]},"
+        + "           {\"name\":\"month\",\"type\":[\"null\",\"int\"]},"
+        + "           {\"name\":\"day\",\"type\":[\"null\",\"int\"]},"
+        // LONG
+        + "           {\"name\":\"timestamp\",\"type\":[\"null\",\"long\"]},"
+        // BOOLEAN
+        + "           {\"name\":\"active\",\"type\":[\"null\",\"boolean\"]},"
+        // FLOAT
+        + "           {\"name\":\"score\",\"type\":[\"null\",\"float\"]},"
+        // DOUBLE
+        + "           {\"name\":\"weight\",\"type\":[\"null\",\"double\"]},"
+        // BYTES
+        + "           {\"name\":\"data\",\"type\":[\"null\",\"bytes\"]}" + "         ]" + "       }],\"default\":null},"
+        + "      {\"name\":\"endDate\",\"type\":[\"null\",\"com.example.common.DateRecord\"],\"default\":null}"
+        + "    ]" + "  }}}" + "]}";
+
+    // v2: SubItem gains a new nullable enum field "source" (default null); all primitive types in
+    // InnerRecord and DateRecord carry a custom "proto.fieldType" property — exercising superset
+    // merge and comparison for every annotated primitive type (NULL, INT, LONG, BOOLEAN, FLOAT,
+    // DOUBLE, BYTES).
+    String schemaV2 = "{" + "\"type\":\"record\",\"name\":\"OuterRecord\",\"namespace\":\"com.example\","
+        + "\"fields\":[" + "  {\"name\":\"items\",\"type\":{\"type\":\"array\",\"items\":{"
+        + "    \"type\":\"record\",\"name\":\"InnerRecord\"," + "    \"fields\":["
+        + "      {\"name\":\"id\",\"type\":\"string\"},"
+        // NULL: annotated null in union
+        + "      {\"name\":\"tag\",\"type\":[{\"type\":\"null\",\"proto.nullable\":\"true\"},\"string\"],\"default\":null},"
+        + "      {\"name\":\"subItems\"," + "       \"type\":[\"null\",{\"type\":\"array\",\"items\":{"
+        + "         \"type\":\"record\",\"name\":\"SubItem\"," + "         \"fields\":["
+        + "           {\"name\":\"ref\",\"type\":\"string\"},"
+        + "           {\"name\":\"categoryRef\",\"type\":[\"null\",\"string\"],\"default\":null},"
+        + "           {\"name\":\"source\"," + "            \"type\":[\"null\",{"
+        + "              \"type\":\"enum\",\"name\":\"SourceType\","
+        + "              \"symbols\":[\"UNKNOWN\",\"EXPLICIT\",\"DERIVED\",\"INFERRED\"],"
+        + "              \"default\":\"UNKNOWN\"" + "            }],\"default\":null}" + "         ]"
+        + "       }}],\"default\":null}," + "      {\"name\":\"startDate\"," + "       \"type\":[\"null\",{"
+        + "         \"type\":\"record\",\"name\":\"DateRecord\",\"namespace\":\"com.example.common\","
+        + "         \"fields\":["
+        // INT
+        + "           {\"name\":\"year\",\"type\":[\"null\",{\"type\":\"int\",\"proto.fieldType\":\"sint32\"}],\"proto.fieldNumber\":1},"
+        + "           {\"name\":\"month\",\"type\":[\"null\",{\"type\":\"int\",\"proto.fieldType\":\"sint32\"}],\"proto.fieldNumber\":2},"
+        + "           {\"name\":\"day\",\"type\":[\"null\",{\"type\":\"int\",\"proto.fieldType\":\"sint32\"}],\"proto.fieldNumber\":3},"
+        // LONG
+        + "           {\"name\":\"timestamp\",\"type\":[\"null\",{\"type\":\"long\",\"proto.fieldType\":\"int64\"}],\"proto.fieldNumber\":4},"
+        // BOOLEAN
+        + "           {\"name\":\"active\",\"type\":[\"null\",{\"type\":\"boolean\",\"proto.fieldType\":\"bool\"}],\"proto.fieldNumber\":5},"
+        // FLOAT
+        + "           {\"name\":\"score\",\"type\":[\"null\",{\"type\":\"float\",\"proto.fieldType\":\"float\"}],\"proto.fieldNumber\":6},"
+        // DOUBLE
+        + "           {\"name\":\"weight\",\"type\":[\"null\",{\"type\":\"double\",\"proto.fieldType\":\"double\"}],\"proto.fieldNumber\":7},"
+        // BYTES
+        + "           {\"name\":\"data\",\"type\":[\"null\",{\"type\":\"bytes\",\"proto.fieldType\":\"bytes\"}],\"proto.fieldNumber\":8}"
+        + "         ]" + "       }],\"default\":null},"
+        + "      {\"name\":\"endDate\",\"type\":[\"null\",\"com.example.common.DateRecord\"],\"default\":null}"
+        + "    ]" + "  }}}" + "]}";
+
+    Schema s1 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaV1);
+    Schema s2 = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaV2);
+
+    // v1 and v2 differ structurally (SubItem gains a "source" field in v2)
+    Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
+
+    // Superset should be generated successfully in both directions
+    Schema supersetS1S2 = AvroSupersetSchemaUtils.generateSupersetSchema(s1, s2);
+    Assert.assertNotNull(supersetS1S2);
+
+    Schema supersetS2S1 = AvroSupersetSchemaUtils.generateSupersetSchema(s2, s1);
+    Assert.assertNotNull(supersetS2S1);
+
+    // Both orderings should produce equivalent superset schemas
+    Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(supersetS1S2, supersetS2S1));
+
+    // v2 (which contains the "source" field) should be the superset of v1
+    Assert.assertTrue(AvroSupersetSchemaUtils.isSupersetSchema(s2, s1));
+    Assert.assertFalse(AvroSupersetSchemaUtils.isSupersetSchema(s1, s2));
+
+    // The superset schema should contain "source" inside SubItem, and retain "categoryRef" from v1.
+    // Navigation: items (array items -> InnerRecord) -> subItems (union[1] -> array items -> SubItem)
+    Schema subItemSchema = supersetS1S2.getField("items")
+        .schema()
+        .getElementType()
+        .getField("subItems")
+        .schema()
+        .getTypes()
+        .get(1)
+        .getElementType();
+    Assert.assertNotNull(subItemSchema.getField("source"), "Superset schema must contain the 'source' field from v2");
+    Assert.assertNotNull(
+        subItemSchema.getField("categoryRef"),
+        "Superset schema must retain the 'categoryRef' field from v1");
+  }
+
+  @Test
   public void testValidateSubsetSchema() {
     Assert.assertTrue(
         AvroSupersetSchemaUtils.validateSubsetValueSchema(NAME_RECORD_V1_SCHEMA, NAME_RECORD_V2_SCHEMA.toString()));

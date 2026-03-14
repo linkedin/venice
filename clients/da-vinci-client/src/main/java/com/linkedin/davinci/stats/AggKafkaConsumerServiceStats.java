@@ -22,11 +22,12 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
       LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool,
-      boolean isUnregisterMetricForDeletedStoreEnabled) {
+      boolean isUnregisterMetricForDeletedStoreEnabled,
+      String veniceClusterName) {
     super(
         regionName,
         metricsRepository,
-        new KafkaConsumerServiceStatsSupplier(getMaxElapsedTimeSinceLastPollInConsumerPool),
+        new KafkaConsumerServiceStatsSupplier(getMaxElapsedTimeSinceLastPollInConsumerPool, veniceClusterName),
         metadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
         true);
@@ -84,11 +85,24 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
     totalStats.recordSubscribedPartitionsNum(count);
   }
 
+  /**
+   * Records a single per-consumer partition count to the OTel partition assignment histogram
+   * on the total stats instance. Called for each consumer in the pool from
+   * {@link com.linkedin.davinci.kafka.consumer.KafkaConsumerService#recordPartitionsPerConsumerSensor()}.
+   */
+  public void recordTotalPartitionAssignmentForOtel(int partitionCount) {
+    totalStats.recordPartitionAssignmentForOtel(partitionCount);
+  }
+
   static class KafkaConsumerServiceStatsSupplier implements StatsSupplier<KafkaConsumerServiceStats> {
     private final LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool;
+    private final String veniceClusterName;
 
-    KafkaConsumerServiceStatsSupplier(LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool) {
+    KafkaConsumerServiceStatsSupplier(
+        LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool,
+        String veniceClusterName) {
       this.getMaxElapsedTimeSinceLastPollInConsumerPool = getMaxElapsedTimeSinceLastPollInConsumerPool;
+      this.veniceClusterName = veniceClusterName;
     }
 
     @Override
@@ -107,7 +121,8 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
           storeName,
           getMaxElapsedTimeSinceLastPollInConsumerPool,
           totalStats,
-          SystemTime.INSTANCE);
+          SystemTime.INSTANCE,
+          veniceClusterName);
     }
   }
 }

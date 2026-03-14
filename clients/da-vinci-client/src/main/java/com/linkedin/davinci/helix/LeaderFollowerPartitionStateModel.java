@@ -129,8 +129,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         }
         throw e;
       }
-      heartbeatMonitoringService
-          .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+      heartbeatMonitoringService.updateLagMonitor(
+          message.getResourceName(),
+          getPartition(),
+          HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+          Utils.getReplicaId(message.getResourceName(), getPartition()));
       if (isCurrentVersion || isFutureVersionReady) {
         waitConsumptionCompleted(resourceName, notifier);
       }
@@ -167,8 +170,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
-    heartbeatMonitoringService
-        .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.REMOVE_MONITOR);
+    heartbeatMonitoringService.updateLagMonitor(
+        message.getResourceName(),
+        getPartition(),
+        HeartbeatLagMonitorAction.REMOVE_MONITOR,
+        Utils.getReplicaId(message.getResourceName(), getPartition()));
 
     executeStateTransition(message, context, () -> {
       stopConsumption(true);
@@ -180,8 +186,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
     String replicaId = Utils.getReplicaId(message.getResourceName(), getPartition());
-    heartbeatMonitoringService
-        .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.REMOVE_MONITOR);
+    heartbeatMonitoringService.updateLagMonitor(
+        message.getResourceName(),
+        getPartition(),
+        HeartbeatLagMonitorAction.REMOVE_MONITOR,
+        replicaId);
     executeStateTransition(message, context, () -> {
       boolean isCurrentVersion = false;
       try {

@@ -84,6 +84,17 @@ public class AvroSupersetSchemaUtils {
         return Schema.createMap(generateSupersetSchema(existingSchema.getValueType(), newSchema.getValueType()));
       case UNION:
         return unionSchema(existingSchema, newSchema);
+      case INT:
+      case LONG:
+      case FLOAT:
+      case DOUBLE:
+      case BOOLEAN:
+      case BYTES:
+      case NULL:
+        // Primitive types cannot differ structurally; schemas are equal in type but differ only in
+        // custom properties (e.g. "li.data.proto.numberFieldType"). Return newSchema so its properties
+        // take priority, consistent with the convention used elsewhere in this method.
+        return newSchema;
       default:
         throw new VeniceException("Super set schema not supported");
     }
