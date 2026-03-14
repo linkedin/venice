@@ -762,6 +762,98 @@ public class VeniceWriterUnitTest {
   }
 
   /**
+   * Testing that Global RT DIV messages use the pubsub passthrough path when pubSubLargeMessageSupportEnabled=true,
+   * and are subject to PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES (no size bypass).
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testGlobalRtDivWithPubSubLargeMessageSupport() {
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
+    final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
+        .setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setChunkingEnabled(true)
+        .build();
+
+    // Enable pubsub large message support — should take priority for GlobalRtDiv too
+    Properties properties = new Properties();
+    properties.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, "true");
+    VeniceProperties props = new VeniceProperties(properties);
+    final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
+
+    // GlobalRtDiv message within the 4MB default pubsub limit should succeed via pubsub passthrough
+    final int WITHIN_LIMIT_SIZE = 2 * BYTES_PER_MB;
+    char[] withinLimitValue = new char[WITHIN_LIMIT_SIZE];
+    Arrays.fill(withinLimitValue, '*');
+    writer.put(
+        "test-key".getBytes(),
+        new String(withinLimitValue).getBytes(),
+        0,
+        1,
+        null,
+        new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(0), 0, 0),
+        APP_DEFAULT_LOGICAL_TS,
+        null,
+        null,
+        null,
+        true); // isGlobalRtDiv = true
+
+    // Verify at most 2 sendMessage calls — pubsub passthrough, not Venice chunking
+    verify(mockedProducer, atMost(2)).sendMessage(any(), any(), any(), any(), any(), any());
+
+    // GlobalRtDiv message exceeding the 4MB pubsub limit should be rejected — no size bypass
+    final int OVER_LIMIT_SIZE = 5 * BYTES_PER_MB;
+    char[] overLimitValue = new char[OVER_LIMIT_SIZE];
+    Arrays.fill(overLimitValue, '*');
+    byte[] overLimitBytes = new String(overLimitValue).getBytes();
+    Assert.expectThrows(
+        RecordTooLargeException.class,
+        () -> writer.put(
+            "test-key".getBytes(),
+            overLimitBytes,
+            0,
+            1,
+            null,
+            new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(0), 0, 0),
+            APP_DEFAULT_LOGICAL_TS,
+            null,
+            null,
+            null,
+            true)); // isGlobalRtDiv = true
+  }
+
+  /**
+   * Testing that small records (below chunk threshold) work correctly with pubsub large message support enabled.
+   */
+  @Test(timeOut = TIMEOUT)
+  public void testSmallRecordWithPubSubLargeMessageSupport() {
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    final VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
+    final VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
+        .setKeyPayloadSerializer(serializer)
+        .setValuePayloadSerializer(serializer)
+        .setChunkingEnabled(true)
+        .build();
+
+    Properties properties = new Properties();
+    properties.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, "true");
+    VeniceProperties props = new VeniceProperties(properties);
+    final VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, props, mockedProducer);
+
+    // Small record (< ~1MB) should go through the normal path, no chunking or pubsub passthrough needed
+    char[] smallValue = new char[100 * BYTES_PER_KB];
+    Arrays.fill(smallValue, '*');
+    writer.put("test-key", new String(smallValue), 1, null); // Should NOT throw
+
+    // Verify at most 2 sendMessage calls — normal single-message path
+    verify(mockedProducer, atMost(2)).sendMessage(any(), any(), any(), any(), any(), any());
+  }
+
+  /**
    * Testing the constructor validation for MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES:
    * - Without chunking or pubsub large message support, exceeding the default payload size should fail.
    * - With pubSubLargeMessageSupportEnabled, exceeding the default payload size is allowed.
