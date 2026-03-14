@@ -1777,7 +1777,33 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testTrackRecordReceivedBatchStoreFollowerUsesBrokerTimestamp() throws Exception {
+  public void testTrackRecordReceivedSkipsDuringBatchIngestion() throws Exception {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
+    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
+
+    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
+
+    // Batch-only store before EOP (not complete) — should skip
+    PartitionConsumptionState batchPcs = mock(PartitionConsumptionState.class);
+    doReturn(false).when(batchPcs).isComplete();
+    ingestionTask.trackRecordReceived(batchPcs, consumerRecord, "abc:123");
+
+    // Hybrid store during rewind, lag not caught up (not complete) — should skip
+    PartitionConsumptionState hybridPcs = mock(PartitionConsumptionState.class);
+    doReturn(false).when(hybridPcs).isComplete();
+    ingestionTask.trackRecordReceived(hybridPcs, consumerRecord, "abc:123");
+
+    verify(heartbeatMonitoringService, never())
+        .recordLeaderRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+    verify(heartbeatMonitoringService, never())
+        .recordFollowerRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+  }
+
+  @Test
+  public void testTrackRecordReceivedEmitsAfterPartitionComplete() throws Exception {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
 
     LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
@@ -1792,15 +1818,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     doReturn(100).when(pcs).getPartition();
-    doReturn(false).when(pcs).isComplete();
-    doReturn(true).when(pcs).isBatchOnly();
-    doReturn(false).when(pcs).isEndOfPushReceived();
+    doReturn(true).when(pcs).isComplete();
     doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
 
-    long brokerTimestamp = 5000L;
     long producerTimestamp = 1000L;
     DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    doReturn(brokerTimestamp).when(consumerRecord).getPubSubMessageTime();
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     ProducerMetadata producerMetadata = new ProducerMetadata();
     producerMetadata.messageTimestamp = producerTimestamp;
@@ -1810,98 +1832,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     HeartbeatKey followerKey = new HeartbeatKey("foo", 1, 100, "c1");
     doReturn(followerKey).when(pcs).getOrCreateCachedHeartbeatKey("c1");
 
-    // Batch follower should use broker timestamp, not producer metadata timestamp
+    // Partition is complete — should emit even with skip enabled
     ingestionTask.trackRecordReceived(pcs, consumerRecord, "abc:123");
     verify(heartbeatMonitoringService, times(1))
-        .recordFollowerRecordTimestamp(eq(followerKey), eq(brokerTimestamp), eq(false));
-    verify(heartbeatMonitoringService, never())
-        .recordLeaderRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
-  }
-
-  @Test
-  public void testTrackRecordReceivedBatchStoreSkipsLeader() {
-    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
-
-    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
-    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
-
-    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-    doReturn(true).when(pcs).isBatchOnly();
-    doReturn(false).when(pcs).isEndOfPushReceived();
-    doReturn(LeaderFollowerStateType.LEADER).when(pcs).getLeaderFollowerState();
-
-    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-
-    // Batch leader — no upstream to lag behind, skip entirely
-    ingestionTask.trackRecordReceived(pcs, consumerRecord, "abc:123");
-    verify(heartbeatMonitoringService, never())
-        .recordLeaderRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
-    verify(heartbeatMonitoringService, never())
-        .recordFollowerRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
-  }
-
-  @Test
-  public void testTrackRecordReceivedBatchStoreSkipsAfterEOP() {
-    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
-
-    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
-    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
-
-    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-    doReturn(true).when(pcs).isBatchOnly();
-    doReturn(true).when(pcs).isEndOfPushReceived();
-    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
-
-    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-
-    // Batch follower after EOP — no more data records, skip entirely
-    ingestionTask.trackRecordReceived(pcs, consumerRecord, "abc:123");
-    verify(heartbeatMonitoringService, never())
-        .recordLeaderRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
-    verify(heartbeatMonitoringService, never())
-        .recordFollowerRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
-  }
-
-  @Test
-  public void testTrackRecordReceivedHybridStoreUsesProducerTimestamp() throws Exception {
-    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
-
-    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-    doCallRealMethod().when(ingestionTask).trackRecordReceived(any(), any(), anyString());
-    doReturn(heartbeatMonitoringService).when(ingestionTask).getHeartbeatMonitoringService();
-    doReturn(false).when(ingestionTask).isDaVinciClient();
-
-    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
-    Map<String, String> urlMap = Collections.singletonMap("abc:123", "c1");
-    doReturn(urlMap).when(veniceServerConfig).getKafkaClusterUrlToAliasMap();
-    setField(ingestionTask, "serverConfig", veniceServerConfig);
-
-    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
-    doReturn(100).when(pcs).getPartition();
-    doReturn(false).when(pcs).isComplete();
-    doReturn(false).when(pcs).isBatchOnly();
-
-    long brokerTimestamp = 5000L;
-    long producerTimestamp = 1000L;
-    DefaultPubSubMessage consumerRecord = mock(DefaultPubSubMessage.class);
-    doReturn(brokerTimestamp).when(consumerRecord).getPubSubMessageTime();
-    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
-    ProducerMetadata producerMetadata = new ProducerMetadata();
-    producerMetadata.messageTimestamp = producerTimestamp;
-    kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
-    doReturn(kafkaMessageEnvelope).when(consumerRecord).getValue();
-
-    HeartbeatKey followerKey = new HeartbeatKey("foo", 1, 100, "c1");
-    doReturn(followerKey).when(pcs).getOrCreateCachedHeartbeatKey("c1");
-    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
-
-    // Hybrid store should use producer metadata timestamp
-    ingestionTask.trackRecordReceived(pcs, consumerRecord, "abc:123");
-    verify(heartbeatMonitoringService, times(1))
-        .recordFollowerRecordTimestamp(eq(followerKey), eq(producerTimestamp), eq(false));
-    verify(heartbeatMonitoringService, never())
-        .recordLeaderRecordTimestamp(any(HeartbeatKey.class), anyLong(), anyBoolean());
+        .recordFollowerRecordTimestamp(eq(followerKey), eq(producerTimestamp), eq(true));
   }
 }

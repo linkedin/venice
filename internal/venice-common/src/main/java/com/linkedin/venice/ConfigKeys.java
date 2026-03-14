@@ -2630,6 +2630,13 @@ public class ConfigKeys {
   public static final String SERVER_PER_RECORD_OTEL_METRICS_ENABLED = "server.per.record.otel.metrics.enabled";
 
   /**
+   * When enabled, per-record OTel metrics are emitted for batch pushes
+   * Requires SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED and SERVER_PER_RECORD_OTEL_METRICS_ENABLED to be true.
+   */
+  public static final String SERVER_PER_RECORD_BATCH_OTEL_METRICS_ENABLED =
+      "server.per.record.batch.otel.metrics.enabled";
+
+  /**
    * Follower replicas and DavinciClient will only consider heartbeats received within
    * this time window to mark themselves as completed. This is to avoid the cases that
    * the follower replica is marked completed based on the old heartbeat messages from

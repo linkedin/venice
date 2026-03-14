@@ -270,24 +270,4 @@ public class PartitionConsumptionStateTest {
     pcs.clearDolState();
     assertNull(pcs.getDolState());
   }
-
-  @Test
-  public void testClearCachedHeartbeatKeys() {
-    PartitionConsumptionState pcs =
-        new PartitionConsumptionState(TOPIC_PARTITION, mock(OffsetRecord.class), pubSubContext, false, null);
-
-    // Create cached keys for multiple regions
-    pcs.getOrCreateCachedHeartbeatKey("region1");
-    pcs.getOrCreateCachedHeartbeatKey("region2");
-
-    // Verify keys exist
-    assertNotNull(pcs.getOrCreateCachedHeartbeatKey("region1"));
-    assertNotNull(pcs.getOrCreateCachedHeartbeatKey("region2"));
-
-    // Clear the cache
-    pcs.clearCachedHeartbeatKeys();
-
-    // After clearing, new calls should create fresh keys (not the same instances)
-    assertNotNull(pcs.getOrCreateCachedHeartbeatKey("region1"), "Should create a fresh key after clearing");
-  }
 }

@@ -1206,12 +1206,4 @@ public class PartitionConsumptionState {
       return new HeartbeatKey(storeName, version, getPartition(), r);
     });
   }
-
-  /**
-   * Clear all cached HeartbeatKey references. Called during batch-only store EOP cleanup
-   * to free memory since no more records will be received.
-   */
-  public void clearCachedHeartbeatKeys() {
-    cachedHeartbeatKeys.clear();
-  }
 }

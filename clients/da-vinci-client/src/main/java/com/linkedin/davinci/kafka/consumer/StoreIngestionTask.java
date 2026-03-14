@@ -439,6 +439,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected final AtomicBoolean recordLevelMetricEnabled;
   protected final boolean recordLevelTimestampEnabled;
+  protected final boolean perRecordBatchOtelMetricsEnabled;
   protected final boolean isGlobalRtDivEnabled;
   protected volatile VersionRole versionRole;
   protected volatile boolean versionBootstrapCompleted;
@@ -721,6 +722,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         serverConfig.isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled()
             || !this.isCurrentVersion.getAsBoolean());
     this.recordLevelTimestampEnabled = serverConfig.isRecordLevelTimestampEnabled();
+    this.perRecordBatchOtelMetricsEnabled = serverConfig.isPerRecordBatchOtelMetricsEnabled();
     this.isGlobalRtDivEnabled = version.isGlobalRtDivEnabled();
     if (!this.recordLevelMetricEnabled.get()) {
       LOGGER.info("Disabled record-level metric when ingesting current version: {}", kafkaVersionTopic);
@@ -3006,14 +3008,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // No Op
   }
 
-  /**
-   * Hook for cleaning up batch record tracking entries at EOP.
-   * Override in subclasses that support record-level timestamp tracking.
-   */
-  protected void cleanupBatchRecordTracking(PartitionConsumptionState partitionConsumptionState) {
-    // No Op
-  }
-
   boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String brokerUrl) {
     if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage()) {
       return false;
@@ -3507,10 +3501,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (isDataRecovery && partitionConsumptionState.isBatchOnly()) {
       partitionConsumptionState.setDataRecoveryCompleted(true);
       ingestionNotificationDispatcher.reportDataRecoveryCompleted(partitionConsumptionState);
-    }
-
-    if (partitionConsumptionState.isBatchOnly()) {
-      cleanupBatchRecordTracking(partitionConsumptionState);
     }
   }
 

@@ -63,7 +63,6 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -2577,6 +2576,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   /**
    * Record a regular data record timestamp to the heartbeat monitoring service.
    * Called only when record-level timestamp tracking is enabled (checked by caller).
+   *
+   * When {@code perRecordBatchOtelMetricsEnabled} is disabled (default), per-record tracking is skipped until the partition is
+   * complete (EOP received, and for hybrid stores, rewind lag caught up). During batch ingestion and hybrid
+   * rewind, producer metadata timestamps are stale and do not reflect meaningful replication lag. For hybrid
+   * stores, tracking resumes once the partition catches up and begins consuming current RT data. Batch-only
+   * stores are effectively skipped entirely since no more data records arrive after completion.
    */
   @Override
   protected void trackRecordReceived(
@@ -2588,46 +2593,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
 
-    // For batch-only stores: skip leaders (no upstream to lag behind) and skip after EOP (no more records)
-    if (partitionConsumptionState.isBatchOnly()) {
-      if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)
-          || partitionConsumptionState.isEndOfPushReceived()) {
-        return;
-      }
+    // Unless batch per-record metrics are explicitly enabled, skip until partition is complete: for batch-only
+    // this means EOP received, for hybrid this means EOP received AND rewind lag caught up. This avoids
+    // emitting stale VPJ/rewind timestamps.
+    if (!perRecordBatchOtelMetricsEnabled && !partitionConsumptionState.isComplete()) {
+      return;
     }
 
     String region =
         isDaVinciClient() ? serverConfig.getRegionName() : serverConfig.getKafkaClusterUrlToAliasMap().get(pubSubUrl);
+    long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
     boolean isComplete = partitionConsumptionState.isComplete();
     HeartbeatKey cachedKey = partitionConsumptionState.getOrCreateCachedHeartbeatKey(region);
 
-    if (partitionConsumptionState.isBatchOnly()) {
-      // Use broker timestamp for batch followers. On the local VT this is approximately when the leader
-      // produced the record, giving meaningful "follower behind leader" lag.
-      long brokerTimestamp = consumerRecord.getPubSubMessageTime();
-      hbService.recordFollowerRecordTimestamp(cachedKey, brokerTimestamp, isComplete);
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+      hbService.recordLeaderRecordTimestamp(cachedKey, messageTimestamp, isComplete);
     } else {
-      // For hybrid stores, use producer metadata timestamp to measure end-to-end replication lag.
-      long messageTimestamp = consumerRecord.getValue().getProducerMetadata().getMessageTimestamp();
-      if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-        hbService.recordLeaderRecordTimestamp(cachedKey, messageTimestamp, isComplete);
-      } else {
-        hbService.recordFollowerRecordTimestamp(cachedKey, messageTimestamp, isComplete);
-      }
+      hbService.recordFollowerRecordTimestamp(cachedKey, messageTimestamp, isComplete);
     }
-  }
-
-  @Override
-  protected void cleanupBatchRecordTracking(PartitionConsumptionState partitionConsumptionState) {
-    HeartbeatMonitoringService hbService = getHeartbeatMonitoringService();
-    if (hbService == null) {
-      return;
-    }
-    int partition = partitionConsumptionState.getPartition();
-    Version version = new VersionImpl(storeName, versionNumber, "");
-    hbService.removeLagMonitor(version, partition);
-    LOGGER.info("Removed lag monitor for replica: {} after EOP", partitionConsumptionState.getReplicaId());
-    partitionConsumptionState.clearCachedHeartbeatKeys();
   }
 
   @Override
