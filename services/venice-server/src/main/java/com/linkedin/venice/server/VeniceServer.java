@@ -329,7 +329,11 @@ public class VeniceServer {
     boolean plainTableEnabled =
         veniceConfigLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
     RocksDBMemoryStats rocksDBMemoryStats = veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled()
-        ? new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled)
+        ? new RocksDBMemoryStats(
+            metricsRepository,
+            "RocksDBMemoryStats",
+            plainTableEnabled,
+            clusterConfig.getClusterName())
         : null;
 
     // Create and add StorageService. storeRepository will be populated by StorageService

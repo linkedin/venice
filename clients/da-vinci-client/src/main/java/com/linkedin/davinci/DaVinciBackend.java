@@ -186,7 +186,8 @@ public class DaVinciBackend implements Closeable {
           ? new RocksDBMemoryStats(
               metricsRepository,
               "RocksDBMemoryStats",
-              backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled())
+              backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled(),
+              configLoader.getVeniceClusterConfig().getClusterName())
           : null;
 
       /**
