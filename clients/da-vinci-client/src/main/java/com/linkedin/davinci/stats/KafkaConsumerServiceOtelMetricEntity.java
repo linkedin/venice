@@ -61,7 +61,8 @@ public enum KafkaConsumerServiceOtelMetricEntity implements ModuleMetricEntityIn
 
   ORPHAN_TOPIC_PARTITION_COUNT(
       "ingestion.pubsub.consumer.orphan_subscription_count", MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of topic-partitions assigned to consumer with no running ingestion task", setOf(VENICE_CLUSTER_NAME)
+      "Count of orphan subscriptions, topic partitions assigned to a consumer with no running ingestion task",
+      setOf(VENICE_CLUSTER_NAME)
   ),
 
   /**

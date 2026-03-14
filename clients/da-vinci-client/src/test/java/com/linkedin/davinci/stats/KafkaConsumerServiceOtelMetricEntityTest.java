@@ -104,7 +104,7 @@ public class KafkaConsumerServiceOtelMetricEntityTest {
             "ingestion.pubsub.consumer.orphan_subscription_count",
             MetricType.COUNTER,
             MetricUnit.NUMBER,
-            "Count of topic-partitions assigned to consumer with no running ingestion task",
+            "Count of orphan subscriptions, topic partitions assigned to a consumer with no running ingestion task",
             setOf(VENICE_CLUSTER_NAME)));
     map.put(
         POOL_ACTION_TIME,
