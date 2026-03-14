@@ -175,7 +175,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     if (sslFactory.isPresent()) {
       this.serverConnectionStatsHandler = new ServerConnectionStatsHandler(
           this.identityParser,
-          new ServerConnectionStats(metricsRepository, "server_connection_stats"),
+          new ServerConnectionStats(metricsRepository, "server_connection_stats", serverConfig.getClusterName()),
           serverConfig.getRouterPrincipalName());
     } else {
       this.serverConnectionStatsHandler = null;
