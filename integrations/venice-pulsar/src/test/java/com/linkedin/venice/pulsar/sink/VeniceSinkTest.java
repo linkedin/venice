@@ -56,7 +56,9 @@ public class VeniceSinkTest {
   public void tearDown() throws InterruptedException {
     if (executor != null) {
       executor.shutdownNow();
-      executor.awaitTermination(5, TimeUnit.SECONDS);
+      if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+        throw new AssertionError("Test executor did not terminate within 5 seconds");
+      }
       executor = null;
     }
   }
