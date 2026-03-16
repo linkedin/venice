@@ -724,6 +724,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
     listenerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
     String componentName = serverProperties.getString(VENICE_LOG_CONTEXT_COMPONENT, VeniceComponent.SERVER.name());
+    if (componentName == null || componentName.trim().isEmpty()) {
+      componentName = VeniceComponent.SERVER.name();
+    }
     logContext = new LogContext.Builder().setComponentName(componentName)
         .setRegionName(getRegionName())
         .setInstanceName(Utils.getHelixNodeIdentifier(listenerHostname, listenerPort))
