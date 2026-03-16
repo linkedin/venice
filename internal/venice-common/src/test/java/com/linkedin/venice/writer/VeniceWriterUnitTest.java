@@ -690,6 +690,10 @@ public class VeniceWriterUnitTest {
 
   // -- Helper methods for pubsub large message tests --
 
+  private static final byte[] TEST_KEY_BYTES = "test-key".getBytes(StandardCharsets.UTF_8);
+  private static final LeaderMetadataWrapper TEST_LEADER_METADATA =
+      new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(0), 0, 0);
+
   private static PubSubProducerAdapter createMockedProducer() {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any()))
@@ -698,20 +702,27 @@ public class VeniceWriterUnitTest {
   }
 
   private static VeniceWriterOptions buildWriterOptions(boolean chunkingEnabled) {
+    return buildWriterOptions(chunkingEnabled, VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
+  }
+
+  private static VeniceWriterOptions buildWriterOptions(boolean chunkingEnabled, int maxRecordSizeBytes) {
     VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
     return new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
         .setKeyPayloadSerializer(serializer)
         .setValuePayloadSerializer(serializer)
         .setChunkingEnabled(chunkingEnabled)
+        .setMaxRecordSizeBytes(maxRecordSizeBytes)
         .build();
+  }
+
+  private static VeniceProperties pubSubProps() {
+    return pubSubProps(new Properties());
   }
 
   private static VeniceProperties pubSubProps(Properties extra) {
     Properties properties = new Properties();
     properties.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, "true");
-    if (extra != null) {
-      properties.putAll(extra);
-    }
+    properties.putAll(extra);
     return new VeniceProperties(properties);
   }
 
@@ -719,6 +730,30 @@ public class VeniceWriterUnitTest {
     char[] chars = new char[sizeInBytes];
     Arrays.fill(chars, '*');
     return new String(chars);
+  }
+
+  private static byte[] valueBytesOfSize(int sizeInBytes) {
+    return valueOfSize(sizeInBytes).getBytes(StandardCharsets.UTF_8);
+  }
+
+  /** Helper: call the byte[] put overload with standard defaults for optional parameters */
+  private static void putRaw(
+      VeniceWriter<Object, Object, Object> writer,
+      byte[] value,
+      PutMetadata putMetadata,
+      boolean isGlobalRtDiv) {
+    writer.put(
+        TEST_KEY_BYTES,
+        value,
+        0,
+        1,
+        null,
+        TEST_LEADER_METADATA,
+        APP_DEFAULT_LOGICAL_TS,
+        putMetadata,
+        null,
+        null,
+        isGlobalRtDiv);
   }
 
   /**
@@ -732,7 +767,7 @@ public class VeniceWriterUnitTest {
   public void testPutWithPubSubLargeMessageSupport(boolean isChunkingEnabled) {
     PubSubProducerAdapter mockedProducer = createMockedProducer();
     VeniceWriter<Object, Object, Object> writer =
-        new VeniceWriter<>(buildWriterOptions(isChunkingEnabled), pubSubProps(null), mockedProducer);
+        new VeniceWriter<>(buildWriterOptions(isChunkingEnabled), pubSubProps(), mockedProducer);
 
     // Small record (< ~1MB) — normal path, no special handling
     writer.put("test-key", valueOfSize(100 * BYTES_PER_KB), 1, null);
@@ -778,14 +813,8 @@ public class VeniceWriterUnitTest {
     extra.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES, String.valueOf(4 * BYTES_PER_MB));
     PubSubProducerAdapter mockedProducer = createMockedProducer();
     // Set maxRecordSizeBytes to 2MB (inner bound), pubsub max to 4MB (outer bound)
-    VeniceKafkaSerializer<Object> serializer = new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA);
-    VeniceWriterOptions options = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
-        .setKeyPayloadSerializer(serializer)
-        .setValuePayloadSerializer(serializer)
-        .setChunkingEnabled(false)
-        .setMaxRecordSizeBytes(2 * BYTES_PER_MB)
-        .build();
-    VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(options, pubSubProps(extra), mockedProducer);
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter<>(buildWriterOptions(false, 2 * BYTES_PER_MB), pubSubProps(extra), mockedProducer);
 
     // 1.5MB record — within both limits, should succeed via pubsub passthrough
     writer.put("test-key", valueOfSize((int) (1.5 * BYTES_PER_MB)), 1, null);
@@ -806,41 +835,17 @@ public class VeniceWriterUnitTest {
   public void testGlobalRtDivWithPubSubLargeMessageSupport() {
     PubSubProducerAdapter mockedProducer = createMockedProducer();
     VeniceWriter<Object, Object, Object> writer =
-        new VeniceWriter<>(buildWriterOptions(true), pubSubProps(null), mockedProducer);
+        new VeniceWriter<>(buildWriterOptions(true), pubSubProps(), mockedProducer);
 
     // GlobalRtDiv within 4MB limit — pubsub passthrough
-    writer.put(
-        "test-key".getBytes(StandardCharsets.UTF_8),
-        valueOfSize(2 * BYTES_PER_MB).getBytes(StandardCharsets.UTF_8),
-        0,
-        1,
-        null,
-        new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(0), 0, 0),
-        APP_DEFAULT_LOGICAL_TS,
-        null,
-        null,
-        null,
-        true);
+    putRaw(writer, valueBytesOfSize(2 * BYTES_PER_MB), null, true);
 
     // Verify exactly 2 sendMessage calls (1 start-of-segment + 1 put) — pubsub passthrough, not Venice chunking
     verify(mockedProducer, times(2)).sendMessage(any(), any(), any(), any(), any(), any());
 
     // GlobalRtDiv exceeding 4MB limit — rejected, no size bypass
-    byte[] overLimitBytes = valueOfSize(5 * BYTES_PER_MB).getBytes(StandardCharsets.UTF_8);
-    Assert.expectThrows(
-        RecordTooLargeException.class,
-        () -> writer.put(
-            "test-key".getBytes(StandardCharsets.UTF_8),
-            overLimitBytes,
-            0,
-            1,
-            null,
-            new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(0), 0, 0),
-            APP_DEFAULT_LOGICAL_TS,
-            null,
-            null,
-            null,
-            true));
+    byte[] overLimitBytes = valueBytesOfSize(5 * BYTES_PER_MB);
+    Assert.expectThrows(RecordTooLargeException.class, () -> putRaw(writer, overLimitBytes, null, true));
   }
 
   /**
@@ -849,52 +854,24 @@ public class VeniceWriterUnitTest {
    */
   @Test(timeOut = TIMEOUT)
   public void testPubSubLargeMessageMaxSizeIncludesRmd() {
-    int pubSubMaxSize = 4 * BYTES_PER_MB;
     Properties extra = new Properties();
-    extra.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES, String.valueOf(pubSubMaxSize));
+    extra.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES, String.valueOf(4 * BYTES_PER_MB));
     PubSubProducerAdapter mockedProducer = createMockedProducer();
     VeniceWriter<Object, Object, Object> writer =
         new VeniceWriter<>(buildWriterOptions(true), pubSubProps(extra), mockedProducer);
 
-    byte[] key = "test-key".getBytes(StandardCharsets.UTF_8);
     // Value is 3MB — key+value is well within the 4MB pubsub limit
-    byte[] value = valueOfSize(3 * BYTES_PER_MB).getBytes(StandardCharsets.UTF_8);
-    // RMD payload is 2MB — key+value+RMD exceeds the 4MB pubsub limit
-    ByteBuffer rmdPayload = ByteBuffer.allocate(2 * BYTES_PER_MB);
-    PutMetadata putMetadata = new PutMetadata(1, rmdPayload);
+    byte[] value = valueBytesOfSize(3 * BYTES_PER_MB);
 
-    // Should be rejected because key+value+RMD > pubSubLargeMessageMaxSizeBytes
-    RecordTooLargeException ex = Assert.expectThrows(
-        RecordTooLargeException.class,
-        () -> writer.put(
-            key,
-            value,
-            0,
-            1,
-            null,
-            new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(0), 0, 0),
-            APP_DEFAULT_LOGICAL_TS,
-            putMetadata,
-            null,
-            null,
-            false));
+    // RMD payload is 2MB — key+value+RMD exceeds the 4MB pubsub limit, should be rejected
+    PutMetadata largeRmd = new PutMetadata(1, ByteBuffer.allocate(2 * BYTES_PER_MB));
+    RecordTooLargeException ex =
+        Assert.expectThrows(RecordTooLargeException.class, () -> putRaw(writer, value, largeRmd, false));
     assertTrue(ex.getMessage().contains("pubsub large message max size"));
 
     // Same key+value but with small RMD — should succeed via pubsub passthrough
-    ByteBuffer smallRmd = ByteBuffer.allocate(100);
-    PutMetadata smallPutMetadata = new PutMetadata(1, smallRmd);
-    writer.put(
-        key,
-        value,
-        0,
-        1,
-        null,
-        new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(0), 0, 0),
-        APP_DEFAULT_LOGICAL_TS,
-        smallPutMetadata,
-        null,
-        null,
-        false);
+    PutMetadata smallRmd = new PutMetadata(1, ByteBuffer.allocate(100));
+    putRaw(writer, value, smallRmd, false);
 
     // Verify 2 sendMessage calls (1 start-of-segment + 1 put) — pubsub passthrough
     verify(mockedProducer, times(2)).sendMessage(any(), any(), any(), any(), any(), any());
@@ -933,18 +910,15 @@ public class VeniceWriterUnitTest {
         () -> new VeniceWriter<>(options, new VeniceProperties(negativeMaxProps), mockedProducer));
 
     // maxRecordSizeBytes > pubSubLargeMessageMaxSizeBytes should throw when pubsub enabled
-    VeniceWriterOptions optionsWithMaxRecord = new VeniceWriterOptions.Builder("testTopic").setPartitionCount(1)
-        .setKeyPayloadSerializer(new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA))
-        .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(TestWriteUtils.STRING_SCHEMA))
-        .setChunkingEnabled(false)
-        .setMaxRecordSizeBytes(8 * BYTES_PER_MB)
-        .build();
     Properties invalidMaxProps = new Properties();
     invalidMaxProps.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_SUPPORT_ENABLED, "true");
     invalidMaxProps.put(VeniceWriter.PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES, String.valueOf(4 * BYTES_PER_MB));
     Assert.expectThrows(
         VeniceException.class,
-        () -> new VeniceWriter<>(optionsWithMaxRecord, new VeniceProperties(invalidMaxProps), mockedProducer));
+        () -> new VeniceWriter<>(
+            buildWriterOptions(false, 8 * BYTES_PER_MB),
+            new VeniceProperties(invalidMaxProps),
+            mockedProducer));
   }
 
   /**
