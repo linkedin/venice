@@ -22,6 +22,7 @@ import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.davinci.utils.InMemoryChunkAssembler;
 import com.linkedin.davinci.utils.RocksDBChunkAssembler;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -60,6 +61,7 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -200,7 +202,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           totalRegionCount);
     }
 
-    seekExecutorService = Executors.newFixedThreadPool(10, new DaemonThreadFactory(getClass().getSimpleName()));
+    seekExecutorService = Executors.newFixedThreadPool(
+        10,
+        new DaemonThreadFactory(
+            getClass().getSimpleName(),
+            LogContext.newBuilder().setComponentName(VeniceComponent.STATELESS_CDC.name()).build()));
 
     if (changelogClientConfig.getViewName() == null || changelogClientConfig.getViewName().isEmpty()) {
       this.storeName = changelogClientConfig.getStoreName();
@@ -237,6 +243,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           Version.composeKafkaTopic(storeName, 0),
           rocksDBBufferVeniceProperties,
           PersistenceType.ROCKS_DB);
+      // RMD consumption is not supported in old stateless change log consumer, so we will never buffer RMD chunks.
       this.chunkAssembler = new RocksDBChunkAssembler(
           rocksDBStorageEngineFactory.getStorageEngine(storeVersionConfig),
           changelogClientConfig.shouldSkipFailedToAssembleRecords());

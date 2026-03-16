@@ -2,6 +2,9 @@ package com.linkedin.venice.stats;
 
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
 
+import com.linkedin.venice.stats.metrics.AsyncMetricEntityState.TehutiSensorRegistrationFunction;
+import com.linkedin.venice.stats.metrics.MetricEntityState;
+import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MeasurableStat;
@@ -221,6 +224,17 @@ public class AbstractVeniceStats {
       MeasurableStat... stats) {
     Sensor[] parent = totalStats == null ? null : new Sensor[] { totalSensor.get() };
     return registerSensor(sensorName, parent, stats);
+  }
+
+  /**
+   * Returns a {@link TehutiSensorRegistrationFunction} that propagates per-store Tehuti recordings
+   * to the total instance's sensor via parent sensor wiring. Used with
+   * {@link MetricEntityStateBase#create} for per-store metrics that need Tehuti parent propagation.
+   */
+  protected TehutiSensorRegistrationFunction registerPerStoreAndTotal(MetricEntityState totalMetric) {
+    Sensor parentSensor = totalMetric != null ? totalMetric.getTehutiSensor() : null;
+    Sensor[] parents = parentSensor != null ? new Sensor[] { parentSensor } : null;
+    return (name, stats) -> registerSensor(name, parents, stats);
   }
 
   protected Sensor registerOnlyTotalSensor(

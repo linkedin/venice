@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import java.util.StringJoiner;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -33,7 +34,17 @@ public class LogContext {
     if (StringUtils.isBlank(regionName) && StringUtils.isBlank(componentName) && StringUtils.isBlank(instanceName)) {
       this.value = "";
     } else {
-      this.value = String.format("%s:%s:%s", componentName, regionName, instanceName);
+      StringJoiner joiner = new StringJoiner(":");
+      if (StringUtils.isNotBlank(componentName)) {
+        joiner.add(componentName);
+      }
+      if (StringUtils.isNotBlank(regionName)) {
+        joiner.add(regionName);
+      }
+      if (StringUtils.isNotBlank(instanceName)) {
+        joiner.add(instanceName);
+      }
+      this.value = joiner.toString();
     }
   }
 
@@ -108,6 +119,16 @@ public class LogContext {
   @Override
   public String toString() {
     return getValue();
+  }
+
+  /**
+   * Creates a LogContext suitable for use in tests. Uses "test" as the region name.
+   *
+   * @param componentName The component name (e.g., from {@code VeniceComponent.SERVER.name()}).
+   * @return A new LogContext instance for testing.
+   */
+  public static LogContext forTests(String componentName) {
+    return new Builder().setComponentName(componentName).setRegionName("test").build();
   }
 
   /**

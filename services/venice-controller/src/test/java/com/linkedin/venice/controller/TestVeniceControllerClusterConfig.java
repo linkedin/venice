@@ -30,6 +30,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NA
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
@@ -628,5 +629,30 @@ public class TestVeniceControllerClusterConfig {
     assertTrue(config2.shouldUseAlternativePubSubBackend(metaStoreOfAllowed, false));
     // The user store itself should be excluded
     assertFalse(config2.shouldUseAlternativePubSubBackend("excludedStore", false));
+  }
+
+  @Test
+  public void testUncleanLeaderElectionEnableRTTopicsDefaultIsEmpty() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertFalse(config.getUncleanLeaderElectionEnableRealTimeTopics().isPresent());
+  }
+
+  @Test
+  public void testUncleanLeaderElectionEnableRTTopicsSetToFalse() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    baseProps.put(KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS, "false");
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertTrue(config.getUncleanLeaderElectionEnableRealTimeTopics().isPresent());
+    assertFalse(config.getUncleanLeaderElectionEnableRealTimeTopics().get());
+  }
+
+  @Test
+  public void testUncleanLeaderElectionEnableRTTopicsSetToTrue() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+    baseProps.put(KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE_RT_TOPICS, "true");
+    VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertTrue(config.getUncleanLeaderElectionEnableRealTimeTopics().isPresent());
+    assertTrue(config.getUncleanLeaderElectionEnableRealTimeTopics().get());
   }
 }

@@ -60,8 +60,8 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
     this.adaptiveThrottlerSignalRefreshIntervalInSeconds =
         veniceServerConfig.getAdaptiveThrottlerSignalRefreshIntervalInSeconds();
     this.metricsRepository = metricsRepository;
-    this.updateService =
-        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("AdaptiveThrottlerSignalService"));
+    this.updateService = Executors.newSingleThreadScheduledExecutor(
+        new DaemonThreadFactory("AdaptiveThrottlerSignalService", veniceServerConfig.getLogContext()));
     this.heartbeatMonitoringService = heartbeatMonitoringService;
     this.adaptiveThrottlingServiceStats =
         new AdaptiveThrottlingServiceStats(metricsRepository, veniceServerConfig.getClusterName());

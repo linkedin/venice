@@ -12,6 +12,8 @@ import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
+import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -22,9 +24,8 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.StoreDeserializerCache;
-import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -39,6 +40,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -54,7 +56,6 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -79,8 +80,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final CountDownLatch startLatch = new CountDownLatch(1);
   // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
   // issues in the default ForkJoinPool
-  private final ExecutorService completableFutureThreadPool =
-      Executors.newFixedThreadPool(1, new DaemonThreadFactory("VeniceChangelogConsumerDaVinciRecordTransformerImpl"));
+  private final ExecutorService completableFutureThreadPool;
 
   private final Set<Integer> subscribedPartitions = VeniceConcurrentHashMap.newKeySet();
   private final ReentrantLock bufferLock = new ReentrantLock();
@@ -95,9 +95,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final boolean isVersionSpecificClient;
   private final VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory;
   private final boolean includeControlMessages;
-  private final boolean includeDeserializedReplicationMetadata;
-  private final ReplicationMetadataSchemaRepository replicationMetadataSchemaRepository;
-  private final StoreDeserializerCache<GenericRecord> rmdDeserializerCache;
   private final DaVinciConfig daVinciConfig;
   private final String viewName;
 
@@ -113,6 +110,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
     this.changelogClientConfig = changelogClientConfig;
     this.storeName = changelogClientConfig.getStoreName();
+    String cdcComponentName = changelogClientConfig.isStateful()
+        ? VeniceComponent.DVRT_STATEFUL_CDC.name()
+        : VeniceComponent.DVRT_STATELESS_CDC.name();
+    this.completableFutureThreadPool = Executors.newFixedThreadPool(
+        1,
+        new DaemonThreadFactory(
+            "VeniceChangelogConsumerDaVinciRecordTransformerImpl",
+            LogContext.newBuilder().setComponentName(cdcComponentName).build()));
     this.daVinciConfig = new DaVinciConfig();
     this.daVinciConfig.setStorageClass(StorageClass.DISK);
     ClientConfig innerClientConfig = changelogClientConfig.getInnerClientConfig();
@@ -139,11 +144,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         .build();
     this.daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
+    Properties consumerProps = new Properties();
+    consumerProps.putAll(changelogClientConfig.getConsumerProperties());
+    consumerProps.setProperty(ConfigKeys.VENICE_LOG_CONTEXT_COMPONENT, cdcComponentName);
+
     this.daVinciClientFactory = new CachingDaVinciClientFactory(
         changelogClientConfig.getD2Client(),
         changelogClientConfig.getD2ServiceName(),
         innerClientConfig.getMetricsRepository(),
-        new VeniceProperties(changelogClientConfig.getConsumerProperties()));
+        new VeniceProperties(consumerProps));
 
     if (isVersionSpecificClient) {
       LOGGER.info(
@@ -179,15 +188,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
     this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
     this.includeControlMessages = changelogClientConfig.shouldIncludeControlMessages();
-    this.includeDeserializedReplicationMetadata = changelogClientConfig.shouldDeserializeReplicationMetadata();
-    if (includeDeserializedReplicationMetadata) {
-      this.replicationMetadataSchemaRepository =
-          new ReplicationMetadataSchemaRepository(changelogClientConfig.getD2ControllerClient());
-      this.rmdDeserializerCache = new RmdDeserializerCache<>(replicationMetadataSchemaRepository, storeName, 1, false);
-    } else {
-      this.replicationMetadataSchemaRepository = null;
-      this.rmdDeserializerCache = null;
-    }
   }
 
   private synchronized void startDaVinciClient() {
@@ -647,16 +647,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         DaVinciRecordTransformerRecordMetadata recordMetadata) {
       if (partitionToVersionToServe.get(partitionId) == getStoreVersion()) {
         ChangeEvent<V> changeEvent = new ChangeEvent<>(null, value);
-        GenericRecord deserializedReplicationMetadata = null;
-        if (includeDeserializedReplicationMetadata && recordMetadata.getReplicationMetadataPayload() != null
-            && recordMetadata
-                .getReplicationMetadataVersionId() != DaVinciRecordTransformerRecordMetadata.UNSPECIFIED_SCHEMA_ID) {
-          // provide deserialized replication metadata, recordMetadata.getReplicationMetadataVersionId() will be useful
-          // in the future when we evolve our RMD schema.
-          RecordDeserializer<GenericRecord> deserializer = rmdDeserializerCache
-              .getDeserializer(recordMetadata.getWriterSchemaId(), recordMetadata.getWriterSchemaId());
-          deserializedReplicationMetadata = deserializer.deserialize(recordMetadata.getReplicationMetadataPayload());
-        }
         ImmutableChangeCapturePubSubMessage<K, ChangeEvent<V>> pubSubMessage =
             new ImmutableChangeCapturePubSubMessage<>(
                 key,
@@ -669,8 +659,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
                 getNextConsumerSequenceId(partitionId),
                 recordMetadata.getWriterSchemaId(),
                 recordMetadata.getReplicationMetadataPayload(),
-                null,
-                deserializedReplicationMetadata);
+                null);
         internalAddMessageToBuffer(partitionId, pubSubMessage);
       }
     }
@@ -697,8 +686,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
                 getNextConsumerSequenceId(partitionId),
                 -1,
                 null,
-                controlMessage,
-                null);
+                controlMessage);
         internalAddMessageToBuffer(partitionId, pubSubMessage);
       }
     }

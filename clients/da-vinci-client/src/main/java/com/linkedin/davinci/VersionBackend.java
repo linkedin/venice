@@ -26,6 +26,7 @@ import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -116,11 +117,14 @@ public class VersionBackend {
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
     long daVinciPushStatusCheckIntervalInMs = this.config.getDaVinciPushStatusCheckIntervalInMs();
     if (daVinciPushStatusCheckIntervalInMs >= 0) {
+      LogContext logContext =
+          backend.getConfigLoader() != null ? backend.getConfigLoader().getVeniceServerConfig().getLogContext() : null;
       this.daVinciPushStatusUpdateTask = new DaVinciPushStatusUpdateTask(
           version,
           daVinciPushStatusCheckIntervalInMs,
           backend.getPushStatusStoreWriter(),
-          this::areAllPartitionFuturesCompletedSuccessfully);
+          this::areAllPartitionFuturesCompletedSuccessfully,
+          logContext);
     } else {
       this.daVinciPushStatusUpdateTask = null;
     }
@@ -397,14 +401,18 @@ public class VersionBackend {
     }
 
     for (int partition: partitionsToStartConsumption) {
+      String replicaId = Utils.getReplicaId(version.kafkaTopicName(), partition);
       // Start monitoring the heartbeat lag of the partition
       backend.getHeartbeatMonitoringService()
-          .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
+          .updateLagMonitor(
+              version.kafkaTopicName(),
+              partition,
+              HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR,
+              replicaId);
       // AtomicReference of storage engine will be updated internally.
       Optional<PubSubPosition> pubSubPosition = (timestampsMap == null && positionMap == null)
           ? Optional.empty()
           : backend.getIngestionService().getPubSubPosition(config, partition, timestampsMap, positionMap);
-      String replicaId = Utils.getReplicaId(version.kafkaTopicName(), partition);
       backend.getIngestionBackend().startConsumption(config, partition, pubSubPosition, replicaId);
       tryStartHeartbeat();
     }
@@ -460,9 +468,9 @@ public class VersionBackend {
         return;
       }
       completePartition(partition);
-      backend.getHeartbeatMonitoringService()
-          .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.REMOVE_MONITOR);
       String replicaId = Utils.getReplicaId(version.kafkaTopicName(), partition);
+      backend.getHeartbeatMonitoringService()
+          .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
       backend.getIngestionBackend()
           .dropStoragePartitionGracefully(config, partition, stopConsumptionTimeoutInSeconds, replicaId);
       partitionFutures.remove(partition);

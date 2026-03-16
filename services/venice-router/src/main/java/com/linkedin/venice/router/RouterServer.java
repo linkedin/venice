@@ -574,8 +574,13 @@ public class RouterServer extends AbstractVeniceService {
         new VeniceDelegateMode(config, routerStats, routeHttpRequestStats, dispatcher.getPerRouteStatsByType());
 
     if (config.isRouterHeartBeatEnabled()) {
-      heartbeat =
-          new RouterHeartbeat(liveInstanceMonitor, healthMonitor, config, sslFactoryForRequests, storageNodeClient);
+      heartbeat = new RouterHeartbeat(
+          liveInstanceMonitor,
+          healthMonitor,
+          config,
+          sslFactoryForRequests,
+          storageNodeClient,
+          config.getLogContext());
       heartbeat.startInner();
     }
 
@@ -952,6 +957,7 @@ public class RouterServer extends AbstractVeniceService {
 
     routersClusterManager.unregisterRouter(Utils.getHelixNodeIdentifier(config.getHostname(), config.getPort()));
     routersClusterManager.clear();
+    dictionaryRetrievalService.stop();
     routingDataRepository.clear();
     metadataRepository.clear();
     schemaRepository.clear();
@@ -959,7 +965,6 @@ public class RouterServer extends AbstractVeniceService {
     hybridStoreQuotaRepository.ifPresent(repo -> repo.clear());
     liveInstanceMonitor.clear();
     timeoutProcessor.shutdownNow();
-    dictionaryRetrievalService.stop();
     if (instanceConfigRepository != null) {
       instanceConfigRepository.clear();
     }
@@ -1077,7 +1082,7 @@ public class RouterServer extends AbstractVeniceService {
       // Dictionary retrieval service should start only after "metadataRepository.refresh()" otherwise it won't be able
       // to preload dictionaries from SN.
       try {
-        dictionaryRetrievalService.startInner();
+        dictionaryRetrievalService.start();
       } catch (VeniceException e) {
         LOGGER.error("Encountered issue when starting dictionary retriever", e);
         handleExceptionInStartServices(e, async);

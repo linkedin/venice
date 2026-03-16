@@ -130,7 +130,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       Map<HeartbeatKey, IngestionTimestampEntry> heartbeatTimestamps,
       Version version,
       int partition,
-      boolean isFollower) {
+      boolean isFollower,
+      String replicaId) {
     // We don't monitor heartbeat lag for non-hybrid versions
     if (version.getHybridStoreConfig() == null) {
       return;
@@ -148,9 +149,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
             heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
         if (previousEntry == null) {
           LOGGER.info(
-              "Initialized heartbeat entry for version: {}, partition: {}, region: {}, follower: {}",
-              version,
-              partition,
+              "Initialized heartbeat entry for replica: {}, region: {}, follower: {}",
+              replicaId,
               region,
               isFollower);
         }
@@ -161,9 +161,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           heartbeatTimestamps.putIfAbsent(key, new IngestionTimestampEntry(currentTime, currentTime, false, false));
       if (previousEntry == null) {
         LOGGER.info(
-            "Initialized heartbeat entry for version: {}, partition: {}, region: {}, follower: {}",
-            version,
-            partition,
+            "Initialized heartbeat entry for replica: {}, region: {}, follower: {}",
+            replicaId,
             localRegionName,
             isFollower);
       }
@@ -173,11 +172,15 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private synchronized void removeEntry(
       Map<HeartbeatKey, IngestionTimestampEntry> heartbeatTimestamps,
       Version version,
-      int partition) {
+      int partition,
+      String replicaId) {
     String storeName = version.getStoreName();
     int versionNum = version.getNumber();
-    heartbeatTimestamps.keySet()
+    boolean removed = heartbeatTimestamps.keySet()
         .removeIf(key -> key.storeName.equals(storeName) && key.version == versionNum && key.partition == partition);
+    if (removed) {
+      LOGGER.info("Removed heartbeat entry for replica: {}", replicaId);
+    }
   }
 
   /**
@@ -187,12 +190,11 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param version the version to monitor lag for
    * @param partition the partition to monitor lag for
    */
-  public void addFollowerLagMonitor(Version version, int partition) {
-    String cleanupKey = Utils.getReplicaId(version.kafkaTopicName(), partition);
-    cleanupHeartbeatMap.compute(cleanupKey, (k, v) -> {
+  public void addFollowerLagMonitor(Version version, int partition, String replicaId) {
+    cleanupHeartbeatMap.compute(replicaId, (k, v) -> {
       // See comments in {@link #addLeaderLagMonitor(Version, int)} for race condition explanations
-      initializeEntry(followerHeartbeatTimeStamps, version, partition, true);
-      removeEntry(leaderHeartbeatTimeStamps, version, partition);
+      initializeEntry(followerHeartbeatTimeStamps, version, partition, true, replicaId);
+      removeEntry(leaderHeartbeatTimeStamps, version, partition, replicaId);
       return null;
     });
   }
@@ -204,17 +206,16 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param version the version to monitor lag for
    * @param partition the partition to monitor lag for
    */
-  public void addLeaderLagMonitor(Version version, int partition) {
-    String cleanupKey = Utils.getReplicaId(version.kafkaTopicName(), partition);
-    cleanupHeartbeatMap.compute(cleanupKey, (k, v) -> {
+  public void addLeaderLagMonitor(Version version, int partition, String replicaId) {
+    cleanupHeartbeatMap.compute(replicaId, (k, v) -> {
       // Cleanup logic should perform the check and cleanup in a similar compute block to ensure that the following
       // race won't occur:
       // 1. A replica is deemed lingering and to be removed
       // 2. The same replica is reassigned to this node and added to lag monitor before the cleanup thread is able to
       // remove it.
       // 3. The cleanup thread removes the newly added lag monitor and the replica will be ingested without lag monitor
-      initializeEntry(leaderHeartbeatTimeStamps, version, partition, false);
-      removeEntry(followerHeartbeatTimeStamps, version, partition);
+      initializeEntry(leaderHeartbeatTimeStamps, version, partition, false, replicaId);
+      removeEntry(followerHeartbeatTimeStamps, version, partition, replicaId);
       return null;
     });
   }
@@ -225,9 +226,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param version the version to remove monitoring for
    * @param partition the partition to remove monitoring for
    */
-  public void removeLagMonitor(Version version, int partition) {
-    removeEntry(leaderHeartbeatTimeStamps, version, partition);
-    removeEntry(followerHeartbeatTimeStamps, version, partition);
+  public void removeLagMonitor(Version version, int partition, String replicaId) {
+    removeEntry(leaderHeartbeatTimeStamps, version, partition, replicaId);
+    removeEntry(followerHeartbeatTimeStamps, version, partition, replicaId);
   }
 
   public Map<String, ReplicaHeartbeatInfo> getHeartbeatInfo(
@@ -338,7 +339,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public void updateLagMonitor(
       String resourceName,
       int partitionId,
-      HeartbeatLagMonitorAction heartbeatLagMonitorAction) {
+      HeartbeatLagMonitorAction heartbeatLagMonitorAction,
+      String replicaId) {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int storeVersion = Version.parseVersionFromKafkaTopicName(resourceName);
@@ -349,7 +351,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       if (store == null) {
         LOGGER.error(
             "Failed to get store for resource: {} with trigger: {}. Will not update lag monitor.",
-            Utils.getReplicaId(resourceName, partitionId),
+            replicaId,
             heartbeatLagMonitorAction.getTrigger());
         return;
       }
@@ -357,7 +359,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         if (!HeartbeatLagMonitorAction.REMOVE_MONITOR.equals(heartbeatLagMonitorAction)) {
           LOGGER.error(
               "Failed to get version for resource: {} with trigger: {}. Will not update lag monitor.",
-              Utils.getReplicaId(resourceName, partitionId),
+              replicaId,
               heartbeatLagMonitorAction.getTrigger());
           return;
         }
@@ -367,20 +369,20 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       }
       switch (heartbeatLagMonitorAction) {
         case SET_LEADER_MONITOR:
-          addLeaderLagMonitor(version, partitionId);
+          addLeaderLagMonitor(version, partitionId, replicaId);
           break;
         case SET_FOLLOWER_MONITOR:
-          addFollowerLagMonitor(version, partitionId);
+          addFollowerLagMonitor(version, partitionId, replicaId);
           break;
         case REMOVE_MONITOR:
-          removeLagMonitor(version, partitionId);
+          removeLagMonitor(version, partitionId, replicaId);
           break;
         default:
       }
     } catch (Exception e) {
       LOGGER.error(
           "Failed to update lag monitor for replica: {} with trigger: {}",
-          Utils.getReplicaId(resourceName, partitionId),
+          replicaId,
           heartbeatLagMonitorAction.getTrigger(),
           e);
     }
@@ -803,7 +805,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
               if (v == null) {
                 return 1;
               } else if (v + 1 >= lagMonitorCleanupCycle) {
-                removeLagMonitor(new VersionImpl(storeName, versionNum, ""), partition);
+                removeLagMonitor(new VersionImpl(storeName, versionNum, ""), partition, replicaId);
                 LOGGER.warn(
                     "Removing lingering replica: {} from heartbeat monitoring service because it is no longer assigned to this node: {}",
                     replicaId,

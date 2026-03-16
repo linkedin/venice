@@ -132,7 +132,10 @@ public enum VeniceMetricsDimensions {
   VENICE_ADAPTIVE_THROTTLER_TYPE("venice.adaptive_throttler.type"),
 
   /** {@link VeniceHeartbeatComponent} Heartbeat monitoring thread: reporter or logger. */
-  VENICE_HEARTBEAT_COMPONENT("venice.heartbeat.component");
+  VENICE_HEARTBEAT_COMPONENT("venice.heartbeat.component"),
+
+  /** {@link VeniceConsumerPoolAction} Consumer pool action (subscribe, update_assignment). */
+  VENICE_CONSUMER_POOL_ACTION("venice.consumer_pool.action");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

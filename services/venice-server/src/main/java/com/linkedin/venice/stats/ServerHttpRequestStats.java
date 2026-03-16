@@ -25,8 +25,6 @@ import com.linkedin.venice.stats.dimensions.VeniceChunkingStatus;
 import com.linkedin.venice.stats.dimensions.VeniceComputeOperationType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
-import com.linkedin.venice.stats.metrics.AsyncMetricEntityState.TehutiSensorRegistrationFunction;
-import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
@@ -478,14 +476,6 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
       MeasurableStat... stats) {
     Sensor[] parent = totalStats == null ? null : new Sensor[] { totalSensor.get() };
     return registerSensor(sensorName, parent, stats);
-  }
-
-  /** Returns a sensor registration function that propagates per-store recordings to the total. */
-  private TehutiSensorRegistrationFunction registerPerStoreAndTotal(MetricEntityState totalMetric) {
-    return (name, stats) -> registerSensor(
-        name,
-        totalMetric != null ? new Sensor[] { totalMetric.getTehutiSensor() } : null,
-        stats);
   }
 
   /** Private delegate for {@link #registerSensor}, safe to use as a method reference in the constructor. */
