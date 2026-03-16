@@ -12,7 +12,8 @@ import java.util.concurrent.Executors;
  * that can be shared across all network channels of blob transfer in both server and client side to enforce global rate limits.
  *
  * Because this is a JVM-wide singleton shared by both server and DaVinci client components,
- * no component-specific LogContext is applied to the traffic-shaper thread to avoid misattribution.
+ * no explicit LogContext is set on the traffic-shaper thread. The thread may inherit context
+ * from its creating thread when {@code log4j2.isThreadContextMapInheritable=true}.
  */
 public class BlobTransferGlobalTrafficShapingHandlerHolder {
   private static final long CHECK_INTERVAL_MS = 1000L; // traffic shaping checks every 1 second
