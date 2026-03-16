@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
@@ -13,7 +14,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
@@ -25,6 +25,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_I
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_PUSH_DESTINATION_PUBSUB_BROKER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
@@ -751,7 +753,31 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
   @Override
   protected void configureTask(VeniceProperties props) {
-    this.props = props;
+    /*
+     * Resolve PUBSUB_BROKER_ADDRESS from VENICE_PUSH_DESTINATION_PUBSUB_BROKER so that all downstream
+     * code (VeniceWriterFactory, DictionaryUtils, etc.) can find the broker address without relying
+     * on KAFKA_BOOTSTRAP_SERVERS in the global config. This is done once here rather than at each
+     * point of use.
+     *
+     * For regular HDFS-input pushes: VeniceWriterFactory uses this to produce to the destination broker.
+     * For KIF repush: the destination broker differs from the source broker (cross-fabric scenario),
+     * so this resolution ensures VeniceWriterFactory always targets the correct destination, not the
+     * input source broker. The compressor lazy also reads the ZSTD dictionary from the destination
+     * topic (TOPIC_PROP), which the VPJ driver populated before launching the compute job.
+     */
+    VeniceProperties resolvedProps;
+    if (props.containsKey(VENICE_PUSH_DESTINATION_PUBSUB_BROKER)) {
+      Properties enriched = props.toProperties();
+      enriched.setProperty(PUBSUB_BROKER_ADDRESS, props.getString(VENICE_PUSH_DESTINATION_PUBSUB_BROKER));
+      resolvedProps = new VeniceProperties(enriched);
+    } else if (props.containsKey(KAFKA_INPUT_TOPIC)) {
+      /* Repush requires an explicit destination broker to avoid writing to the source broker. */
+      throw new VeniceException(
+          VENICE_PUSH_DESTINATION_PUBSUB_BROKER + " is required for KIF repush but was not found in task properties");
+    } else {
+      resolvedProps = props;
+    }
+    this.props = resolvedProps;
     this.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
     this.derivedValueSchemaId = (props.containsKey(DERIVED_SCHEMA_ID_PROP)) ? props.getInt(DERIVED_SCHEMA_ID_PROP) : -1;
@@ -801,11 +827,11 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       if (props.containsKey(KAFKA_INPUT_TOPIC)) {
         // Configure compressor using kafka input configs
         String sourceVersion = props.getString(KAFKA_INPUT_TOPIC);
-        String kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
+        String repushSourcePubsubBroker = props.getString(VENICE_REPUSH_SOURCE_PUBSUB_BROKER);
         CompressionStrategy strategy =
             CompressionStrategy.valueOf(props.getString(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY));
         return KafkaInputUtils
-            .getCompressor(compressorFactory.get(), strategy, kafkaInputBrokerUrl, sourceVersion, props);
+            .getCompressor(compressorFactory.get(), strategy, repushSourcePubsubBroker, sourceVersion, props);
       } else {
         CompressionStrategy strategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
         if (strategy == CompressionStrategy.ZSTD_WITH_DICT) {

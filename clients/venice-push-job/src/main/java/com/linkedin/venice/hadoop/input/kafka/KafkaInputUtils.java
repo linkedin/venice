@@ -3,10 +3,10 @@ package com.linkedin.venice.hadoop.input.kafka;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.NEWER_KME_SCHEMAS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -78,8 +78,11 @@ public class KafkaInputUtils {
      */
     consumerProperties
         .setProperty(KAFKA_CONFIG_PREFIX + CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
-    consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, config.get(KAFKA_INPUT_BROKER_URL));
-    consumerProperties.setProperty(PUBSUB_BROKER_ADDRESS, config.get(KAFKA_INPUT_BROKER_URL));
+    String repushSourcePubsubBroker = config.get(VENICE_REPUSH_SOURCE_PUBSUB_BROKER);
+    if (repushSourcePubsubBroker == null) {
+      throw new VeniceException(VENICE_REPUSH_SOURCE_PUBSUB_BROKER + " is required but was not found in job config");
+    }
+    consumerProperties.setProperty(PUBSUB_BROKER_ADDRESS, repushSourcePubsubBroker);
 
     // Add any override properties to the consumer properties.
     if (overrideProperties != null) {

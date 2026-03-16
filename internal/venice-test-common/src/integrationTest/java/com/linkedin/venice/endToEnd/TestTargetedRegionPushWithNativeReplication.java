@@ -328,7 +328,9 @@ public class TestTargetedRegionPushWithNativeReplication extends AbstractMultiRe
           try (VenicePushJob job = new VenicePushJob("Test regular push job", props)) {
             job.run();
 
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
+            Assert.assertEquals(
+                job.getPushDestinationPubsubBroker(),
+                childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
 
             TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
               for (int version: parentControllerClient.getStore(storeName)

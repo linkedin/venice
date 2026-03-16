@@ -4,12 +4,12 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_MAX_SPLITS_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_SPLIT_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_TIME_WINDOW_IN_MINUTES;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.annotation.VisibleForTesting;
@@ -66,7 +66,7 @@ public class PubSubSplitPlanner {
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   public List<PubSubPartitionSplit> plan(VeniceProperties jobConfig) {
-    String brokerUrl = jobConfig.getString(KAFKA_INPUT_BROKER_URL);
+    String brokerUrl = jobConfig.getString(VENICE_REPUSH_SOURCE_PUBSUB_BROKER);
 
     try (TopicManager tm = createTopicManager(jobConfig, brokerUrl)) {
       PartitionSplitStrategy partitionSplitStrategy = PartitionSplitStrategy

@@ -1,6 +1,5 @@
 package com.linkedin.venice.spark.datawriter.jobs;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
@@ -43,7 +42,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_RATE_LIMITER_TYPE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH_WRITE_QUOTA_TIME_WINDOW_MS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
@@ -66,6 +64,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_I
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_PUSH_DESTINATION_PUBSUB_BROKER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_REQUIRED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_SUCCESS;
@@ -220,7 +220,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     setupCommonSparkConf(props, jobConf, pushJobSetting);
     jobConf.set(BATCH_NUM_BYTES_PROP, pushJobSetting.batchNumBytes);
     jobConf.set(TOPIC_PROP, pushJobSetting.topic);
-    jobConf.set(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaUrl);
+    jobConf.set(VENICE_PUSH_DESTINATION_PUBSUB_BROKER, pushJobSetting.pushDestinationPubsubBroker);
     jobConf.set(PARTITIONER_CLASS, pushJobSetting.partitionerClass);
     // flatten partitionerParams since RuntimeConfig class does not support set an object
     if (pushJobSetting.partitionerParams != null) {
@@ -248,7 +248,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
        * So here will set it up from {@link #pushJobSetting}.
        */
       jobConf.set(KAFKA_INPUT_TOPIC, pushJobSetting.kafkaInputTopic);
-      jobConf.set(KAFKA_INPUT_BROKER_URL, pushJobSetting.kafkaInputBrokerUrl);
+      jobConf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, pushJobSetting.repushSourcePubsubBroker);
       jobConf.set(REPUSH_TTL_ENABLE, pushJobSetting.repushTTLEnabled);
       jobConf.set(REPUSH_TTL_START_TIMESTAMP, pushJobSetting.repushTTLStartTimeMs);
       if (pushJobSetting.repushTTLEnabled) {

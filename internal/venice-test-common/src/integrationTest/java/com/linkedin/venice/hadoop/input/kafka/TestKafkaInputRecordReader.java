@@ -1,9 +1,9 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.linkedin.venice.annotation.PubSubAgnosticTest;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
@@ -91,7 +91,7 @@ public class TestKafkaInputRecordReader {
   @Test
   public void testNext() throws IOException {
     JobConf conf = new JobConf();
-    conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
+    conf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, pubSubBrokerWrapper.getAddress());
     conf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(-1, -1));
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
@@ -123,7 +123,7 @@ public class TestKafkaInputRecordReader {
   @Test
   public void testNextWithDeleteMessage() throws IOException {
     JobConf conf = new JobConf();
-    conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
+    conf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, pubSubBrokerWrapper.getAddress());
     PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)).forEach(conf::set);
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(0, 10));
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
@@ -159,7 +159,7 @@ public class TestKafkaInputRecordReader {
   @Test
   public void testNextWithUpdateMessage() throws IOException {
     JobConf conf = new JobConf();
-    conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
+    conf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, pubSubBrokerWrapper.getAddress());
     String topic = getTopic(100, new Pair<>(21, 30), new Pair<>(11, 20));
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
     conf.set(KAFKA_INPUT_TOPIC, topic);

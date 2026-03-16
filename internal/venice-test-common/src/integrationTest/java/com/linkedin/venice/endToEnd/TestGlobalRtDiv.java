@@ -15,10 +15,10 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -356,7 +356,7 @@ public class TestGlobalRtDiv {
         LOGGER.info("Starting Kafka input re-push for test: {} store: {}", testName, storeName);
         vpjProperties.setProperty(SOURCE_KAFKA, "true");
         vpjProperties.setProperty(VENICE_STORE_NAME_PROP, storeName);
-        vpjProperties.setProperty(KAFKA_INPUT_BROKER_URL, venice.getPubSubBrokerWrapper().getAddress());
+        vpjProperties.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, venice.getPubSubBrokerWrapper().getAddress());
         vpjProperties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
         vpjProperties.setProperty(KAFKA_INPUT_COMBINER_ENABLED, "true");
 

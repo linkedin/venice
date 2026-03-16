@@ -338,7 +338,9 @@ public class TestActiveActiveReplicationForIncPush extends AbstractMultiRegionTe
       // Run a batch push first
       try (VenicePushJob job = new VenicePushJob("Test push job batch with NR + A/A all fabrics", propsBatch)) {
         job.run();
-        assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+        assertEquals(
+            job.getPushDestinationPubsubBroker(),
+            childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
       }
 
       StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
@@ -379,7 +381,7 @@ public class TestActiveActiveReplicationForIncPush extends AbstractMultiRegionTe
     try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
       job.run();
       assertEquals(
-          job.getKafkaUrl(),
+          job.getPushDestinationPubsubBroker(),
           childDatacenters.get(dcIndexForSourceRegion).getKafkaBrokerWrapper().getAddress());
 
       waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, true, () -> {
@@ -413,7 +415,7 @@ public class TestActiveActiveReplicationForIncPush extends AbstractMultiRegionTe
     // Run inc push with source fabric preference taking effect.
     try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-2", propsInc1)) {
       job.run();
-      assertEquals(job.getKafkaUrl(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+      assertEquals(job.getPushDestinationPubsubBroker(), childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
     }
 
     // Verify
@@ -429,7 +431,7 @@ public class TestActiveActiveReplicationForIncPush extends AbstractMultiRegionTe
     // Run another inc push with a different source fabric preference taking effect.
     try (VenicePushJob job = new VenicePushJob("Test push job incremental with NR + A/A from dc-1", propsInc2)) {
       job.run();
-      assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
+      assertEquals(job.getPushDestinationPubsubBroker(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
     }
     NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
   }
