@@ -19,6 +19,7 @@ public class RequestTopicForPushRequest {
   private boolean isWriteComputeEnabled = false;
   private boolean separateRealTimeTopicEnabled = false;
   private long rewindTimeInSecondsOverride = -1L;
+  private long rewindEpochTimeInSecondsOverride = -1L;
   private boolean deferVersionSwap = false;
   private String targetedRegions = null;
   private int repushSourceVersion = -1;
@@ -86,6 +87,10 @@ public class RequestTopicForPushRequest {
     return rewindTimeInSecondsOverride;
   }
 
+  public long getRewindEpochTimeInSecondsOverride() {
+    return rewindEpochTimeInSecondsOverride;
+  }
+
   public boolean isDeferVersionSwap() {
     return deferVersionSwap;
   }
@@ -136,6 +141,10 @@ public class RequestTopicForPushRequest {
 
   public void setRewindTimeInSecondsOverride(long rewindTimeInSecondsOverride) {
     this.rewindTimeInSecondsOverride = rewindTimeInSecondsOverride;
+  }
+
+  public void setRewindEpochTimeInSecondsOverride(long rewindEpochTimeInSecondsOverride) {
+    this.rewindEpochTimeInSecondsOverride = rewindEpochTimeInSecondsOverride;
   }
 
   public void setDeferVersionSwap(boolean deferVersionSwap) {

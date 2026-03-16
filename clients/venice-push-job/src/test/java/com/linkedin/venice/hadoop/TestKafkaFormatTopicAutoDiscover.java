@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
@@ -22,8 +21,6 @@ import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
-import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import java.util.Collections;
@@ -62,50 +59,6 @@ public class TestKafkaFormatTopicAutoDiscover {
       venicePushJob.initKIFRepushDetails();
       String expectedTopicName = Version.composeKafkaTopic(STORE_NAME, singleColoCurrentVersion);
       Assert.assertEquals(venicePushJob.getPushJobSetting().kafkaInputTopic, expectedTopicName);
-    }
-  }
-
-  @Test
-  public void testUserProvidedEpochRewind() {
-    final int singleColoCurrentVersion = 1;
-    ControllerClient controllerClient = mock(ControllerClient.class);
-    Map<String, Integer> coloToVersionMap = Collections.emptyMap();
-    StoreResponse storeResponse =
-        getMockHybridStoreResponse(coloToVersionMap, singleColoCurrentVersion, BufferReplayPolicy.REWIND_FROM_SOP);
-    when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
-    RepushInfoResponse repushInfo = getMockRepushResponse(1);
-    when(controllerClient.getRepushInfo(STORE_NAME, Optional.empty())).thenReturn(repushInfo);
-    configureClusterDiscoveryControllerClient(controllerClient);
-    Map<String, String> overrideProperties = new HashMap<>();
-    overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
-    overrideProperties.put(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, "1637016606");
-    try (VenicePushJob venicePushJob = new VenicePushJob(JOB_ID, getJobProperties(overrideProperties))) {
-      venicePushJob.setControllerClient(controllerClient);
-      venicePushJob.initKIFRepushDetails();
-      venicePushJob.setControllerClient(controllerClient);
-      venicePushJob.validateRemoteHybridSettings();
-    }
-  }
-
-  @Test
-  public void testUserProvidedEpochRewindWithInvalidRemotePolicy() {
-    final int singleColoCurrentVersion = 1;
-    ControllerClient controllerClient = mock(ControllerClient.class);
-    Map<String, Integer> coloToVersionMap = Collections.emptyMap();
-    StoreResponse storeResponse =
-        getMockHybridStoreResponse(coloToVersionMap, singleColoCurrentVersion, BufferReplayPolicy.REWIND_FROM_EOP);
-    when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
-    RepushInfoResponse repushInfo = getMockRepushResponse(1);
-    when(controllerClient.getRepushInfo(STORE_NAME, Optional.empty())).thenReturn(repushInfo);
-    configureClusterDiscoveryControllerClient(controllerClient);
-    Map<String, String> overrideProperties = new HashMap<>();
-    overrideProperties.put(VENICE_STORE_NAME_PROP, STORE_NAME);
-    overrideProperties.put(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, "1637016606");
-    try (VenicePushJob venicePushJob = new VenicePushJob(JOB_ID, getJobProperties(overrideProperties))) {
-      venicePushJob.setControllerClient(controllerClient);
-      venicePushJob.initKIFRepushDetails();
-      venicePushJob.setControllerClient(controllerClient);
-      Assert.assertThrows(venicePushJob::validateRemoteHybridSettings);
     }
   }
 
@@ -254,21 +207,6 @@ public class TestKafkaFormatTopicAutoDiscover {
   private StoreResponse getMockStoreResponse(Map<String, Integer> coloToVersionMap, int currentVersion) {
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo storeInfo = mock(StoreInfo.class);
-    when(storeInfo.getColoToCurrentVersions()).thenReturn(coloToVersionMap);
-    when(storeInfo.getCurrentVersion()).thenReturn(currentVersion);
-    when(storeResponse.getStore()).thenReturn(storeInfo);
-    return storeResponse;
-  }
-
-  private StoreResponse getMockHybridStoreResponse(
-      Map<String, Integer> coloToVersionMap,
-      int currentVersion,
-      BufferReplayPolicy bufferReplayPolicy) {
-    StoreResponse storeResponse = mock(StoreResponse.class);
-    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
-    StoreInfo storeInfo = mock(StoreInfo.class);
-    when(hybridStoreConfig.getBufferReplayPolicy()).thenReturn(bufferReplayPolicy);
-    when(storeInfo.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
     when(storeInfo.getColoToCurrentVersions()).thenReturn(coloToVersionMap);
     when(storeInfo.getCurrentVersion()).thenReturn(currentVersion);
     when(storeResponse.getStore()).thenReturn(storeInfo);

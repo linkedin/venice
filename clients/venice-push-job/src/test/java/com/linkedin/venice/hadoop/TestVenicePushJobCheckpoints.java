@@ -730,6 +730,7 @@ public class TestVenicePushJobCheckpoints {
             any(),
             anyBoolean(),
             anyLong(),
+            anyLong(),
             anyBoolean(),
             any(),
             anyInt(),
