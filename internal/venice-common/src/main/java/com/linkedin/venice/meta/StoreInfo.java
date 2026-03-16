@@ -34,6 +34,7 @@ public class StoreInfo {
     storeInfo.setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
     storeInfo.setChunkingEnabled(store.isChunkingEnabled());
     storeInfo.setRmdChunkingEnabled(store.isRmdChunkingEnabled());
+    storeInfo.setMergedValueRmdColumnFamilyEnabled(store.isMergedValueRmdColumnFamilyEnabled());
     storeInfo.setClientDecompressionEnabled(store.getClientDecompressionEnabled());
     storeInfo.setCompressionStrategy(store.getCompressionStrategy());
     storeInfo.setCurrentVersion(store.getCurrentVersion());
@@ -180,6 +181,11 @@ public class StoreInfo {
    * Whether the replication metadata chunking is enabled for Active/Active replication enabled store.
    */
   private boolean rmdChunkingEnabled = false;
+
+  /**
+   * Whether value and RMD are stored in a single column family for A/A ingestion.
+   */
+  private boolean mergedValueRmdColumnFamilyEnabled = false;
 
   /**
    * Whether cache is enabled in Router.
@@ -566,6 +572,14 @@ public class StoreInfo {
 
   public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
     this.rmdChunkingEnabled = rmdChunkingEnabled;
+  }
+
+  public boolean isMergedValueRmdColumnFamilyEnabled() {
+    return mergedValueRmdColumnFamilyEnabled;
+  }
+
+  public void setMergedValueRmdColumnFamilyEnabled(boolean mergedValueRmdColumnFamilyEnabled) {
+    this.mergedValueRmdColumnFamilyEnabled = mergedValueRmdColumnFamilyEnabled;
   }
 
   public boolean isSingleGetRouterCacheEnabled() {

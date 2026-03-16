@@ -111,7 +111,7 @@ public class StorageServiceTest {
     when(configLoader.getStoreConfig(eq(resourceName), eq(PersistenceType.BLACK_HOLE))).thenReturn(storeVersionConfig);
 
     StorageEngine mockStorageEngine = mock(StorageEngine.class);
-    when(mockStorageEngineFactory.getStorageEngine(storeVersionConfig, false)).thenReturn(mockStorageEngine);
+    when(mockStorageEngineFactory.getStorageEngine(storeVersionConfig, false, false)).thenReturn(mockStorageEngine);
     Set<Integer> partitionSet = new HashSet<>(Arrays.asList(1, 2, 3));
     when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitionSet);
     when(mockStorageEngine.getStoreVersionName()).thenReturn(resourceName);

@@ -29,7 +29,14 @@ public abstract class StorageEngineFactory {
    * throw VeniceException here.
    */
   public StorageEngine getStorageEngine(VeniceStoreVersionConfig storeDef, boolean replicationMetadataEnabled) {
-    if (replicationMetadataEnabled) {
+    return getStorageEngine(storeDef, replicationMetadataEnabled, false);
+  }
+
+  public StorageEngine getStorageEngine(
+      VeniceStoreVersionConfig storeDef,
+      boolean replicationMetadataEnabled,
+      boolean mergedValueRmdColumnFamilyEnabled) {
+    if (replicationMetadataEnabled || mergedValueRmdColumnFamilyEnabled) {
       throw new VeniceException("Replication metadata is only supported in RocksDB storage engine!");
     }
     return getStorageEngine(storeDef);
