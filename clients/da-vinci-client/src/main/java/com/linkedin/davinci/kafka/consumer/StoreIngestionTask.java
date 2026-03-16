@@ -2024,7 +2024,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ExecutorService shutdownExecutor = enableParallelShutdown
         ? Executors.newFixedThreadPool(
             getServerConfig().getParallelShutdownThreadPoolSize(),
-            new DaemonThreadFactory("StoreIngestionTask-shutdown"))
+            new DaemonThreadFactory("StoreIngestionTask-shutdown", getServerConfig().getLogContext()))
         : null;
 
     try {

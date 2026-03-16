@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor.OFFLINE_PUSH_SUB_PATH;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.ZkDataAccessException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -41,8 +42,15 @@ public class HelixOfflinePushMonitorAccessorTest {
     zk = ServiceFactory.getZkServer();
     String zkAddress = zk.getAddress();
     zkClient = ZkClientFactory.newZkClient(zkAddress);
-    accessor =
-        new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(), LogContext.EMPTY, 1);
+    accessor = new VeniceOfflinePushMonitorAccessor(
+        clusterName,
+        zkClient,
+        new HelixAdapterSerializer(),
+        LogContext.newBuilder()
+            .setComponentName(VeniceComponent.CONTROLLER.name())
+            .setRegionName("test-region")
+            .build(),
+        1);
   }
 
   @AfterMethod

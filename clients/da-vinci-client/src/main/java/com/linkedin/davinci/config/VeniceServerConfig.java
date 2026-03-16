@@ -236,6 +236,7 @@ import static com.linkedin.venice.ConfigKeys.TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
+import static com.linkedin.venice.ConfigKeys.VENICE_LOG_CONTEXT_COMPONENT;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
@@ -722,9 +723,25 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     super(serverProperties, kafkaClusterMap);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
     listenerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
-    logContext = new LogContext.Builder().setComponentName(VeniceComponent.SERVER.name())
+    String componentName = serverProperties.getString(VENICE_LOG_CONTEXT_COMPONENT, VeniceComponent.SERVER.name());
+    if (componentName != null) {
+      componentName = componentName.trim();
+    }
+    if (componentName == null || componentName.isEmpty()) {
+      componentName = VeniceComponent.SERVER.name();
+    }
+    // DaVinci clients identify themselves by hostname_pid (matching push status reporting),
+    // while servers use hostname_port (their Helix node identity).
+    String instanceName;
+    if (serverProperties.getBoolean(INGESTION_USE_DA_VINCI_CLIENT, false)) {
+      String pid = Utils.getPid();
+      instanceName = Utils.getHostName() + "_" + (pid != null ? pid : "NA");
+    } else {
+      instanceName = Utils.getHelixNodeIdentifier(listenerHostname, listenerPort);
+    }
+    logContext = new LogContext.Builder().setComponentName(componentName)
         .setRegionName(getRegionName())
-        .setInstanceName(Utils.getHelixNodeIdentifier(listenerHostname, listenerPort))
+        .setInstanceName(instanceName)
         .build();
     isGrpcEnabled = serverProperties.getBoolean(ENABLE_GRPC_READ_SERVER, false);
     grpcPort = isGrpcEnabled ? serverProperties.getInt(GRPC_READ_SERVER_PORT) : -1;

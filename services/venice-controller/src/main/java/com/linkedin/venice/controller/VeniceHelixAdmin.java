@@ -8809,7 +8809,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void close() {
     long closeStartTime = System.currentTimeMillis();
-    ExecutorService ex = Executors.newSingleThreadExecutor(new DaemonThreadFactory("HelixManagerDisconnect"));
+    ExecutorService ex = Executors.newSingleThreadExecutor(
+        new DaemonThreadFactory("HelixManagerDisconnect", multiClusterConfigs.getLogContext()));
     try {
       // This disconnect sometimes hangs... hence why we treat it this way...
       Future helixManagerDisconnectFuture = ex.submit(this.helixManager::disconnect);

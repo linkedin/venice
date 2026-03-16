@@ -1,7 +1,9 @@
 package com.linkedin.davinci.storage;
 
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
@@ -52,6 +54,7 @@ public class DiskHealthCheckService extends AbstractVeniceService {
   private final boolean serviceEnabled;
   private final String databasePath;
   private final long diskFailServerShutdownTimeMs;
+  private final LogContext logContext;
 
   private boolean diskHealthy = true;
   private long lastStatusUpdateTimeInNS;
@@ -94,13 +97,15 @@ public class DiskHealthCheckService extends AbstractVeniceService {
       long healthCheckIntervalMs,
       long diskOperationTimeoutMs,
       String databasePath,
-      long diskFailServerShutdownTimeMs) {
+      long diskFailServerShutdownTimeMs,
+      LogContext logContext) {
     this.serviceEnabled = serviceEnabled;
     this.healthCheckIntervalMs = healthCheckIntervalMs;
     this.healthCheckTimeoutMs = Math.max(HEALTH_CHECK_HARD_TIMEOUT, healthCheckIntervalMs + diskOperationTimeoutMs);
     this.databasePath = databasePath;
     this.errorMessage = null;
     this.diskFailServerShutdownTimeMs = diskFailServerShutdownTimeMs;
+    this.logContext = logContext;
   }
 
   @Override
@@ -112,9 +117,8 @@ public class DiskHealthCheckService extends AbstractVeniceService {
     }
     setLastStatusUpdateTimeInNS(System.nanoTime());
     healthCheckTask = new DiskHealthCheckTask();
-    runner = new Thread(healthCheckTask);
-    runner.setName("Storage Disk Health Check Background Thread");
-    runner.setDaemon(true);
+    runner =
+        new DaemonThreadFactory("Storage Disk Health Check Background Thread", logContext).newThread(healthCheckTask);
     runner.start();
 
     return true;

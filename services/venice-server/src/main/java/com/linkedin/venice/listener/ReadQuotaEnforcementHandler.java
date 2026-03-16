@@ -119,8 +119,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     this.storeRepository = storeRepository;
     this.storageEngineRepository = storageEngineRepository;
     this.stats = stats;
-    ExecutorService asyncInitExecutor =
-        Executors.newSingleThreadExecutor(new DaemonThreadFactory("server-read-quota-init-thread"));
+    ExecutorService asyncInitExecutor = Executors.newSingleThreadExecutor(
+        new DaemonThreadFactory("server-read-quota-init-thread", serverConfig.getLogContext()));
     asyncInitExecutor.submit(() -> {
       try {
         this.customizedViewRepository =

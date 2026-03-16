@@ -35,6 +35,7 @@ import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
@@ -192,7 +193,10 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(1).when(mockVeniceServerConfig).getStoreWriterNumber();
     doReturn(5).when(mockVeniceServerConfig).getIdleIngestionTaskCleanupIntervalInSeconds();
     doReturn(1).when(mockVeniceServerConfig).getStoreChangeNotifierThreadPoolSize();
-    doReturn(LogContext.EMPTY).when(mockVeniceServerConfig).getLogContext();
+    doReturn(
+        LogContext.newBuilder().setComponentName(VeniceComponent.SERVER.name()).setRegionName("test-region").build())
+            .when(mockVeniceServerConfig)
+            .getLogContext();
 
     // Consumer related configs for preparing kafka consumer service.
     doReturn(dummyKafkaUrl).when(mockVeniceServerConfig).getKafkaBootstrapServers();
@@ -870,7 +874,10 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(1).when(serverConfig).getStoreWriterNumber();
     doReturn(0).when(serverConfig).getIdleIngestionTaskCleanupIntervalInSeconds();
     doReturn(1).when(serverConfig).getStoreChangeNotifierThreadPoolSize();
-    doReturn(LogContext.EMPTY).when(serverConfig).getLogContext();
+    doReturn(
+        LogContext.newBuilder().setComponentName(VeniceComponent.SERVER.name()).setRegionName("test-region").build())
+            .when(serverConfig)
+            .getLogContext();
     doReturn(dummyKafkaUrl).when(serverConfig).getKafkaBootstrapServers();
     Function<String, String> kafkaClusterUrlResolver = String::toString;
     doReturn(kafkaClusterUrlResolver).when(serverConfig).getKafkaClusterUrlResolver();

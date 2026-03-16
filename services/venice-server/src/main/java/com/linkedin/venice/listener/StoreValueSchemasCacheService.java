@@ -12,6 +12,8 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collection;
 import java.util.List;
@@ -66,12 +68,14 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
 
   public StoreValueSchemasCacheService(
       ReadOnlyStoreRepository storeRepository,
-      ReadOnlySchemaRepository schemaRepository) {
+      ReadOnlySchemaRepository schemaRepository,
+      LogContext logContext) {
     this.storeRepository = storeRepository;
     this.schemaRepository = schemaRepository;
     refreshAllStores();
 
-    this.refreshThread = new Thread(new CacheRefreshTask(), "StoreValueSchemasCacheService_RefreshThread");
+    this.refreshThread = new DaemonThreadFactory("StoreValueSchemasCacheService_RefreshThread", logContext)
+        .newThread(new CacheRefreshTask());
   }
 
   private class CacheRefreshTask implements Runnable {
