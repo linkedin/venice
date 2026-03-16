@@ -71,7 +71,10 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -529,7 +532,8 @@ public class VeniceWriterUnitTest {
           DEFAULT_LEADER_METADATA_WRAPPER,
           addLeaderCompleteHeader,
           leaderCompleteState,
-          System.currentTimeMillis());
+          System.currentTimeMillis(),
+          Collections.emptyMap());
     }
     ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
     ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
@@ -867,5 +871,61 @@ public class VeniceWriterUnitTest {
             .readValue(actualPubSubMessageHeaders.get(PubSubMessageHeaders.EXECUTION_ID_KEY).value(), Long.class)
             .longValue(),
         executionId);
+  }
+
+  @Test
+  public void testSendHeartbeatWithOffsetVector() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    Properties writerProperties = new Properties();
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_rt";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), mockedProducer);
+    PubSubTopicPartition topicPartition = mock(PubSubTopicPartition.class);
+    PubSubTopic topic = mock(PubSubTopic.class);
+    when(topic.getName()).thenReturn(testTopic);
+    when(topicPartition.getPubSubTopic()).thenReturn(topic);
+    when(topicPartition.getPartitionNumber()).thenReturn(0);
+
+    // Build offset vector: broker URL -> position string
+    Map<String, String> offsetVector = new HashMap<>();
+    offsetVector.put("broker1:9092", new ApacheKafkaOffsetPosition(100).toString());
+    offsetVector.put("broker2:9092", new ApacheKafkaOffsetPosition(200).toString());
+
+    // Send with offset vector
+    writer.sendHeartbeat(
+        topicPartition,
+        null,
+        DEFAULT_LEADER_METADATA_WRAPPER,
+        true,
+        LEADER_COMPLETED,
+        System.currentTimeMillis(),
+        offsetVector);
+
+    ArgumentCaptor<KafkaMessageEnvelope> kmeCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    ArgumentCaptor<KafkaKey> keyCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+    verify(mockedProducer, times(1))
+        .sendMessage(eq(testTopic), eq(0), keyCaptor.capture(), kmeCaptor.capture(), any(), any());
+
+    assertTrue(Arrays.equals(HEART_BEAT.getKey(), keyCaptor.getValue().getKey()));
+
+    KafkaMessageEnvelope kme = kmeCaptor.getValue();
+    assertEquals(kme.messageType, MessageType.CONTROL_MESSAGE.getValue());
+    ControlMessage controlMessage = (ControlMessage) kme.payloadUnion;
+    assertEquals(controlMessage.controlMessageType, ControlMessageType.START_OF_SEGMENT.getValue());
+
+    // Verify the offset vector entries are present in debugInfo
+    offsetVector.forEach((broker, position) -> assertEquals(controlMessage.debugInfo.get(broker).toString(), position));
   }
 }
