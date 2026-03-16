@@ -144,7 +144,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         .build();
     this.daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
-    Properties consumerProps = changelogClientConfig.getConsumerProperties();
+    Properties consumerProps = new Properties();
+    consumerProps.putAll(changelogClientConfig.getConsumerProperties());
     consumerProps.setProperty(ConfigKeys.VENICE_LOG_CONTEXT_COMPONENT, cdcComponentName);
 
     this.daVinciClientFactory = new CachingDaVinciClientFactory(
