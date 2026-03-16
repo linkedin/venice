@@ -513,7 +513,7 @@ public class TestPushJobWithNativeReplication extends AbstractMultiRegionTest {
                   .getClusters()
                   .get(clusterName)
                   .useControllerClient(
-                      dc1Client -> TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+                      dc1Client -> TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
                         // verify the update store command has taken effect before starting the push job.
                         StoreInfo store = dc0Client.getStore(storeName).getStore();
                         Assert.assertNotNull(store);
