@@ -26,6 +26,7 @@ import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -116,12 +117,14 @@ public class VersionBackend {
     backend.getVersionByTopicMap().put(version.kafkaTopicName(), this);
     long daVinciPushStatusCheckIntervalInMs = this.config.getDaVinciPushStatusCheckIntervalInMs();
     if (daVinciPushStatusCheckIntervalInMs >= 0) {
+      LogContext logContext =
+          backend.getConfigLoader() != null ? backend.getConfigLoader().getVeniceServerConfig().getLogContext() : null;
       this.daVinciPushStatusUpdateTask = new DaVinciPushStatusUpdateTask(
           version,
           daVinciPushStatusCheckIntervalInMs,
           backend.getPushStatusStoreWriter(),
           this::areAllPartitionFuturesCompletedSuccessfully,
-          backend.getConfigLoader().getVeniceServerConfig().getLogContext());
+          logContext);
     } else {
       this.daVinciPushStatusUpdateTask = null;
     }

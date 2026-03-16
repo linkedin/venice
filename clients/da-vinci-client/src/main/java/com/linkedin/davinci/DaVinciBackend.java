@@ -906,7 +906,8 @@ public class DaVinciBackend implements Closeable {
     public final CompletableFuture<Void> bootstrappingFuture = new CompletableFuture<>();
 
     public BootstrappingAwareCompletableFuture(DaVinciBackend backend) {
-      LogContext logContext = backend.configLoader.getVeniceServerConfig().getLogContext();
+      LogContext logContext =
+          backend.configLoader != null ? backend.configLoader.getVeniceServerConfig().getLogContext() : null;
       this.scheduledExecutor = Executors.newSingleThreadScheduledExecutor(
           new DaemonThreadFactory("DaVinci_Bootstrapping_Check_Executor", logContext));
       scheduledExecutor.scheduleAtFixedRate(() -> {
