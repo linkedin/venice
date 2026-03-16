@@ -724,7 +724,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
     listenerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
     String componentName = serverProperties.getString(VENICE_LOG_CONTEXT_COMPONENT, VeniceComponent.SERVER.name());
-    if (componentName == null || componentName.trim().isEmpty()) {
+    if (componentName != null) {
+      componentName = componentName.trim();
+    }
+    if (componentName == null || componentName.isEmpty()) {
       componentName = VeniceComponent.SERVER.name();
     }
     // DaVinci clients identify themselves by hostname_pid (matching push status reporting),
