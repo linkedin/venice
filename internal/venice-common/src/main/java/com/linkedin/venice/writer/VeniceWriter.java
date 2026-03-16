@@ -138,7 +138,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VENICE_WRITER_CONFIG_PREFIX + "pubsub.large.message.support.enabled";
 
   /**
-   * Maximum record size (key + value bytes) allowed when pubsub large message support is enabled.
+   * Maximum record size (key + value + replication metadata bytes) allowed when pubsub large message support is enabled.
    * This limit applies to all records routed through the pubsub passthrough path, including Global RT DIV messages.
    * Default: {@value DEFAULT_PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES} (4 MB).
    */
