@@ -206,7 +206,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         10,
         new DaemonThreadFactory(
             getClass().getSimpleName(),
-            LogContext.newBuilder().setComponentName(VeniceComponent.CHANGELOG_CONSUMER.name()).build()));
+            LogContext.newBuilder().setComponentName(VeniceComponent.STATELESS_CDC.name()).build()));
 
     if (changelogClientConfig.getViewName() == null || changelogClientConfig.getViewName().isEmpty()) {
       this.storeName = changelogClientConfig.getStoreName();

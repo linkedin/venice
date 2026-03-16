@@ -27,7 +27,13 @@ public class DaemonThreadFactory implements ThreadFactory {
   @Override
   public Thread newThread(Runnable r) {
     Runnable wrapped = () -> {
-      LogContext.setLogContext(logContext);
+      if (logContext != null) {
+        LogContext.setLogContext(logContext);
+      } else {
+        // Clear any inherited context (e.g., from InheritableThreadLocal with
+        // log4j2.isThreadContextMapInheritable=true) to avoid misattribution.
+        LogContext.clearLogContext();
+      }
       try {
         r.run();
       } finally {

@@ -111,8 +111,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.changelogClientConfig = changelogClientConfig;
     this.storeName = changelogClientConfig.getStoreName();
     String cdcComponentName = changelogClientConfig.isStateful()
-        ? VeniceComponent.DVC_STATEFUL_CDC.name()
-        : VeniceComponent.DVC_STATELESS_CDC.name();
+        ? VeniceComponent.DVRT_STATEFUL_CDC.name()
+        : VeniceComponent.DVRT_STATELESS_CDC.name();
     this.completableFutureThreadPool = Executors.newFixedThreadPool(
         1,
         new DaemonThreadFactory(

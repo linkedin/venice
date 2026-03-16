@@ -3292,7 +3292,7 @@ public class ConfigKeys {
   /**
    * Configures the component name used in {@link com.linkedin.venice.utils.LogContext} for structured logging.
    * Defaults to "SERVER" if not set. DaVinci clients and CDC consumers can override this to use their own
-   * component names (e.g., "DAVINCI_CLIENT", "DVC_STATEFUL_CDC", "DVC_STATELESS_CDC").
+   * component names (e.g., "DAVINCI_CLIENT", "DVRT_STATEFUL_CDC", "DVRT_STATELESS_CDC").
    */
   public static final String VENICE_LOG_CONTEXT_COMPONENT = "venice.log.context.component";
 }

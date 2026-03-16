@@ -122,7 +122,7 @@ public class LogContext {
   }
 
   /**
-   * Creates a LogContext suitable for use in tests. Uses "test-region" as the region name.
+   * Creates a LogContext suitable for use in tests. Uses "test" as the region name.
    *
    * @param componentName The component name (e.g., from {@code VeniceComponent.SERVER.name()}).
    * @return A new LogContext instance for testing.
