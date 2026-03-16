@@ -3017,6 +3017,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         recordProcessedRecordStats(partitionConsumptionState, recordSize);
       }
+      PartitionIngestionMonitor monitor = partitionConsumptionState.getIngestionMonitor();
+      if (monitor != null) {
+        monitor.recordConsumed(recordSize);
+      }
       partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
     }
     reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
@@ -3838,6 +3842,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
         }
       }
+      PartitionIngestionMonitor e2eMonitor = partitionConsumptionState.getIngestionMonitor();
+      if (e2eMonitor != null) {
+        e2eMonitor.recordE2EProcessingLatencyNs(System.nanoTime() - beforeProcessingRecordTimestampNs);
+      }
     } catch (DuplicateDataException e) {
       divErrorMetricCallback.accept(e);
       LOGGER.debug(
@@ -4459,12 +4467,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (writerSchemaId > 0) {
           valueSchemaId = writerSchemaId;
         }
+        long putElapsedNs = System.nanoTime() - startTimeNs;
         if (recordMetrics) {
-          double putLatency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs);
+          double putLatency = putElapsedNs / 1_000_000.0;
           versionedIngestionStats.recordStorageEnginePutTime(storeName, versionNumber, putLatency);
           if (tehutiRecordMetrics) {
             hostLevelIngestionStats.recordStorageEnginePutLatency(putLatency, currentTimeMs);
           }
+        }
+        PartitionIngestionMonitor putMonitor = partitionConsumptionState.getIngestionMonitor();
+        if (putMonitor != null) {
+          putMonitor.recordStoragePutLatencyNs(putElapsedNs);
         }
         break;
 
