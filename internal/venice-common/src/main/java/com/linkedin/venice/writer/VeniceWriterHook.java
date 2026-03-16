@@ -1,7 +1,8 @@
 package com.linkedin.venice.writer;
 
 /**
- * Callback hook invoked by {@link VeniceWriter} before producing each record to the pub-sub system.
+ * Callback hook invoked by {@link VeniceWriter} after size validation and before producing a record
+ * to the pub-sub system. Not invoked for records rejected by size checks (RecordTooLargeException).
  * Set via {@link VeniceWriterOptions.Builder#setWriterHook(VeniceWriterHook)} at construction time.
  *
  * Threading: Called on the caller's thread (the thread invoking {@link VeniceWriter#put},

@@ -16,8 +16,8 @@ import org.apache.samza.config.Config;
  * Use the {@link Builder} to create instances.
  *
  * Three mutually exclusive connection modes are supported:
- * - ZK-based: set {@code veniceChildD2ZkHost} and {@code primaryControllerColoD2ZKHost}
- * - D2Client-based: set both {@code providedChildColoD2Client} and {@code providedPrimaryControllerColoD2Client}
+ * - ZK-based: set {@code veniceChildD2ZkHost}, {@code primaryControllerColoD2ZKHost}, and {@code primaryControllerD2ServiceName}
+ * - D2Client-based: set {@code providedChildColoD2Client}, {@code providedPrimaryControllerColoD2Client}, and {@code primaryControllerD2ServiceName}
  * - Discovery-URL-based: set {@code discoveryUrl}
  */
 public class VeniceSystemProducerConfig {
