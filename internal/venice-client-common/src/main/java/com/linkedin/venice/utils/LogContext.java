@@ -128,7 +128,7 @@ public class LogContext {
    * @return A new LogContext instance for testing.
    */
   public static LogContext forTests(String componentName) {
-    return new Builder().setComponentName(componentName).setRegionName("test-region").build();
+    return new Builder().setComponentName(componentName).setRegionName("test").build();
   }
 
   /**
