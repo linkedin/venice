@@ -119,6 +119,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -3543,44 +3544,22 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testUpdateStoreConfigValidation() {
-    String storeName = Utils.getUniqueString("testUpdateStoreValidation");
+  public void testUpdateStoreConfigValidation() throws Throwable {
+    String storeName = Utils.getUniqueString("testUpdateStoreConfigValidation");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     parentAdmin.initStorageCluster(clusterName);
+    Function<Long, Assert.ThrowingRunnable> updateWithRetention = (retentionMs) -> () -> parentAdmin
+        .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBackupVersionRetentionMs(retentionMs));
 
-    // backupVersionRetentionMs: below minimum (positive but < 1 day) should throw
-    long tooLowRetention = TimeUnit.HOURS.toMillis(23);
-    VeniceException e1 = Assert.expectThrows(
-        VeniceException.class,
-        () -> parentAdmin.updateStore(
-            clusterName,
-            storeName,
-            new UpdateStoreQueryParams().setBackupVersionRetentionMs(tooLowRetention)));
-    Assert.assertTrue(
-        e1.getMessage().contains("Backup version retention time"),
-        "Expected message to mention retention time but got: " + e1.getMessage());
+    long tooLowRetention = TimeUnit.HOURS.toMillis(23); // below minimum (positive but < 1 day) should throw
+    VeniceException e1 = Assert.expectThrows(VeniceException.class, updateWithRetention.apply(tooLowRetention));
+    Assert.assertTrue(e1.getMessage().contains("Backup version retention time"));
 
-    // backupVersionRetentionMs: 0 should also throw
-    Assert.expectThrows(
-        VeniceException.class,
-        () -> parentAdmin
-            .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBackupVersionRetentionMs(0L)));
-
-    // backupVersionRetentionMs: -2 is invalid (not the sentinel -1)
-    Assert.expectThrows(
-        VeniceException.class,
-        () -> parentAdmin
-            .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBackupVersionRetentionMs(-2L)));
-
-    // backupVersionRetentionMs: -1 is valid (cluster default)
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBackupVersionRetentionMs(-1L));
-
-    // backupVersionRetentionMs: exactly 1 day is valid
-    parentAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setBackupVersionRetentionMs(Store.MIN_BACKUP_VERSION_RETENTION_MS));
+    Assert.expectThrows(VeniceException.class, updateWithRetention.apply(0L)); // 0 should also throw
+    Assert.expectThrows(VeniceException.class, updateWithRetention.apply(-2L)); // -2 is invalid (not the sentinel -1)
+    updateWithRetention.apply(-1L).run(); // -1 is valid (cluster default)
+    updateWithRetention.apply(Store.MIN_BACKUP_VERSION_RETENTION_MS).run(); // exactly 1 day is valid
   }
 
   private AdminOperation verifyAndGetSingleAdminOperation() {
