@@ -118,7 +118,7 @@ public class VeniceWriterOptions {
   public VeniceWriterHook getWriterHook() {
     return writerHook;
   }
-  
+
   public LogContext getLogContext() {
     return logContext;
   }
@@ -369,8 +369,9 @@ public class VeniceWriterOptions {
 
     public Builder setWriterHook(VeniceWriterHook writerHook) {
       this.writerHook = writerHook;
+      return this;
     }
-    
+
     public Builder setLogContext(LogContext logContext) {
       this.logContext = logContext;
       return this;
