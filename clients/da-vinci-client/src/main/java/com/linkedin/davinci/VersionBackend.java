@@ -120,7 +120,8 @@ public class VersionBackend {
           version,
           daVinciPushStatusCheckIntervalInMs,
           backend.getPushStatusStoreWriter(),
-          this::areAllPartitionFuturesCompletedSuccessfully);
+          this::areAllPartitionFuturesCompletedSuccessfully,
+          backend.getConfigLoader().getVeniceServerConfig().getLogContext());
     } else {
       this.daVinciPushStatusUpdateTask = null;
     }

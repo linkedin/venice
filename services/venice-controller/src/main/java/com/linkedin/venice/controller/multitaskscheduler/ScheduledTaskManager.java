@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.multitaskscheduler;
 
+import com.linkedin.venice.utils.LogContext;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -16,11 +17,11 @@ import org.apache.logging.log4j.Logger;
 public abstract class ScheduledTaskManager {
   protected final ScheduledExecutorService executorService;
 
-  public ScheduledTaskManager(int threadPoolSize) {
-    this.executorService = createExecutorService(threadPoolSize);
+  public ScheduledTaskManager(int threadPoolSize, LogContext logContext) {
+    this.executorService = createExecutorService(threadPoolSize, logContext);
   }
 
-  protected abstract ScheduledExecutorService createExecutorService(int threadPoolSize);
+  protected abstract ScheduledExecutorService createExecutorService(int threadPoolSize, LogContext logContext);
 
   protected abstract Logger getLogger();
 

@@ -389,7 +389,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         5,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory("VW-" + topicName));
+        new DaemonThreadFactory("VW-" + topicName, params.getLogContext()));
     this.threadPoolExecutor.allowCoreThreadTimeOut(true); // allow core threads to timeout
 
     this.protocolSchemaHeader = overrideProtocolSchema == null

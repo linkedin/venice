@@ -10,12 +10,14 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -40,14 +42,16 @@ public class PubSubProducerAdapterConcurrentDelegatorTest {
             producingTopic,
             1,
             10 * 1024 * 1024,
-            () -> mock(PubSubProducerAdapter.class)));
+            () -> mock(PubSubProducerAdapter.class),
+            LogContext.forTests(VeniceComponent.SERVER.name())));
     assertThrows(
         VeniceException.class,
         () -> new PubSubProducerAdapterConcurrentDelegator(
             producingTopic,
             2,
             10 * 1024,
-            () -> mock(PubSubProducerAdapter.class)));
+            () -> mock(PubSubProducerAdapter.class),
+            LogContext.forTests(VeniceComponent.SERVER.name())));
 
     int threadCnt = 3;
     int queueSize = 10 * 1024 * 1024;
@@ -59,7 +63,7 @@ public class PubSubProducerAdapterConcurrentDelegatorTest {
           PubSubProducerAdapter producer = mock(PubSubProducerAdapter.class);
           producers.add(producer);
           return producer;
-        });
+        }, LogContext.forTests(VeniceComponent.SERVER.name()));
     delegator.close(100);
     assertEquals(producerInstanceCount.get(), threadCnt);
     assertEquals(producers.size(), threadCnt);
@@ -165,8 +169,12 @@ public class PubSubProducerAdapterConcurrentDelegatorTest {
       return producers.get(currentProducerIdx);
     };
     String testTopicName = "test_rt";
-    PubSubProducerAdapterConcurrentDelegator delegator =
-        new PubSubProducerAdapterConcurrentDelegator(testTopicName, threadCnt, 5 * 1024 * 1204, producerSupplier);
+    PubSubProducerAdapterConcurrentDelegator delegator = new PubSubProducerAdapterConcurrentDelegator(
+        testTopicName,
+        threadCnt,
+        5 * 1024 * 1204,
+        producerSupplier,
+        LogContext.forTests(VeniceComponent.SERVER.name()));
 
     delegator.getNumberOfPartitions(testTopicName);
     verify(mockProducer1).getNumberOfPartitions(testTopicName);

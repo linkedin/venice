@@ -12,6 +12,7 @@ import com.linkedin.venice.listener.VerifySslHandler;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.Bootstrap;
@@ -97,7 +98,8 @@ public class NettyFileTransferClient {
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
       AggBlobTransferStats aggBlobTransferStats,
       Optional<SSLFactory> sslFactory,
-      Supplier<VeniceNotifier> notifierSupplier) {
+      Supplier<VeniceNotifier> notifierSupplier,
+      LogContext logContext) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
@@ -133,17 +135,17 @@ public class NettyFileTransferClient {
         }
       }
     });
-    this.hostConnectExecutorService =
-        Executors.newCachedThreadPool(new DaemonThreadFactory("Venice-BlobTransfer-Host-Connect-Executor-Service"));
-    this.connectTimeoutScheduler = Executors
-        .newSingleThreadScheduledExecutor(new DaemonThreadFactory("Venice-BlobTransfer-Client-Timeout-Checker"));
+    this.hostConnectExecutorService = Executors
+        .newCachedThreadPool(new DaemonThreadFactory("Venice-BlobTransfer-Host-Connect-Executor-Service", logContext));
+    this.connectTimeoutScheduler = Executors.newSingleThreadScheduledExecutor(
+        new DaemonThreadFactory("Venice-BlobTransfer-Client-Timeout-Checker", logContext));
     this.checksumValidationExecutorService = new ThreadPoolExecutor(
         DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE,
         DEFAULT_CHECKSUM_VALIDATION_THREAD_POOL_SIZE,
         60L,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory("Venice-BlobTransfer-Checksum-Validation-Executor-Service"));
+        new DaemonThreadFactory("Venice-BlobTransfer-Checksum-Validation-Executor-Service", logContext));
   }
 
   /**

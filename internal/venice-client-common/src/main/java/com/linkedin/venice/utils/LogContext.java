@@ -111,6 +111,16 @@ public class LogContext {
   }
 
   /**
+   * Creates a LogContext suitable for use in tests. Uses "test-region" as the region name.
+   *
+   * @param componentName The component name (e.g., from {@code VeniceComponent.SERVER.name()}).
+   * @return A new LogContext instance for testing.
+   */
+  public static LogContext forTests(String componentName) {
+    return new Builder().setComponentName(componentName).setRegionName("test-region").build();
+  }
+
+  /**
    * @return A new builder for constructing {@link LogContext} instances.
    */
   public static Builder newBuilder() {

@@ -207,7 +207,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       this.inactiveTopicPartitionChecker = new InactiveTopicPartitionChecker(
           getConsumerToConsumptionTask(),
           serverConfig.getInactiveTopicPartitionCheckerInternalInSeconds(),
-          serverConfig.getInactiveTopicPartitionCheckerThresholdInSeconds());
+          serverConfig.getInactiveTopicPartitionCheckerThresholdInSeconds(),
+          serverConfig.getLogContext());
       LOGGER.info("Created InactiveTopicPartitionChecker for consumer pool type: {}", poolType);
     } else {
       this.inactiveTopicPartitionChecker = null;

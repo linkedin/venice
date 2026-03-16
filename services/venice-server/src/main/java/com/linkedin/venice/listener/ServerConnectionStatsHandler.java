@@ -4,6 +4,7 @@ import com.linkedin.venice.authorization.IdentityParser;
 import com.linkedin.venice.stats.ServerConnectionStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.LogContext;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -39,16 +40,18 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
   private final Set<ChannelHandlerContext> trackedConnections =
       new ConcurrentSkipListSet<>(Comparator.comparingInt(Object::hashCode));
 
-  private final ScheduledExecutorService connectionScanner =
-      Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("ServerConnectionStatsHandler-Scanner"));
+  private final ScheduledExecutorService connectionScanner;
 
   public ServerConnectionStatsHandler(
       IdentityParser identityParser,
       ServerConnectionStats serverConnectionStats,
-      String routerPrincipalName) {
+      String routerPrincipalName,
+      LogContext logContext) {
     this.identityParser = identityParser;
     this.serverConnectionStats = serverConnectionStats;
     this.routerPrincipalName = routerPrincipalName;
+    this.connectionScanner = Executors
+        .newSingleThreadScheduledExecutor(new DaemonThreadFactory("ServerConnectionStatsHandler-Scanner", logContext));
 
     connectionScanner.scheduleAtFixedRate(() -> {
       try {

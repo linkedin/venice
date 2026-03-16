@@ -4,6 +4,8 @@ import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.utils.LogContext;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -23,7 +25,12 @@ public class MultiTaskSchedulerServiceTest {
   @BeforeTest
   public void setUp() throws Exception {
     MockitoAnnotations.openMocks(this);
-    service = new MultiTaskSchedulerService(4, 3, 1, new ArrayList<>());
+    service = new MultiTaskSchedulerService(
+        4,
+        3,
+        1,
+        new ArrayList<>(),
+        LogContext.forTests(VeniceComponent.CONTROLLER.name()));
     // Inject the mock StoreMigrationManager into the service
     // Use AccessController.doPrivileged block to set the field accessible
     AccessController.doPrivileged((PrivilegedAction<Void>) () -> {

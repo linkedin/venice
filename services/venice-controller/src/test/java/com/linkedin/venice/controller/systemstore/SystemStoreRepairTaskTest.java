@@ -19,6 +19,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
@@ -64,7 +65,11 @@ public class SystemStoreRepairTaskTest {
     VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     List<String> leaderClusterList = Arrays.asList("venice-1", "venice-3");
     doReturn(leaderClusterList).when(parentHelixAdmin).getClustersLeaderOf();
-    doReturn(LogContext.EMPTY).when(parentHelixAdmin).getLogContext();
+    doReturn(
+        LogContext.newBuilder()
+            .setComponentName(VeniceComponent.CONTROLLER.name())
+            .setRegionName("test-region")
+            .build()).when(parentHelixAdmin).getLogContext();
     doReturn(parentHelixAdmin).when(systemStoreRepairTask).getParentAdmin();
 
     doCallRealMethod().when(systemStoreRepairTask).run();

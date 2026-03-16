@@ -15,6 +15,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.SslUtils;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.util.Optional;
@@ -42,6 +43,7 @@ public class BlobTransferManagerBuilder {
   private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferWriteTrafficThrottler;
   private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler;
   private Supplier<VeniceNotifier> veniceNotifier;
+  private LogContext logContext;
 
   public BlobTransferManagerBuilder() {
   }
@@ -111,6 +113,11 @@ public class BlobTransferManagerBuilder {
     return this;
   }
 
+  public BlobTransferManagerBuilder setLogContext(LogContext logContext) {
+    this.logContext = logContext;
+    return this;
+  }
+
   public AggBlobTransferStats getAggBlobTransferStats() {
     return aggBlobTransferStats;
   }
@@ -131,7 +138,8 @@ public class BlobTransferManagerBuilder {
 
       GlobalChannelTrafficShapingHandler globalTrafficHandler = getGlobalChannelTrafficShapingHandlerInstance(
           blobTransferConfig.getBlobTransferClientReadLimitBytesPerSec(),
-          blobTransferConfig.getBlobTransferServiceWriteLimitBytesPerSec());
+          blobTransferConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
+          logContext);
       if (adaptiveBlobTransferWriteTrafficThrottler != null) {
         adaptiveBlobTransferWriteTrafficThrottler.setGlobalChannelTrafficShapingHandler(globalTrafficHandler);
       }
@@ -144,7 +152,8 @@ public class BlobTransferManagerBuilder {
           storageMetadataService,
           blobTransferConfig.getSnapshotRetentionTimeInMin(),
           blobTransferConfig.getTransferSnapshotTableFormat(),
-          blobTransferConfig.getSnapshotCleanupIntervalInMins());
+          blobTransferConfig.getSnapshotCleanupIntervalInMins(),
+          logContext);
 
       BlobTransferManager<Void> blobTransferManager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(
@@ -167,11 +176,13 @@ public class BlobTransferManagerBuilder {
               globalTrafficHandler,
               getAggBlobTransferStats(),
               sslFactory,
-              veniceNotifier),
+              veniceNotifier,
+              logContext),
           blobFinder,
           blobTransferConfig.getBaseDir(),
           getAggBlobTransferStats().getAggVersionedBlobTransferStats(),
-          blobTransferConfig.getMaxConcurrentBlobReceiveReplicas());
+          blobTransferConfig.getMaxConcurrentBlobReceiveReplicas(),
+          logContext);
 
       // start the P2P blob transfer manager
       blobTransferManager.start();

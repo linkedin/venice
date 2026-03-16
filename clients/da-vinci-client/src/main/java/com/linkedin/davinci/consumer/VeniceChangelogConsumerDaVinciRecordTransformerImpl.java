@@ -12,6 +12,8 @@ import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
+import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -23,6 +25,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -37,6 +40,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -76,8 +80,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final CountDownLatch startLatch = new CountDownLatch(1);
   // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
   // issues in the default ForkJoinPool
-  private final ExecutorService completableFutureThreadPool =
-      Executors.newFixedThreadPool(1, new DaemonThreadFactory("VeniceChangelogConsumerDaVinciRecordTransformerImpl"));
+  private final ExecutorService completableFutureThreadPool;
 
   private final Set<Integer> subscribedPartitions = VeniceConcurrentHashMap.newKeySet();
   private final ReentrantLock bufferLock = new ReentrantLock();
@@ -107,6 +110,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
     this.changelogClientConfig = changelogClientConfig;
     this.storeName = changelogClientConfig.getStoreName();
+    String cdcComponentName = changelogClientConfig.isStateful()
+        ? VeniceComponent.DVC_STATEFUL_CDC.name()
+        : VeniceComponent.DVC_STATELESS_CDC.name();
+    this.completableFutureThreadPool = Executors.newFixedThreadPool(
+        1,
+        new DaemonThreadFactory(
+            "VeniceChangelogConsumerDaVinciRecordTransformerImpl",
+            LogContext.newBuilder().setComponentName(cdcComponentName).build()));
     this.daVinciConfig = new DaVinciConfig();
     this.daVinciConfig.setStorageClass(StorageClass.DISK);
     ClientConfig innerClientConfig = changelogClientConfig.getInnerClientConfig();
@@ -133,11 +144,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         .build();
     this.daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
+    Properties consumerProps = changelogClientConfig.getConsumerProperties();
+    consumerProps.setProperty(ConfigKeys.VENICE_LOG_CONTEXT_COMPONENT, cdcComponentName);
+
     this.daVinciClientFactory = new CachingDaVinciClientFactory(
         changelogClientConfig.getD2Client(),
         changelogClientConfig.getD2ServiceName(),
         innerClientConfig.getMetricsRepository(),
-        new VeniceProperties(changelogClientConfig.getConsumerProperties()));
+        new VeniceProperties(consumerProps));
 
     if (isVersionSpecificClient) {
       LOGGER.info(

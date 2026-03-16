@@ -155,7 +155,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           0L,
           TimeUnit.MILLISECONDS,
           new LinkedBlockingQueue<>(),
-          new DaemonThreadFactory("Venice-Parallel-Routing"));
+          new DaemonThreadFactory("Venice-Parallel-Routing", config.getLogContext()));
       if (routeHttpRequestStats.getMetricsRepository() != null) {
         new ThreadPoolStats(
             routeHttpRequestStats.getMetricsRepository(),

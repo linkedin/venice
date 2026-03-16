@@ -65,6 +65,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -117,8 +118,7 @@ public class DaVinciBackend implements Closeable {
   private final RocksDBMemoryStats rocksDBMemoryStats;
   private StorageService storageService;
   private final KafkaStoreIngestionService ingestionService;
-  private final ScheduledExecutorService executor =
-      Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("DaVinciBackend"));
+  private final ScheduledExecutorService executor;
   private final Map<String, StoreBackend> storeByNameMap = new VeniceConcurrentHashMap<>();
   private final Map<String, VersionBackend> versionByTopicMap = new VeniceConcurrentHashMap<>();
   private final StorageMetadataService storageMetadataService;
@@ -147,6 +147,8 @@ public class DaVinciBackend implements Closeable {
       useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
       writeBatchingPushStatus = backendConfig.getDaVinciPushStatusCheckIntervalInMs() >= 0;
       this.configLoader = configLoader;
+      this.executor = Executors.newSingleThreadScheduledExecutor(
+          new DaemonThreadFactory("DaVinciBackend", configLoader.getVeniceServerConfig().getLogContext()));
       metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
           .orElse(TehutiUtils.getMetricsRepository(DAVINCI_CLIENT.getName()));
       VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
@@ -319,6 +321,7 @@ public class DaVinciBackend implements Closeable {
             .setBlobTransferSSLFactory(BlobTransferUtils.createSSLFactoryForBlobTransferInDVC(configLoader))
             .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(configLoader))
             .setPushStatusNotifierSupplier(() -> ingestionListener)
+            .setLogContext(backendConfig.getLogContext())
             .build();
       } else {
         aggVersionedBlobTransferStats = null;
@@ -419,8 +422,10 @@ public class DaVinciBackend implements Closeable {
     cacheBackend.ifPresent(
         objectCacheBackend -> storeRepository
             .unregisterStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
-    ExecutorService storeBackendCloseExecutor =
-        Executors.newCachedThreadPool(new DaemonThreadFactory("DaVinciBackend-StoreBackend-Close"));
+    ExecutorService storeBackendCloseExecutor = Executors.newCachedThreadPool(
+        new DaemonThreadFactory(
+            "DaVinciBackend-StoreBackend-Close",
+            configLoader.getVeniceServerConfig().getLogContext()));
     for (StoreBackend storeBackend: storeByNameMap.values()) {
       /**
        * {@link StoreBackend#close()} is time-consuming since the internal {@link VersionBackend#close()} call triggers
@@ -897,11 +902,13 @@ public class DaVinciBackend implements Closeable {
   }
 
   static class BootstrappingAwareCompletableFuture {
-    private ScheduledExecutorService scheduledExecutor =
-        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("DaVinci_Bootstrapping_Check_Executor"));
+    private ScheduledExecutorService scheduledExecutor;
     public final CompletableFuture<Void> bootstrappingFuture = new CompletableFuture<>();
 
     public BootstrappingAwareCompletableFuture(DaVinciBackend backend) {
+      LogContext logContext = backend.configLoader.getVeniceServerConfig().getLogContext();
+      this.scheduledExecutor = Executors.newSingleThreadScheduledExecutor(
+          new DaemonThreadFactory("DaVinci_Bootstrapping_Check_Executor", logContext));
       scheduledExecutor.scheduleAtFixedRate(() -> {
         if (bootstrappingFuture.isDone()) {
           return;

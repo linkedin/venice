@@ -4,6 +4,7 @@ import com.linkedin.davinci.utils.IndexedMap;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -65,13 +66,14 @@ public class InactiveTopicPartitionChecker extends AbstractVeniceService {
   public InactiveTopicPartitionChecker(
       IndexedMap<SharedKafkaConsumer, ConsumptionTask> consumerToConsumptionTask,
       long inactiveTopicPartitionCheckIntervalInSeconds,
-      long inactiveTopicPartitionThresholdInSeconds) {
+      long inactiveTopicPartitionThresholdInSeconds,
+      LogContext logContext) {
     this.consumerToConsumptionTask = consumerToConsumptionTask;
     this.inactiveTopicPartitionCheckIntervalInMs =
         TimeUnit.SECONDS.toMillis(inactiveTopicPartitionCheckIntervalInSeconds);
     this.inactiveTopicPartitionThresholdInMs = TimeUnit.SECONDS.toMillis(inactiveTopicPartitionThresholdInSeconds);
-    this.executorService =
-        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("InactiveTopicPartitionChecker"));
+    this.executorService = Executors
+        .newSingleThreadScheduledExecutor(new DaemonThreadFactory("InactiveTopicPartitionChecker", logContext));
   }
 
   /**

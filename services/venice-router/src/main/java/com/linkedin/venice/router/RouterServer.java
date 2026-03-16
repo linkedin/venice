@@ -574,8 +574,13 @@ public class RouterServer extends AbstractVeniceService {
         new VeniceDelegateMode(config, routerStats, routeHttpRequestStats, dispatcher.getPerRouteStatsByType());
 
     if (config.isRouterHeartBeatEnabled()) {
-      heartbeat =
-          new RouterHeartbeat(liveInstanceMonitor, healthMonitor, config, sslFactoryForRequests, storageNodeClient);
+      heartbeat = new RouterHeartbeat(
+          liveInstanceMonitor,
+          healthMonitor,
+          config,
+          sslFactoryForRequests,
+          storageNodeClient,
+          config.getLogContext());
       heartbeat.startInner();
     }
 

@@ -1,6 +1,7 @@
 package com.linkedin.davinci.blobtransfer;
 
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
 import java.util.concurrent.Executors;
@@ -18,10 +19,11 @@ public class BlobTransferGlobalTrafficShapingHandlerHolder {
 
   private static volatile long readLimit = 0; // default unlimited, will update based on the config setting.
   private static volatile long writeLimit = 0; // default unlimited, will update based on the config setting.
+  private static volatile LogContext logContext; // logContext to pass to DaemonThreadFactory
 
   private static final Lazy<GlobalChannelTrafficShapingHandler> GLOBAL_CHANNEL_TRAFFIC_SHAPING_HANDLER = Lazy.of(() -> {
     return new GlobalChannelTrafficShapingHandler(
-        Executors.newScheduledThreadPool(1, new DaemonThreadFactory("blob-transfer-global-traffic-shaper")),
+        Executors.newScheduledThreadPool(1, new DaemonThreadFactory("blob-transfer-global-traffic-shaper", logContext)),
         writeLimit, // writeGlobalLimit
         readLimit, // readGlobalLimit
         DEFAULT_WRITE_CHANNEL_LIMIT,
@@ -37,14 +39,17 @@ public class BlobTransferGlobalTrafficShapingHandlerHolder {
    * Handler is lazily created on first access.
    * @param readLimit maximum number of bytes to read per second
    * @param writeLimit maximum number of bytes to write per second
+   * @param logContext the log context for thread naming
    * @return the global traffic shaping handler
    */
   public static GlobalChannelTrafficShapingHandler getGlobalChannelTrafficShapingHandlerInstance(
       long readLimit,
-      long writeLimit) {
-    // Set limits before getting the instance to ensure they're used during initialization
+      long writeLimit,
+      LogContext logContext) {
+    // Set limits and logContext before getting the instance to ensure they're used during initialization
     BlobTransferGlobalTrafficShapingHandlerHolder.readLimit = readLimit;
     BlobTransferGlobalTrafficShapingHandlerHolder.writeLimit = writeLimit;
+    BlobTransferGlobalTrafficShapingHandlerHolder.logContext = logContext;
     GlobalChannelTrafficShapingHandler handler = GLOBAL_CHANNEL_TRAFFIC_SHAPING_HANDLER.get();
 
     return handler;

@@ -436,7 +436,8 @@ public class VeniceServer {
         serverConfig.getDiskHealthCheckIntervalInMS(),
         serverConfig.getDiskHealthCheckTimeoutInMs(),
         serverConfig.getDataBasePath(),
-        serverConfig.getSsdHealthCheckShutdownTimeMs());
+        serverConfig.getSsdHealthCheckShutdownTimeMs(),
+        serverConfig.getLogContext());
     services.add(diskHealthCheckService);
     // create stats for disk health check service
     new DiskHealthStats(metricsRepository, diskHealthCheckService, "disk_health_check_service");
@@ -448,7 +449,8 @@ public class VeniceServer {
           storageService.getStorageEngineRepository(),
           serverConfig.getOptimizeDatabaseForBackupVersionNoReadThresholdMS(),
           serverConfig.getOptimizeDatabaseServiceScheduleIntervalSeconds(),
-          new BackupVersionOptimizationServiceStats(metricsRepository, "BackupVersionOptimizationService"));
+          new BackupVersionOptimizationServiceStats(metricsRepository, "BackupVersionOptimizationService"),
+          serverConfig.getLogContext());
       services.add(backupVersionOptimizationService);
       resourceReadUsageTracker = Optional.of(backupVersionOptimizationService);
     } else {
@@ -458,7 +460,7 @@ public class VeniceServer {
      * Fast schema lookup implementation for read compute path.
      */
     StoreValueSchemasCacheService storeValueSchemasCacheService =
-        new StoreValueSchemasCacheService(metadataRepo, schemaRepo);
+        new StoreValueSchemasCacheService(metadataRepo, schemaRepo, serverConfig.getLogContext());
     services.add(storeValueSchemasCacheService);
 
     serverReadMetadataRepository = new ServerReadMetadataRepository(
@@ -596,7 +598,8 @@ public class VeniceServer {
           metadataRepo,
           kafkaStoreIngestionService,
           storageService,
-          metricsRepository);
+          metricsRepository,
+          serverConfig.getLogContext());
       services.add(leakedResourceCleaner);
     }
 

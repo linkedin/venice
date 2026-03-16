@@ -17,6 +17,7 @@ import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import java.io.InputStream;
 import java.time.Duration;
@@ -78,7 +79,8 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
       BlobFinder peerFinder,
       String baseDir,
       AggVersionedBlobTransferStats aggVersionedBlobTransferStats,
-      int maxConcurrentBlobReceiveReplicas) {
+      int maxConcurrentBlobReceiveReplicas,
+      LogContext logContext) {
     this.blobTransferService = blobTransferService;
     this.nettyClient = nettyClient;
     this.peerFinder = peerFinder;
@@ -90,7 +92,7 @@ public class NettyP2PBlobTransferManager implements P2PBlobTransferManager<Void>
         60L,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory("Venice-BlobTransfer-Replica-Blob-Fetch-Executor"));
+        new DaemonThreadFactory("Venice-BlobTransfer-Replica-Blob-Fetch-Executor", logContext));
     this.statusTrackingManager = new BlobTransferStatusTrackingManager(nettyClient);
   }
 
