@@ -17,7 +17,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
@@ -36,6 +35,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUS
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -436,7 +436,7 @@ public class VenicePushJobTest {
     Properties repushProps = new Properties();
     repushProps.setProperty(SOURCE_KAFKA, "true");
     repushProps.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, REPUSH_VERSION));
-    repushProps.setProperty(KAFKA_INPUT_BROKER_URL, "localhost");
+    repushProps.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost");
     repushProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     repushProps.setProperty(REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID, "true");
 
@@ -478,7 +478,7 @@ public class VenicePushJobTest {
     Properties repushProps = new Properties();
     repushProps.setProperty(SOURCE_KAFKA, "true");
     repushProps.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, REPUSH_VERSION));
-    repushProps.setProperty(KAFKA_INPUT_BROKER_URL, "localhost");
+    repushProps.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost");
     repushProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     // No REPUSH_USE_FALLBACK_VALUE_SCHEMA_ID set — defaults to false
 
@@ -696,7 +696,7 @@ public class VenicePushJobTest {
     repushProps.setProperty(REPUSH_TTL_ENABLE, "true");
     repushProps.setProperty(SOURCE_KAFKA, "true");
     repushProps.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, REPUSH_VERSION));
-    repushProps.setProperty(KAFKA_INPUT_BROKER_URL, "localhost");
+    repushProps.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost");
     repushProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     return repushProps;
   }
@@ -1856,7 +1856,7 @@ public class VenicePushJobTest {
   /** Sets basic values for the given {@link PushJobSetting} object in order for VeniceWriter to be constructed. */
   private void setPushJobSettingDefaults(PushJobSetting setting) {
     setting.storeName = TEST_STORE;
-    setting.kafkaUrl = "localhost:9092";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
     setting.partitionerParams = new HashMap<>();
     setting.partitionerClass = DefaultVenicePartitioner.class.getCanonicalName();
     setting.topic = Version.composeKafkaTopic(setting.storeName, 7);

@@ -264,7 +264,7 @@ public class AbstractDataWriterSparkJobTest {
     setting.keyField = DEFAULT_KEY_FIELD_PROP;
     setting.valueField = DEFAULT_VALUE_FIELD_PROP;
     setting.topic = Version.composeKafkaTopic(setting.storeName, 7);
-    setting.kafkaUrl = "localhost:9092";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
     setting.partitionerClass = DefaultVenicePartitioner.class.getCanonicalName();
     setting.partitionerParams = null;
     setting.sslToKafka = false;

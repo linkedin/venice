@@ -40,7 +40,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
@@ -48,6 +47,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAG
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_COMPRESSION_LEVEL;
 
@@ -710,7 +710,8 @@ public abstract class TestBatch {
         properties -> {
           properties.setProperty(SOURCE_KAFKA, "true");
           properties.setProperty(VENICE_STORE_NAME_PROP, storeName);
-          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+          properties
+              .setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
           properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
           properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(sendDirectControlMessage));
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(true));
@@ -760,7 +761,8 @@ public abstract class TestBatch {
         properties -> {
           properties.setProperty(SOURCE_KAFKA, "true");
           properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
-          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+          properties
+              .setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
           /**
            * This is used to make sure the first mapper doesn't contain any real messages, but just control messages.
            * So that {@link AbstractVeniceMapper#maybeSprayAllPartitions} won't be invoked.
@@ -901,7 +903,8 @@ public abstract class TestBatch {
           inputDir -> new KeyAndValueSchemas(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
           properties -> {
             properties.setProperty(SOURCE_KAFKA, "true");
-            properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+            properties
+                .setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
             properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
             properties.setProperty(KAFKA_INPUT_COMBINER_ENABLED, combiner);
           },
@@ -1153,7 +1156,7 @@ public abstract class TestBatch {
     testStoreWithLargeValues(enableChunkingOnPushJob, properties -> {
       properties.setProperty(SOURCE_KAFKA, "true");
       properties.setProperty(VENICE_STORE_NAME_PROP, storeName);
-      properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+      properties.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
       properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
       properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, sendDirectControlMessage.toString());
     }, storeName);
@@ -1538,7 +1541,8 @@ public abstract class TestBatch {
         properties -> {
           properties.setProperty(SOURCE_KAFKA, "true");
           properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
-          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
+          properties
+              .setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, veniceCluster.getPubSubBrokerWrapper().getAddress());
           properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
         },
         emptyValidator,

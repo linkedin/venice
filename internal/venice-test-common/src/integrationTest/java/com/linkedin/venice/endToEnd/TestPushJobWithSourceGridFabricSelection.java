@@ -116,7 +116,9 @@ public class TestPushJobWithSourceGridFabricSelection extends AbstractMultiRegio
     try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
       job.run();
       // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+      Assert.assertEquals(
+          job.getPushDestinationPubsubBroker(),
+          childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
     }
 
     updateStoreParams = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
@@ -130,7 +132,9 @@ public class TestPushJobWithSourceGridFabricSelection extends AbstractMultiRegio
     try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
       job.run();
       // Verify the kafka URL being returned to the push job is the same as dc-1 kafka url.
-      Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
+      Assert.assertEquals(
+          job.getPushDestinationPubsubBroker(),
+          childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
     }
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {

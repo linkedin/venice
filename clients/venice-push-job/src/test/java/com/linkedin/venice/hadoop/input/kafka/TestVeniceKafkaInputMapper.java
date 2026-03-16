@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
@@ -8,6 +7,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -87,7 +87,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
     props.put(RMD_SCHEMA_DIR, "tmp");
     props.put(VALUE_SCHEMA_DIR, "tmp2");
     props.put(KAFKA_INPUT_TOPIC, "test_v1");
-    props.put(KAFKA_INPUT_BROKER_URL, "dummy");
+    props.put(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "dummy");
     props.put(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
     props.put(REPUSH_TTL_START_TIMESTAMP, System.currentTimeMillis() - 10L * Time.MS_PER_SECOND);
     Assert.assertFalse(newMapper().getFilterChain(new VeniceProperties(props)).isEmpty());

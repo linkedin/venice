@@ -1,11 +1,10 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
@@ -29,15 +28,10 @@ public class KafkaInputUtilsTest {
   @Test
   public void testGetConsumerPropertiesWithoutSSL() {
     jobConf = new JobConf();
-    jobConf.set(KAFKA_INPUT_BROKER_URL, "localhost:9092");
+    jobConf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost:9092");
 
     VeniceProperties consumerProps = KafkaInputUtils.getConsumerProperties(jobConf);
     System.out.println("Consumer properties: " + consumerProps);
-
-    assertEquals(
-        consumerProps.getString(KAFKA_BOOTSTRAP_SERVERS),
-        "localhost:9092",
-        "Kafka bootstrap servers should match the configured value");
 
     assertEquals(
         consumerProps.getString(PUBSUB_BROKER_ADDRESS),
@@ -52,7 +46,7 @@ public class KafkaInputUtilsTest {
 
   @Test
   public void testPrefixedPropertiesAreClippedAndMerged() {
-    jobConf.set(KAFKA_INPUT_BROKER_URL, "localhost:9095");
+    jobConf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost:9095");
     jobConf.set(KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + "some.kafka.prop", "value123");
 
     VeniceProperties consumerProps = KafkaInputUtils.getConsumerProperties(jobConf);
@@ -65,12 +59,11 @@ public class KafkaInputUtilsTest {
 
   @Test
   public void testGetConsumerPropertiesWithSSLConfigurator() {
-    jobConf.set(KAFKA_INPUT_BROKER_URL, "localhost:9093");
+    jobConf.set(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost:9093");
     jobConf.set(SSL_CONFIGURATOR_CLASS_CONFIG, DummySSLConfigurator.class.getName());
     jobConf.set(KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + "some.kafka.prop", "value123");
     VeniceProperties consumerProps = KafkaInputUtils.getConsumerProperties(jobConf);
     assertEquals(consumerProps.getString("ssl.test.property"), "sslValue", "SSL property should be merged");
-    assertEquals(consumerProps.getString(KAFKA_BOOTSTRAP_SERVERS), "localhost:9093");
     assertEquals(consumerProps.getString(PUBSUB_BROKER_ADDRESS), "localhost:9093");
     assertEquals(
         consumerProps.getString("some.kafka.prop"),

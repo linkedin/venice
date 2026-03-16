@@ -1,10 +1,13 @@
 package com.linkedin.venice.spark.datawriter.jobs;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_PUSH_DESTINATION_PUBSUB_BROKER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.testng.Assert.*;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -75,10 +78,10 @@ public class DataWriterSparkJobRepushTest {
     PushJobSetting setting = new PushJobSetting();
     setting.isSourceKafka = true;
     setting.kafkaInputTopic = "test_store_v1";
-    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.repushSourcePubsubBroker = "localhost:9092";
     setting.repushTTLEnabled = false;
     setting.topic = "test_store_v1";
-    setting.kafkaUrl = "localhost:9092";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
     setting.partitionerClass = DefaultVenicePartitioner.class.getName();
     setting.partitionCount = 1;
 
@@ -119,10 +122,10 @@ public class DataWriterSparkJobRepushTest {
     PushJobSetting setting = new PushJobSetting();
     setting.isSourceKafka = true;
     setting.kafkaInputTopic = "test_store_v1";
-    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.repushSourcePubsubBroker = "localhost:9092";
     setting.repushTTLEnabled = false;
     setting.topic = "test_store_v1";
-    setting.kafkaUrl = "localhost:9092";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
     setting.partitionerClass = DefaultVenicePartitioner.class.getName();
     setting.partitionCount = 1;
 
@@ -186,10 +189,10 @@ public class DataWriterSparkJobRepushTest {
     PushJobSetting setting = new PushJobSetting();
     setting.isSourceKafka = true;
     setting.kafkaInputTopic = "test_store_v1";
-    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.repushSourcePubsubBroker = "localhost:9092";
     setting.repushTTLEnabled = false;
     setting.topic = "test_store_v1";
-    setting.kafkaUrl = "localhost:9092";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
     setting.partitionerClass = DefaultVenicePartitioner.class.getName();
     setting.partitionCount = 1;
 
@@ -254,13 +257,13 @@ public class DataWriterSparkJobRepushTest {
       PushJobSetting setting = new PushJobSetting();
       setting.isSourceKafka = true;
       setting.kafkaInputTopic = "test_store_v1";
-      setting.kafkaInputBrokerUrl = "localhost:9092";
+      setting.repushSourcePubsubBroker = "localhost:9092";
       setting.repushTTLEnabled = true; // TTL enabled
       setting.repushTTLStartTimeMs = ttlStartTime;
       setting.valueSchemaDir = valueSchemaTempDir.getAbsolutePath();
       setting.rmdSchemaDir = rmdSchemaTempDir.getAbsolutePath();
       setting.topic = "test_store_v1";
-      setting.kafkaUrl = "localhost:9092";
+      setting.pushDestinationPubsubBroker = "localhost:9092";
       setting.partitionerClass = DefaultVenicePartitioner.class.getName();
       setting.partitionCount = 1;
       setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
@@ -311,10 +314,10 @@ public class DataWriterSparkJobRepushTest {
     PushJobSetting setting = new PushJobSetting();
     setting.isSourceKafka = true;
     setting.kafkaInputTopic = "test_store_v1";
-    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.repushSourcePubsubBroker = "localhost:9092";
     setting.repushTTLEnabled = false;
     setting.topic = "test_store_v1";
-    setting.kafkaUrl = "localhost:9092";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
     setting.partitionerClass = DefaultVenicePartitioner.class.getName();
     setting.partitionCount = 1;
     setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
@@ -355,10 +358,10 @@ public class DataWriterSparkJobRepushTest {
     PushJobSetting setting = new PushJobSetting();
     setting.isSourceKafka = true;
     setting.kafkaInputTopic = "test_store_v1";
-    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.repushSourcePubsubBroker = "localhost:9092";
     setting.repushTTLEnabled = false;
     setting.topic = "test_store_v1";
-    setting.kafkaUrl = "localhost:9092";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
     setting.partitionerClass = DefaultVenicePartitioner.class.getName();
     setting.partitionCount = 1;
     setting.isSystemSchemaReaderEnabled = true;
@@ -392,13 +395,13 @@ public class DataWriterSparkJobRepushTest {
       PushJobSetting setting = new PushJobSetting();
       setting.isSourceKafka = true;
       setting.kafkaInputTopic = "test_store_v1";
-      setting.kafkaInputBrokerUrl = "localhost:9092";
+      setting.repushSourcePubsubBroker = "localhost:9092";
       setting.repushTTLEnabled = true;
       setting.repushTTLStartTimeMs = System.currentTimeMillis();
       setting.valueSchemaDir = valueSchemaTempDir.getAbsolutePath();
       setting.rmdSchemaDir = rmdSchemaTempDir.getAbsolutePath();
       setting.topic = "test_store_v1";
-      setting.kafkaUrl = "localhost:9092";
+      setting.pushDestinationPubsubBroker = "localhost:9092";
       setting.partitionerClass = DefaultVenicePartitioner.class.getName();
       setting.partitionCount = 1;
       setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
@@ -437,11 +440,11 @@ public class DataWriterSparkJobRepushTest {
     PushJobSetting setting = new PushJobSetting();
     setting.isSourceKafka = true;
     setting.kafkaInputTopic = "test_store_v1";
-    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.repushSourcePubsubBroker = "localhost:9092";
     setting.sourceVersionCompressionStrategy = CompressionStrategy.GZIP;
     setting.topicCompressionStrategy = CompressionStrategy.NO_OP;
     setting.topic = "test_store_v1";
-    setting.kafkaUrl = "localhost:9092";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
     setting.partitionerClass = DefaultVenicePartitioner.class.getName();
     setting.partitionCount = 1;
     setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
@@ -470,10 +473,10 @@ public class DataWriterSparkJobRepushTest {
     PushJobSetting setting = new PushJobSetting();
     setting.isSourceKafka = true;
     setting.kafkaInputTopic = "test_store_v1";
-    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.repushSourcePubsubBroker = "localhost:9092";
     setting.repushTTLEnabled = false;
     setting.topic = "test_store_v1";
-    setting.kafkaUrl = "localhost:9092";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
     setting.partitionerClass = DefaultVenicePartitioner.class.getName();
     setting.partitionCount = 1;
     setting.valueSchemaId = 3; // Simulates schema ID retrieved from controller
@@ -517,10 +520,10 @@ public class DataWriterSparkJobRepushTest {
     PushJobSetting setting = new PushJobSetting();
     setting.isSourceKafka = true;
     setting.kafkaInputTopic = "test_store_v1";
-    setting.kafkaInputBrokerUrl = "localhost:9092";
+    setting.repushSourcePubsubBroker = "localhost:9092";
     setting.repushTTLEnabled = false;
     setting.topic = "test_store_v1";
-    setting.kafkaUrl = "localhost:9092";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
     setting.partitionerClass = DefaultVenicePartitioner.class.getName();
     setting.partitionCount = 1;
     setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
@@ -537,15 +540,65 @@ public class DataWriterSparkJobRepushTest {
     assertEquals(spark.conf().get("pubsub.some.client.config"), "test-value", "pubsub.* should be forwarded");
     assertEquals(spark.conf().get("kafka.input.topic"), "test_store_v1", "kafka.input.topic should be forwarded");
     assertEquals(
-        spark.conf().get("kafka.input.broker.url"),
+        spark.conf().get("venice.repush.source.pubsub.broker"),
         "localhost:9092",
-        "kafka.input.broker.url should be forwarded");
+        "venice.repush.source.pubsub.broker should be forwarded");
+  }
+
+  /**
+   * Verify that in a cross-fabric repush scenario, PUBSUB_BROKER_ADDRESS and KAFKA_BOOTSTRAP_SERVERS
+   * are absent from the SparkSession config, and the purpose-built keys
+   * VENICE_PUSH_DESTINATION_PUBSUB_BROKER and VENICE_REPUSH_SOURCE_PUBSUB_BROKER are set correctly.
+   */
+  @Test
+  public void testCrossFabricRepushBrokerIsolation() {
+    String testName = "testCrossFabricRepushBrokerIsolation";
+
+    TestDataWriterSparkJob job = new TestDataWriterSparkJob(testName);
+    currentTestJob = job;
+
+    Properties props = createDefaultTestProperties();
+
+    PushJobSetting setting = new PushJobSetting();
+    setting.isSourceKafka = true;
+    setting.kafkaInputTopic = "test_store_v1";
+    setting.repushSourcePubsubBroker = "dc1-kafka:9092"; /* source/input broker */
+    setting.repushTTLEnabled = false;
+    setting.topic = "test_store_v2";
+    setting.pushDestinationPubsubBroker = "dc0-kafka:9092"; /* destination broker (NR source) */
+    setting.partitionerClass = DefaultVenicePartitioner.class.getName();
+    setting.partitionCount = 1;
+    setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
+
+    job.configure(new VeniceProperties(props), setting);
+
+    SparkSession spark = job.getSparkSession();
+
+    /* Assert purpose-built keys are set correctly */
+    assertEquals(
+        spark.conf().get(VENICE_PUSH_DESTINATION_PUBSUB_BROKER),
+        "dc0-kafka:9092",
+        "Destination broker should be dc0-kafka:9092");
+    assertEquals(
+        spark.conf().get(VENICE_REPUSH_SOURCE_PUBSUB_BROKER),
+        "dc1-kafka:9092",
+        "Source broker should be dc1-kafka:9092");
+
+    /* Assert PUBSUB_BROKER_ADDRESS is absent from SparkSession config */
+    assertTrue(
+        spark.conf().getOption(PUBSUB_BROKER_ADDRESS).isEmpty(),
+        "PUBSUB_BROKER_ADDRESS should NOT be present in SparkSession config");
+
+    /* Assert KAFKA_BOOTSTRAP_SERVERS is absent from SparkSession config */
+    assertTrue(
+        spark.conf().getOption(KAFKA_BOOTSTRAP_SERVERS).isEmpty(),
+        "KAFKA_BOOTSTRAP_SERVERS should NOT be present in SparkSession config");
   }
 
   private Properties createDefaultTestProperties() {
     Properties props = new Properties();
     props.setProperty(KAFKA_INPUT_TOPIC, "test_store_v1");
-    props.setProperty(KAFKA_INPUT_BROKER_URL, "localhost:9092");
+    props.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost:9092");
     props.setProperty(TOPIC_PROP, "test_store_v1");
     props.setProperty(PARTITION_COUNT, "1");
     // Configure Venice writer properties to avoid validation errors

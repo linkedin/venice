@@ -1,13 +1,13 @@
 package com.linkedin.venice.common;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
@@ -76,15 +76,15 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     this.rmdSerializerCache = new VeniceConcurrentHashMap<>();
     this.valueSerializerCache = new VeniceConcurrentHashMap<>();
     String sourceVersion = props.getString(KAFKA_INPUT_TOPIC);
-    String kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
+    String repushSourcePubsubBroker = props.getString(VENICE_REPUSH_SOURCE_PUBSUB_BROKER);
     CompressionStrategy compressionStrategy =
         CompressionStrategy.valueOf(props.getString(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY));
     this.sourceVersionCompressor = KafkaInputUtils
-        .getCompressor(new CompressorFactory(), compressionStrategy, kafkaInputBrokerUrl, sourceVersion, props);
+        .getCompressor(new CompressorFactory(), compressionStrategy, repushSourcePubsubBroker, sourceVersion, props);
     LOGGER.info(
         "Created RMD based TTL filter with source version: {}, broker url: {}, compression strategy: {}",
         sourceVersion,
-        kafkaInputBrokerUrl,
+        repushSourcePubsubBroker,
         compressionStrategy);
   }
 

@@ -81,6 +81,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -832,7 +833,7 @@ public class VenicePushJob implements AutoCloseable {
           if (pushJobSetting.enableSSL) {
             kafkaConsumerProperties.putAll(this.sslProperties.get());
           }
-          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaInputBrokerUrl);
+          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.repushSourcePubsubBroker);
           ByteBuffer sourceDict = DictionaryUtils
               .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
           if (sourceDict != null) {
@@ -1190,7 +1191,7 @@ public class VenicePushJob implements AutoCloseable {
       pushJobSetting.targetedRegions = null;
       // set up repush
       pushJobSetting.isSourceKafka = true;
-      pushJobSetting.kafkaInputBrokerUrl = pushJobSetting.kafkaUrl;
+      pushJobSetting.repushSourcePubsubBroker = pushJobSetting.pushDestinationPubsubBroker;
       pushJobSetting.kafkaInputTopic = pushJobSetting.topic;
       this.run();
     } else {
@@ -1225,7 +1226,7 @@ public class VenicePushJob implements AutoCloseable {
   private PushJobHeartbeatSender createPushJobHeartbeatSender(final boolean sslEnabled) {
     try {
       return pushJobHeartbeatSenderFactory.createHeartbeatSender(
-          pushJobSetting.kafkaUrl,
+          pushJobSetting.pushDestinationPubsubBroker,
           props,
           livenessHeartbeatStoreControllerClient,
           sslEnabled ? Optional.of(this.sslProperties.get()) : Optional.empty());
@@ -1522,10 +1523,12 @@ public class VenicePushJob implements AutoCloseable {
   protected void initKIFRepushDetails() {
     pushJobSetting.kafkaInputTopic = getSourceTopicNameForKafkaInput(pushJobSetting.storeName, props);
     if (pushJobSetting.repushInfoResponse == null) {
-      pushJobSetting.kafkaInputBrokerUrl = props.getString(KAFKA_INPUT_BROKER_URL);
+      pushJobSetting.repushSourcePubsubBroker = props.containsKey(VENICE_REPUSH_SOURCE_PUBSUB_BROKER)
+          ? props.getString(VENICE_REPUSH_SOURCE_PUBSUB_BROKER)
+          : props.getString(KAFKA_INPUT_BROKER_URL);
     } else {
       RepushInfo repushInfo = pushJobSetting.repushInfoResponse.getRepushInfo();
-      pushJobSetting.kafkaInputBrokerUrl = repushInfo.getKafkaBrokerUrl();
+      pushJobSetting.repushSourcePubsubBroker = repushInfo.getKafkaBrokerUrl();
     }
   }
 
@@ -1603,7 +1606,7 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.storeCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
         if (pushJobSetting.kafkaInputBuildNewDictEnabled) {
           LOGGER.info("Rebuild a new Zstd dictionary from the input topic: {}", pushJobSetting.kafkaInputTopic);
-          paramBuilder.setKafkaInputBroker(pushJobSetting.kafkaInputBrokerUrl)
+          paramBuilder.setKafkaInputBroker(pushJobSetting.repushSourcePubsubBroker)
               .setTopicName(pushJobSetting.kafkaInputTopic)
               .setSourceVersionCompressionStrategy(pushJobSetting.sourceKafkaInputVersionInfo.getCompressionStrategy());
           KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
@@ -1615,7 +1618,7 @@ public class VenicePushJob implements AutoCloseable {
           if (pushJobSetting.enableSSL) {
             kafkaConsumerProperties.putAll(this.sslProperties.get());
           }
-          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaInputBrokerUrl);
+          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.repushSourcePubsubBroker);
           return DictionaryUtils
               .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
         }
@@ -2580,7 +2583,7 @@ public class VenicePushJob implements AutoCloseable {
 
     setting.topic = versionCreationResponse.getKafkaTopic();
     setting.version = versionCreationResponse.getVersion();
-    setting.kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
+    setting.pushDestinationPubsubBroker = versionCreationResponse.getKafkaBootstrapServers();
     setting.partitionCount = versionCreationResponse.getPartitions();
     setting.sslToKafka = versionCreationResponse.isEnableSSL();
     setting.topicCompressionStrategy = versionCreationResponse.getCompressionStrategy();
@@ -2674,7 +2677,8 @@ public class VenicePushJob implements AutoCloseable {
 
   private synchronized Properties getVeniceWriterProperties(PushJobSetting pushJobSetting) {
     if (veniceWriterProperties == null) {
-      veniceWriterProperties = createVeniceWriterProperties(pushJobSetting.kafkaUrl, pushJobSetting.sslToKafka);
+      veniceWriterProperties =
+          createVeniceWriterProperties(pushJobSetting.pushDestinationPubsubBroker, pushJobSetting.sslToKafka);
     }
     return veniceWriterProperties;
   }
@@ -3039,7 +3043,7 @@ public class VenicePushJob implements AutoCloseable {
       final long inputFileDataSize) {
     List<String> propKeyValuePairs = new ArrayList<>();
     propKeyValuePairs.add("Job ID: " + this.jobId);
-    propKeyValuePairs.add("Kafka URL: " + pushJobSetting.kafkaUrl);
+    propKeyValuePairs.add("Kafka URL: " + pushJobSetting.pushDestinationPubsubBroker);
     propKeyValuePairs.add("Kafka Topic: " + pushJobSetting.topic);
     propKeyValuePairs.add("Kafka topic partition count: " + pushJobSetting.partitionCount);
     propKeyValuePairs.add("Kafka Queue Bytes: " + pushJobSetting.batchNumBytes);
@@ -3064,7 +3068,7 @@ public class VenicePushJob implements AutoCloseable {
     propKeyValuePairs.add("ETL value schema transformation : " + pushJobSetting.etlValueSchemaTransformation);
     propKeyValuePairs.add("Is Kafka Input Format: " + pushJobSetting.isSourceKafka);
     if (pushJobSetting.isSourceKafka) {
-      propKeyValuePairs.add("Kafka Input broker urls: " + pushJobSetting.kafkaInputBrokerUrl);
+      propKeyValuePairs.add("Kafka Input broker urls: " + pushJobSetting.repushSourcePubsubBroker);
       propKeyValuePairs.add("Kafka Input topic name: " + pushJobSetting.kafkaInputTopic);
     }
     return String.join(Utils.NEW_LINE_CHAR, propKeyValuePairs);
@@ -3145,8 +3149,13 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   // Visible for testing
-  public String getKafkaUrl() {
-    return pushJobSetting.kafkaUrl;
+  public String getPushDestinationPubsubBroker() {
+    return pushJobSetting.pushDestinationPubsubBroker;
+  }
+
+  // Visible for testing
+  public String getRepushSourcePubsubBroker() {
+    return pushJobSetting.repushSourcePubsubBroker;
   }
 
   // Visible for testing

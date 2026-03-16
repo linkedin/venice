@@ -17,8 +17,8 @@ import static com.linkedin.venice.views.MaterializedView.MATERIALIZED_VIEW_TOPIC
 import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -170,7 +170,9 @@ public class TestMaterializedViewEndToEnd extends AbstractMultiRegionTest {
           storeName,
           multiRegionMultiClusterWrapper.getPubSubClientProperties());
       rePushProps.setProperty(SOURCE_KAFKA, "true");
-      rePushProps.setProperty(KAFKA_INPUT_BROKER_URL, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
+      rePushProps.setProperty(
+          VENICE_REPUSH_SOURCE_PUBSUB_BROKER,
+          childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
       IntegrationTestPushUtils.runVPJ(rePushProps);
 
       for (VeniceMultiClusterWrapper veniceClusterWrapper: childDatacenters) {
@@ -578,7 +580,8 @@ public class TestMaterializedViewEndToEnd extends AbstractMultiRegionTest {
         storeName,
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
     rePushProps.setProperty(SOURCE_KAFKA, "true");
-    rePushProps.setProperty(KAFKA_INPUT_BROKER_URL, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
+    rePushProps
+        .setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
     IntegrationTestPushUtils.runVPJ(rePushProps);
   }
 
