@@ -12,6 +12,7 @@ import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WR
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
 import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_LOGICAL_TS;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.longThat;
@@ -1068,8 +1069,7 @@ public class VeniceWriterUnitTest {
     } catch (RecordTooLargeException e) {
       // expected
     }
-    verify(mockHook, never())
-        .onBeforeProduce(any(VeniceWriterHook.OperationType.class), any(int.class), any(int.class));
+    verify(mockHook, never()).onBeforeProduce(any(VeniceWriterHook.OperationType.class), anyInt(), anyInt());
 
     // update() with too-large record should throw and NOT call hook
     try {
@@ -1078,8 +1078,7 @@ public class VeniceWriterUnitTest {
     } catch (RecordTooLargeException e) {
       // expected
     }
-    verify(mockHook, never())
-        .onBeforeProduce(any(VeniceWriterHook.OperationType.class), any(int.class), any(int.class));
+    verify(mockHook, never()).onBeforeProduce(any(VeniceWriterHook.OperationType.class), anyInt(), anyInt());
 
     // delete() with too-large key should throw and NOT call hook
     try {
@@ -1088,7 +1087,6 @@ public class VeniceWriterUnitTest {
     } catch (RecordTooLargeException e) {
       // expected
     }
-    verify(mockHook, never())
-        .onBeforeProduce(any(VeniceWriterHook.OperationType.class), any(int.class), any(int.class));
+    verify(mockHook, never()).onBeforeProduce(any(VeniceWriterHook.OperationType.class), anyInt(), anyInt());
   }
 }

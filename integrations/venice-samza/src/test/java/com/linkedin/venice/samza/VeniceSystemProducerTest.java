@@ -8,6 +8,7 @@ import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNIN
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -226,10 +227,10 @@ public class VeniceSystemProducerTest {
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, realWriter);
 
     producerSpy.send("myKey", "myValue");
-    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), any(int.class), any(int.class));
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), anyInt(), anyInt());
 
     producerSpy.send((Object) "myKey", null);
-    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), any(int.class), eq(0));
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), anyInt(), eq(0));
 
     producerSpy.stop();
   }
@@ -250,7 +251,7 @@ public class VeniceSystemProducerTest {
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, realWriter);
 
     producerSpy.send("myKey", "myValue");
-    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), any(int.class), any(int.class));
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), anyInt(), anyInt());
 
     producerSpy.stop();
   }
