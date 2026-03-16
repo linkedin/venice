@@ -27,6 +27,8 @@ import com.linkedin.venice.controllerapi.StoppableNodeStatusResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcRequest;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -105,12 +107,21 @@ public class ControllerRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, LIST_CHILD_CLUSTERS.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
 
-        veniceResponse.setCluster(clusterName);
+        ListChildClustersGrpcRequest grpcRequest =
+            ListChildClustersGrpcRequest.newBuilder().setClusterName(clusterName).build();
+        ListChildClustersGrpcResponse grpcResponse = requestHandler.listChildClusters(grpcRequest);
 
-        if (admin.isParent()) {
-          veniceResponse.setChildDataCenterControllerUrlMap(admin.getChildDataCenterControllerUrlMap(clusterName));
-          veniceResponse.setChildDataCenterControllerD2Map(admin.getChildDataCenterControllerD2Map(clusterName));
-          veniceResponse.setD2ServiceName(admin.getChildControllerD2ServiceName(clusterName));
+        veniceResponse.setCluster(grpcResponse.getClusterName());
+        Map<String, String> childUrlMap = grpcResponse.getChildDataCenterControllerUrlMapMap();
+        if (!childUrlMap.isEmpty()) {
+          veniceResponse.setChildDataCenterControllerUrlMap(childUrlMap);
+        }
+        Map<String, String> childD2Map = grpcResponse.getChildDataCenterControllerD2MapMap();
+        if (!childD2Map.isEmpty()) {
+          veniceResponse.setChildDataCenterControllerD2Map(childD2Map);
+        }
+        if (grpcResponse.hasD2ServiceName()) {
+          veniceResponse.setD2ServiceName(grpcResponse.getD2ServiceName());
         }
       }
     };

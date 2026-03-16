@@ -7,6 +7,9 @@ import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcRequest;
+import com.linkedin.venice.protocols.controller.ListChildClustersGrpcResponse;
+import java.util.Map;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -118,5 +121,42 @@ public class VeniceControllerRequestHandler {
 
   public VeniceControllerAccessManager getControllerAccessManager() {
     return accessManager;
+  }
+
+  /**
+   * Lists all child clusters for a parent controller in a multi-cluster setup.
+   * Returns empty maps for child controllers.
+   * @param request the request containing cluster name
+   * @return response containing child cluster controller URLs and D2 mappings
+   */
+  public ListChildClustersGrpcResponse listChildClusters(ListChildClustersGrpcRequest request) {
+    String clusterName = request.getClusterName();
+    if (StringUtils.isBlank(clusterName)) {
+      throw new IllegalArgumentException("Cluster name is required");
+    }
+
+    LOGGER.info("Listing child clusters for cluster: {}", clusterName);
+
+    ListChildClustersGrpcResponse.Builder responseBuilder =
+        ListChildClustersGrpcResponse.newBuilder().setClusterName(clusterName);
+
+    if (admin.isParent()) {
+      Map<String, String> childUrlMap = admin.getChildDataCenterControllerUrlMap(clusterName);
+      if (childUrlMap != null) {
+        responseBuilder.putAllChildDataCenterControllerUrlMap(childUrlMap);
+      }
+
+      Map<String, String> childD2Map = admin.getChildDataCenterControllerD2Map(clusterName);
+      if (childD2Map != null) {
+        responseBuilder.putAllChildDataCenterControllerD2Map(childD2Map);
+      }
+
+      String d2ServiceName = admin.getChildControllerD2ServiceName(clusterName);
+      if (d2ServiceName != null) {
+        responseBuilder.setD2ServiceName(d2ServiceName);
+      }
+    }
+
+    return responseBuilder.build();
   }
 }
