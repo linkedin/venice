@@ -727,9 +727,18 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     if (componentName == null || componentName.trim().isEmpty()) {
       componentName = VeniceComponent.SERVER.name();
     }
+    // DaVinci clients identify themselves by hostname_pid (matching push status reporting),
+    // while servers use hostname_port (their Helix node identity).
+    String instanceName;
+    if (serverProperties.getBoolean(INGESTION_USE_DA_VINCI_CLIENT, false)) {
+      String pid = Utils.getPid();
+      instanceName = Utils.getHostName() + "_" + (pid != null ? pid : "NA");
+    } else {
+      instanceName = Utils.getHelixNodeIdentifier(listenerHostname, listenerPort);
+    }
     logContext = new LogContext.Builder().setComponentName(componentName)
         .setRegionName(getRegionName())
-        .setInstanceName(Utils.getHelixNodeIdentifier(listenerHostname, listenerPort))
+        .setInstanceName(instanceName)
         .build();
     isGrpcEnabled = serverProperties.getBoolean(ENABLE_GRPC_READ_SERVER, false);
     grpcPort = isGrpcEnabled ? serverProperties.getInt(GRPC_READ_SERVER_PORT) : -1;
