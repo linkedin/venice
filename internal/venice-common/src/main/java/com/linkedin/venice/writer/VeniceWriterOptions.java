@@ -40,6 +40,7 @@ public class VeniceWriterOptions {
   private final long batchIntervalInMs;
   private final int maxBatchSizeInBytes;
   private final StoreSchemaFetcher storeSchemaFetcher;
+  private final VeniceWriterHook writerHook;
   private final LogContext logContext;
 
   public String getBrokerAddress() {
@@ -114,6 +115,10 @@ public class VeniceWriterOptions {
     return storeSchemaFetcher;
   }
 
+  public VeniceWriterHook getWriterHook() {
+    return writerHook;
+  }
+
   public LogContext getLogContext() {
     return logContext;
   }
@@ -142,6 +147,7 @@ public class VeniceWriterOptions {
     batchIntervalInMs = builder.batchIntervalInMs;
     maxBatchSizeInBytes = builder.maxBatchSizeInBytes;
     storeSchemaFetcher = builder.storeSchemaFetcher;
+    writerHook = builder.writerHook;
     logContext = builder.logContext;
   }
 
@@ -203,6 +209,7 @@ public class VeniceWriterOptions {
     private long batchIntervalInMs = 0; // Not enabled by default
     private int maxBatchSizeInBytes = 5 * 1024 * 1024; // 5MB batch size by default
     private StoreSchemaFetcher storeSchemaFetcher;
+    private VeniceWriterHook writerHook;
     private LogContext logContext;
 
     private void addDefaults() {
@@ -281,6 +288,7 @@ public class VeniceWriterOptions {
       this.batchIntervalInMs = options.batchIntervalInMs;
       this.maxBatchSizeInBytes = options.maxBatchSizeInBytes;
       this.storeSchemaFetcher = options.storeSchemaFetcher;
+      this.writerHook = options.writerHook;
       this.logContext = options.logContext;
     }
 
@@ -356,6 +364,11 @@ public class VeniceWriterOptions {
 
     public Builder setStoreSchemaFetcher(StoreSchemaFetcher storeSchemaFetcher) {
       this.storeSchemaFetcher = storeSchemaFetcher;
+      return this;
+    }
+
+    public Builder setWriterHook(VeniceWriterHook writerHook) {
+      this.writerHook = writerHook;
       return this;
     }
 
