@@ -108,10 +108,7 @@ public class TestNettyP2PBlobTransferManager {
     versionedBlobTransferStats = mock(AggVersionedBlobTransferStats.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler =
-        getGlobalChannelTrafficShapingHandlerInstance(
-            2000000,
-            2000000,
-            LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
+        getGlobalChannelTrafficShapingHandlerInstance(2000000, 2000000);
 
     StorageEngine storageEngine = Mockito.mock(StorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.anyString());
@@ -494,10 +491,7 @@ public class TestNettyP2PBlobTransferManager {
   public void testGetCompletesWithTimeoutExceptionAndClosesChannel() throws Exception {
     // Preparation:
     GlobalChannelTrafficShapingHandler newGlobalChannelTrafficShapingHandler =
-        getGlobalChannelTrafficShapingHandlerInstance(
-            2000000,
-            2000000,
-            LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
+        getGlobalChannelTrafficShapingHandlerInstance(2000000, 2000000);
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     response.setDiscoveryResult(Collections.singletonList("localhost"));
     doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());

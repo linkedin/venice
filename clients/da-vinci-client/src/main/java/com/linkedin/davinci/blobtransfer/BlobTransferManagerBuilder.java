@@ -138,8 +138,7 @@ public class BlobTransferManagerBuilder {
 
       GlobalChannelTrafficShapingHandler globalTrafficHandler = getGlobalChannelTrafficShapingHandlerInstance(
           blobTransferConfig.getBlobTransferClientReadLimitBytesPerSec(),
-          blobTransferConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
-          logContext);
+          blobTransferConfig.getBlobTransferServiceWriteLimitBytesPerSec());
       if (adaptiveBlobTransferWriteTrafficThrottler != null) {
         adaptiveBlobTransferWriteTrafficThrottler.setGlobalChannelTrafficShapingHandler(globalTrafficHandler);
       }

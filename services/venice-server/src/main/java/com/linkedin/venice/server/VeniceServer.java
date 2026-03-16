@@ -555,6 +555,7 @@ public class VeniceServer {
           .setAdaptiveBlobTransferReadTrafficThrottler(readThrottler)
           .setPushStatusNotifierSupplier(
               () -> helixParticipationService != null ? helixParticipationService.getPushStatusNotifier() : null)
+          .setLogContext(serverConfig.getLogContext())
           .build();
     } else {
       aggVersionedBlobTransferStats = null;
