@@ -30,7 +30,6 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
-import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
@@ -84,7 +83,6 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
-import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -177,7 +175,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
-  public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
   static final long VIEW_WRITER_CLOSE_TIMEOUT_IN_MS = 60000; // 60s
 
   /**
@@ -3806,10 +3803,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         topicPartition,
         vtDiv);
 
-    // Get the old value manifest which contains the list of old chunks, so they can be deleted
-    final int schemaId = AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion();
+    // oldManifest is null since GlobalRtDiv state is now stored in the metadata partition (not VT chunks).
+    // VeniceWriter.put() with a null manifest skips chunk deletion, which is acceptable.
     ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
-    readGlobalRtDivState(keyBytes, schemaId, topicPartition, valueManifestContainer);
 
     // TODO: remove. this is a temporary log for debugging while the feature is in its infancy
     LOGGER.info(
@@ -3914,13 +3910,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * Reads a GlobalRtDivState value from metadata storage with a legacy fallback to user data storage.
-   * Returns null if the value does not exist.
+   * Reads a GlobalRtDivState value from the metadata storage partition.
+   * Returns null if the key does not carry the expected prefix or the value does not exist.
    *
    * @param keyBytes the serialized key for the value
-   * @param readerValueSchemaID the schemaId to use for deserialization
+   * @param readerValueSchemaID unused; kept for API compatibility
    * @param topicPartition the topic/partition for the value
-   * @param manifestContainer a container to store any manifest information retrieved from the storage engine
+   * @param manifestContainer unused; kept for API compatibility
    * @return the deserialized GlobalRtDivState object, or null if the value does not exist
    */
   GlobalRtDivState readGlobalRtDivState(
@@ -3930,75 +3926,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       ChunkedValueManifestContainer manifestContainer) {
     final String key = new String(keyBytes);
     final int partitionId = topicPartition.getPartitionNumber();
-    if (key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
-      String brokerUrl = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
-      Optional<byte[]> metadataBytes =
-          storageMetadataService.getGlobalRtDivState(kafkaVersionTopic, partitionId, brokerUrl);
-      if (metadataBytes.isPresent()) {
-        return deserializeGlobalRtDivState(metadataBytes.get(), keyBytes, topicPartition);
-      }
-    }
-
-    ByteBuffer valueBytes =
-        readLegacyGlobalRtDivStateBytes(keyBytes, readerValueSchemaID, topicPartition, manifestContainer);
-    if (valueBytes == null) {
+    if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
       return null;
     }
-    byte[] serializedValueBytes = ByteUtils.extractByteArray(valueBytes);
-
-    GlobalRtDivState globalRtDivState = deserializeGlobalRtDivState(serializedValueBytes, keyBytes, topicPartition);
-    if (globalRtDivState != null && key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
-      // Backward compatibility: migrate legacy user-data value into metadata partition opportunistically.
-      String brokerUrl = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
-      try {
-        storageMetadataService.putGlobalRtDivState(kafkaVersionTopic, partitionId, brokerUrl, serializedValueBytes);
-      } catch (Exception e) {
-        LOGGER.warn(
-            "Failed to migrate legacy Global RT DIV value to metadata storage for key: {}, topic-partition: {}",
-            key,
-            topicPartition,
-            e);
-      }
-    }
-    return globalRtDivState;
-  }
-
-  private ByteBuffer readLegacyGlobalRtDivStateBytes(
-      byte[] keyBytes,
-      int readerValueSchemaID,
-      PubSubTopicPartition topicPartition,
-      ChunkedValueManifestContainer manifestContainer) {
-    ByteBuffer valueBytes;
-    try {
-      valueBytes = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
-          storageEngine,
-          topicPartition.getPartitionNumber(),
-          ByteBuffer.wrap(keyBytes),
-          isChunked,
-          null,
-          null,
-          NoOpReadResponseStats.SINGLETON,
-          readerValueSchemaID,
-          RawBytesStoreDeserializerCache.getInstance(),
-          compressor.get(),
-          manifestContainer);
-    } catch (Exception e) {
-      // TODO: evaluate whether these logs can be set to debug
-      LOGGER.error(
-          "Unable to retrieve the stored value bytes for key: {}, topic-partition: {}",
-          new String(keyBytes),
-          topicPartition,
-          e);
+    String brokerUrl = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
+    Optional<byte[]> metadataBytes =
+        storageMetadataService.getGlobalRtDivState(kafkaVersionTopic, partitionId, brokerUrl);
+    if (!metadataBytes.isPresent()) {
       return null;
     }
-    if (valueBytes == null) {
-      // TODO: evaluate whether these logs can be set to debug
-      LOGGER.warn(
-          "No value found in the storage engine for key: {}, topic-partition: {}",
-          new String(keyBytes),
-          topicPartition);
-    }
-    return valueBytes;
+    return deserializeGlobalRtDivState(metadataBytes.get(), keyBytes, topicPartition);
   }
 
   private GlobalRtDivState deserializeGlobalRtDivState(

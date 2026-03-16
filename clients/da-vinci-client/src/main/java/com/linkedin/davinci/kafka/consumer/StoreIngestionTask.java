@@ -34,6 +34,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.listener.response.AdminResponse;
+import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
@@ -42,6 +43,9 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
+import com.linkedin.davinci.storage.chunking.ChunkingUtils;
+import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
@@ -115,6 +119,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -223,7 +228,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final int CHUNK_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
   private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-  protected static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
+  public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
+  private static final int KEY_CHUNKING_SUFFIX_LENGTH =
+      ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(new byte[0]).length;
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -4103,15 +4110,72 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void putGlobalRtDivStateInMetadata(int partition, byte[] keyBytes, Put put) {
+    if (put.schemaId == CHUNK_SCHEMA_ID) {
+      // Intermediate chunk: store in user-data storage for later assembly when the manifest arrives.
+      prependHeaderAndWriteToStorageEngine(partition, keyBytes, put);
+      return;
+    }
+
+    if (put.schemaId == CHUNK_MANIFEST_SCHEMA_ID) {
+      // Manifest for a chunked GlobalRtDiv: write manifest to user-data storage, then assemble all chunks
+      // and persist the assembled (decompressed) value in the metadata partition.
+      prependHeaderAndWriteToStorageEngine(partition, keyBytes, put);
+      // Strip the KeyWithChunkingSuffixSerializer suffix to recover the original broker-URL key.
+      byte[] originalKeyBytes = Arrays.copyOf(keyBytes, keyBytes.length - KEY_CHUNKING_SUFFIX_LENGTH);
+      String key = new String(originalKeyBytes);
+      if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
+        throw new VeniceException("Invalid chunked Global RT DIV manifest key: " + Arrays.toString(keyBytes));
+      }
+      String brokerUrl = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
+      try {
+        // Use the serialized manifest key (keyBytes) directly with isChunked=false so the adapter does not
+        // double-serialize it. All chunks were already written to user-data storage above.
+        ByteBuffer assembledValue = (ByteBuffer) GenericChunkingAdapter.INSTANCE.get(
+            storageEngine,
+            partition,
+            ByteBuffer.wrap(keyBytes),
+            false,
+            null,
+            null,
+            NoOpReadResponseStats.SINGLETON,
+            AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
+            RawBytesStoreDeserializerCache.getInstance(),
+            compressor.get(),
+            new ChunkedValueManifestContainer());
+        if (assembledValue != null) {
+          byte[] valueBytes = ByteUtils.extractByteArray(assembledValue);
+          executeStorageEngineRunnable(
+              partition,
+              () -> storageMetadataService.putGlobalRtDivState(kafkaVersionTopic, partition, brokerUrl, valueBytes));
+        } else {
+          LOGGER.warn("Assembled Global RT DIV value was null for partition: {}, broker: {}", partition, brokerUrl);
+        }
+      } catch (Exception e) {
+        throw new VeniceException(
+            "Failed to assemble chunked Global RT DIV state for partition: " + partition + ", broker: " + brokerUrl,
+            e);
+      }
+      return;
+    }
+
+    // Non-chunked: decompress and store directly in the metadata partition.
     String key = new String(keyBytes);
     if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {
       throw new VeniceException("Invalid Global RT DIV key: " + key);
     }
     String brokerUrl = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
-    byte[] valueBytes = ByteUtils.extractByteArray(put.putValue);
-    executeStorageEngineRunnable(
-        partition,
-        () -> storageMetadataService.putGlobalRtDivState(kafkaVersionTopic, partition, brokerUrl, valueBytes));
+    try {
+      byte[] compressedBytes = ByteUtils.extractByteArray(put.putValue);
+      byte[] valueBytes =
+          ByteUtils.extractByteArray(compressor.get().decompress(compressedBytes, 0, compressedBytes.length));
+      executeStorageEngineRunnable(
+          partition,
+          () -> storageMetadataService.putGlobalRtDivState(kafkaVersionTopic, partition, brokerUrl, valueBytes));
+    } catch (IOException e) {
+      throw new VeniceException(
+          "Failed to decompress Global RT DIV state for broker: " + brokerUrl + ", partition: " + partition,
+          e);
+    }
   }
 
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {

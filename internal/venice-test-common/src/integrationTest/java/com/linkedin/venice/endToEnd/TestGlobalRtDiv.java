@@ -27,7 +27,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
-import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
@@ -600,7 +599,7 @@ public class TestGlobalRtDiv {
       String topicName,
       int PARTITION,
       String globalRtDivKey) {
-    String brokerUrl = globalRtDivKey.substring(LeaderFollowerStoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX.length());
+    String brokerUrl = globalRtDivKey.substring(StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX.length());
     byte[] value =
         testVeniceServer.getStorageMetadataService().getGlobalRtDivState(topicName, PARTITION, brokerUrl).orElse(null);
     assertNotNull(value, "Global RT DIV state should be persisted in metadata storage");

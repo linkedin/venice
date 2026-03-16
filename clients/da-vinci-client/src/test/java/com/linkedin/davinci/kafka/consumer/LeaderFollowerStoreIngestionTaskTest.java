@@ -1823,10 +1823,23 @@ public class LeaderFollowerStoreIngestionTaskTest {
     LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(ingestionTask).putGlobalRtDivStateInMetadata(anyInt(), any(), any());
 
-    Put put = new Put();
-    put.putValue = ByteBuffer.wrap("test-value".getBytes());
+    // Set up a no-op compressor so decompress() returns the input bytes unchanged
+    VeniceCompressor mockCompressor = mock(VeniceCompressor.class);
+    byte[] testValueBytes = "test-value".getBytes();
+    doReturn(ByteBuffer.wrap(testValueBytes)).when(mockCompressor).decompress(any(byte[].class), anyInt(), anyInt());
+    Lazy<VeniceCompressor> lazyCompressor = Lazy.of(() -> mockCompressor);
+    injectField(ingestionTask, StoreIngestionTask.class, "compressor", lazyCompressor);
 
-    // Invalid key (missing prefix) should throw VeniceException immediately, before any field access
+    Put put = new Put();
+    put.schemaId = GLOBAL_RT_DIV_VERSION;
+    // Position the ByteBuffer to simulate post-schema-ID-header position (4 bytes before value content)
+    ByteBuffer valueWithHeader = ByteBuffer.allocate(4 + testValueBytes.length);
+    valueWithHeader.putInt(GLOBAL_RT_DIV_VERSION);
+    valueWithHeader.put(testValueBytes);
+    valueWithHeader.position(4); // simulate position after schema ID
+    put.putValue = valueWithHeader;
+
+    // Invalid key (missing prefix) should throw VeniceException immediately
     byte[] invalidKey = "INVALID_KEY.localhost:9092".getBytes();
     Assert.assertThrows(VeniceException.class, () -> ingestionTask.putGlobalRtDivStateInMetadata(0, invalidKey, put));
 
@@ -1838,6 +1851,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     String brokerUrl = "localhost:9092";
     byte[] validKey = (StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl).getBytes();
+    put.putValue.position(4); // reset position before second call
     ingestionTask.putGlobalRtDivStateInMetadata(0, validKey, put);
 
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -1845,10 +1859,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   /**
-   * Tests the new metadata-first lookup in {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState}:
-   * - When metadata storage has a value, it is returned without hitting legacy storage.
-   * - When metadata storage is empty, the method falls through to the legacy path.
-   * - When the key does not start with the GLOBAL_RT_DIV_KEY_PREFIX, the metadata lookup is skipped.
+   * Tests the metadata-only lookup in {@link LeaderFollowerStoreIngestionTask#readGlobalRtDivState}:
+   * - When metadata storage has a value, it is returned.
+   * - When metadata storage is empty, null is returned.
+   * - When the key does not start with the GLOBAL_RT_DIV_KEY_PREFIX, null is returned immediately.
    */
   @Test
   public void testReadGlobalRtDivStateMetadataPath() throws Exception {
@@ -1883,14 +1897,13 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertNotNull(result);
     assertEquals(result.srcUrl.toString(), brokerUrl);
 
-    // Case 2: metadata absent → falls through to legacy; legacy returns null (compressor field is null on mock),
-    // so the method returns null
+    // Case 2: metadata absent → returns null (no legacy fallback)
     doReturn(Optional.empty()).when(mockSms).getGlobalRtDivState(versionTopic, 0, brokerUrl);
     GlobalRtDivState fallThroughResult =
         ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
     Assert.assertNull(fallThroughResult);
 
-    // Case 3: key does not start with the prefix → metadata lookup skipped, goes straight to legacy (returns null)
+    // Case 3: key does not start with the prefix → returns null immediately
     byte[] nonPrefixKey = "REGULAR_KEY.localhost:9092".getBytes();
     GlobalRtDivState nonPrefixResult =
         ingestionTask.readGlobalRtDivState(nonPrefixKey, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
