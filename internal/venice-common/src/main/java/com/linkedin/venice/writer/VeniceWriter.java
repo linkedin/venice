@@ -1124,38 +1124,41 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     isChunkingFlagInvoked = true;
 
     /**
-     * {@link RecordTooLargeException} will be thrown unless the record size fits within one of the following categories:
-     * 1. Small record (< ~1MB): fits in a single message, no special handling needed.
-     * 2. PubSub passthrough: when pubSubLargeMessageSupportEnabled=true, the pubsub layer handles
-     *    fragmentation/reassembly natively. Takes priority over Venice chunking. Two-level enforcement:
-     *    - Venice limit: MAX_RECORD_SIZE_BYTES (inner bound, when explicitly configured)
-     *    - PubSub limit: PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES (outer bound, default 4MB)
-     * 3. Venice chunking (< MAX_RECORD_SIZE_BYTES): Venice-level chunking splits the record into chunks.
-     *    Used when pubSubLargeMessageSupportEnabled=false and chunkingEnabled=true.
-     * 4. Global RT DIV: always uses Venice chunking when pubSubLargeMessageSupportEnabled=false,
-     *    or pubsub passthrough when pubSubLargeMessageSupportEnabled=true (subject to both limits).
+     * Size enforcement for large records (> ~1MB). Three paths, checked in order:
+     *
+     * 1. PubSub passthrough (pubSubLargeMessageSupportEnabled=true):
+     *    Delegates to the pubsub layer's native fragmentation. Two-level size enforcement:
+     *    - Venice limit: MAX_RECORD_SIZE_BYTES on key+value only (excludes RMD)
+     *    - PubSub limit: PUBSUB_LARGE_MESSAGE_MAX_SIZE_BYTES on key+value+RMD (default 4MB)
+     *    Falls through to the normal put path below; the pubsub producer handles fragmentation.
+     *
+     * 2. Venice chunking (chunkingEnabled=true, or isGlobalRtDiv=true):
+     *    Venice splits the record into chunks. RMD is excluded from the size check.
+     *
+     * 3. Reject: record is too large and no chunking/passthrough is available.
      */
-    int veniceRecordSize = serializedKey.length + serializedValue.length + replicationMetadataPayloadSize;
-    if (isChunkingNeededForRecord(veniceRecordSize)) { // ~1MB default
-      if (pubSubLargeMessageSupportEnabled) {
-        // PubSub passthrough takes priority over Venice chunking. Two-level enforcement:
-        // 1. Venice max record size (inner bound, key+value only, excludes RMD) — honored when explicitly configured
-        // 2. PubSub max size (outer bound, full record including RMD) — the pubsub layer sends the entire record
-        if (isRecordTooLarge(serializedKey.length + serializedValue.length)) {
-          throw new RecordTooLargeException(
-              "This record exceeds the Venice max record size (" + maxRecordSizeBytes + " bytes). "
-                  + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
-        }
-        if (veniceRecordSize > pubSubLargeMessageMaxSizeBytes) {
-          throw new RecordTooLargeException(
-              "This record exceeds the pubsub large message max size (" + pubSubLargeMessageMaxSizeBytes + " bytes). "
-                  + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
-        }
-        // Fall through to the normal non-chunked put path below.
-        // The pubsub producer layer will handle fragmentation/reassembly natively.
-      } else if (
-      // RMD size is not checked because it's an internal component, and a user's write should not be failed due to it
-      (isChunkingEnabled && !isRecordTooLarge(serializedKey.length + serializedValue.length)) || isGlobalRtDiv) {
+    int keyValueSizeWithoutRmd = serializedKey.length + serializedValue.length;
+    int totalRecordSizeIncludingRmd = keyValueSizeWithoutRmd + replicationMetadataPayloadSize;
+    boolean isLargeRecord = isChunkingNeededForRecord(totalRecordSizeIncludingRmd);
+    String sizeReport = null; // computed lazily on first error path
+
+    if (isLargeRecord && pubSubLargeMessageSupportEnabled) {
+      // Path 1: PubSub passthrough — validate, then fall through to normal put path.
+      if (isRecordTooLarge(keyValueSizeWithoutRmd)) {
+        sizeReport = getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
+        throw new RecordTooLargeException(
+            "This record exceeds the Venice max record size (" + maxRecordSizeBytes + " bytes). " + sizeReport);
+      }
+      if (exceedsPubSubLargeMessageMaxSize(totalRecordSizeIncludingRmd)) {
+        sizeReport = getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
+        throw new RecordTooLargeException(
+            "This record exceeds the pubsub large message max size (" + pubSubLargeMessageMaxSizeBytes + " bytes). "
+                + sizeReport);
+      }
+      // Fall through: pubsub producer handles fragmentation natively.
+    } else if (isLargeRecord) {
+      // Path 2: Venice chunking — RMD excluded from size check (internal component, not a user concern).
+      if (canUseVeniceChunking(keyValueSizeWithoutRmd, isGlobalRtDiv)) {
         return putLargeValue(
             serializedKey,
             serializedValue,
@@ -1168,12 +1171,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             oldValueManifest,
             oldRmdManifest,
             isGlobalRtDiv);
-      } else {
-        throw new RecordTooLargeException(
-            "This record exceeds the maximum size. "
-                + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
       }
+      sizeReport = getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
+      throw new RecordTooLargeException("This record exceeds the maximum size. " + sizeReport);
     }
+    // Path 3: Small record or pubsub passthrough — normal put path.
 
     if (writerHook != null) {
       writerHook.onBeforeProduce(VeniceWriterHook.OperationType.PUT, serializedKey.length, serializedValue.length);
@@ -2622,6 +2624,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   public boolean isRecordTooLarge(int recordSize) {
     return maxRecordSizeBytes != UNLIMITED_MAX_RECORD_SIZE && recordSize > maxRecordSizeBytes;
+  }
+
+  private boolean exceedsPubSubLargeMessageMaxSize(int recordSize) {
+    return recordSize > pubSubLargeMessageMaxSizeBytes;
+  }
+
+  private boolean canUseVeniceChunking(int keyValueSizeWithoutRmd, boolean isGlobalRtDiv) {
+    return (isChunkingEnabled && !isRecordTooLarge(keyValueSizeWithoutRmd)) || isGlobalRtDiv;
   }
 
   public boolean isChunkingNeededForRecord(int recordSize) {
