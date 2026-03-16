@@ -862,6 +862,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         .incrementAndGet();
     pendingSubscriptionActionCount.incrementAndGet();
     ConsumerAction consumerAction = new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction);
+    if (recordTransformer != null) {
+      pubSubPosition.ifPresent(consumerAction::setPubSubPosition);
+    }
     consumerActionsQueue.add(consumerAction);
   }
 
@@ -893,7 +896,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
             LatencyUtils.getElapsedTimeFromNSToMS(startTime),
             replicaId);
-        // pubSubPosition.ifPresent(consumerAction::setPubSubPosition);
         recordTransformer.countDownStartConsumptionLatch();
         future.complete(null);
       } catch (Exception e) {
@@ -2808,44 +2810,61 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.warn("Blob transfer failed for replica: {}. Falling back to Kafka bootstrap from scratch.", replicaId);
     }
 
-    // Post-transfer directory validation
-    blobTransferHelper
-        .validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partition, transferSucceeded, replicaId);
+    try {
+      // Post-transfer directory validation
+      blobTransferHelper
+          .validateDirectoriesAfterBlobTransfer(storeName, versionNumber, partition, transferSucceeded, replicaId);
 
-    // Adjust storage partition: drop the blob-transfer-in-progress partition and create a new one
-    // with default options (RocksDB open, read/write enabled).
-    blobTransferHelper.adjustStoragePartitionWhenBlobTransferComplete(storageEngine, partition, replicaId);
+      // Adjust storage partition: drop the blob-transfer-in-progress partition and create a new one
+      // with default options (RocksDB open, read/write enabled).
+      blobTransferHelper.adjustStoragePartitionWhenBlobTransferComplete(storageEngine, partition, replicaId);
 
-    // Clear blob transfer tracking so isBlobTransferInProgress() returns false.
-    pcs.setPendingBlobTransfer(null);
+      // Clear blob transfer tracking so isBlobTransferInProgress() returns false.
+      pcs.setPendingBlobTransfer(null);
 
-    // Sync PCS
-    completePostTransferPSCUpdated(pcs);
+      // Sync PCS
+      completePostTransferPSCUpdated(pcs);
 
-    if (recordTransformer != null) {
-      // Submit transformer recovery to the dedicated thread pool to avoid blocking the SIT thread.
-      // The post-transformer subscribe work will proceed when checkLongRunningTaskState detects completion.
-      CompletableFuture<Void> transformerFuture = submitTransformerRecoveryAsync(partition, replicaId);
-      pcs.setPendingTransformerRecovery(transformerFuture);
-      pcs.setPostTransformerSubscribeAction(
-          () -> validateAndSubscribePartition(
-              null,
-              pcs.getReplicaTopicPartition(),
-              partition,
-              pcs.getReplicaTopicPartition().getPubSubTopic().getName(),
-              pcs,
-              pcs.getOffsetRecord()));
-      return;
+      // Use the fresh PCS created by completePostTransferPSCUpdated, not the old one
+      PartitionConsumptionState freshPcs = partitionConsumptionStateMap.get(partition);
+
+      if (recordTransformer != null) {
+        // Submit transformer recovery to the dedicated thread pool to avoid blocking the SIT thread.
+        // The post-transformer subscribe work will proceed when checkLongRunningTaskState detects completion.
+        CompletableFuture<Void> transformerFuture = submitTransformerRecoveryAsync(partition, replicaId);
+        freshPcs.setPendingTransformerRecovery(transformerFuture);
+        freshPcs.setPostTransformerSubscribeAction(
+            () -> validateAndSubscribePartition(
+                null,
+                freshPcs.getReplicaTopicPartition(),
+                partition,
+                freshPcs.getReplicaTopicPartition().getPubSubTopic().getName(),
+                freshPcs,
+                freshPcs.getOffsetRecord()));
+        return;
+      }
+
+      // No transformer after blob transfer — proceed directly with post-transfer subscribe
+      validateAndSubscribePartition(
+          null,
+          freshPcs.getReplicaTopicPartition(),
+          partition,
+          freshPcs.getReplicaTopicPartition().getPubSubTopic().getName(),
+          freshPcs,
+          freshPcs.getOffsetRecord());
+    } catch (Exception e) {
+      // Catch exceptions to prevent a single partition's blob transfer failure from killing the entire SIT
+      // (which would affect all other partitions on this task). Instead, report error for this partition only.
+      LOGGER.error(
+          "Failed to complete blob transfer post-processing for replica: {}. "
+              + "Reporting error for this partition only.",
+          replicaId,
+          e);
+      pcs.setPendingBlobTransfer(null);
+      pcs.setPendingTransformerRecovery(null);
+      pcs.setPostTransformerSubscribeAction(null);
+      reportError("Blob transfer completion failed for replica: " + replicaId, partition, e);
     }
-
-    // No transformer after blob transfer — proceed directly with post-transfer subscribe
-    validateAndSubscribePartition(
-        null,
-        pcs.getReplicaTopicPartition(),
-        partition,
-        pcs.getReplicaTopicPartition().getPubSubTopic().getName(),
-        pcs,
-        pcs.getOffsetRecord());
   }
 
   protected void completePostTransferPSCUpdated(PartitionConsumptionState pcs) {
