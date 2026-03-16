@@ -117,9 +117,7 @@ public class DaVinciClientDiskFullTest {
     Utils.closeQuietlyWithErrorLogged(venice);
   }
 
-  private VeniceProperties getDaVinciBackendConfig(
-      boolean useDaVinciSpecificExecutionStatusForError,
-      Boolean isD2ClientEnabled) {
+  private VeniceProperties getDaVinciBackendConfig(boolean useDaVinciSpecificExecutionStatusForError) {
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     PropertyBuilder venicePropertyBuilder = new PropertyBuilder();
 
@@ -205,9 +203,8 @@ public class DaVinciClientDiskFullTest {
    * 5. Push v2 — DaVinci ingests and immediately hits "disk full"
    * 6. VPJ detects the DaVinci error status and throws VeniceException
    */
-  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
-  public void testDaVinciDiskFullFailure(boolean useDaVinciSpecificExecutionStatusForError, Boolean isD2ClientEnabled)
-      throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testDaVinciDiskFullFailure(boolean useDaVinciSpecificExecutionStatusForError) throws Exception {
     String storeName = Utils.getUniqueString("davinci_disk_full_test");
     // Test a small push
     File inputDir = getTempDataDirectory();
@@ -253,8 +250,7 @@ public class DaVinciClientDiskFullTest {
         when(mock.getDiskStatus()).thenReturn("Mocked DiskUsage: simulated disk full for testing");
       })) {
         // Spin up DaVinci client — DiskUsage constructor is intercepted by mockConstruction
-        VeniceProperties backendConfig =
-            getDaVinciBackendConfig(useDaVinciSpecificExecutionStatusForError, isD2ClientEnabled);
+        VeniceProperties backendConfig = getDaVinciBackendConfig(useDaVinciSpecificExecutionStatusForError);
         MetricsRepository metricsRepository = new MetricsRepository();
         try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
             d2Client,
