@@ -61,6 +61,7 @@ import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_F
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.POSITIONAL_PROGRESS_LOGGING_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
@@ -595,6 +596,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean batchReportEOIPEnabled;
   private final IncrementalPushStatusWriteMode incrementalPushStatusWriteMode;
   private final long ingestionHeartbeatIntervalMs;
+  private final boolean producerTimestampFallbackEnabled;
   private final boolean recordLevelTimestampEnabled;
   private final boolean perRecordOtelMetricsEnabled;
   private final long leaderCompleteStateCheckInFollowerValidIntervalMs;
@@ -1020,6 +1022,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     metaStoreWriterCloseConcurrency = serverProperties.getInt(META_STORE_WRITER_CLOSE_CONCURRENCY, -1);
     ingestionHeartbeatIntervalMs =
         serverProperties.getLong(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
+    producerTimestampFallbackEnabled = serverProperties.getBoolean(PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED, true);
     recordLevelTimestampEnabled = serverProperties.getBoolean(SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED, false);
     perRecordOtelMetricsEnabled = serverProperties.getBoolean(SERVER_PER_RECORD_OTEL_METRICS_ENABLED, false);
     batchReportEOIPEnabled =
@@ -1801,6 +1804,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getIngestionHeartbeatIntervalMs() {
     return ingestionHeartbeatIntervalMs;
+  }
+
+  public boolean isProducerTimestampFallbackEnabled() {
+    return producerTimestampFallbackEnabled;
   }
 
   public boolean isRecordLevelTimestampEnabled() {

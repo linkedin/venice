@@ -27,14 +27,24 @@ public class PubSubMessageDeserializer {
   private final KafkaValueSerializer valueSerializer;
   private final ObjectPool<KafkaMessageEnvelope> putEnvelopePool;
   private final ObjectPool<KafkaMessageEnvelope> updateEnvelopePool;
+  private final boolean producerTimestampFallbackEnabled;
 
   public PubSubMessageDeserializer(
       KafkaValueSerializer valueSerializer,
       ObjectPool<KafkaMessageEnvelope> putEnvelopePool,
       ObjectPool<KafkaMessageEnvelope> updateEnvelopePool) {
+    this(valueSerializer, putEnvelopePool, updateEnvelopePool, true);
+  }
+
+  public PubSubMessageDeserializer(
+      KafkaValueSerializer valueSerializer,
+      ObjectPool<KafkaMessageEnvelope> putEnvelopePool,
+      ObjectPool<KafkaMessageEnvelope> updateEnvelopePool,
+      boolean producerTimestampFallbackEnabled) {
     this.valueSerializer = valueSerializer;
     this.putEnvelopePool = putEnvelopePool;
     this.updateEnvelopePool = updateEnvelopePool;
+    this.producerTimestampFallbackEnabled = producerTimestampFallbackEnabled;
   }
 
   /**
@@ -81,10 +91,13 @@ public class PubSubMessageDeserializer {
     if (value == null) {
       value = valueSerializer.deserialize(valueBytes, getEnvelope(key.getKeyHeaderByte()));
     }
-    // Prefer Venice's own producer timestamp when the pub-sub system timestamp is missing or zero.
-    // Some pub-sub systems do not provide reliable per-message timestamps. Venice always embeds a
-    // producer timestamp in the KafkaMessageEnvelope, so we can fall back to it.
-    long effectiveTimestamp = timestamp != null && timestamp > 0 ? timestamp : value.producerMetadata.messageTimestamp;
+    // When enabled, prefer Venice's own producer timestamp when the pub-sub system timestamp is
+    // missing or zero. Some pub-sub systems do not provide reliable per-message timestamps.
+    // Venice always embeds a producer timestamp in the KafkaMessageEnvelope, so we can fall back
+    // to it. Controlled by PUBSUB_PRODUCER_TIMESTAMP_FALLBACK_ENABLED (default: true).
+    long effectiveTimestamp = (producerTimestampFallbackEnabled && (timestamp == null || timestamp <= 0))
+        ? value.producerMetadata.messageTimestamp
+        : (timestamp != null ? timestamp : 0L);
     // TODO: Put the message container in an object pool as well
     return new ImmutablePubSubMessage(
         key,

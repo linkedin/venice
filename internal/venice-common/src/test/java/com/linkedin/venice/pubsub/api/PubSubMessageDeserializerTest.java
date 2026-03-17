@@ -162,6 +162,40 @@ public class PubSubMessageDeserializerTest {
   }
 
   @Test
+  public void testDeserializerDoesNotFallBackWhenFallbackDisabled() {
+    PubSubMessageDeserializer disabledFallbackDeserializer = new PubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        false); // fallback disabled
+
+    KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
+    KafkaMessageEnvelope value = getDummyValue();
+    value.producerMetadata.messageTimestamp = 1700000000000L;
+
+    // When broker timestamp is 0 and fallback is disabled, 0 should be returned as-is
+    DefaultPubSubMessage message = disabledFallbackDeserializer.deserialize(
+        topicPartition,
+        keySerializer.serialize("test", key),
+        valueSerializer.serialize("test", value),
+        new PubSubMessageHeaders(),
+        position,
+        0L);
+    assertEquals(message.getPubSubMessageTime(), 0L);
+
+    // When broker timestamp is null and fallback is disabled, 0 should be returned
+    message = disabledFallbackDeserializer.deserialize(
+        topicPartition,
+        keySerializer.serialize("test", key),
+        valueSerializer.serialize("test", value),
+        new PubSubMessageHeaders(),
+        position,
+        null);
+    assertEquals(message.getPubSubMessageTime(), 0L);
+    disabledFallbackDeserializer.close();
+  }
+
+  @Test
   public void testDeserializerFallsBackToProducerTimestampWhenBrokerTimestampIsNull() {
     KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
     KafkaMessageEnvelope value = getDummyValue();
