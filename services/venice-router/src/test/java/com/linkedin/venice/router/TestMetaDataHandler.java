@@ -67,6 +67,7 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -98,7 +99,7 @@ public class TestMetaDataHandler {
   private final HelixHybridStoreQuotaRepository hybridStoreQuotaRepository =
       Mockito.mock(HelixHybridStoreQuotaRepository.class);
 
-  private final MetricsRepository metricsRepository = new MetricsRepository();
+  private final MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
 
   public FullHttpResponse passRequestToMetadataHandler(
       String requestUri,

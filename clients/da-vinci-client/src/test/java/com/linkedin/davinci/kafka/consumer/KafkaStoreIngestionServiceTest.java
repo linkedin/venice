@@ -74,6 +74,7 @@ import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -147,7 +148,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockMetadataRepo,
         mockSchemaRepo,
         mockLiveClusterConfigRepo,
-        new MetricsRepository(),
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
         Optional.empty(),
         Optional.empty(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
@@ -470,7 +471,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockMetadataRepo,
         mockSchemaRepo,
         mockLiveClusterConfigRepo,
-        new MetricsRepository(),
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
         Optional.empty(),
         Optional.empty(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
@@ -794,7 +795,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockServerConfig,
         Optional.of(mockClientConfig),
         mockClusterInfoProvider,
-        new MetricsRepository(),
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
         mockIcProvider);
     assertNotNull(
         pct,
@@ -806,7 +807,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockServerConfig,
         Optional.of(mockClientConfig),
         mockClusterInfoProvider,
-        new MetricsRepository(),
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
         mockIcProvider);
     assertNull(
         pct,
@@ -818,7 +819,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockServerConfig,
         Optional.empty(),
         mockClusterInfoProvider,
-        new MetricsRepository(),
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
         mockIcProvider);
     assertNull(pct, "Participant consumption task should not be initialized when client config is not present");
   }

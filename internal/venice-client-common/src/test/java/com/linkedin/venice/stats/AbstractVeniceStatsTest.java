@@ -20,6 +20,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityState.TehutiSensorRegistrationFunction;
 import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
@@ -58,7 +59,7 @@ public class AbstractVeniceStatsTest {
   @Test
   public void testNoDuplicateMultiThreaded() throws InterruptedException {
     ExecutorService executorService = Executors.newFixedThreadPool(8);
-    MetricsRepository repository = new MetricsRepository();
+    MetricsRepository repository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     AtomicBoolean exceptionReceived = new AtomicBoolean();
     for (int i = 0; i < 100; i++) {
       StatsTestImpl statsTest = new StatsTestImpl(repository, "testStatsContainer");
@@ -80,7 +81,7 @@ public class AbstractVeniceStatsTest {
 
   @Test
   public void testRegisterSensor() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "myMetric");
     stats.registerSensor(new AsyncGauge((ignored, ignored2) -> 1.0, "foo"));
     Assert.assertEquals(metricsRepository.metrics().size(), 1);
@@ -101,7 +102,7 @@ public class AbstractVeniceStatsTest {
 
   @Test
   public void testRegisterSensorAttributeGauge() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "myMetric");
     stats.registerSensorAttributeGauge("foo", "bar", new AsyncGauge((ignored, ignored2) -> 1.0, "foo"));
     stats.registerSensorAttributeGauge("foo", "bar2", new AsyncGauge((ignored, ignored2) -> 2.0, "foo"));
@@ -115,7 +116,7 @@ public class AbstractVeniceStatsTest {
   @Test
   public void testMetricPrefix() {
     String storeName = "test_store";
-    MetricsRepository metricsRepository1 = new MetricsRepository();
+    MetricsRepository metricsRepository1 = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     // Without prefix
     ClientConfig config1 = new ClientConfig(storeName);
     BasicClientStats
@@ -125,14 +126,18 @@ public class AbstractVeniceStatsTest {
 
     String prefix = "venice_system_store_meta_store_abc";
     ClientConfig config2 = new ClientConfig(storeName).setStatsPrefix(prefix);
-    ClientStats clientStats = ClientStats
-        .getClientStats(new MetricsRepository(), storeName, RequestType.SINGLE_GET, config2, ClientType.THIN_CLIENT);
+    ClientStats clientStats = ClientStats.getClientStats(
+        MetricsRepositoryUtils.createSingleThreadedMetricsRepository(),
+        storeName,
+        RequestType.SINGLE_GET,
+        config2,
+        ClientType.THIN_CLIENT);
     clientStats.recordErrorRetryRequest();
   }
 
   @Test
   public void testParentStats() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     MetricsReporter reporter = mock(MetricsReporter.class);
     metricsRepository.addReporter(reporter);
     AbstractVeniceStats avs = new AbstractVeniceStats(metricsRepository, "AVS");
@@ -191,7 +196,7 @@ public class AbstractVeniceStatsTest {
 
   @Test
   public void testRegisterPerStoreAndTotalSensor() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     MetricConfig metricConfig = new MetricConfig();
 
     AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "testStore");
@@ -225,7 +230,7 @@ public class AbstractVeniceStatsTest {
 
   @Test
   public void testRegisterOnlyTotalRate() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
 
     AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "testStore");
     AbstractVeniceStats totalStats = new AbstractVeniceStats(metricsRepository, "total");
@@ -242,7 +247,7 @@ public class AbstractVeniceStatsTest {
 
   @Test
   public void testRegisterOnlyTotalSensor() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
 
     AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "testStore");
     AbstractVeniceStats totalStats = new AbstractVeniceStats(metricsRepository, "total");
@@ -305,7 +310,7 @@ public class AbstractVeniceStatsTest {
   @Test
   public void testTehutiMetricsEnabledWithNonVeniceMetricsRepository() {
     // Test with regular MetricsRepository (non-Venice) - should default to Tehuti enabled
-    MetricsRepository regularRepository = new MetricsRepository();
+    MetricsRepository regularRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
 
     AbstractVeniceStats stats = new AbstractVeniceStats(regularRepository, "testStore");
 
@@ -354,7 +359,7 @@ public class AbstractVeniceStatsTest {
 
   @Test
   public void testRegisterPerStoreAndTotalWithMetricEntityState() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
 
     AbstractVeniceStats totalStats = new AbstractVeniceStats(metricsRepository, "total");
     AbstractVeniceStats perStoreStats = new AbstractVeniceStats(metricsRepository, "testStore");

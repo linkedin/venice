@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.utils.Time;
 import org.testng.Assert;
@@ -15,7 +16,7 @@ public class AggServerReadQuotaUsageStatsTest {
     Time mockTime = mock(Time.class);
     long start = System.currentTimeMillis();
     doReturn(start).when(mockTime).milliseconds();
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     AggServerQuotaUsageStats aggServerQuotaUsageStats = new AggServerQuotaUsageStats("test_cluster", metricsRepository);
     String storeName = "testStore";
     String storeName2 = "testStore2";

@@ -4,6 +4,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.annotations.Test;
 
@@ -30,7 +31,7 @@ public class VeniceProducerMetricsTest {
 
   @Test
   public void testAllSensorsRegistered() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     // Constructor registers sensors as side effect
     new VeniceProducerMetrics(metricsRepository, TEST_STORE);
 
@@ -61,7 +62,7 @@ public class VeniceProducerMetricsTest {
 
   @Test
   public void testPreprocessingLatencyRecorded() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     VeniceProducerMetrics metrics = new VeniceProducerMetrics(metricsRepository, TEST_STORE);
 
     // Record preprocessing latency
@@ -76,7 +77,7 @@ public class VeniceProducerMetricsTest {
 
   @Test
   public void testProduceLatencyRecorded() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     VeniceProducerMetrics metrics = new VeniceProducerMetrics(metricsRepository, TEST_STORE);
 
     // Simulate successful request with latency
@@ -90,7 +91,7 @@ public class VeniceProducerMetricsTest {
 
   @Test
   public void testEndToEndLatencyRecorded() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     VeniceProducerMetrics metrics = new VeniceProducerMetrics(metricsRepository, TEST_STORE);
 
     // Record end-to-end latency
@@ -105,7 +106,7 @@ public class VeniceProducerMetricsTest {
 
   @Test
   public void testQueueSizeGaugesRegisteredWithExecutor() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     VeniceProducerMetrics metrics = new VeniceProducerMetrics(metricsRepository, TEST_STORE);
 
     // Create executor
@@ -129,7 +130,7 @@ public class VeniceProducerMetricsTest {
 
   @Test
   public void testPendingOperationsTracked() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     VeniceProducerMetrics metrics = new VeniceProducerMetrics(metricsRepository, TEST_STORE);
 
     // Record multiple requests
@@ -171,7 +172,7 @@ public class VeniceProducerMetricsTest {
 
   @Test
   public void testOperationRatesRecorded() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     VeniceProducerMetrics metrics = new VeniceProducerMetrics(metricsRepository, TEST_STORE);
 
     // Record various operations
