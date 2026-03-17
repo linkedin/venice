@@ -7,7 +7,7 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
-import io.tehuti.metrics.MetricConfig;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.TehutiMetric;
 import org.testng.annotations.BeforeMethod;
@@ -26,7 +26,7 @@ public class DIVStatsReporterTest {
 
   @BeforeMethod
   public void setUp() {
-    metricsRepository = new MetricsRepository();
+    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     storeName = Utils.getUniqueString("store");
@@ -52,7 +52,9 @@ public class DIVStatsReporterTest {
     doReturn(mock(DIVStats.class)).when(mockDIVStatsReporter).getStats();
     DIVStatsReporter.DIVStatsGauge counter =
         new DIVStatsReporter.DIVStatsGauge(mockDIVStatsReporter, () -> 1L, "testDIVStatsCounter");
-    assertEquals(counter.measure(new MetricConfig(), System.currentTimeMillis()), 1.0);
+    // Use the repository's MetricConfig (which has a dedicated AsyncGaugeExecutor) instead of
+    // bare new MetricConfig() which would fall back to the shared static default executor.
+    assertEquals(counter.measure(metricsRepository.config(), System.currentTimeMillis()), 1.0);
   }
 
   @Test
