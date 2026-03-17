@@ -472,22 +472,22 @@ public class DIVStatsOtelTest {
   @Test
   public void testStoreDeletedCleansUpOtelState() {
     setUpStoreVersions(TEST_STORE_NAME);
-    stats.recordSuccessMsg(TEST_STORE_NAME, 1);
+    stats.recordLeaderProducerFailure(TEST_STORE_NAME, 1);
 
-    // Verify OTel metric exists
-    validateAsyncCounter(
-        OTEL_MESSAGE_COUNT,
-        1,
-        buildMessageAttributes(TEST_STORE_NAME, VersionRole.CURRENT, VeniceDIVResult.SUCCESS));
+    // Verify OTel metric exists (use regular COUNTER for exact value assertion)
+    validateCounter(OTEL_PRODUCER_FAILURE_COUNT, 1, buildRoleOnlyAttributes(TEST_STORE_NAME, VersionRole.CURRENT));
 
-    // Delete the store and record again — a new MetricEntityState should be created
+    // Delete the store — cleans up per-store maps + versionInfoMap
     stats.handleStoreDeleted(TEST_STORE_NAME);
-    setUpStoreVersions(TEST_STORE_NAME);
-    stats.recordSuccessMsg(TEST_STORE_NAME, 1);
 
-    // Counter is cumulative, so after reset + 1 new recording, OTel reader sees
-    // the new recording (value depends on SDK behavior for new instrument instance).
-    // The key verification is that no NPE occurs and recording succeeds.
+    // Re-create the store and record again — a new MetricEntityState should be created
+    setUpStoreVersions(TEST_STORE_NAME);
+    stats.recordLeaderProducerFailure(TEST_STORE_NAME, 1);
+
+    // COUNTER is cumulative in OTel SDK (same instrument name), so total is 2 after re-creation.
+    // This proves: (1) no NPE after deletion, (2) recording succeeds after re-creation,
+    // (3) version classification works (CURRENT, not BACKUP — proving versionInfoMap repopulated).
+    validateCounter(OTEL_PRODUCER_FAILURE_COUNT, 2, buildRoleOnlyAttributes(TEST_STORE_NAME, VersionRole.CURRENT));
   }
 
   // --- Helper methods ---
