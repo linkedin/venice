@@ -4121,6 +4121,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (put.schemaId == CHUNK_MANIFEST_SCHEMA_ID) {
       // Manifest for a chunked GlobalRtDiv: assemble all chunks from the metadata partition,
       // decompress the result, then persist it in the metadata partition.
+      if (keyBytes.length < KEY_CHUNKING_SUFFIX_LENGTH) {
+        throw new VeniceException(
+            "GlobalRtDiv chunk manifest key too short to contain chunking suffix: " + Arrays.toString(keyBytes));
+      }
       byte[] originalKeyBytes = Arrays.copyOf(keyBytes, keyBytes.length - KEY_CHUNKING_SUFFIX_LENGTH);
       String key = new String(originalKeyBytes);
       if (!key.startsWith(GLOBAL_RT_DIV_KEY_PREFIX)) {

@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 
 public interface StorageEngine<Partition extends AbstractStoragePartition> extends Closeable {
@@ -176,7 +177,10 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
 
   /**
    * Retrieve a GlobalRtDiv intermediate chunk from the metadata partition.
+   *
+   * @return the chunk bytes, or {@code null} if the chunk is not present
    */
+  @Nullable
   byte[] getGlobalRtDivChunk(int partitionId, byte[] chunkKey);
 
   /**

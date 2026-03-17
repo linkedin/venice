@@ -727,6 +727,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (!metadataPartitionCreated()) {
       throw new StorageInitializationException("Metadata partition not created!");
     }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException(
+          "Metadata partition id should not be used as argument in putGlobalRtDivChunk.");
+    }
     if (partitionId < 0) {
       throw new IllegalArgumentException("Invalid partition id argument in putGlobalRtDivChunk");
     }
@@ -737,6 +741,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public synchronized byte[] getGlobalRtDivChunk(int partitionId, byte[] chunkKey) {
     if (!metadataPartitionCreated()) {
       throw new StorageInitializationException("Metadata partition not created!");
+    }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException(
+          "Metadata partition id should not be used as argument in getGlobalRtDivChunk.");
     }
     if (partitionId < 0) {
       throw new IllegalArgumentException("Invalid partition id argument in getGlobalRtDivChunk");
