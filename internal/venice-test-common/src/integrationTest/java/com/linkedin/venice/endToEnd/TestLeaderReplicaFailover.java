@@ -200,7 +200,10 @@ public class TestLeaderReplicaFailover {
       admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
       final HelixAdmin finalAdmin = admin;
       final LeaderErrorNotifier finalLeaderErrorNotifier = leaderErrorNotifier;
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // The volatile fix for PartitionConsumptionState.leaderFollowerState ensures the error
+      // IS reported, but the full pipeline (ingestion -> drainer -> error notifier -> helix config
+      // update) can take 30+ seconds on loaded CI. 60s provides headroom.
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         assertTrue(finalLeaderErrorNotifier.hasReportedError());
         InstanceConfig instanceConfig = finalAdmin.getInstanceConfig(clusterName, leader.getNodeId());
         Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
