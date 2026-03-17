@@ -2658,4 +2658,40 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         etlOffboardedStoreVersionNames.isEmpty(),
         "offboardETL should NOT be triggered when deleting a store with ETL flags not enabled");
   }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testOffboardETLNotTriggeredOnStoreDeleteWhenStrategyIsNotVeniceTrigger() {
+    String storeName = Utils.getUniqueString("test_etl_no_offboard_wrong_strategy");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    // Create version 1 and make it current
+    Version version1 =
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        30,
+        TimeUnit.SECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version1.getNumber());
+
+    // Enable ETL but set strategy to EXTERNAL_SERVICE (not EXTERNAL_WITH_VENICE_TRIGGER)
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setRegularVersionETLEnabled(true)
+            .setETLStrategy(VeniceETLStrategy.EXTERNAL_SERVICE));
+
+    // Clear ETL triggers after initial setup
+    resetExternalETLServiceEvents();
+
+    // Disable store before deletion (required precondition)
+    veniceAdmin.setStoreReadability(clusterName, storeName, false);
+    veniceAdmin.setStoreWriteability(clusterName, storeName, false);
+
+    // Delete the store
+    veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION, true);
+
+    // Verify offboardETL was NOT triggered since strategy is not EXTERNAL_WITH_VENICE_TRIGGER
+    Assert.assertTrue(
+        etlOffboardedStoreVersionNames.isEmpty(),
+        "offboardETL should NOT be triggered when deleting a store with EXTERNAL_SERVICE strategy");
+  }
 }
