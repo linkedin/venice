@@ -27,7 +27,9 @@ import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Collection;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -118,15 +120,18 @@ public class AggVersionedBlobTransferStatsTest {
    * Uses VeniceMetricsRepository with InMemoryMetricReader to validate OTel alongside Tehuti.
    */
   @Test
-  public void testDualRecordingMethodsProduceBothTehutiAndOtel() {
+  public void testDualRecordingMethodsProduceBothTehutiAndOtel() throws Exception {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     TestMockTime mockTime = new TestMockTime();
-    try (VeniceMetricsRepository otelRepo = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setMetricPrefix(METRIC_PREFIX)
-            .setMetricEntities(SERVER_METRIC_ENTITIES)
-            .setEmitOtelMetrics(true)
-            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-            .build())) {
+    // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
+    try (AsyncGauge.AsyncGaugeExecutor executor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+        VeniceMetricsRepository otelRepo = new VeniceMetricsRepository(
+            new VeniceMetricsConfig.Builder().setMetricPrefix(METRIC_PREFIX)
+                .setMetricEntities(SERVER_METRIC_ENTITIES)
+                .setEmitOtelMetrics(true)
+                .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+                .setTehutiMetricConfig(new MetricConfig(executor))
+                .build())) {
 
       MockTehutiReporter reporter = new MockTehutiReporter();
       otelRepo.addReporter(reporter);

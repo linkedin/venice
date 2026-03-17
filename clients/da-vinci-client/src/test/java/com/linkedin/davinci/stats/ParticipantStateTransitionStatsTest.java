@@ -8,25 +8,37 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 
 import io.tehuti.Metric;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
 public class ParticipantStateTransitionStatsTest {
   private ParticipantStateTransitionStats stats;
+  private AsyncGauge.AsyncGaugeExecutor asyncGaugeExecutor;
   private MetricsRepository metricsRepository;
 
   private static final String METRIC_PREFIX = "S_T_Metric_Test";
 
   @BeforeClass
   public void setUp() {
-    metricsRepository = new MetricsRepository();
+    // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
+    asyncGaugeExecutor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    metricsRepository = new MetricsRepository(new MetricConfig(asyncGaugeExecutor));
     ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
     stats = new ParticipantStateTransitionStats(metricsRepository, executor, METRIC_PREFIX);
+  }
+
+  @AfterClass
+  public void tearDown() throws Exception {
+    metricsRepository.close();
+    asyncGaugeExecutor.close();
   }
 
   @Test

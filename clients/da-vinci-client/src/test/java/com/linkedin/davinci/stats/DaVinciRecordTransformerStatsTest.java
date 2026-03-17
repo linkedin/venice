@@ -9,7 +9,9 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -49,8 +51,10 @@ public class DaVinciRecordTransformerStatsTest {
   }
 
   @Test
-  public void testDaVinciRecordTransformerStatsReporterCanReportForGauge() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+  public void testDaVinciRecordTransformerStatsReporterCanReportForGauge() throws Exception {
+    // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
+    AsyncGauge.AsyncGaugeExecutor executor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    MetricsRepository metricsRepository = new MetricsRepository(new MetricConfig(executor));
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");
@@ -72,11 +76,15 @@ public class DaVinciRecordTransformerStatsTest {
     recordTransformerStatsReporter.setStats(stats);
 
     assertEquals(reporter.query(putLatency).value(), latency);
+    metricsRepository.close();
+    executor.close();
   }
 
   @Test
-  public void testDaVinciRecordTransformerStatsReporterCanReportForCount() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+  public void testDaVinciRecordTransformerStatsReporterCanReportForCount() throws Exception {
+    // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
+    AsyncGauge.AsyncGaugeExecutor executor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    MetricsRepository metricsRepository = new MetricsRepository(new MetricConfig(executor));
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");
@@ -102,5 +110,7 @@ public class DaVinciRecordTransformerStatsTest {
     stats.recordDeleteError(timestamp);
     recordTransformerStatsReporter.setStats(stats);
     assertEquals(reporter.query(deleteErrorCount).value(), 1.0);
+    metricsRepository.close();
+    executor.close();
   }
 }

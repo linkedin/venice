@@ -202,6 +202,12 @@ public class BackupVersionOptimizationServiceTest {
           TimeUnit.SECONDS,
           () -> verify(backupStorageEngine).reopenStoragePartition(PARTITION_ID_0));
 
+      // Sleep to ensure the next recordReadUsage timestamp is strictly after
+      // recordDatabaseOptimization timestamp. Without this, both can land on the same
+      // millisecond, causing whetherToOptimize() to return false permanently
+      // (lastOptimizationTimestamp >= lastReadUsageTimestamp).
+      Thread.sleep(NO_READ_THRESHOLD_MS_FOR_DATABASE_OPTIMIZATION + 1);
+
       // Record a read to the old version again after optimization
       optimizationService.recordReadUsage(backupResourceName);
 
