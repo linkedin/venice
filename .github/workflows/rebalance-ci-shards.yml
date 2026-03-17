@@ -103,23 +103,24 @@ jobs:
           git commit -m "[CI] Rebalance integration test shards (automated)"
           git push origin "$BRANCH"
 
+          cat > /tmp/pr-body.md << 'EOF'
+          ## Summary
+          - Automated weekly rebalance of CI integration test shards
+          - Uses timing data from the latest successful E2E workflow run
+          - Target: ~6 min test time per shard (360s + fork overhead), ~10 min wall-clock
+
+          ## How this works
+          The `rebalance-ci-shards` workflow downloads test timing artifacts
+          uploaded by each E2E shard, then runs `scripts/ci/rebalance_test_shards.py`
+          to re-pack shards using First-Fit Decreasing bin-packing.
+
+          ## Test plan
+          - [ ] CI E2E shards pass — all tests discovered and run
+          - [ ] No test class appears in shard 99 (catch-all) that should be in a named shard
+          EOF
+
           gh pr create \
             --title "[CI] Rebalance integration test shards" \
-            --body "$(cat <<'BODY'
-## Summary
-- Automated weekly rebalance of CI integration test shards
-- Uses timing data from the latest successful E2E workflow run
-- Target: ~6 min test time per shard (360s + fork overhead), ~10 min wall-clock
-
-## How this works
-The `rebalance-ci-shards` workflow downloads test timing artifacts
-uploaded by each E2E shard, then runs `scripts/ci/rebalance_test_shards.py`
-to re-pack shards using First-Fit Decreasing bin-packing.
-
-## Test plan
-- [ ] CI E2E shards pass — all tests discovered and run
-- [ ] No test class appears in shard 99 (catch-all) that should be in a named shard
-BODY
-          )" \
+            --body-file /tmp/pr-body.md \
             --base main \
             --head "$BRANCH"

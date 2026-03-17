@@ -21,6 +21,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.blobtransfer.BlobFinder;
 import com.linkedin.venice.blobtransfer.BlobPeersDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
@@ -36,6 +37,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -150,7 +152,8 @@ public class TestNettyP2PBlobTransferManager {
             globalChannelTrafficShapingHandler,
             blobTransferStats,
             sslFactory,
-            () -> notifier));
+            () -> notifier,
+            LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name())));
     finder = mock(BlobFinder.class);
     manager = new NettyP2PBlobTransferManager(
         server,
@@ -158,7 +161,8 @@ public class TestNettyP2PBlobTransferManager {
         finder,
         tmpPartitionDir.toString(),
         versionedBlobTransferStats,
-        5);
+        5,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
     manager.start();
   }
 
@@ -519,7 +523,8 @@ public class TestNettyP2PBlobTransferManager {
             newGlobalChannelTrafficShapingHandler,
             blobTransferStats,
             sslFactory,
-            null));
+            null,
+            LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name())));
 
     P2PBlobTransferService newServer = new P2PBlobTransferService(
         port,
@@ -538,7 +543,8 @@ public class TestNettyP2PBlobTransferManager {
         finder,
         tmpPartitionDir.toString(),
         versionedBlobTransferStats,
-        5);
+        5,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
     newManager.start();
 
     // Action

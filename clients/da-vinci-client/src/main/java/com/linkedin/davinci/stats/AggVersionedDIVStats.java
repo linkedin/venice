@@ -147,8 +147,13 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
         DIVOtelMetricEntity.BENIGN_PRODUCER_FAILURE_COUNT);
   }
 
+  /** {@link AbstractVeniceAggVersionedStats#addStore(com.linkedin.venice.meta.Store)}
+   *  calls this from the super() constructor before {@code versionInfoMap} is initialized. */
   @Override
   protected void onVersionInfoUpdated(String storeName, int currentVersion, int futureVersion) {
+    if (versionInfoMap == null) {
+      return; // Called during super() constructor before versionInfoMap is initialized
+    }
     versionInfoMap.put(storeName, new OtelVersionedStatsUtils.VersionInfo(currentVersion, futureVersion));
   }
 

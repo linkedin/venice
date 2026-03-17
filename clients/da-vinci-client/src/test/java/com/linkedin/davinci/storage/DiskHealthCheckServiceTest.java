@@ -5,6 +5,8 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
@@ -23,7 +25,8 @@ public class DiskHealthCheckServiceTest {
         Duration.ofMillis(100).toMillis(),
         Duration.ofMillis(100).toMillis(),
         Utils.getUniqueTempPath(),
-        Duration.ofSeconds(1).toMillis())) {
+        Duration.ofSeconds(1).toMillis(),
+        LogContext.forTests(VeniceComponent.SERVER.name()))) {
       diskHealthCheckService.start();
 
       assertTrue(diskHealthCheckService.isDiskHealthy());
@@ -83,7 +86,8 @@ public class DiskHealthCheckServiceTest {
         Duration.ofMillis(100).toMillis(),
         Duration.ofMillis(100).toMillis(),
         directory,
-        Duration.ofSeconds(1).toMillis())) {
+        Duration.ofSeconds(1).toMillis(),
+        LogContext.forTests(VeniceComponent.SERVER.name()))) {
       diskHealthCheckService.start();
 
       // Wait for the health check to run at least once
@@ -105,7 +109,8 @@ public class DiskHealthCheckServiceTest {
         Duration.ofMillis(100).toMillis(),
         Duration.ofMillis(100).toMillis(),
         directory,
-        Duration.ofSeconds(1).toMillis())) {
+        Duration.ofSeconds(1).toMillis(),
+        LogContext.forTests(VeniceComponent.SERVER.name()))) {
       diskHealthCheckService.start();
 
       // Wait for the health check to run at least once

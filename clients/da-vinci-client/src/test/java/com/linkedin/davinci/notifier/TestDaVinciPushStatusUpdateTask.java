@@ -10,9 +10,11 @@ import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
@@ -36,7 +38,8 @@ public class TestDaVinciPushStatusUpdateTask {
         version,
         100,
         pushStatusStoreWriter,
-        areAllPartitionFuturesCompletedSuccessfully);
+        areAllPartitionFuturesCompletedSuccessfully,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
     task.updatePartitionStatus(1, ExecutionStatus.COMPLETED, Optional.empty());
     task.updatePartitionStatus(2, ExecutionStatus.COMPLETED, Optional.empty());
     task.updatePartitionStatus(3, ExecutionStatus.COMPLETED, Optional.empty());
@@ -84,7 +87,8 @@ public class TestDaVinciPushStatusUpdateTask {
         version,
         100,
         pushStatusStoreWriter,
-        areAllPartitionFuturesCompletedSuccessfully);
+        areAllPartitionFuturesCompletedSuccessfully,
+        LogContext.forTests(VeniceComponent.DAVINCI_CLIENT.name()));
 
     // Two incremental pushes running at the same time
     String incrementalPushVersion1 = "incremental-push-1";

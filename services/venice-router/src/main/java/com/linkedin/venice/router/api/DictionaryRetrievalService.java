@@ -205,7 +205,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
     executor = Executors.newScheduledThreadPool(
         routerConfig.getRouterDictionaryProcessingThreads(),
-        new DaemonThreadFactory("DictDownloadPool"));
+        new DaemonThreadFactory("DictDownloadPool", routerConfig.getLogContext()));
     // This thread is the consumer and it waits for an item to be put in the "dictionaryDownloadCandidates" queue.
     Runnable runnable = () -> {
       while (true) {
@@ -247,7 +247,8 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       }
     };
 
-    this.dictionaryRetrieverThread = new Thread(runnable, "DictionaryRetriever");
+    this.dictionaryRetrieverThread =
+        new DaemonThreadFactory("DictionaryRetriever", routerConfig.getLogContext()).newThread(runnable);
     this.stats = new DictionaryRetrievalServiceStats(
         metricsRepository,
         "dictionary_retrieval_service",

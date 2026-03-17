@@ -12,6 +12,7 @@ import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WR
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
 import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_LOGICAL_TS;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.longThat;
@@ -20,6 +21,7 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -867,5 +869,224 @@ public class VeniceWriterUnitTest {
             .readValue(actualPubSubMessageHeaders.get(PubSubMessageHeaders.EXECUTION_ID_KEY).value(), Long.class)
             .longValue(),
         executionId);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testWriterHookCalledOnPutDeleteAndUpdate() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(1)
+            .setWriterHook(mockHook)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    String key = "test-key";
+    byte[] expectedKey = serializer.serialize(testTopic, key);
+
+    // Put: hook called with PUT operation type and correct sizes
+    String value = "test-value";
+    writer.put(key, value, 1, null);
+    byte[] expectedValue = serializer.serialize(testTopic, value);
+    verify(mockHook)
+        .onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), eq(expectedKey.length), eq(expectedValue.length));
+
+    // Delete: hook called with DELETE operation type, key size and 0 for value
+    writer.delete(key, null);
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), eq(expectedKey.length), eq(0));
+
+    // Update: hook called with UPDATE operation type and update payload sizes
+    String updateValue = "test-update";
+    writer.update(key, updateValue, 1, 1, null, APP_DEFAULT_LOGICAL_TS);
+    byte[] expectedUpdate = serializer.serialize(testTopic, updateValue);
+    verify(mockHook)
+        .onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), eq(expectedKey.length), eq(expectedUpdate.length));
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testNoHookDoesNotThrow() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(1)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Should not throw NPE
+    writer.put("key", "value", 1, null);
+    writer.delete("key", null);
+    writer.update("key", "update", 1, 1, null, APP_DEFAULT_LOGICAL_TS);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testWriterHookCanBlockForThrottling() throws Exception {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+
+    java.util.concurrent.CountDownLatch hookEntered = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch hookRelease = new java.util.concurrent.CountDownLatch(1);
+
+    VeniceWriterHook blockingHook = (operationType, keySizeBytes, valueSizeBytes) -> {
+      hookEntered.countDown();
+      try {
+        hookRelease.await();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    };
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(1)
+            .setWriterHook(blockingHook)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Start put on a separate thread — it should block in the hook
+    Thread writerThread = new Thread(() -> writer.put("key", "value", 1, null));
+    writerThread.start();
+
+    try {
+      // Wait for hook to be entered
+      assertTrue(hookEntered.await(5, java.util.concurrent.TimeUnit.SECONDS));
+      // Producer should NOT have been called yet — hook is blocking
+      verify(mockedProducer, times(0)).sendMessage(any(), any(), any(), any(), any(), any());
+    } finally {
+      // Always release the hook to avoid leaking a blocked thread
+      hookRelease.countDown();
+    }
+    writerThread.join(5000);
+    assertFalse(writerThread.isAlive());
+
+    // Now producer should have been called
+    verify(mockedProducer, atLeast(1)).sendMessage(any(), any(), any(), any(), any(), any());
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testWriterHookCalledOnceForChunkedPut() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test_v1";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(1)
+            .setChunkingEnabled(true)
+            .setWriterHook(mockHook)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Build a value large enough to trigger chunking (>1MB)
+    StringBuilder stringBuilder = new StringBuilder();
+    for (int i = 0; i < 50000; i++) {
+      stringBuilder.append("abcdefghabcdefghabcdefghabcdefgh");
+    }
+    String largeValue = stringBuilder.toString();
+
+    String key = "test-key";
+    writer.put(key, largeValue, 1, null);
+
+    byte[] expectedKey = serializer.serialize(testTopic, key);
+    byte[] expectedValue = serializer.serialize(testTopic, largeValue);
+    // Hook should fire exactly once with original pre-chunking sizes
+    verify(mockHook)
+        .onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), eq(expectedKey.length), eq(expectedValue.length));
+    // Producer should be called multiple times (chunks + manifest)
+    verify(mockedProducer, atLeast(2)).sendMessage(any(), any(), any(), any(), any(), any());
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testWriterHookNotCalledWhenRecordTooLarge() {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+
+    // Non-chunking writer — records over ~1MB will throw RecordTooLargeException
+    String testTopic = "test";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setPartitionCount(1)
+            .setWriterHook(mockHook)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    // Build a value large enough to exceed the max size (~1MB)
+    StringBuilder stringBuilder = new StringBuilder();
+    for (int i = 0; i < 50000; i++) {
+      stringBuilder.append("abcdefghabcdefghabcdefghabcdefgh");
+    }
+    String largeValue = stringBuilder.toString();
+
+    // put() with too-large record should throw and NOT call hook
+    try {
+      writer.put("key", largeValue, 1, null);
+      fail("Expected RecordTooLargeException");
+    } catch (RecordTooLargeException e) {
+      // expected
+    }
+    verify(mockHook, never()).onBeforeProduce(any(VeniceWriterHook.OperationType.class), anyInt(), anyInt());
+
+    // update() with too-large record should throw and NOT call hook
+    try {
+      writer.update("key", largeValue, 1, 1, null, APP_DEFAULT_LOGICAL_TS);
+      fail("Expected RecordTooLargeException");
+    } catch (RecordTooLargeException e) {
+      // expected
+    }
+    verify(mockHook, never()).onBeforeProduce(any(VeniceWriterHook.OperationType.class), anyInt(), anyInt());
+
+    // delete() with too-large key should throw and NOT call hook
+    try {
+      writer.delete(largeValue, null);
+      fail("Expected RecordTooLargeException");
+    } catch (RecordTooLargeException e) {
+      // expected
+    }
+    verify(mockHook, never()).onBeforeProduce(any(VeniceWriterHook.OperationType.class), anyInt(), anyInt());
   }
 }
