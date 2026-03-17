@@ -355,9 +355,9 @@ public abstract class StoreIngestionTaskTest {
 
   private static final long READ_CYCLE_DELAY_MS = 5;
   private static final long TEST_TIMEOUT_MS = 1000 * READ_CYCLE_DELAY_MS;
-  // Must be longer than the longest assertion timeout (startupTimeoutMs = TEST_TIMEOUT_MS * 8 = 40s)
-  // plus SIT close() time, otherwise runTest() kills the SIT before assertions can complete.
-  private static final int RUN_TEST_FUNCTION_TIMEOUT_SECONDS = 60;
+  // Must be longer than the longest assertion timeout (startupTimeoutMs up to 90s in testResetPartition)
+  // plus SIT close() time. On loaded CI the SIT shutdown can take 10+ seconds after assertions complete.
+  private static final int RUN_TEST_FUNCTION_TIMEOUT_SECONDS = 120;
   private static final long EMPTY_POLL_SLEEP_MS = 0;
 
   private static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();

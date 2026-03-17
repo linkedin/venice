@@ -7,7 +7,6 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.TehutiMetric;
@@ -27,7 +26,7 @@ public class DIVStatsReporterTest {
 
   @BeforeMethod
   public void setUp() {
-    metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    metricsRepository = new MetricsRepository();
     reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     storeName = Utils.getUniqueString("store");
