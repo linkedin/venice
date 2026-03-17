@@ -137,6 +137,12 @@ public enum VeniceMetricsDimensions {
   /** {@link VeniceConsumerPoolAction} Consumer pool action (subscribe, update_assignment). */
   VENICE_CONSUMER_POOL_ACTION("venice.consumer_pool.action"),
 
+  /** {@link VeniceDIVResult} Data Integrity Validation result (success, duplicate, missing, corrupted). */
+  VENICE_DIV_RESULT("venice.div.result"),
+
+  /** {@link VeniceDIVSeverity} Severity of a leader offset rewind (benign, potentially_lossy). */
+  VENICE_DIV_SEVERITY("venice.div.severity"),
+
   /** {@link QuotaRequestOutcome} Outcome of read quota enforcement (allowed, rejected, allowed_unintentionally). */
   VENICE_QUOTA_REQUEST_OUTCOME("venice.quota.request.outcome");
 

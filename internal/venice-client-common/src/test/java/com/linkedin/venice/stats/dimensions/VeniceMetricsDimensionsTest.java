@@ -139,6 +139,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_CONSUMER_POOL_ACTION:
           assertEquals(dimension.getDimensionName(format), "venice.consumer_pool.action");
           break;
+        case VENICE_DIV_RESULT:
+          assertEquals(dimension.getDimensionName(format), "venice.div.result");
+          break;
+        case VENICE_DIV_SEVERITY:
+          assertEquals(dimension.getDimensionName(format), "venice.div.severity");
+          break;
         case VENICE_QUOTA_REQUEST_OUTCOME:
           assertEquals(dimension.getDimensionName(format), "venice.quota.request.outcome");
           break;
@@ -279,6 +285,12 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_CONSUMER_POOL_ACTION:
           assertEquals(dimension.getDimensionName(format), "venice.consumerPool.action");
           break;
+        case VENICE_DIV_RESULT:
+          assertEquals(dimension.getDimensionName(format), "venice.div.result");
+          break;
+        case VENICE_DIV_SEVERITY:
+          assertEquals(dimension.getDimensionName(format), "venice.div.severity");
+          break;
         case VENICE_QUOTA_REQUEST_OUTCOME:
           assertEquals(dimension.getDimensionName(format), "venice.quota.request.outcome");
           break;
@@ -418,6 +430,12 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_CONSUMER_POOL_ACTION:
           assertEquals(dimension.getDimensionName(format), "Venice.ConsumerPool.Action");
+          break;
+        case VENICE_DIV_RESULT:
+          assertEquals(dimension.getDimensionName(format), "Venice.Div.Result");
+          break;
+        case VENICE_DIV_SEVERITY:
+          assertEquals(dimension.getDimensionName(format), "Venice.Div.Severity");
           break;
         case VENICE_QUOTA_REQUEST_OUTCOME:
           assertEquals(dimension.getDimensionName(format), "Venice.Quota.Request.Outcome");
