@@ -343,4 +343,49 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
         IllegalArgumentException.class,
         () -> rocksDBStorageEngine.clearGlobalRtDivState(METADATA_PARTITION_ID, brokerUrl));
   }
+
+  @Test
+  public void testGetPutDeleteGlobalRtDivChunk() {
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
+    int partitionId = PARTITION_ID;
+    byte[] chunkKey = "chunk-key-1".getBytes();
+    byte[] chunkValue = "chunk-value-1".getBytes();
+
+    // Missing chunk returns null
+    Assert.assertNull(rocksDBStorageEngine.getGlobalRtDivChunk(partitionId, chunkKey));
+
+    // Put and get round-trip
+    rocksDBStorageEngine.putGlobalRtDivChunk(partitionId, chunkKey, chunkValue);
+    Assert.assertEquals(rocksDBStorageEngine.getGlobalRtDivChunk(partitionId, chunkKey), chunkValue);
+
+    // Delete and verify absent
+    rocksDBStorageEngine.deleteGlobalRtDivChunk(partitionId, chunkKey);
+    Assert.assertNull(rocksDBStorageEngine.getGlobalRtDivChunk(partitionId, chunkKey));
+  }
+
+  @Test
+  public void testIllegalPartitionIdInGlobalRtDivChunk() {
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) getTestStoreEngine();
+    byte[] chunkKey = "chunk-key".getBytes();
+    byte[] chunkValue = "chunk-value".getBytes();
+
+    // Negative partition id should throw
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.putGlobalRtDivChunk(-1, chunkKey, chunkValue));
+    Assert.assertThrows(IllegalArgumentException.class, () -> rocksDBStorageEngine.getGlobalRtDivChunk(-1, chunkKey));
+    Assert
+        .assertThrows(IllegalArgumentException.class, () -> rocksDBStorageEngine.deleteGlobalRtDivChunk(-1, chunkKey));
+
+    // Metadata partition id should throw
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.putGlobalRtDivChunk(METADATA_PARTITION_ID, chunkKey, chunkValue));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.getGlobalRtDivChunk(METADATA_PARTITION_ID, chunkKey));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> rocksDBStorageEngine.deleteGlobalRtDivChunk(METADATA_PARTITION_ID, chunkKey));
+  }
 }

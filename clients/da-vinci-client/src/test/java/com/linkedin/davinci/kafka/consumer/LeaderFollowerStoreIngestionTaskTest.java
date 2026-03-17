@@ -1910,6 +1910,32 @@ public class LeaderFollowerStoreIngestionTaskTest {
     Assert.assertNull(nonPrefixResult);
     // storageMetadataService.getGlobalRtDivState should NOT have been called for the non-prefix key
     verify(mockSms, times(0)).getGlobalRtDivState(versionTopic, 0, "REGULAR_KEY.localhost:9092");
+
+    // Case 4: storage throws VeniceException → returns null without propagating
+    doThrow(new VeniceException("storage not initialized")).when(mockSms)
+        .getGlobalRtDivState(versionTopic, 0, brokerUrl);
+    GlobalRtDivState exceptionResult =
+        ingestionTask.readGlobalRtDivState(keyBytes, GLOBAL_RT_DIV_VERSION, topicPartition, manifestContainer);
+    Assert.assertNull(exceptionResult);
+  }
+
+  /**
+   * Tests that {@link StoreIngestionTask#putGlobalRtDivStateInMetadata} throws a VeniceException
+   * when a chunk manifest key is shorter than the expected chunking suffix length.
+   */
+  @Test
+  public void testPutGlobalRtDivStateInMetadataChunkManifestShortKey() throws Exception {
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).putGlobalRtDivStateInMetadata(anyInt(), any(), any());
+
+    Put put = new Put();
+    // CHUNK_MANIFEST_SCHEMA_ID = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion() = -20
+    put.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    put.putValue = ByteBuffer.wrap(new byte[0]);
+
+    // A key shorter than KEY_CHUNKING_SUFFIX_LENGTH must throw
+    byte[] shortKey = new byte[0];
+    Assert.assertThrows(VeniceException.class, () -> ingestionTask.putGlobalRtDivStateInMetadata(0, shortKey, put));
   }
 
   private static void injectField(Object target, Class<?> declaringClass, String fieldName, Object value)

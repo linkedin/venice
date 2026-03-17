@@ -3930,8 +3930,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return null;
     }
     String brokerUrl = key.substring(GLOBAL_RT_DIV_KEY_PREFIX.length());
-    Optional<byte[]> metadataBytes =
-        storageMetadataService.getGlobalRtDivState(kafkaVersionTopic, partitionId, brokerUrl);
+    Optional<byte[]> metadataBytes;
+    try {
+      metadataBytes = storageMetadataService.getGlobalRtDivState(kafkaVersionTopic, partitionId, brokerUrl);
+    } catch (VeniceException e) {
+      LOGGER.error(
+          "Unable to read Global RT DIV state from metadata storage for topic-partition: {}, brokerUrl: {}",
+          topicPartition,
+          brokerUrl,
+          e);
+      return null;
+    }
     if (!metadataBytes.isPresent()) {
       return null;
     }

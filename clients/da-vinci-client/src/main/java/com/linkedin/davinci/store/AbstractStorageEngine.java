@@ -761,6 +761,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
           partitionId);
       return;
     }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException(
+          "Metadata partition id should not be used as argument in deleteGlobalRtDivChunk.");
+    }
     if (partitionId < 0) {
       throw new IllegalArgumentException("Invalid partition id argument in deleteGlobalRtDivChunk");
     }
