@@ -505,7 +505,6 @@ public abstract class StoreIngestionTaskTest {
   public void suiteSetUp() throws Exception {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
-    taskPollingService = Executors.newFixedThreadPool(1, new DaemonThreadFactory("SIT"));
     storeBufferService = new StoreBufferService(
         3,
         10000,
@@ -519,12 +518,13 @@ public abstract class StoreIngestionTaskTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() throws Exception {
-    TestUtils.shutdownExecutor(taskPollingService);
     storeBufferService.stop();
   }
 
   @AfterMethod(alwaysRun = true)
   public void methodCleanUp() throws Exception {
+    // Shut down per-test executor to prevent a slow SIT shutdown from blocking the next test.
+    TestUtils.shutdownExecutor(taskPollingService);
     if (localKafkaConsumerService != null) {
       localKafkaConsumerService.stopInner();
     }
@@ -535,6 +535,8 @@ public abstract class StoreIngestionTaskTest {
 
   @BeforeMethod(alwaysRun = true)
   public void methodSetUp() throws Exception {
+    // Create a fresh executor per test so a slow SIT shutdown cannot block the next test's SIT.
+    taskPollingService = Executors.newFixedThreadPool(1, new DaemonThreadFactory("SIT"));
     aggKafkaConsumerService = mock(AggKafkaConsumerService.class);
     storeNameWithoutVersionInfo = Utils.getUniqueString("TestTopic");
     topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
