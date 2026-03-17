@@ -313,4 +313,51 @@ public class TestVeniceHelixAdminWithoutCluster {
             "dc-99, dc-0, dc-4, dc-2"),
         "dc-4");
   }
+
+  @Test
+  public void testDeferredRollbackFieldsOnStore() {
+    String storeName = Utils.getUniqueString("testStore");
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+
+    // Default values
+    Assert.assertEquals(store.getRollbackVersion(), Store.NON_EXISTING_VERSION);
+    Assert.assertEquals(store.getRollbackVersionTimestamp(), 0L);
+
+    // Set rollback fields
+    store.setRollbackVersion(3);
+    store.setRollbackVersionTimestamp(12345L);
+    Assert.assertEquals(store.getRollbackVersion(), 3);
+    Assert.assertEquals(store.getRollbackVersionTimestamp(), 12345L);
+
+    // Clear rollback fields
+    store.setRollbackVersion(Store.NON_EXISTING_VERSION);
+    store.setRollbackVersionTimestamp(0);
+    Assert.assertEquals(store.getRollbackVersion(), Store.NON_EXISTING_VERSION);
+    Assert.assertEquals(store.getRollbackVersionTimestamp(), 0L);
+  }
+
+  @Test
+  public void testGetBackupVersionNumberReturnsLargestOnlineVersionBelowCurrent() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(admin).getBackupVersionNumber(any(), org.mockito.Mockito.anyInt());
+
+    String storeName = "test-store";
+    List<Version> versions = new LinkedList<>();
+    Version v1 = new com.linkedin.venice.meta.VersionImpl(storeName, 1, null, 1);
+    v1.setStatus(com.linkedin.venice.meta.VersionStatus.ONLINE);
+    Version v2 = new com.linkedin.venice.meta.VersionImpl(storeName, 2, null, 1);
+    v2.setStatus(com.linkedin.venice.meta.VersionStatus.ONLINE);
+    Version v3 = new com.linkedin.venice.meta.VersionImpl(storeName, 3, null, 1);
+    v3.setStatus(com.linkedin.venice.meta.VersionStatus.ONLINE);
+    versions.add(v1);
+    versions.add(v2);
+    versions.add(v3);
+
+    // Current is v3, backup should be v2
+    Assert.assertEquals(admin.getBackupVersionNumber(versions, 3), 2);
+    // Current is v2, backup should be v1
+    Assert.assertEquals(admin.getBackupVersionNumber(versions, 2), 1);
+    // Current is v1, no backup
+    Assert.assertEquals(admin.getBackupVersionNumber(versions, 1), Store.NON_EXISTING_VERSION);
+  }
 }

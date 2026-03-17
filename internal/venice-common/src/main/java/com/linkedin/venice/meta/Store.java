@@ -393,4 +393,12 @@ public interface Store {
   int getPreviousCurrentVersion();
 
   void setPreviousCurrentVersion(int previousCurrentVersion);
+
+  int getRollbackVersion();
+
+  void setRollbackVersion(int rollbackVersion);
+
+  long getRollbackVersionTimestamp();
+
+  void setRollbackVersionTimestamp(long rollbackVersionTimestamp);
 }

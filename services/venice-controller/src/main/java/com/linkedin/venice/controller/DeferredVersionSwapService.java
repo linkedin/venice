@@ -1007,6 +1007,24 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               }
             });
           }
+          // Process deferred rollbacks for Da Vinci-enabled stores
+          for (Store parentStore: parentStores) {
+            if (parentStore.getRollbackVersion() == Store.NON_EXISTING_VERSION) {
+              continue;
+            }
+            clusterExecutorService.submit(() -> {
+              try {
+                performDeferredRollback(cluster, parentStore);
+              } catch (Exception e) {
+                LOGGER.warn(
+                    "Error processing deferred rollback for store {} in cluster {}",
+                    parentStore.getName(),
+                    cluster,
+                    e);
+              }
+            });
+          }
+
           clusterThreadPoolStats.recordQueuedTasksCount();
         } catch (Exception e) {
           LOGGER.warn("Caught exception while performing deferred version swap for cluster: {}", cluster, e);
@@ -1017,6 +1035,57 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         }
       }
     };
+  }
+
+  /**
+   * Performs deferred rollback for a Da Vinci-enabled store. Checks if:
+   * 1. Timeout has expired (safety net) — complete rollback immediately
+   * 2. Da Vinci push status for the rollback version is COMPLETED — complete rollback
+   * Otherwise, wait for next scan cycle.
+   */
+  private void performDeferredRollback(String cluster, Store parentStore) {
+    String storeName = parentStore.getName();
+    int rollbackVersion = parentStore.getRollbackVersion();
+    long rollbackTimestamp = parentStore.getRollbackVersionTimestamp();
+
+    // Default timeout: 30 minutes
+    long timeoutMs = TimeUnit.MINUTES.toMillis(30);
+    long elapsed = System.currentTimeMillis() - rollbackTimestamp;
+
+    if (elapsed >= timeoutMs) {
+      LOGGER.info(
+          "Deferred rollback timeout ({} ms elapsed) for store {}, completing rollback to v{}",
+          elapsed,
+          storeName,
+          rollbackVersion);
+      veniceParentHelixAdmin.getVeniceHelixAdmin().completeDeferredRollback(cluster, storeName);
+      return;
+    }
+
+    // Check Da Vinci push status for the rollback version topic
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, rollbackVersion);
+    try {
+      Admin.OfflinePushStatusInfo pushStatusInfo =
+          veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
+      ExecutionStatus overallStatus = pushStatusInfo.getExecutionStatus();
+      if (overallStatus == ExecutionStatus.COMPLETED) {
+        LOGGER.info(
+            "Da Vinci push status COMPLETED for rollback version {} of store {}, completing deferred rollback",
+            rollbackVersion,
+            storeName);
+        veniceParentHelixAdmin.getVeniceHelixAdmin().completeDeferredRollback(cluster, storeName);
+      } else {
+        logMessageIfNotRedundant(
+            "Deferred rollback for store " + storeName + " to v" + rollbackVersion + " waiting, push status: "
+                + overallStatus + " (elapsed: " + elapsed + " ms)");
+      }
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Error checking push status for deferred rollback of store {} version {}",
+          storeName,
+          rollbackVersion,
+          e);
+    }
   }
 
   private void performSequentialRollForward(
