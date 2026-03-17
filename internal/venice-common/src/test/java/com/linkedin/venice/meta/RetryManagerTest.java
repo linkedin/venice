@@ -20,6 +20,7 @@ import com.linkedin.venice.stats.RetryManagerStats;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
@@ -47,7 +48,7 @@ public class RetryManagerTest {
     Clock mockClock = mock(Clock.class);
     long start = System.currentTimeMillis();
     doReturn(start).when(mockClock).millis();
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     RetryManager retryManager =
         new RetryManager(metricsRepository, "test-retry-manager", "test-store", null, 0, 0.1d, mockClock, scheduler);
     retryManager.recordRequest();
@@ -63,7 +64,7 @@ public class RetryManagerTest {
     Clock mockClock = mock(Clock.class);
     long start = System.currentTimeMillis();
     doReturn(start).when(mockClock).millis();
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     RetryManager retryManager =
         new RetryManager(metricsRepository, "test-retry-manager", "test-store", null, 1000, 0.1d, mockClock, scheduler);
     doReturn(start + 1000).when(mockClock).millis();
@@ -110,7 +111,7 @@ public class RetryManagerTest {
     Clock mockClock = mock(Clock.class);
     long start = System.currentTimeMillis();
     doReturn(start).when(mockClock).millis();
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     RetryManager retryManager =
         new RetryManager(metricsRepository, "test-retry-manager", "test-store", null, 1000, 0.1d, mockClock, scheduler);
     doReturn(start + 1000).when(mockClock).millis();
