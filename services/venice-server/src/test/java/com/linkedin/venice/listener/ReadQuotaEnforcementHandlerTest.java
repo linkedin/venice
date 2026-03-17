@@ -791,12 +791,12 @@ public class ReadQuotaEnforcementHandlerTest {
     // Ensure init() is invoked before proceeding with the test
     verify(mockStoreRepo, timeout(1000)).getAllStores();
     assertEquals(quotaEnforcer.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
-    verify(stats, times(1)).recordAllowedUnintentionally(storeName, 0, 1);
+    verify(stats, times(1)).recordAllowedUnintentionally(storeName, 1, 1);
     RouterRequest quotaDisabledRequest = mock(RouterRequest.class);
     doReturn(storeName2).when(quotaDisabledRequest).getStoreName();
     assertEquals(quotaEnforcer.enforceQuota(quotaDisabledRequest), QuotaEnforcementResult.ALLOWED);
     // Only storage node quota enabled requests should record allowed unintentionally when init fails
-    verify(stats, times(1)).recordAllowedUnintentionally(storeName, 0, 1);
+    verify(stats, times(1)).recordAllowedUnintentionally(storeName, 1, 1);
   }
 
   @Test

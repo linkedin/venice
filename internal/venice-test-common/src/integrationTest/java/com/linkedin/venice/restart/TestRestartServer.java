@@ -81,8 +81,8 @@ public class TestRestartServer {
       }
     });
 
-    // Validate OTel DISK_QUOTA_USED metric alongside Tehuti storage_quota_used
-    validateOtelDiskQuotaUsed(keyCount);
+    // Validate OTel DISK_QUOTA_USED metric — now reports raw ratio (e.g., 0.75) instead of 0-100 scale
+    validateOtelDiskQuotaUsed(0.0);
 
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       cluster.stopVeniceServer(server.getPort());
@@ -138,7 +138,7 @@ public class TestRestartServer {
     }
   }
 
-  private void validateOtelDiskQuotaUsed(int expectedMinValue) {
+  private void validateOtelDiskQuotaUsed(double expectedMinValue) {
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       InMemoryMetricReader reader = getOtelReader(server);
       // DISK_QUOTA_USED is now ASYNC_DOUBLE_GAUGE — reports raw ratio as double

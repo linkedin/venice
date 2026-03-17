@@ -47,7 +47,7 @@ public class AsyncMetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionIn
    * {@code ASYNC_DOUBLE_GAUGE} passes the double directly.
    *
    * <p>Callers with {@code long} values can pass them directly in the lambda — Java auto-widens
-   * {@code long} to {@code double} losslessly.
+   * {@code long} to {@code double}, which is lossless for all practical metric values.
    */
   public static <E extends Enum<E> & VeniceDimensionInterface> AsyncMetricEntityStateOneEnum<E> create(
       MetricEntity metricEntity,

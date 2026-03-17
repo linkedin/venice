@@ -260,8 +260,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
 
     int readCapacityUnits = getRcu(request);
+    int version = Version.parseVersionFromKafkaTopicName(request.getResourceName());
     if (!isInitialized()) {
-      stats.recordAllowedUnintentionally(storeName, 0, readCapacityUnits);
+      stats.recordAllowedUnintentionally(storeName, version, readCapacityUnits);
       return QuotaEnforcementResult.ALLOWED;
     }
 
@@ -269,7 +270,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
      * First check per store version level quota; don't throttle retried request at store version level
      */
     VeniceRateLimiter veniceRateLimiter = storeVersionRateLimiters.get(request.getResourceName());
-    int version = Version.parseVersionFromKafkaTopicName(request.getResourceName());
     if (veniceRateLimiter != null) {
       if (!request.isRetryRequest() && !veniceRateLimiter.tryAcquirePermit(readCapacityUnits)) {
         stats.recordRejected(request.getStoreName(), version, readCapacityUnits);
