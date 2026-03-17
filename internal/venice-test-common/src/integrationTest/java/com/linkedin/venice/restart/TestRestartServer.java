@@ -4,7 +4,7 @@ import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.DIS
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_BYTES_CONSUMED;
 import static com.linkedin.davinci.stats.ingestion.IngestionOtelMetricEntity.INGESTION_RECORDS_CONSUMED;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVICE_METRIC_PREFIX;
-import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateAnyGaugeDataPointAtLeast;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateAnyDoubleGaugeDataPointAtLeast;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateAnySumDataPointAtLeast;
 
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -141,7 +141,8 @@ public class TestRestartServer {
   private void validateOtelDiskQuotaUsed(int expectedMinValue) {
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       InMemoryMetricReader reader = getOtelReader(server);
-      validateAnyGaugeDataPointAtLeast(
+      // DISK_QUOTA_USED is now ASYNC_DOUBLE_GAUGE — reports raw ratio as double
+      validateAnyDoubleGaugeDataPointAtLeast(
           reader,
           expectedMinValue,
           DISK_QUOTA_USED.getMetricEntity().getMetricName(),

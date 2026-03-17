@@ -261,7 +261,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
     int readCapacityUnits = getRcu(request);
     if (!isInitialized()) {
-      stats.recordAllowedUnintentionally(storeName, readCapacityUnits);
+      stats.recordAllowedUnintentionally(storeName, 0, readCapacityUnits);
       return QuotaEnforcementResult.ALLOWED;
     }
 
@@ -278,7 +278,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     } else {
       // If this happens it is probably due to a short-lived race condition where the resource is being accessed before
       // the bucket is allocated. The request will be allowed based on node/server capacity so emit metrics accordingly.
-      stats.recordAllowedUnintentionally(storeName, readCapacityUnits);
+      stats.recordAllowedUnintentionally(storeName, version, readCapacityUnits);
     }
 
     /*

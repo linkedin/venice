@@ -97,4 +97,37 @@ public class MetricEntityTest {
       Assert.assertTrue(e.getMessage().startsWith("Custom prefix should not start with venice"), e.getMessage());
     }
   }
+
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "MetricUnit.RATIO requires a double-capable metric type.*")
+  public void testRatioUnitRejectsLongOnlyMetricType() {
+    Set<VeniceMetricsDimensions> dimensions = new HashSet<>();
+    dimensions.add(VENICE_STORE_NAME);
+    // ASYNC_GAUGE is long-only — should reject RATIO unit
+    new MetricEntity("test.ratio", MetricType.ASYNC_GAUGE, MetricUnit.RATIO, "test ratio validation", dimensions);
+  }
+
+  @Test
+  public void testRatioUnitAcceptsDoubleCapableMetricTypes() {
+    Set<VeniceMetricsDimensions> dimensions = new HashSet<>();
+    dimensions.add(VENICE_STORE_NAME);
+    // These should all succeed — they support double values
+    new MetricEntity(
+        "test.ratio.double_gauge",
+        MetricType.ASYNC_DOUBLE_GAUGE,
+        MetricUnit.RATIO,
+        "ratio with double gauge",
+        dimensions);
+    new MetricEntity(
+        "test.ratio.histogram",
+        MetricType.HISTOGRAM,
+        MetricUnit.RATIO,
+        "ratio with histogram",
+        dimensions);
+    new MetricEntity(
+        "test.ratio.min_max",
+        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+        MetricUnit.RATIO,
+        "ratio with min max",
+        dimensions);
+  }
 }

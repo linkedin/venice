@@ -135,7 +135,10 @@ public enum VeniceMetricsDimensions {
   VENICE_HEARTBEAT_COMPONENT("venice.heartbeat.component"),
 
   /** {@link VeniceConsumerPoolAction} Consumer pool action (subscribe, update_assignment). */
-  VENICE_CONSUMER_POOL_ACTION("venice.consumer_pool.action");
+  VENICE_CONSUMER_POOL_ACTION("venice.consumer_pool.action"),
+
+  /** {@link QuotaRequestOutcome} Outcome of read quota enforcement (allowed, rejected, allowed_unintentionally). */
+  VENICE_QUOTA_REQUEST_OUTCOME("venice.quota.request.outcome");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

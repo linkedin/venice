@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.DoubleSupplier;
 import java.util.function.LongSupplier;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -96,14 +97,14 @@ public class AsyncMetricEntityStateTest {
     LongCounter longCounter = mock(LongCounter.class);
     when(mockOtelRepository.createInstrument(mockMetricEntity)).thenReturn(longCounter);
 
-    // without tehuti sensor
+    // ASYNC_GAUGE (LongSupplier) without tehuti sensor
     AsyncMetricEntityState metricEntityState =
         AsyncMetricEntityStateBase.create(mockMetricEntity, null, baseDimensionsMap, baseAttributes, () -> 0L);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
-    Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
+    Assert.assertNull(metricEntityState.getTehutiSensor());
 
-    // with tehuti sensor
+    // ASYNC_GAUGE (LongSupplier) with tehuti sensor
     metricEntityState = AsyncMetricEntityStateBase.create(
         mockMetricEntity,
         null,
@@ -116,6 +117,14 @@ public class AsyncMetricEntityStateTest {
     Assert.assertNotNull(metricEntityState);
     Assert.assertNull(metricEntityState.getOtelMetric());
     Assert.assertNotNull(metricEntityState.getTehutiSensor());
+
+    // ASYNC_DOUBLE_GAUGE (DoubleSupplier) without tehuti sensor
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_DOUBLE_GAUGE);
+    metricEntityState = AsyncMetricEntityStateBase
+        .create(mockMetricEntity, null, baseDimensionsMap, baseAttributes, (DoubleSupplier) () -> 0.75);
+    Assert.assertNotNull(metricEntityState);
+    Assert.assertNull(metricEntityState.getOtelMetric());
+    Assert.assertNull(metricEntityState.getTehutiSensor());
   }
 
   @Test
@@ -125,14 +134,14 @@ public class AsyncMetricEntityStateTest {
     when(mockOtelRepository.createInstrument(any(MetricEntity.class), any(LongSupplier.class), any(Attributes.class)))
         .thenReturn(longCounter);
 
-    // without tehuti sensor
+    // ASYNC_GAUGE (LongSupplier) without tehuti sensor
     AsyncMetricEntityState metricEntityState = AsyncMetricEntityStateBase
         .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes, () -> 0L);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNotNull(metricEntityState.getOtelMetric());
-    Assert.assertNull(metricEntityState.getTehutiSensor()); // No Tehuti sensors added
+    Assert.assertNull(metricEntityState.getTehutiSensor());
 
-    // with tehuti sensor
+    // ASYNC_GAUGE (LongSupplier) with tehuti sensor
     metricEntityState = AsyncMetricEntityStateBase.create(
         mockMetricEntity,
         mockOtelRepository,
@@ -142,6 +151,32 @@ public class AsyncMetricEntityStateTest {
         baseDimensionsMap,
         baseAttributes,
         () -> 0L);
+    Assert.assertNotNull(metricEntityState);
+    Assert.assertNotNull(metricEntityState.getOtelMetric());
+    Assert.assertNotNull(metricEntityState.getTehutiSensor());
+
+    // ASYNC_DOUBLE_GAUGE (DoubleSupplier) without tehuti sensor
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.ASYNC_DOUBLE_GAUGE);
+    Object mockGauge = new Object();
+    when(mockOtelRepository.createInstrument(any(MetricEntity.class), any(DoubleSupplier.class), any(Attributes.class)))
+        .thenReturn(mockGauge);
+
+    metricEntityState = AsyncMetricEntityStateBase
+        .create(mockMetricEntity, mockOtelRepository, baseDimensionsMap, baseAttributes, (DoubleSupplier) () -> 0.75);
+    Assert.assertNotNull(metricEntityState);
+    Assert.assertNotNull(metricEntityState.getOtelMetric());
+    Assert.assertNull(metricEntityState.getTehutiSensor());
+
+    // ASYNC_DOUBLE_GAUGE (DoubleSupplier) with tehuti sensor
+    metricEntityState = AsyncMetricEntityStateBase.create(
+        mockMetricEntity,
+        mockOtelRepository,
+        sensorRegistrationFunction,
+        TestTehutiMetricNameEnum.TEST_METRIC,
+        singletonList(new AsyncGauge((ignored1, ignored2) -> 0.75, "test")),
+        baseDimensionsMap,
+        baseAttributes,
+        (DoubleSupplier) () -> 0.75);
     Assert.assertNotNull(metricEntityState);
     Assert.assertNotNull(metricEntityState.getOtelMetric());
     Assert.assertNotNull(metricEntityState.getTehutiSensor());
@@ -286,7 +321,7 @@ public class AsyncMetricEntityStateTest {
       assertTrue(
           e.getMessage()
               .contains(
-                  "Tehuti metric stats does not contain AsyncGauge, but the otel metric type is ASYNC_GAUGE for metric"),
+                  "Tehuti metric stats does not contain AsyncGauge, but the otel metric type is ASYNC_GAUGE/ASYNC_DOUBLE_GAUGE for metric"),
           e.getMessage());
     }
 
@@ -331,6 +366,35 @@ public class AsyncMetricEntityStateTest {
         baseAttributes,
         () -> 0L);
     assertNotNull(metricEntityState);
+
+    // case 4: MetricType is ASYNC_DOUBLE_GAUGE, but tehuti has Count instead of AsyncGauge
+    Object mockGauge = new Object();
+    when(mockOtelRepository.createInstrument(any(MetricEntity.class), any(DoubleSupplier.class), any(Attributes.class)))
+        .thenReturn(mockGauge);
+    MetricEntity ratioEntity = new MetricEntity(
+        "test_ratio",
+        MetricType.ASYNC_DOUBLE_GAUGE,
+        MetricUnit.RATIO,
+        "Test ratio metric",
+        Utils.setOf(VENICE_REQUEST_METHOD));
+    try {
+      AsyncMetricEntityStateBase.create(
+          ratioEntity,
+          mockOtelRepository,
+          sensorRegistrationFunction,
+          TestTehutiMetricNameEnum.TEST_METRIC,
+          singletonList(new Count()),
+          baseDimensionsMap,
+          baseAttributes,
+          (DoubleSupplier) () -> 0.5);
+      fail("Should throw for ASYNC_DOUBLE_GAUGE with non-AsyncGauge Tehuti stat");
+    } catch (IllegalArgumentException e) {
+      assertTrue(
+          e.getMessage()
+              .contains(
+                  "Tehuti metric stats does not contain AsyncGauge, but the otel metric type is ASYNC_GAUGE/ASYNC_DOUBLE_GAUGE"),
+          e.getMessage());
+    }
   }
 
   @Test
