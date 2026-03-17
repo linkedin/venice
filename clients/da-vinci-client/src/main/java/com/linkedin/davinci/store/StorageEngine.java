@@ -170,6 +170,21 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
   void clearGlobalRtDivState(int partitionId, String brokerUrl);
 
   /**
+   * Put a GlobalRtDiv intermediate chunk (with schema header prepended) into the metadata partition.
+   */
+  void putGlobalRtDivChunk(int partitionId, byte[] chunkKey, byte[] chunkValue);
+
+  /**
+   * Retrieve a GlobalRtDiv intermediate chunk from the metadata partition.
+   */
+  byte[] getGlobalRtDivChunk(int partitionId, byte[] chunkKey);
+
+  /**
+   * Delete a GlobalRtDiv intermediate chunk from the metadata partition.
+   */
+  void deleteGlobalRtDivChunk(int partitionId, byte[] chunkKey);
+
+  /**
    * Return true or false based on whether a given partition exists within this storage engine
    *
    * @param partitionId The partition to look for

@@ -57,6 +57,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   private static final byte[] VERSION_METADATA_KEY = "VERSION_METADATA".getBytes();
   private static final String PARTITION_METADATA_PREFIX = "P_";
   private static final String GLOBAL_RT_DIV_METADATA_PREFIX = "GRTD_";
+  private static final String GLOBAL_RT_DIV_CHUNK_METADATA_PREFIX = "GRTD_CK_";
 
   // Using a large positive number for metadata partition id instead of -1 can avoid database naming issues.
   public static final int METADATA_PARTITION_ID = 1000_000_000;
@@ -721,6 +722,43 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     metadataPartition.delete(getGlobalRtDivMetadataKey(partitionId, brokerUrl));
   }
 
+  @Override
+  public synchronized void putGlobalRtDivChunk(int partitionId, byte[] chunkKey, byte[] chunkValue) {
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
+    }
+    if (partitionId < 0) {
+      throw new IllegalArgumentException("Invalid partition id argument in putGlobalRtDivChunk");
+    }
+    metadataPartition.put(getGlobalRtDivChunkMetadataKey(partitionId, chunkKey), chunkValue);
+  }
+
+  @Override
+  public synchronized byte[] getGlobalRtDivChunk(int partitionId, byte[] chunkKey) {
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
+    }
+    if (partitionId < 0) {
+      throw new IllegalArgumentException("Invalid partition id argument in getGlobalRtDivChunk");
+    }
+    return metadataPartition.get(getGlobalRtDivChunkMetadataKey(partitionId, chunkKey));
+  }
+
+  @Override
+  public synchronized void deleteGlobalRtDivChunk(int partitionId, byte[] chunkKey) {
+    if (!metadataPartitionCreated()) {
+      LOGGER.info(
+          "Metadata partition not created; there is nothing to clear for {} partition {} chunk",
+          storeVersionName,
+          partitionId);
+      return;
+    }
+    if (partitionId < 0) {
+      throw new IllegalArgumentException("Invalid partition id argument in deleteGlobalRtDivChunk");
+    }
+    metadataPartition.delete(getGlobalRtDivChunkMetadataKey(partitionId, chunkKey));
+  }
+
   /**
    * Return true or false based on whether a given partition exists within this storage engine
    *
@@ -781,6 +819,14 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   private static byte[] getGlobalRtDivMetadataKey(int partitionId, String brokerUrl) {
     return (GLOBAL_RT_DIV_METADATA_PREFIX + partitionId + "_" + brokerUrl).getBytes();
+  }
+
+  private static byte[] getGlobalRtDivChunkMetadataKey(int partitionId, byte[] chunkKey) {
+    byte[] prefix = (GLOBAL_RT_DIV_CHUNK_METADATA_PREFIX + partitionId + "_").getBytes();
+    byte[] metaKey = new byte[prefix.length + chunkKey.length];
+    System.arraycopy(prefix, 0, metaKey, 0, prefix.length);
+    System.arraycopy(chunkKey, 0, metaKey, prefix.length, chunkKey.length);
+    return metaKey;
   }
 
   private boolean metadataPartitionCreated() {
