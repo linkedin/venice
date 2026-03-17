@@ -200,24 +200,10 @@ public class BlobTransferIngestionHelper {
       LOGGER.info("Dropped existing partition {} before blob transfer for replica {}", partition, replicaId);
     }
 
-    // Clean up both partition dir and temp dir to ensure a clean state for blob transfer
-    RocksDBUtils.cleanupBothPartitionDirAndTempTransferredDir(
-        storeName,
-        versionNumber,
-        partition,
-        serverConfig.getRocksDBPath());
-
-    // Open storage partition with blob-transfer-in-progress flag (read-only, no RocksDB open).
-    // This prevents race condition between dropping entire store and receiving transfer files.
-    StoragePartitionConfig blobTransferPartitionConfig =
-        new StoragePartitionConfig(storeVersionConfig.getStoreVersionName(), partition, true);
-    blobTransferPartitionConfig.setReadOnly(true);
+    // Pre-transfer validation and cleanup
     Supplier<StoreVersionState> svsSupplier = () -> storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    storageService.openStoreForNewPartition(storeVersionConfig, partition, svsSupplier, blobTransferPartitionConfig);
-    LOGGER.info(
-        "Storage partition added with {} for replica {} for blob transfer",
-        StoragePartitionAdjustmentTrigger.BEGIN_BLOB_TRANSFER,
-        replicaId);
+    validateDirectoriesBeforeBlobTransfer(storeName, versionNumber, partition);
+    addStoragePartitionWhenBlobTransferStart(partition, storeVersionConfig, svsSupplier, replicaId);
 
     // Determine table format
     BlobTransferTableFormat tableFormat = getRequestTableFormat();
@@ -250,6 +236,37 @@ public class BlobTransferIngestionHelper {
         }
       }
     });
+  }
+
+  /**
+   * Before bootstrapping from blob transfer, validate the partition directory and temp partition directory.
+   * If either of them exists, delete them to ensure a clean state for blob transfer.
+   */
+  private void validateDirectoriesBeforeBlobTransfer(String storeName, int versionNumber, int partitionId) {
+    RocksDBUtils.cleanupBothPartitionDirAndTempTransferredDir(
+        storeName,
+        versionNumber,
+        partitionId,
+        serverConfig.getRocksDBPath());
+  }
+
+  /**
+   * Add a partition to the storage engine when blob transfer starts
+   * with disabled read, disabled write, and rocksDB not open, but have blob transfer in-progress flag.
+   */
+  private void addStoragePartitionWhenBlobTransferStart(
+      int partitionId,
+      VeniceStoreVersionConfig storeConfig,
+      Supplier<StoreVersionState> svsSupplier,
+      String replicaId) {
+    StoragePartitionConfig storagePartitionConfig =
+        new StoragePartitionConfig(storeConfig.getStoreVersionName(), partitionId, true);
+    storagePartitionConfig.setReadOnly(true);
+    storageService.openStoreForNewPartition(storeConfig, partitionId, svsSupplier, storagePartitionConfig);
+    LOGGER.info(
+        "Storage partition added with {} for replica {} for blob transfer",
+        StoragePartitionAdjustmentTrigger.BEGIN_BLOB_TRANSFER,
+        replicaId);
   }
 
   /**

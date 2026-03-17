@@ -2497,7 +2497,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             initializePartitionConsumptionState(topicPartition, partition, topic);
 
         if (shouldStartBlobTransfer(partition, newPartitionConsumptionState, consumerAction)) {
-          storageUtilizationManager.initPartition(partition);
           blobTransferHelper.startBlobTransferAsyncForPartition(
               partition,
               newPartitionConsumptionState,
@@ -2547,7 +2546,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         subscribedCount--;
 
         // Cancel any pending blob transfer before unsubscribing
-        if (consumptionState != null && blobTransferHelper != null) {
+        if (consumptionState != null && blobTransferHelper != null && blobTransferHelper
+            .shouldEnableBlobTransfer(storeRepository.getStoreOrThrow(storeName), isDaVinciClient)) {
           blobTransferHelper.requestPendingBlobTransferCancellation(consumptionState);
         }
         // Clear any pending transformer recovery — the thread pool task will complete
@@ -2628,7 +2628,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case DROP_PARTITION:
         // Cancel any pending blob transfer and wait for it to fully stop before dropping,
         // to ensure Netty is not still writing files when we delete the partition.
-        if (blobTransferHelper != null) {
+        if (blobTransferHelper != null && blobTransferHelper
+            .shouldEnableBlobTransfer(storeRepository.getStoreOrThrow(storeName), isDaVinciClient)) {
           blobTransferHelper.cancelBlobTransferAndAwaitTermination(
               partition,
               serverConfig.getStopConsumptionTimeoutInSeconds(),
