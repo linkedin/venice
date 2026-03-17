@@ -1,9 +1,16 @@
 package com.linkedin.venice.samza;
 
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertSame;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.writer.VeniceWriterHook;
+import org.apache.samza.config.MapConfig;
 import org.testng.annotations.Test;
 
 
@@ -161,5 +168,90 @@ public class VeniceSystemProducerConfigTest {
         .setRunningFabric("dc-0")
         .setDiscoveryUrl("http://discovery")
         .build();
+  }
+
+  @Test
+  public void testToBuilderRoundTrip() {
+    VeniceSystemFactory factory = mock(VeniceSystemFactory.class);
+    SSLFactory sslFactory = mock(SSLFactory.class);
+    Time time = mock(Time.class);
+    VeniceWriterHook writerHook = mock(VeniceWriterHook.class);
+    MapConfig samzaConfig = new MapConfig();
+
+    VeniceSystemProducerConfig original = new VeniceSystemProducerConfig.Builder().setStoreName("testStore")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("testJobId")
+        .setRunningFabric("testFabric")
+        .setVerifyLatestProtocolPresent(true)
+        .setDiscoveryUrl("http://discovery")
+        .setFactory(factory)
+        .setSslFactory(sslFactory)
+        .setPartitioners("com.example.Partitioner")
+        .setTime(time)
+        .setWriterHook(writerHook)
+        .setSamzaConfig(samzaConfig)
+        .setRouterUrl("http://router")
+        .build();
+
+    VeniceSystemProducerConfig copy = original.toBuilder().build();
+
+    assertNotSame(copy, original);
+    assertEquals(copy.getStoreName(), original.getStoreName());
+    assertEquals(copy.getPushType(), original.getPushType());
+    assertEquals(copy.getSamzaJobId(), original.getSamzaJobId());
+    assertEquals(copy.getRunningFabric(), original.getRunningFabric());
+    assertEquals(copy.isVerifyLatestProtocolPresent(), original.isVerifyLatestProtocolPresent());
+    assertEquals(copy.getDiscoveryUrl(), original.getDiscoveryUrl());
+    assertSame(copy.getFactory(), original.getFactory());
+    assertEquals(copy.getSslFactory(), original.getSslFactory());
+    assertEquals(copy.getPartitioners(), original.getPartitioners());
+    assertSame(copy.getTime(), original.getTime());
+    assertSame(copy.getWriterHook(), original.getWriterHook());
+    assertSame(copy.getSamzaConfig(), original.getSamzaConfig());
+    assertEquals(copy.getRouterUrl(), original.getRouterUrl());
+  }
+
+  @Test
+  public void testToBuilderOverrideWriterHook() {
+    VeniceSystemFactory factory = mock(VeniceSystemFactory.class);
+    SSLFactory sslFactory = mock(SSLFactory.class);
+    Time time = mock(Time.class);
+    VeniceWriterHook originalHook = mock(VeniceWriterHook.class);
+    VeniceWriterHook newHook = mock(VeniceWriterHook.class);
+    MapConfig samzaConfig = new MapConfig();
+
+    VeniceSystemProducerConfig original = new VeniceSystemProducerConfig.Builder().setStoreName("testStore")
+        .setPushType(Version.PushType.STREAM)
+        .setSamzaJobId("testJobId")
+        .setRunningFabric("testFabric")
+        .setVerifyLatestProtocolPresent(true)
+        .setDiscoveryUrl("http://discovery")
+        .setFactory(factory)
+        .setSslFactory(sslFactory)
+        .setPartitioners("com.example.Partitioner")
+        .setTime(time)
+        .setWriterHook(originalHook)
+        .setSamzaConfig(samzaConfig)
+        .setRouterUrl("http://router")
+        .build();
+
+    VeniceSystemProducerConfig modified = original.toBuilder().setWriterHook(newHook).build();
+
+    assertSame(modified.getWriterHook(), newHook);
+    assertSame(original.getWriterHook(), originalHook);
+
+    // All other fields remain the same
+    assertEquals(modified.getStoreName(), original.getStoreName());
+    assertEquals(modified.getPushType(), original.getPushType());
+    assertEquals(modified.getSamzaJobId(), original.getSamzaJobId());
+    assertEquals(modified.getRunningFabric(), original.getRunningFabric());
+    assertEquals(modified.isVerifyLatestProtocolPresent(), original.isVerifyLatestProtocolPresent());
+    assertEquals(modified.getDiscoveryUrl(), original.getDiscoveryUrl());
+    assertSame(modified.getFactory(), original.getFactory());
+    assertEquals(modified.getSslFactory(), original.getSslFactory());
+    assertEquals(modified.getPartitioners(), original.getPartitioners());
+    assertSame(modified.getTime(), original.getTime());
+    assertSame(modified.getSamzaConfig(), original.getSamzaConfig());
+    assertEquals(modified.getRouterUrl(), original.getRouterUrl());
   }
 }
