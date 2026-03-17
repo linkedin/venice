@@ -20,7 +20,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Serializable;
 import java.util.Arrays;
@@ -158,171 +157,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     return Optional.of(discoveryUrl);
   }
 
-  /**
-   * @deprecated Left in to maintain backward compatibility
-   */
-  @Deprecated
-  protected SystemProducer createSystemProducer(
-      String primaryControllerColoD2ZKHost,
-      String primaryControllerD2Service,
-      String storeName,
-      Version.PushType venicePushType,
-      String samzaJobId,
-      String runningFabric,
-      Config config,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners) {
-    return new VeniceSystemProducer(
-        primaryControllerColoD2ZKHost,
-        primaryControllerColoD2ZKHost,
-        primaryControllerD2Service,
-        storeName,
-        venicePushType,
-        samzaJobId,
-        runningFabric,
-        config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true),
-        this,
-        sslFactory,
-        partitioners);
-  }
-
-  /**
-   * @deprecated Left in to maintain backward compatibility
-    */
-  @Deprecated
-  protected SystemProducer createSystemProducer(
-      String primaryControllerColoD2ZKHost,
-      String primaryControllerD2Service,
-      String storeName,
-      Version.PushType venicePushType,
-      String samzaJobId,
-      String runningFabric,
-      boolean verifyLatestProtocolPresent,
-      Config config,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners) {
-    return createSystemProducer(
-        primaryControllerColoD2ZKHost,
-        primaryControllerColoD2ZKHost,
-        primaryControllerD2Service,
-        storeName,
-        venicePushType,
-        samzaJobId,
-        runningFabric,
-        verifyLatestProtocolPresent,
-        config,
-        sslFactory,
-        partitioners);
-  }
-
-  /**
-   * Constructs a new instance of {@link VeniceSystemProducer}.
-   *
-   * @param veniceChildD2ZkHost D2 ZooKeeper address where components in the child colo announce themselves.
-   * @param primaryControllerColoD2ZKHost D2 ZooKeeper address of the colo where the primary controller resides.
-   * @param primaryControllerD2Service The D2 service name used by the primary controller to register itself.
-   * @param storeName The name of the Venice store to write to.
-   * @param venicePushType The {@link Version.PushType} to use for writing to the store.
-   * @param samzaJobId A unique identifier for jobs that may concurrently write to the same store.
-   * @param runningFabric The colo where the job is running; used to determine the optimal destination for data writes.
-   * @param verifyLatestProtocolPresent Whether to verify that the protocol versions used at runtime are valid in the Venice backend.
-   * @param config A {@code Config} object that may be used by the factory to override and create a customized {@link VeniceSystemProducer}.
-   * @param sslFactory Optional {@link SSLFactory} for communicating with other components over SSL.
-   * @param partitioners Optional comma-separated list of supported partitioner class names.
-   *
-   * @return A configured {@link VeniceSystemProducer} instance.
-   */
-  @SuppressWarnings("unused")
-  protected VeniceSystemProducer createSystemProducer(
-      String veniceChildD2ZkHost,
-      String primaryControllerColoD2ZKHost,
-      String primaryControllerD2Service,
-      String storeName,
-      Version.PushType venicePushType,
-      String samzaJobId,
-      String runningFabric,
-      boolean verifyLatestProtocolPresent,
-      Config config,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners) {
-    return createSystemProducer(
-        veniceChildD2ZkHost,
-        primaryControllerColoD2ZKHost,
-        primaryControllerD2Service,
-        storeName,
-        venicePushType,
-        samzaJobId,
-        runningFabric,
-        verifyLatestProtocolPresent,
-        sslFactory,
-        partitioners);
-  }
-
-  protected VeniceSystemProducer createSystemProducer(
-      D2Client providedChildColoD2Client,
-      D2Client providedPrimaryControllerColoD2Client,
-      String primaryControllerD2Service,
-      String storeName,
-      Version.PushType venicePushType,
-      String samzaJobId,
-      String runningFabric,
-      boolean verifyLatestProtocolPresent,
-      Config config,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners) {
-    return new VeniceSystemProducer(
-        providedChildColoD2Client,
-        providedPrimaryControllerColoD2Client,
-        primaryControllerD2Service,
-        storeName,
-        venicePushType,
-        samzaJobId,
-        runningFabric,
-        verifyLatestProtocolPresent,
-        this,
-        sslFactory,
-        partitioners);
-  }
-
-  /**
-   * Constructs a new instance of {@link VeniceSystemProducer}.
-   *
-   * @param veniceChildD2ZkHost D2 ZooKeeper address where components in the child colo announce themselves.
-   * @param primaryControllerColoD2ZKHost D2 ZooKeeper address of the colo where the primary controller resides.
-   * @param primaryControllerD2Service The D2 service name used by the primary controller to register itself.
-   * @param storeName The name of the Venice store to write to.
-   * @param venicePushType The {@link Version.PushType} to use for writing to the store.
-   * @param samzaJobId A unique identifier for jobs that may concurrently write to the same store.
-   * @param runningFabric The colo where the job is running; used to determine the optimal destination for writes.
-   * @param verifyLatestProtocolPresent Whether to verify that the protocol versions used at runtime are valid in the Venice backend.
-   * @param sslFactory Optional {@link SSLFactory} used for secure communication with other components.
-   * @param partitioners Optional comma-separated list of partitioner class names to use.
-   *
-   * @return A configured {@link VeniceSystemProducer} instance.
-   */
-  protected VeniceSystemProducer createSystemProducer(
-      String veniceChildD2ZkHost,
-      String primaryControllerColoD2ZKHost,
-      String primaryControllerD2Service,
-      String storeName,
-      Version.PushType venicePushType,
-      String samzaJobId,
-      String runningFabric,
-      boolean verifyLatestProtocolPresent,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners) {
-    return new VeniceSystemProducer(
-        veniceChildD2ZkHost,
-        primaryControllerColoD2ZKHost,
-        primaryControllerD2Service,
-        storeName,
-        venicePushType,
-        samzaJobId,
-        runningFabric,
-        verifyLatestProtocolPresent,
-        this,
-        sslFactory,
-        partitioners);
+  protected VeniceSystemProducer createSystemProducer(VeniceSystemProducerConfig config) {
+    return new VeniceSystemProducer(config);
   }
 
   public SystemProducer getProducer(
@@ -390,8 +226,17 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
     Optional<String> partitioners = Optional.ofNullable(config.get(VENICE_PARTITIONERS));
 
-    if (discoveryUrl.isPresent()) {
+    VeniceSystemProducerConfig.Builder configBuilder = new VeniceSystemProducerConfig.Builder().setStoreName(storeName)
+        .setPushType(venicePushType)
+        .setSamzaJobId(samzaJobId)
+        .setRunningFabric(runningFabric)
+        .setVerifyLatestProtocolPresent(verifyLatestProtocolPresent)
+        .setFactory(this)
+        .setSslFactory(sslFactory.orElse(null))
+        .setPartitioners(partitioners.orElse(null))
+        .setSamzaConfig(config);
 
+    if (discoveryUrl.isPresent()) {
       String routerUrl = config.get(VENICE_ROUTER_URL);
 
       LOGGER.info("Configs for {} producer: ", systemName);
@@ -401,20 +246,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       LOGGER.info("{}: {}", VENICE_CONTROLLER_DISCOVERY_URL, discoveryUrl.get());
       LOGGER.info("{}: {}", VENICE_ROUTER_URL, routerUrl);
 
-      VeniceSystemProducer p = new VeniceSystemProducer(
-          discoveryUrl.get(),
-          storeName,
-          venicePushType,
-          samzaJobId,
-          runningFabric,
-          verifyLatestProtocolPresent,
-          this,
-          sslFactory,
-          partitioners,
-          SystemTime.INSTANCE);
-      p.setRouterUrl(routerUrl);
-      p.applyAdditionalConfigs(config);
-      return p;
+      configBuilder.setDiscoveryUrl(discoveryUrl.get()).setRouterUrl(routerUrl);
+      return createSystemProducer(configBuilder.build());
     }
 
     String veniceParentZKHosts = config.get(VENICE_PARENT_D2_ZK_HOSTS);
@@ -471,38 +304,23 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         primaryControllerColoD2ZKHost,
         primaryControllerD2Service);
 
-    VeniceSystemProducer systemProducer;
+    configBuilder.setPrimaryControllerD2ServiceName(primaryControllerD2Service);
+    if ((providedChildColoD2Client == null) != (providedPrimaryControllerColoD2Client == null)) {
+      throw new SamzaException(
+          "Both providedChildColoD2Client and providedPrimaryControllerColoD2Client must be provided together, "
+              + "or both must be null.");
+    }
     if (providedChildColoD2Client != null && providedPrimaryControllerColoD2Client != null) {
       LOGGER.info("Using provided D2 clients for child and primary controller colo");
-      systemProducer = createSystemProducer(
-          providedChildColoD2Client,
-          providedPrimaryControllerColoD2Client,
-          primaryControllerD2Service,
-          storeName,
-          venicePushType,
-          samzaJobId,
-          runningFabric,
-          verifyLatestProtocolPresent,
-          config,
-          sslFactory,
-          partitioners);
+      configBuilder.setProvidedChildColoD2Client(providedChildColoD2Client)
+          .setProvidedPrimaryControllerColoD2Client(providedPrimaryControllerColoD2Client);
     } else {
       LOGGER.info("Creating new D2 clients for child and primary controller colo by zk hosts");
-      systemProducer = createSystemProducer(
-          localVeniceZKHosts,
-          primaryControllerColoD2ZKHost,
-          primaryControllerD2Service,
-          storeName,
-          venicePushType,
-          samzaJobId,
-          runningFabric,
-          verifyLatestProtocolPresent,
-          config, // Although we don't use this config in our default implementation, overridden implementations might
-                  // need this
-          sslFactory,
-          partitioners);
+      configBuilder.setVeniceChildD2ZkHost(localVeniceZKHosts)
+          .setPrimaryControllerColoD2ZKHost(primaryControllerColoD2ZKHost);
     }
-    systemProducer.applyAdditionalConfigs(config);
+
+    VeniceSystemProducer systemProducer = createSystemProducer(configBuilder.build());
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
     return systemProducer;
   }

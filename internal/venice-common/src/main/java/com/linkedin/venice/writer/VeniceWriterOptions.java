@@ -7,6 +7,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import java.util.Objects;
@@ -39,6 +40,8 @@ public class VeniceWriterOptions {
   private final long batchIntervalInMs;
   private final int maxBatchSizeInBytes;
   private final StoreSchemaFetcher storeSchemaFetcher;
+  private final VeniceWriterHook writerHook;
+  private final LogContext logContext;
 
   public String getBrokerAddress() {
     return brokerAddress;
@@ -112,6 +115,14 @@ public class VeniceWriterOptions {
     return storeSchemaFetcher;
   }
 
+  public VeniceWriterHook getWriterHook() {
+    return writerHook;
+  }
+
+  public LogContext getLogContext() {
+    return logContext;
+  }
+
   PubSubMessageSerializer getPubSubMessageSerializer() {
     return pubSubMessageSerializer;
   }
@@ -136,6 +147,8 @@ public class VeniceWriterOptions {
     batchIntervalInMs = builder.batchIntervalInMs;
     maxBatchSizeInBytes = builder.maxBatchSizeInBytes;
     storeSchemaFetcher = builder.storeSchemaFetcher;
+    writerHook = builder.writerHook;
+    logContext = builder.logContext;
   }
 
   @Override
@@ -196,6 +209,8 @@ public class VeniceWriterOptions {
     private long batchIntervalInMs = 0; // Not enabled by default
     private int maxBatchSizeInBytes = 5 * 1024 * 1024; // 5MB batch size by default
     private StoreSchemaFetcher storeSchemaFetcher;
+    private VeniceWriterHook writerHook;
+    private LogContext logContext;
 
     private void addDefaults() {
       if (keyPayloadSerializer == null) {
@@ -273,6 +288,8 @@ public class VeniceWriterOptions {
       this.batchIntervalInMs = options.batchIntervalInMs;
       this.maxBatchSizeInBytes = options.maxBatchSizeInBytes;
       this.storeSchemaFetcher = options.storeSchemaFetcher;
+      this.writerHook = options.writerHook;
+      this.logContext = options.logContext;
     }
 
     public Builder setKeyPayloadSerializer(VeniceKafkaSerializer keyPayloadSerializer) {
@@ -347,6 +364,16 @@ public class VeniceWriterOptions {
 
     public Builder setStoreSchemaFetcher(StoreSchemaFetcher storeSchemaFetcher) {
       this.storeSchemaFetcher = storeSchemaFetcher;
+      return this;
+    }
+
+    public Builder setWriterHook(VeniceWriterHook writerHook) {
+      this.writerHook = writerHook;
+      return this;
+    }
+
+    public Builder setLogContext(LogContext logContext) {
+      this.logContext = logContext;
       return this;
     }
   }

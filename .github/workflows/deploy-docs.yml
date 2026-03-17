@@ -39,10 +39,10 @@ jobs:
       - run: pip install -r docs/doc-requirements.txt
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v3
+        uses: gradle/actions/wrapper-validation@v5
 
       - name: Generate Javadoc
         run: ./gradlew aggregateJavadoc

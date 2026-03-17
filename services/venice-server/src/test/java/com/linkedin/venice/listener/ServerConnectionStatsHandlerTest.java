@@ -11,7 +11,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.stats.ServerConnectionStats;
+import com.linkedin.venice.utils.LogContext;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
@@ -45,8 +47,11 @@ public class ServerConnectionStatsHandlerTest {
   @Test
   public void testChannelRegisteredUnregisteredWithNoSslHandler() throws Exception {
     ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
-    ServerConnectionStatsHandler serverConnectionStatsHandler =
-        new ServerConnectionStatsHandler(null, serverConnectionStats, "venice-router");
+    ServerConnectionStatsHandler serverConnectionStatsHandler = new ServerConnectionStatsHandler(
+        null,
+        serverConnectionStats,
+        "venice-router",
+        LogContext.forTests(VeniceComponent.SERVER.name()));
     Attribute<Boolean> channelActivatedAttr = mock(Attribute.class);
     when(channel.attr(ServerConnectionStatsHandler.CHANNEL_ACTIVATED)).thenReturn(channelActivatedAttr);
     when(channelActivatedAttr.get()).thenReturn(false);
@@ -78,8 +83,11 @@ public class ServerConnectionStatsHandlerTest {
     doReturn(session).when(engine).getSession();
     doReturn(engine).when(sslHandler).engine();
     ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
-    ServerConnectionStatsHandler serverConnectionStatsHandler =
-        new ServerConnectionStatsHandler(null, serverConnectionStats, veniceRouterPrincipalString);
+    ServerConnectionStatsHandler serverConnectionStatsHandler = new ServerConnectionStatsHandler(
+        null,
+        serverConnectionStats,
+        veniceRouterPrincipalString,
+        LogContext.forTests(VeniceComponent.SERVER.name()));
     Attribute<Boolean> channelActivatedAttr = mock(Attribute.class);
     when(channel.attr(ServerConnectionStatsHandler.CHANNEL_ACTIVATED)).thenReturn(channelActivatedAttr);
     when(channelActivatedAttr.get()).thenReturn(false);
@@ -105,8 +113,11 @@ public class ServerConnectionStatsHandlerTest {
   @Test
   public void testConnectionSetupLatencyRecordedOnHandshakeSuccess() throws Exception {
     ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
-    ServerConnectionStatsHandler handler =
-        new ServerConnectionStatsHandler(null, serverConnectionStats, "venice-router");
+    ServerConnectionStatsHandler handler = new ServerConnectionStatsHandler(
+        null,
+        serverConnectionStats,
+        "venice-router",
+        LogContext.forTests(VeniceComponent.SERVER.name()));
 
     // Simulate initChannel setting the start timestamp
     Attribute<Long> initStartTsAttr = mock(Attribute.class);
@@ -126,8 +137,11 @@ public class ServerConnectionStatsHandlerTest {
   @Test
   public void testConnectionSetupLatencyNotRecordedOnHandshakeFailure() throws Exception {
     ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
-    ServerConnectionStatsHandler handler =
-        new ServerConnectionStatsHandler(null, serverConnectionStats, "venice-router");
+    ServerConnectionStatsHandler handler = new ServerConnectionStatsHandler(
+        null,
+        serverConnectionStats,
+        "venice-router",
+        LogContext.forTests(VeniceComponent.SERVER.name()));
 
     // Fire a failed handshake event
     SslHandshakeCompletionEvent failedEvent =
@@ -141,8 +155,11 @@ public class ServerConnectionStatsHandlerTest {
   @Test
   public void testConnectionSetupLatencyNotRecordedWhenTimestampMissing() throws Exception {
     ServerConnectionStats serverConnectionStats = mock(ServerConnectionStats.class);
-    ServerConnectionStatsHandler handler =
-        new ServerConnectionStatsHandler(null, serverConnectionStats, "venice-router");
+    ServerConnectionStatsHandler handler = new ServerConnectionStatsHandler(
+        null,
+        serverConnectionStats,
+        "venice-router",
+        LogContext.forTests(VeniceComponent.SERVER.name()));
 
     // No timestamp was set (e.g., non-SSL path)
     Attribute<Long> initStartTsAttr = mock(Attribute.class);

@@ -176,7 +176,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       this.serverConnectionStatsHandler = new ServerConnectionStatsHandler(
           this.identityParser,
           new ServerConnectionStats(metricsRepository, "server_connection_stats"),
-          serverConfig.getRouterPrincipalName());
+          serverConfig.getRouterPrincipalName(),
+          serverConfig.getLogContext());
     } else {
       this.serverConnectionStatsHandler = null;
     }

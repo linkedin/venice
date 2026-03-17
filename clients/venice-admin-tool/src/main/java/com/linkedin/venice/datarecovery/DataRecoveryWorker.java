@@ -2,7 +2,9 @@ package com.linkedin.venice.datarecovery;
 
 import static java.lang.Thread.currentThread;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -33,7 +35,11 @@ public abstract class DataRecoveryWorker {
 
   public DataRecoveryWorker(int poolSize) {
     this.poolSize = poolSize;
-    this.pool = Executors.newFixedThreadPool(this.poolSize, new DaemonThreadFactory("DataRecoveryWorker"));
+    this.pool = Executors.newFixedThreadPool(
+        this.poolSize,
+        new DaemonThreadFactory(
+            "DataRecoveryWorker",
+            LogContext.newBuilder().setComponentName(VeniceComponent.ADMIN_TOOL.name()).build()));
   }
 
   abstract List<DataRecoveryTask> buildTasks(Set<String> storeNames, Command.Params params);

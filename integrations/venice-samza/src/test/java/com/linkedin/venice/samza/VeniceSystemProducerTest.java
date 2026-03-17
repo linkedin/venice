@@ -8,6 +8,7 @@ import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNIN
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -34,22 +35,24 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterHook;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.samza.SamzaException;
 import org.apache.samza.config.Config;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
@@ -64,18 +67,15 @@ public class VeniceSystemProducerTest {
   @Test
   public void testPartialUpdateConversion() {
     VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
-        "zookeeper.com:2181",
-        "zookeeper.com:2181",
-        "ChildController",
-        "test_store",
-        Version.PushType.BATCH,
-        "push-job-id-1",
-        "dc-0",
-        true,
-        null,
-        Optional.empty(),
-        Optional.empty(),
-        SystemTime.INSTANCE);
+        new VeniceSystemProducerConfig.Builder().setStoreName("test_store")
+            .setPushType(Version.PushType.BATCH)
+            .setSamzaJobId("push-job-id-1")
+            .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
+            .setVeniceChildD2ZkHost("zookeeper.com:2181")
+            .setPrimaryControllerColoD2ZKHost("zookeeper.com:2181")
+            .setPrimaryControllerD2ServiceName("ChildController")
+            .build());
 
     MultiSchemaResponse.Schema mockBaseSchema = new MultiSchemaResponse.Schema();
     mockBaseSchema.setSchemaStr(
@@ -137,18 +137,15 @@ public class VeniceSystemProducerTest {
   @Test(dataProvider = "BatchOrStreamReprocessing")
   public void testGetVeniceWriter(Version.PushType pushType) {
     VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
-        "zookeeper.com:2181",
-        "zookeeper.com:2181",
-        "ChildController",
-        "test_store",
-        pushType,
-        "push-job-id-1",
-        "dc-0",
-        true,
-        null,
-        Optional.empty(),
-        Optional.empty(),
-        SystemTime.INSTANCE);
+        new VeniceSystemProducerConfig.Builder().setStoreName("test_store")
+            .setPushType(pushType)
+            .setSamzaJobId("push-job-id-1")
+            .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
+            .setVeniceChildD2ZkHost("zookeeper.com:2181")
+            .setPrimaryControllerColoD2ZKHost("zookeeper.com:2181")
+            .setPrimaryControllerD2ServiceName("ChildController")
+            .build());
 
     VeniceSystemProducer veniceSystemProducerSpy = spy(producerInDC0);
 
@@ -184,19 +181,91 @@ public class VeniceSystemProducerTest {
     }
   }
 
+  @Test
+  public void testWriterHookPassedThroughToVeniceWriter() {
+    VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
+    VeniceSystemProducer producer = new VeniceSystemProducer(
+        new VeniceSystemProducerConfig.Builder().setStoreName("test_store")
+            .setPushType(Version.PushType.BATCH)
+            .setSamzaJobId("push-job-id-1")
+            .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
+            .setVeniceChildD2ZkHost("zookeeper.com:2181")
+            .setPrimaryControllerColoD2ZKHost("zookeeper.com:2181")
+            .setPrimaryControllerD2ServiceName("ChildController")
+            .setWriterHook(mockHook)
+            .build());
+
+    VeniceSystemProducer producerSpy = spy(producer);
+    ArgumentCaptor<VeniceWriterOptions> optionsCaptor = ArgumentCaptor.forClass(VeniceWriterOptions.class);
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    doReturn(mockWriter).when(producerSpy).constructVeniceWriter(any(), optionsCaptor.capture());
+
+    VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
+    versionCreationResponse.setKafkaBootstrapServers("kafka:9092");
+    versionCreationResponse.setPartitions(1);
+    versionCreationResponse.setKafkaTopic("test_store_v1");
+
+    producerSpy.getVeniceWriter(versionCreationResponse);
+
+    assertEquals(optionsCaptor.getValue().getWriterHook(), mockHook);
+  }
+
+  @Test
+  public void testWriterHookCalledForPutAndDeleteViaSystemProducer() {
+    VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
+
+    PubSubProducerAdapter mockPubSubProducer = mock(PubSubProducerAdapter.class);
+    java.util.concurrent.CompletableFuture mockFuture = mock(java.util.concurrent.CompletableFuture.class);
+    when(mockPubSubProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockFuture);
+    VeniceWriter<byte[], byte[], byte[]> realWriter = new VeniceWriter(
+        new VeniceWriterOptions.Builder("test_store_rt").setPartitionCount(1).setWriterHook(mockHook).build(),
+        VeniceProperties.empty(),
+        mockPubSubProducer);
+
+    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, realWriter);
+
+    producerSpy.send("myKey", "myValue");
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), anyInt(), anyInt());
+
+    producerSpy.send((Object) "myKey", null);
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), anyInt(), eq(0));
+
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testWriterHookCalledForUpdateViaSystemProducer() {
+    VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
+
+    PubSubProducerAdapter mockPubSubProducer = mock(PubSubProducerAdapter.class);
+    java.util.concurrent.CompletableFuture mockFuture = mock(java.util.concurrent.CompletableFuture.class);
+    when(mockPubSubProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockFuture);
+    VeniceWriter<byte[], byte[], byte[]> realWriter = new VeniceWriter(
+        new VeniceWriterOptions.Builder("test_store_rt").setPartitionCount(1).setWriterHook(mockHook).build(),
+        VeniceProperties.empty(),
+        mockPubSubProducer);
+
+    ControllerClient mockControllerClient = buildMockControllerClient(1, 1, true, "test_store_rt");
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, realWriter);
+
+    producerSpy.send("myKey", "myValue");
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), anyInt(), anyInt());
+
+    producerSpy.stop();
+  }
+
   @Test(dataProvider = "BatchOrStreamReprocessing")
   public void testSendThrowsExceptionForError(Version.PushType pushType) {
     VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
-        "discoveryUrl",
-        "test_store",
-        pushType,
-        "push-job-id-1",
-        "dc-0",
-        true,
-        null,
-        Optional.empty(),
-        Optional.empty(),
-        SystemTime.INSTANCE);
+        new VeniceSystemProducerConfig.Builder().setStoreName("test_store")
+            .setPushType(pushType)
+            .setSamzaJobId("push-job-id-1")
+            .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
+            .setDiscoveryUrl("discoveryUrl")
+            .build());
     VeniceSystemProducer mockveniceSystemProducer = spy(producerInDC0);
     doNothing().when(mockveniceSystemProducer).setupClientsAndReInitProvider();
     doNothing().when(mockveniceSystemProducer).refreshSchemaCache();
@@ -322,48 +391,10 @@ public class VeniceSystemProducerTest {
   }
 
   @Test
-  public void testVeniceSystemProducerWithMixedD2Clients() {
-    // Create mock D2Client instance for primary controller only
-    D2Client mockPrimaryControllerColoD2Client = mock(D2Client.class);
-
-    // Create mock VeniceSystemFactory
-    VeniceSystemFactory veniceSystemFactory = new VeniceSystemFactory();
-
-    // Create VeniceSystemProducer with one provided D2Client and one null
-    VeniceSystemProducer producer = veniceSystemFactory.createSystemProducer(
-        null, // Will be created using ZK host
-        mockPrimaryControllerColoD2Client,
-        "primaryServiceName",
-        "testStore",
-        Version.PushType.STREAM,
-        "testJobId",
-        "testFabric",
-        false,
-        mock(Config.class),
-        Optional.empty(),
-        Optional.empty());
-
-    try {
-      producer.start();
-      // Verify that the provided D2Client instance is accessible
-      fail("Should throw IllegalStateException when starting with null D2Client");
-    } catch (IllegalStateException e) {
-      // Expected exception, as one D2Client is null
-      assertTrue(
-          e.getMessage().contains("Cannot create child colo D2Client: no D2Client provided and no ZK host available"));
-    } finally {
-      producer.stop();
-    }
-  }
-
-  @Test
-  public void testGetProducerWithD2ClientBranches() {
-    VeniceSystemFactory factory = spy(new VeniceSystemFactory());
+  public void testGetProducerRejectsPartialD2Clients() {
+    VeniceSystemFactory factory = new VeniceSystemFactory();
     Config config = mock(Config.class);
-    D2Client mockChildD2Client = mock(D2Client.class);
-    D2Client mockPrimaryD2Client = mock(D2Client.class);
 
-    // Setup required configs for non-discovery URL path
     when(config.get(VeniceSystemFactory.DEPLOYMENT_ID)).thenReturn("test-job-id");
     when(config.get(VeniceSystemFactory.VENICE_CONTROLLER_DISCOVERY_URL)).thenReturn(null);
     when(config.get(VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS)).thenReturn("parent-zk:2181");
@@ -375,65 +406,94 @@ public class VeniceSystemProducerTest {
     when(config.getBoolean(SSL_ENABLED, true)).thenReturn(false);
     when(config.get(VENICE_PARTITIONERS)).thenReturn(null);
 
-    // Test case 1: Both D2 clients are provided (first branch)
-    // Mock the createSystemProducer method to verify which overload is called
-    VeniceSystemProducer mockProducer1 = mock(VeniceSystemProducer.class);
+    D2Client mockD2Client = mock(D2Client.class);
+    Assert.assertThrows(
+        SamzaException.class,
+        () -> factory.getProducer("testSystem", "testStore", false, "STREAM", config, mockD2Client, null));
+    Assert.assertThrows(
+        SamzaException.class,
+        () -> factory.getProducer("testSystem", "testStore", false, "STREAM", config, null, mockD2Client));
+  }
 
-    doReturn(mockProducer1).when(factory)
-        .createSystemProducer(
-            eq(mockChildD2Client),
-            eq(mockPrimaryD2Client),
-            anyString(),
-            anyString(),
-            any(Version.PushType.class),
-            anyString(),
-            anyString(),
-            anyBoolean(),
-            any(Config.class),
-            any(Optional.class),
-            any(Optional.class));
+  @Test
+  public void testGetProducerWithD2ClientBranch() {
+    VeniceSystemFactory factory = spy(new VeniceSystemFactory());
+    Config config = mock(Config.class);
+    D2Client mockChildD2Client = mock(D2Client.class);
+    D2Client mockPrimaryD2Client = mock(D2Client.class);
 
+    when(config.get(VeniceSystemFactory.DEPLOYMENT_ID)).thenReturn("test-job-id");
+    when(config.get(VeniceSystemFactory.VENICE_CONTROLLER_DISCOVERY_URL)).thenReturn(null);
+    when(config.get(VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS)).thenReturn("parent-zk:2181");
+    when(config.get(VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS)).thenReturn("child-zk:2181");
+    when(config.get(VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE)).thenReturn("ChildController");
+    when(config.get(VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE)).thenReturn("ParentController");
+    when(config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION)).thenReturn("test-fabric");
+    when(config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true)).thenReturn(true);
+    when(config.getBoolean(SSL_ENABLED, true)).thenReturn(false);
+    when(config.get(VENICE_PARTITIONERS)).thenReturn(null);
+
+    ArgumentCaptor<VeniceSystemProducerConfig> configCaptor = ArgumentCaptor.forClass(VeniceSystemProducerConfig.class);
+    VeniceSystemProducer mockProducer = mock(VeniceSystemProducer.class);
+    doReturn(mockProducer).when(factory).createSystemProducer(any(VeniceSystemProducerConfig.class));
+
+    // D2Client branch: both D2 clients provided
     SystemProducer result1 =
         factory.getProducer("testSystem", "testStore", false, "STREAM", config, mockChildD2Client, mockPrimaryD2Client);
-
     assertNotNull(result1);
-    assertEquals(result1, mockProducer1);
 
-    // Test case 2: No D2 clients are provided (second branch)
-    VeniceSystemProducer mockProducer2 = mock(VeniceSystemProducer.class);
-    doReturn(mockProducer2).when(factory)
-        .createSystemProducer(
-            eq("child-zk:2181"),
-            eq("child-zk:2181"), // primaryControllerColoD2ZKHost for non-aggregate
-            eq("ChildController"),
-            eq("testStore"),
-            eq(Version.PushType.STREAM),
-            eq("test-job-id"),
-            eq("test-fabric"),
-            eq(true),
-            any(Optional.class),
-            any(Optional.class));
+    verify(factory).createSystemProducer(configCaptor.capture());
+    VeniceSystemProducerConfig capturedConfig = configCaptor.getValue();
+    assertEquals(capturedConfig.getProvidedChildColoD2Client(), mockChildD2Client);
+    assertEquals(capturedConfig.getProvidedPrimaryControllerColoD2Client(), mockPrimaryD2Client);
+    assertNull(capturedConfig.getVeniceChildD2ZkHost());
+    assertNull(capturedConfig.getPrimaryControllerColoD2ZKHost());
+  }
 
+  @Test
+  public void testGetProducerWithZkHostBranch() {
+    VeniceSystemFactory factory = spy(new VeniceSystemFactory());
+    Config config = mock(Config.class);
+
+    when(config.get(VeniceSystemFactory.DEPLOYMENT_ID)).thenReturn("test-job-id");
+    when(config.get(VeniceSystemFactory.VENICE_CONTROLLER_DISCOVERY_URL)).thenReturn(null);
+    when(config.get(VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS)).thenReturn("parent-zk:2181");
+    when(config.get(VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS)).thenReturn("child-zk:2181");
+    when(config.get(VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE)).thenReturn("ChildController");
+    when(config.get(VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE)).thenReturn("ParentController");
+    when(config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION)).thenReturn("test-fabric");
+    when(config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true)).thenReturn(true);
+    when(config.getBoolean(SSL_ENABLED, true)).thenReturn(false);
+    when(config.get(VENICE_PARTITIONERS)).thenReturn(null);
+
+    ArgumentCaptor<VeniceSystemProducerConfig> configCaptor = ArgumentCaptor.forClass(VeniceSystemProducerConfig.class);
+    VeniceSystemProducer mockProducer = mock(VeniceSystemProducer.class);
+    doReturn(mockProducer).when(factory).createSystemProducer(any(VeniceSystemProducerConfig.class));
+
+    // ZK branch: no D2 clients, non-aggregate uses child ZK hosts
     SystemProducer result2 = factory.getProducer("testSystem", "testStore", false, "STREAM", config);
-
     assertNotNull(result2);
-    assertEquals(result2, mockProducer2);
+
+    verify(factory).createSystemProducer(configCaptor.capture());
+    VeniceSystemProducerConfig capturedConfig = configCaptor.getValue();
+    assertEquals(capturedConfig.getVeniceChildD2ZkHost(), "child-zk:2181");
+    assertEquals(capturedConfig.getPrimaryControllerColoD2ZKHost(), "child-zk:2181");
+    assertEquals(capturedConfig.getPrimaryControllerD2ServiceName(), "ChildController");
+    assertNull(capturedConfig.getProvidedChildColoD2Client());
+    assertNull(capturedConfig.getProvidedPrimaryControllerColoD2Client());
   }
 
   private VeniceSystemProducer buildStartedProducerSpy(
       ControllerClient mockControllerClient,
       VeniceWriter<byte[], byte[], byte[]> mockWriter) {
     VeniceSystemProducer producer = new VeniceSystemProducer(
-        "discoveryUrl",
-        "test_store",
-        Version.PushType.STREAM,
-        "push-job-id-1",
-        "dc-0",
-        true,
-        null,
-        Optional.empty(),
-        Optional.empty(),
-        SystemTime.INSTANCE);
+        new VeniceSystemProducerConfig.Builder().setStoreName("test_store")
+            .setPushType(Version.PushType.STREAM)
+            .setSamzaJobId("push-job-id-1")
+            .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
+            .setDiscoveryUrl("discoveryUrl")
+            .build());
     VeniceSystemProducer producerSpy = spy(producer);
     doNothing().when(producerSpy).setupClientsAndReInitProvider();
     doNothing().when(producerSpy).refreshSchemaCache();
@@ -492,180 +552,81 @@ public class VeniceSystemProducerTest {
   }
 
   @Test
-  public void testPrepareRecordForPut() {
-    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
-    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
-    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
-
-    SerializedRecord record = producerSpy.prepareRecord("myKey", "myValue");
-
-    assertNotNull(record.getSerializedKey());
-    assertTrue(record.getSerializedKey().length > 0);
-    assertNotNull(record.getSerializedValue());
-    assertTrue(record.getSerializedValue().length > 0);
-    assertEquals(record.getValueSchemaId(), 1);
-    assertEquals(record.getDerivedSchemaId(), -1);
-    producerSpy.stop();
-  }
-
-  @Test
-  public void testPrepareRecordForDelete() {
-    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
-    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
-    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
-
-    SerializedRecord record = producerSpy.prepareRecord("myKey", null);
-
-    assertNotNull(record.getSerializedKey());
-    assertTrue(record.getSerializedKey().length > 0);
-    assertNull(record.getSerializedValue());
-    producerSpy.stop();
-  }
-
-  @Test
-  public void testPrepareRecordWithTimestamp() {
-    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
-    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
-    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
-
-    long expectedTimestamp = 12345L;
-    SerializedRecord record =
-        producerSpy.prepareRecord("myKey", new VeniceObjectWithTimestamp("myValue", expectedTimestamp));
-
-    assertEquals(record.getLogicalTimestamp(), expectedTimestamp);
-    assertNotNull(record.getSerializedValue());
-    producerSpy.stop();
-  }
-
-  @Test
-  public void testSendSerializedRecordCallsWriterPut() {
-    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
-    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
-    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
-
-    byte[] key = new byte[] { 1 };
-    byte[] value = new byte[] { 2 };
-    SerializedRecord record = new SerializedRecord(key, value, 1, -1, 0L);
-    producerSpy.send(record);
-
-    verify(mockWriter).put(eq(key), eq(value), eq(1), anyLong(), any());
-    producerSpy.stop();
-  }
-
-  @Test
-  public void testSendSerializedRecordCallsWriterDelete() {
-    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
-    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
-    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
-
-    byte[] key = new byte[] { 1 };
-    SerializedRecord record = new SerializedRecord(key, null, -1, -1, 0L);
-    producerSpy.send(record);
-
-    verify(mockWriter).delete(eq(key), anyLong(), any());
-    producerSpy.stop();
-  }
-
-  @Test
-  public void testSendSerializedRecordThrowsWhenRecordIsNull() {
-    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
-    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
-    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
-
-    Assert.assertThrows(() -> producerSpy.send((SerializedRecord) null));
-    producerSpy.stop();
-  }
-
-  @Test
-  public void testSendSerializedRecordThrowsWhenKeyIsNull() {
-    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
-    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
-    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
-
-    SerializedRecord record = new SerializedRecord(null, new byte[] { 2 }, 1, -1, 0L);
-    Assert.assertThrows(() -> producerSpy.send(record));
-    producerSpy.stop();
-  }
-
-  @Test
-  public void testSendSerializedRecordThrowsWhenDeleteRecordHasSchemaIds() {
-    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
-    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
-    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
-
-    SerializedRecord record = new SerializedRecord(new byte[] { 1 }, null, 1, -1, 0L);
-    Assert.assertThrows(() -> producerSpy.send(record));
-    producerSpy.stop();
-  }
-
-  @Test
-  public void testSendSerializedRecordThrowsWhenNonDeleteRecordHasInvalidSchemaIds() {
-    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
-    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
-    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
-
-    SerializedRecord invalidValueSchemaRecord = new SerializedRecord(new byte[] { 1 }, new byte[] { 2 }, -1, -1, 0L);
-    Assert.assertThrows(() -> producerSpy.send(invalidValueSchemaRecord));
-
-    SerializedRecord invalidDerivedSchemaRecord = new SerializedRecord(new byte[] { 1 }, new byte[] { 2 }, 1, 0, 0L);
-    Assert.assertThrows(() -> producerSpy.send(invalidDerivedSchemaRecord));
-    producerSpy.stop();
-  }
-
-  @Test
-  public void testSendSerializedRecordCallsWriterUpdateWhenWriteComputeEnabled() {
-    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
-    ControllerClient mockControllerClient = buildMockControllerClient(1, 1, true, "test_store_rt");
-    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
-
-    byte[] key = new byte[] { 1 };
-    byte[] value = new byte[] { 2 };
-    SerializedRecord record = new SerializedRecord(key, value, 1, 1, 123L);
-    producerSpy.send(record);
-
-    verify(mockWriter).update(eq(key), eq(value), eq(1), eq(1), eq(123L), any());
-    producerSpy.stop();
-  }
-
-  @Test
-  public void testSendSerializedRecordThrowsForWriteComputeWhenDisabled() {
-    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
-    ControllerClient mockControllerClient = buildMockControllerClient(1, 1, false, "test_store_rt");
-    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
-
-    byte[] key = new byte[] { 1 };
-    byte[] value = new byte[] { 2 };
-    SerializedRecord record = new SerializedRecord(key, value, 1, 1, 123L);
-
-    Assert.assertThrows(() -> producerSpy.send(record));
-    producerSpy.stop();
-  }
-
-  @Test
-  public void testPrepareRecordConvertsWriteComputeForVersionedTopic() {
-    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
-    ControllerClient mockControllerClient = buildMockControllerClient(1, 1, true, "test_store_v1");
-    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
-    doReturn("convertedValue").when(producerSpy).convertPartialUpdateToFullPut(any(), eq("partialUpdateCandidate"));
-
-    SerializedRecord record = producerSpy.prepareRecord("myKey", "partialUpdateCandidate");
-
-    assertEquals(record.getValueSchemaId(), 1);
-    assertEquals(record.getDerivedSchemaId(), -1);
-    verify(producerSpy).convertPartialUpdateToFullPut(any(), eq("partialUpdateCandidate"));
-    producerSpy.stop();
-  }
-
-  @Test
-  public void testSendObjectDelegatesToPrepareRecordAndSendSerializedRecord() {
+  public void testSendCallsWriterPut() {
     VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
     ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
     VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
 
     producerSpy.send("myKey", "myValue");
 
-    verify(producerSpy).prepareRecord(eq("myKey"), eq("myValue"));
     verify(mockWriter).put(any(), any(), eq(1), anyLong(), any());
     producerSpy.stop();
+  }
+
+  @Test
+  public void testSendCallsWriterDelete() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, -1);
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    producerSpy.send((Object) "myKey", null);
+
+    verify(mockWriter).delete(any(), anyLong(), any());
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testSendCallsWriterUpdate() {
+    VeniceWriter<byte[], byte[], byte[]> mockWriter = mock(VeniceWriter.class);
+    ControllerClient mockControllerClient = buildMockControllerClient(1, 1, true, "test_store_rt");
+    VeniceSystemProducer producerSpy = buildStartedProducerSpy(mockControllerClient, mockWriter);
+
+    producerSpy.send("myKey", "myValue");
+
+    verify(mockWriter).update(any(), any(), eq(1), eq(1), anyLong(), any());
+    producerSpy.stop();
+  }
+
+  @Test
+  public void testBuilderSucceedsWithDiscoveryUrl() {
+    VeniceSystemProducer producer = new VeniceSystemProducer(
+        new VeniceSystemProducerConfig.Builder().setStoreName("store")
+            .setPushType(Version.PushType.STREAM)
+            .setSamzaJobId("job-id")
+            .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
+            .setDiscoveryUrl("http://discovery")
+            .build());
+    assertNotNull(producer);
+  }
+
+  @Test
+  public void testBuilderSucceedsWithZkHosts() {
+    VeniceSystemProducer producer = new VeniceSystemProducer(
+        new VeniceSystemProducerConfig.Builder().setStoreName("store")
+            .setPushType(Version.PushType.STREAM)
+            .setSamzaJobId("job-id")
+            .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
+            .setVeniceChildD2ZkHost("zk:2181")
+            .setPrimaryControllerColoD2ZKHost("zk:2181")
+            .setPrimaryControllerD2ServiceName("ChildController")
+            .build());
+    assertNotNull(producer);
+  }
+
+  @Test
+  public void testBuilderSucceedsWithD2Clients() {
+    VeniceSystemProducer producer = new VeniceSystemProducer(
+        new VeniceSystemProducerConfig.Builder().setStoreName("store")
+            .setPushType(Version.PushType.STREAM)
+            .setSamzaJobId("job-id")
+            .setRunningFabric("dc-0")
+            .setFactory(mock(VeniceSystemFactory.class))
+            .setProvidedChildColoD2Client(mock(D2Client.class))
+            .setProvidedPrimaryControllerColoD2Client(mock(D2Client.class))
+            .setPrimaryControllerD2ServiceName("ChildController")
+            .build());
+    assertNotNull(producer);
   }
 }

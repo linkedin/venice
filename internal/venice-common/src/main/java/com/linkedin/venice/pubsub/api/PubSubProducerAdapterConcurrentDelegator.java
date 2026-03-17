@@ -8,6 +8,7 @@ import com.linkedin.venice.memory.InstanceSizeEstimator;
 import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -84,7 +85,8 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
       String producingTopic,
       int producerThreadCount,
       int producerQueueSize,
-      Supplier<PubSubProducerAdapter> producerAdapterSupplier) {
+      Supplier<PubSubProducerAdapter> producerAdapterSupplier,
+      LogContext logContext) {
     if (producerThreadCount <= 1) {
       throw new VeniceException("'producerThreadCount' should be larger than 1, but got " + producerThreadCount);
     }
@@ -98,8 +100,9 @@ public class PubSubProducerAdapterConcurrentDelegator implements PubSubProducerA
         producerThreadCount,
         producerQueueSize);
     List<MemoryBoundBlockingQueue<ProducerQueueNode>> tmpBlockingQueueList = new ArrayList<>(producerThreadCount);
-    this.producerExecutor = Executors
-        .newFixedThreadPool(producerThreadCount, new DaemonThreadFactory(producingTopic + "-concurrent-producer"));
+    this.producerExecutor = Executors.newFixedThreadPool(
+        producerThreadCount,
+        new DaemonThreadFactory(producingTopic + "-concurrent-producer", logContext));
     this.partitionQueueAssignment = new VeniceConcurrentHashMap<>();
     this.lastNodePerQueue = new VeniceConcurrentHashMap<>(producerThreadCount);
     this.producingTopic = producingTopic;

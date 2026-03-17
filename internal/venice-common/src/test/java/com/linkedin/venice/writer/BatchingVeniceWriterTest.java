@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.schema.writecompute.WriteComputeHandler;
 import com.linkedin.venice.schema.writecompute.WriteComputeHandlerV1;
@@ -23,6 +24,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.nio.ByteBuffer;
@@ -495,5 +497,58 @@ public class BatchingVeniceWriterTest {
       completableFutureCallbackList.add(completableFutureCallback);
     }
     return writer;
+  }
+
+  @Test
+  public void testDeduplicatedWritesProduceOncePerKeyAndHookFiresOnce() {
+    VeniceWriterHook mockHook = mock(VeniceWriterHook.class);
+    PubSubProducerAdapter mockProducer = mock(PubSubProducerAdapter.class);
+    doReturn(mock(CompletableFuture.class)).when(mockProducer).sendMessage(any(), any(), any(), any(), any(), any());
+
+    // Create a real internal writer with the hook so hook calls can be verified
+    VeniceWriter<byte[], byte[], byte[]> realInternalWriter = new VeniceWriter<>(
+        new VeniceWriterOptions.Builder("abc").setPartitionCount(1).setWriterHook(mockHook).build(),
+        VeniceProperties.empty(),
+        mockProducer);
+
+    List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
+    Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+    List<CompletableFuture<Void>> completableFutureList = new ArrayList<>();
+    List<CompletableFutureCallback> completableFutureCallbackList = new ArrayList<>();
+    BatchingVeniceWriter<String, GenericRecord, GenericRecord> writer =
+        prepareMockSetup(6, completableFutureList, completableFutureCallbackList, bufferRecordIndex, bufferRecordList);
+    doReturn(realInternalWriter).when(writer).getVeniceWriter();
+
+    GenericRecord valueRecord = new GenericData.Record(VALUE_SCHEMA);
+    valueRecord.put("name", "J");
+    valueRecord.put("age", 0);
+    valueRecord.put("intArray", Collections.emptyList());
+    valueRecord.put("recordArray", Collections.emptyList());
+    valueRecord.put("stringMap", Collections.emptyMap());
+    valueRecord.put("recordMap", Collections.emptyMap());
+
+    // PUT same key twice — only the second should be produced
+    writer.put("putKey", valueRecord, 1, completableFutureCallbackList.get(0));
+    writer.put("putKey", valueRecord, 1, completableFutureCallbackList.get(1));
+
+    // DELETE same key twice — only the second should be produced
+    writer.delete("deleteKey", completableFutureCallbackList.get(2));
+    writer.delete("deleteKey", completableFutureCallbackList.get(3));
+
+    // UPDATE same key twice — only the merged result should be produced
+    GenericRecord updateRecord = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "K").build();
+    writer.update("updateKey", updateRecord, 1, 1, completableFutureCallbackList.get(4));
+    writer.update("updateKey", updateRecord, 1, 1, completableFutureCallbackList.get(5));
+
+    Assert.assertEquals(bufferRecordList.size(), 6);
+    writer.checkAndMaybeProduceBatchRecord();
+
+    // Each key should produce exactly once — sendRecord called 3 times (one per unique key)
+    verify(writer, times(3)).sendRecord(any());
+
+    // Hook should fire exactly once per unique key with correct operation type
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.PUT), anyInt(), anyInt());
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.DELETE), anyInt(), eq(0));
+    verify(mockHook).onBeforeProduce(eq(VeniceWriterHook.OperationType.UPDATE), anyInt(), anyInt());
   }
 }

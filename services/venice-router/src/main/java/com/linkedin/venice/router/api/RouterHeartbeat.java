@@ -12,7 +12,9 @@ import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.LogContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -43,7 +45,8 @@ public class RouterHeartbeat extends AbstractVeniceService {
       VeniceHostHealth health,
       VeniceRouterConfig routerConfig,
       Optional<SSLFactory> sslFactory,
-      StorageNodeClient storageNodeClient) {
+      StorageNodeClient storageNodeClient,
+      LogContext logContext) {
 
     // How long of a timeout we allow for a node to respond to a heartbeat request
     int heartbeatTimeoutMillis = (int) routerConfig.getHeartbeatTimeoutMs();
@@ -116,7 +119,7 @@ public class RouterHeartbeat extends AbstractVeniceService {
         }
       }
     };
-    heartBeatThread = new Thread(runnable);
+    heartBeatThread = new DaemonThreadFactory("RouterHeartbeat", logContext).newThread(runnable);
   }
 
   @Override
