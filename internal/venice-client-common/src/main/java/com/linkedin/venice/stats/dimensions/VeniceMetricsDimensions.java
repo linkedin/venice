@@ -135,7 +135,13 @@ public enum VeniceMetricsDimensions {
   VENICE_HEARTBEAT_COMPONENT("venice.heartbeat.component"),
 
   /** {@link VeniceConsumerPoolAction} Consumer pool action (subscribe, update_assignment). */
-  VENICE_CONSUMER_POOL_ACTION("venice.consumer_pool.action");
+  VENICE_CONSUMER_POOL_ACTION("venice.consumer_pool.action"),
+
+  /** {@link VeniceDIVResult} Data Integrity Validation result (success, duplicate, missing, corrupted). */
+  VENICE_DIV_RESULT("venice.div.result"),
+
+  /** {@link VeniceDIVSeverity} Severity of a leader offset rewind (benign, potentially_lossy). */
+  VENICE_DIV_SEVERITY("venice.div.severity");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 

@@ -38,7 +38,8 @@ public final class ServerMetricEntity {
         HeartbeatMonitoringOtelMetricEntity.class,
         BlobTransferOtelMetricEntity.class,
         KafkaConsumerServiceOtelMetricEntity.class,
-        RocksDBMemoryOtelMetricEntity.class);
+        RocksDBMemoryOtelMetricEntity.class,
+        DIVOtelMetricEntity.class);
   }
 
   public static final Collection<MetricEntity> SERVER_METRIC_ENTITIES =
