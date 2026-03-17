@@ -665,6 +665,132 @@ public class TestGlobalRtDiv {
     }
   }
 
+  /**
+   * Verifies that GlobalRtDivState is correctly stored when the serialized state is large enough to be split
+   * into multiple chunks by the server's VeniceWriter.
+   *
+   * <p>This test uses a dedicated cluster with a very small {@code MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES}
+   * (200 bytes) on the server so that the GlobalRtDivState, which accumulates one {@code ProducerPartitionState}
+   * entry per unique RT writer, is chunked when the leader produces it to the version topic.  With
+   * {@code NUM_WRITERS} independent VeniceWriters each contributing a distinct ProducerGUID, the serialized
+   * state easily exceeds the 200-byte limit and is split across several chunk messages followed by a manifest.
+   *
+   * <p>After ingestion completes, the test verifies on every server that:
+   * <ol>
+   *   <li>The GlobalRtDivState was reassembled correctly from the chunks stored in the metadata partition.
+   *   <li>The reassembled state is fully populated (non-null, non-empty producerStates map, etc.).
+   * </ol>
+   */
+  @Test(timeOut = 360 * Time.MS_PER_SECOND)
+  public void testChunkedGlobalRtDiv() throws Exception {
+    int PARTITION = 0;
+    int NUM_WRITERS = 5; // More writers → larger ProducerPartitionState map → more chunks
+    int MESSAGE_COUNT = 100;
+    int serverCount = 2;
+
+    // Use a very small max message size so the server's VeniceWriter chunks the GlobalRtDivState.
+    // A GlobalRtDivState with 5+ producers serializes to ~1 KB, well above the 200-byte limit.
+    Properties chunkingExtraProperties = createExtraProperties();
+    chunkingExtraProperties.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, "200");
+
+    try (VeniceClusterWrapper chunkingVenice = ServiceFactory.getVeniceCluster(
+        new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+            .numberOfServers(0)
+            .numberOfRouters(0)
+            .replicationFactor(serverCount)
+            .partitionSize(1000000)
+            .sslToStorageNodes(false)
+            .sslToKafka(false)
+            .extraProperties(chunkingExtraProperties)
+            .build())) {
+
+      chunkingVenice.addVeniceRouter(new Properties());
+
+      Properties serverProperties = new Properties();
+      serverProperties.setProperty(KAFKA_OVER_SSL, "false");
+      for (int i = 0; i < serverCount; i++) {
+        chunkingVenice.addVeniceServer(serverProperties, chunkingExtraProperties);
+      }
+
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      String storeName = Utils.getUniqueString("testChunkedGlobalRtDiv");
+      String topicName = Version.composeKafkaTopic(storeName, 1);
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+
+      PubSubBrokerWrapper brokerWrapper = chunkingVenice.getPubSubBrokerWrapper();
+      String brokerUrl = brokerWrapper.getAddress();
+      String globalRtDivKey = StoreIngestionTask.GLOBAL_RT_DIV_KEY_PREFIX + brokerUrl;
+
+      Properties vpjProperties = defaultVPJProps(chunkingVenice, inputDirPath, storeName);
+      Properties writerProperties = new Properties();
+      writerProperties.put(KAFKA_BOOTSTRAP_SERVERS, brokerUrl);
+      writerProperties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(brokerWrapper)));
+
+      PubSubProducerAdapterFactory producerFactory =
+          brokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+      VeniceWriterFactory writerFactory = TestUtils
+          .getVeniceWriterFactory(writerProperties, producerFactory, brokerWrapper.getPubSubPositionTypeRegistry());
+      AvroSerializer<String> stringSerializer = new AvroSerializer<>(STRING_SCHEMA);
+
+      try (
+          ControllerClient controllerClient =
+              createStoreForJob(chunkingVenice.getClusterName(), recordSchema, vpjProperties);
+          AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(chunkingVenice.getRandomRouterURL()))) {
+
+        // Enable both chunking and GlobalRtDiv on the store.
+        // Chunking is required so the VeniceWriter is allowed to split large messages.
+        UpdateStoreQueryParams updateParams = createUpdateParams(true /* isChunkingEnabled */, PARTITION + 1);
+        ControllerResponse response = controllerClient.updateStore(storeName, updateParams);
+        assertFalse(response.isError(), "Updating store should succeed");
+        StoreInfo storeInfo = TestUtils.assertCommand(controllerClient.getStore(storeName)).getStore();
+
+        runVPJ(vpjProperties, 1, controllerClient);
+
+        // Write RT data using NUM_WRITERS independent VeniceWriters.
+        // Each writer has a unique ProducerGUID, so the GlobalRtDivState's producerStates map grows
+        // with each writer, making the total serialized size large enough to require chunking.
+        int perWriterCount = MESSAGE_COUNT / NUM_WRITERS;
+        for (int i = 0; i < NUM_WRITERS; i++) {
+          VeniceWriterOptions options = new VeniceWriterOptions.Builder(Utils.getRealTimeTopicName(storeInfo)).build();
+          try (VeniceWriter<byte[], byte[], byte[]> rtWriter = writerFactory.createVeniceWriter(options)) {
+            int start = i * perWriterCount + 1;
+            int end = start + perWriterCount - 1;
+            for (int j = start; j <= end; j++) {
+              rtWriter.put(
+                  stringSerializer.serialize(String.valueOf(j)),
+                  stringSerializer.serialize("chunked_value_" + j),
+                  1);
+            }
+          }
+        }
+
+        // Wait for all RT data to be readable, confirming ingestion (including GlobalRtDiv assembly) finished.
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+          for (int i = 1; i <= MESSAGE_COUNT; i++) {
+            Object value = client.get(String.valueOf(i)).get();
+            assertNotNull(value, "Key " + i + " should not be missing!");
+            assertEquals(value.toString(), "chunked_value_" + i);
+          }
+        });
+      }
+
+      // Verify on every server that the GlobalRtDivState was correctly reassembled from chunks and persisted
+      // in the metadata partition. If chunk assembly were broken, getGlobalRtDivState() would return null.
+      chunkingVenice.getVeniceServers().forEach(server -> {
+        TestVeniceServer testVeniceServer = server.getVeniceServer();
+        StorageEngine storageEngine = testVeniceServer.getStorageService().getStorageEngine(topicName);
+        if (storageEngine == null) {
+          return;
+        }
+        GlobalRtDivState globalRtDiv = getGlobalRtDivState(testVeniceServer, topicName, PARTITION, globalRtDivKey);
+        LOGGER.info("Chunked Global RT DIV State (assembled from chunks): {}", globalRtDiv);
+        validateGlobalDivState(globalRtDiv);
+      });
+    }
+  }
+
   // test VPJ then restart and then expected failure without code
   // look at test history chunking test
 }
