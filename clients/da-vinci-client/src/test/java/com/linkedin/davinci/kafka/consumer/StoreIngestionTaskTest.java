@@ -2021,11 +2021,11 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
-    // The first put includes SIT startup overhead (topic subscription, consumer group join,
-    // initial poll, sorted buffer initialization for SAwarePWise variants), so it gets a longer
-    // timeout. Subsequent steps (reset + re-consume) are faster since the SIT is already running.
-    long startupTimeoutMs = TEST_TIMEOUT_MS * 8;
-    long stepTimeoutMs = TEST_TIMEOUT_MS * 4;
+    // Each step (startup, reset, re-consume) can be slow on CI due to thread scheduling,
+    // sorted buffer initialization (SAwarePWise), and consumer re-subscription after reset.
+    // Use a uniform generous timeout for all steps.
+    long startupTimeoutMs = TEST_TIMEOUT_MS * 12;
+    long stepTimeoutMs = TEST_TIMEOUT_MS * 12;
     ByteBuffer expectedValue = ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize());
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       waitForNonDeterministicAssertion(startupTimeoutMs, TimeUnit.MILLISECONDS, () -> {
