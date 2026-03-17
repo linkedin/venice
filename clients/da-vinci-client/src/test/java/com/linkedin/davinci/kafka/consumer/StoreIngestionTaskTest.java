@@ -2004,12 +2004,14 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
-    // Each step gets its own independent timeout so that a slow first put doesn't steal budget
-    // from the reset and re-consume assertions.
+    // The first put includes SIT startup overhead (topic subscription, consumer group join,
+    // initial poll, sorted buffer initialization for SAwarePWise variants), so it gets a longer
+    // timeout. Subsequent steps (reset + re-consume) are faster since the SIT is already running.
+    long startupTimeoutMs = TEST_TIMEOUT_MS * 8;
     long stepTimeoutMs = TEST_TIMEOUT_MS * 4;
     ByteBuffer expectedValue = ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize());
     runTest(Utils.setOf(PARTITION_FOO), () -> {
-      waitForNonDeterministicAssertion(stepTimeoutMs, TimeUnit.MILLISECONDS, () -> {
+      waitForNonDeterministicAssertion(startupTimeoutMs, TimeUnit.MILLISECONDS, () -> {
         verify(mockAbstractStorageEngine, atLeast(1)).put(PARTITION_FOO, putKeyFoo, expectedValue);
       });
 
