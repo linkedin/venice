@@ -16,7 +16,7 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
  * A test only notifier to simulate ERROR in leader replica to test single leader replica failover scenario.
  */
 public class LeaderErrorNotifier extends PushStatusNotifier {
-  private boolean doOne = true;
+  private volatile boolean doOne = true;
   private final OfflinePushAccessor accessor;
   private final String instanceId;
 
@@ -40,8 +40,8 @@ public class LeaderErrorNotifier extends PushStatusNotifier {
   @Override
   public void completed(String topic, int partitionId, PubSubPosition position, String message) {
     if (doOne && message.contains("LEADER") && !isSystemStore(topic)) {
-      accessor.updateReplicaStatus(topic, partitionId, instanceId, ERROR, "");
       doOne = false;
+      accessor.updateReplicaStatus(topic, partitionId, instanceId, ERROR, "");
     } else {
       accessor.updateReplicaStatus(topic, partitionId, instanceId, COMPLETED, "");
     }

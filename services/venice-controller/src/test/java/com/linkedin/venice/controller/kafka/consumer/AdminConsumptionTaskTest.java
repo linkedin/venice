@@ -1022,15 +1022,20 @@ public class AdminConsumptionTaskTest {
           getKillOfflinePushJobMessage(clusterName, storeTopicName, i),
           AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
       final long executionId = i;
-      TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      // Wait for both the metadata accessor and the in-memory lastPersistedExecutionId to be updated.
+      // There is a race between adminTopicMetadataAccessor.updateMetadata() and the subsequent
+      // lastPersistedExecutionId assignment in persistAdminTopicMetadata(), so we must wait for both.
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         AdminMetadata metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
-        return AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
+        Assert.assertEquals(
+            AdminTopicMetadataAccessor.getExecutionId(metaData),
+            executionId,
+            "Metadata accessor execution id should be updated.");
+        Assert.assertEquals(
+            (long) task.getLastSucceededExecutionId(),
+            executionId,
+            "After consumption succeed, the last succeed execution id should be updated.");
       });
-
-      Assert.assertEquals(
-          (long) task.getLastSucceededExecutionId(),
-          executionId,
-          "After consumption succeed, the last succeed execution id should be updated.");
     }
 
     task.close();
@@ -1061,15 +1066,20 @@ public class AdminConsumptionTaskTest {
           null,
           pubSubMessageHeaders);
       final long executionId = i;
-      TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      // Wait for both the metadata accessor and the in-memory lastPersistedExecutionId to be updated.
+      // There is a race between adminTopicMetadataAccessor.updateMetadata() and the subsequent
+      // lastPersistedExecutionId assignment in persistAdminTopicMetadata(), so we must wait for both.
+      TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         AdminMetadata metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
-        return AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
+        Assert.assertEquals(
+            AdminTopicMetadataAccessor.getExecutionId(metaData),
+            executionId,
+            "Metadata accessor execution id should be updated.");
+        Assert.assertEquals(
+            (long) task.getLastSucceededExecutionId(),
+            executionId,
+            "After consumption succeed, the last succeed execution id should be updated.");
       });
-
-      Assert.assertEquals(
-          (long) task.getLastSucceededExecutionId(),
-          executionId,
-          "After consumption succeed, the last succeed execution id should be updated.");
     }
 
     task.close();

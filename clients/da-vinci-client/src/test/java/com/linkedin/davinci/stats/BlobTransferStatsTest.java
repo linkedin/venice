@@ -2,7 +2,9 @@ package com.linkedin.davinci.stats;
 
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -42,8 +44,10 @@ public class BlobTransferStatsTest {
   }
 
   @Test
-  public void blobTransferStatsReporterCanReportForGauge() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+  public void blobTransferStatsReporterCanReportForGauge() throws Exception {
+    // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
+    AsyncGauge.AsyncGaugeExecutor executor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    MetricsRepository metricsRepository = new MetricsRepository(new MetricConfig(executor));
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");
@@ -65,11 +69,15 @@ public class BlobTransferStatsTest {
     Assert.assertEquals(
         reporter.query("." + storeName + "--blob_transfer_file_receive_throughput.IngestionStatsGauge").value(),
         5.0);
+    metricsRepository.close();
+    executor.close();
   }
 
   @Test
-  public void blobTransferStatsReporterCanReportForCount() {
-    MetricsRepository metricsRepository = new MetricsRepository();
+  public void blobTransferStatsReporterCanReportForCount() throws Exception {
+    // Use a dedicated executor to avoid contention with the shared DEFAULT_ASYNC_GAUGE_EXECUTOR in CI
+    AsyncGauge.AsyncGaugeExecutor executor = new AsyncGauge.AsyncGaugeExecutor.Builder().build();
+    MetricsRepository metricsRepository = new MetricsRepository(new MetricConfig(executor));
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     String storeName = Utils.getUniqueString("store");
@@ -102,5 +110,7 @@ public class BlobTransferStatsTest {
     Assert.assertEquals(
         reporter.query("." + storeName + "--blob_transfer_failed_num_responses.IngestionStatsGauge").value(),
         1.0);
+    metricsRepository.close();
+    executor.close();
   }
 }

@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.concurrent.LinkedBlockingDeque;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -9,16 +10,27 @@ import org.testng.annotations.Test;
 public class TestRemoteIngestionRepairService {
   @Test
   public void testIngestionRepairService() throws Exception {
+    // Do not start the service to avoid the background thread racing with pollRepairTasks() calls below.
+    // Instead, register tasks directly into the internal map.
     RemoteIngestionRepairService repairService = new RemoteIngestionRepairService(1000000);
-    repairService.start();
     StoreIngestionTask mockBrockenIngestionTask = Mockito.mock(StoreIngestionTask.class);
     StoreIngestionTask mockWorkingIngestionTask = Mockito.mock(StoreIngestionTask.class);
-    repairService.registerRepairTask(mockBrockenIngestionTask, () -> {
+
+    Runnable brokenTask = () -> {
       throw new VeniceException("AAAAHHH!!!!");
-    });
-    repairService.registerRepairTask(mockWorkingIngestionTask, () -> {});
-    repairService.registerRepairTask(mockBrockenIngestionTask, () -> {/* This task works and should clear */});
-    repairService.stop();
+    };
+    Runnable workingTask1 = () -> {};
+    Runnable workingTask2 = () -> {/* This task works and should clear */};
+
+    repairService.getIngestionRepairTasks()
+        .computeIfAbsent(mockBrockenIngestionTask, k -> new LinkedBlockingDeque<>())
+        .offer(brokenTask);
+    repairService.getIngestionRepairTasks()
+        .computeIfAbsent(mockWorkingIngestionTask, k -> new LinkedBlockingDeque<>())
+        .offer(workingTask1);
+    repairService.getIngestionRepairTasks()
+        .computeIfAbsent(mockBrockenIngestionTask, k -> new LinkedBlockingDeque<>())
+        .offer(workingTask2);
 
     // We should expect two entries in our map
     Assert.assertEquals(repairService.getIngestionRepairTasks().size(), 2);

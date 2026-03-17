@@ -200,7 +200,7 @@ public class TestLeaderReplicaFailover {
       admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
       final HelixAdmin finalAdmin = admin;
       final LeaderErrorNotifier finalLeaderErrorNotifier = leaderErrorNotifier;
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         assertTrue(finalLeaderErrorNotifier.hasReportedError());
         InstanceConfig instanceConfig = finalAdmin.getInstanceConfig(clusterName, leader.getNodeId());
         Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
