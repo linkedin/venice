@@ -2699,6 +2699,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private PartitionConsumptionState reinitializePartitionConsumptionStateFromStorage(
       PubSubTopicPartition topicPartition,
       int partition) {
+    // Preserve leader/follower and DoL state from the current PCS — a STANDBY_TO_LEADER transition
+    // may have been processed during async transformer recovery that we need to carry forward.
+    PartitionConsumptionState oldPcs = partitionConsumptionStateMap.get(partition);
+    LeaderFollowerStateType preservedLfState = oldPcs != null ? oldPcs.getLeaderFollowerState() : STANDBY;
+    DolStamp preservedDolStamp = oldPcs != null ? oldPcs.getDolState() : null;
+
     String topic = topicPartition.getPubSubTopic().getName();
     OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition, pubSubContext);
 
@@ -2714,6 +2720,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
       freshPcs.setLatchCreated();
     }
+
+    // Restore preserved leader/follower and DoL state
+    freshPcs.setLeaderFollowerState(preservedLfState);
+    if (preservedDolStamp != null) {
+      freshPcs.setDolState(preservedDolStamp);
+    }
+    LOGGER.info(
+        "Reinitialized PCS from storage for partition: {}. Restored leader/follower state: {}",
+        partition,
+        preservedLfState);
 
     partitionConsumptionStateMap.put(partition, freshPcs);
     getDataIntegrityValidator().setPartitionState(PartitionTracker.VERSION_TOPIC, partition, offsetRecord);
