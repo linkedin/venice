@@ -52,9 +52,11 @@ public class DIVStatsReporterTest {
     doReturn(mock(DIVStats.class)).when(mockDIVStatsReporter).getStats();
     DIVStatsReporter.DIVStatsGauge counter =
         new DIVStatsReporter.DIVStatsGauge(mockDIVStatsReporter, () -> 1L, "testDIVStatsCounter");
-    // Use the repository's MetricConfig (which has a dedicated AsyncGaugeExecutor) instead of
-    // bare new MetricConfig() which would fall back to the shared static default executor.
-    assertEquals(counter.measure(metricsRepository.config(), System.currentTimeMillis()), 1.0);
+    // Use a MetricConfig with a dedicated AsyncGaugeExecutor instead of bare new MetricConfig()
+    // which would fall back to the shared static default executor that may be shut down.
+    assertEquals(
+        counter.measure(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig(), System.currentTimeMillis()),
+        1.0);
   }
 
   @Test
